@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { judge, loadShardReports, parseArgs } from '../../scripts/mutation/merge.mjs';
+import { checkPlans, judge, loadShardPlans, loadShardReports, parseArgs } from '../../scripts/mutation/merge.mjs';
 import { fileScores, mergeReports, score, scoreTable, summaryMarkdown } from '../../scripts/mutation/report.mjs';
 import type { MutantResult, Report } from '../../scripts/mutation/report.mjs';
 
@@ -183,6 +183,37 @@ describe('reading shard reports', () => {
     ['more shards on disk than expected', 2, () => valid(), [1, 2, 3], 'Found reports of shards 3, but the run has 2 shards'],
   ])('fails loudly on %s', (_, count, read, present, message) => {
     expect(() => loadShardReports(count, read, present)).toThrow(message);
+  });
+
+  it('reads every shard\'s plan in shard order', () => {
+    const texts = [JSON.stringify({ shard: 1, shards: 2, files: ['a.ts'] }), JSON.stringify({ shard: 2, shards: 2, files: ['b.ts', 'c.ts'] })];
+    expect(loadShardPlans(2, index => texts[index - 1])).toStrictEqual([['a.ts'], ['b.ts', 'c.ts']]);
+  });
+
+  it.each([
+    ['a missing plan', 2, (index: number) => index === 1 ? '{"shard":1,"shards":2,"files":["a.ts"]}' : undefined, 'Shard 2/2 wrote no plan'],
+    ['an unreadable plan', 1, () => '{', 'Shard 1/1 wrote an unreadable plan'],
+    ['a plan of another shard', 2, (index: number) => `{"shard":1,"shards":2,"files":["${index}.ts"]}`, 'Shard 2/2 wrote the plan of shard 1/2'],
+    ['a plan of another partition', 2, (index: number) => `{"shard":${index},"shards":3,"files":["a.ts"]}`, 'Shard 1/2 wrote the plan of shard 1/3'],
+    ['a plan without files', 1, () => '{"shard":1,"shards":1}', 'Shard 1/1 wrote a plan without a file list'],
+    ['a plan with an empty file list', 1, () => '{"shard":1,"shards":1,"files":[]}', 'Shard 1/1 wrote a plan without a file list'],
+    ['a plan listing a non-path', 1, () => '{"shard":1,"shards":1,"files":["a.ts",3]}', 'Shard 1/1 wrote a plan without a file list'],
+    ['a null plan', 1, () => 'null', 'Shard 1/1 wrote an unreadable plan'],
+  ])('fails loudly on %s', (_, count, read, message) => {
+    expect(() => loadShardPlans(count, read)).toThrow(message);
+  });
+
+  it('accepts reports that cover exactly their disjoint plans', () => {
+    expect(() => checkPlans([['a.ts', 'b.ts'], ['c.ts']], [shardReport({ 'b.ts': ['Killed'], 'a.ts': ['Survived'] }), shardReport({ 'c.ts': ['Killed'] })])).not.toThrow();
+  });
+
+  it.each([
+    // Stryker only warns when a mutate pattern matches no file, and a file without mutants leaves no trace either.
+    ['planned files the report lacks', [['a.ts', 'b.ts', 'd.ts', 'e.ts'], ['c.ts']], 'Shard 1/2 reported no mutants for d.ts, e.ts, which it planned: Stryker matched no file or found nothing to mutate'],
+    ['a reported file the shard did not plan', [['a.ts'], ['c.ts']], 'Shard 1/2 reported b.ts, which it did not plan'],
+    ['plans that overlap', [['a.ts', 'b.ts'], ['b.ts', 'c.ts']], 'b.ts is planned for shards 1 and 2'],
+  ])('refuses %s', (_, plans, message) => {
+    expect(() => checkPlans(plans, [shardReport({ 'b.ts': ['Killed'], 'a.ts': ['Survived'] }), shardReport({ 'c.ts': ['Killed'] })])).toThrow(message);
   });
 
   it.each([

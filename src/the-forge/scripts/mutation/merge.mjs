@@ -4,10 +4,12 @@
  *
  *   node scripts/mutation/merge.mjs --shards 2 [--config stryker.config.json] [--dir .quality-reports/mutation]
  *
- * Reads `<dir>/shard-<i>/mutation.json` for every shard, writes the merged mutation-testing-elements report to
- * `<dir>/mutation.json`, prints the per-file score table and, when GITHUB_STEP_SUMMARY is set, appends a Markdown
- * summary to the job summary. It exits 1 when the overall score, computed like Stryker's, is below the configuration's
- * `thresholds.break`, and fails on a missing, empty or unexpected shard report instead of passing on empty input.
+ * Reads `<dir>/shard-<i>/mutation.json` and the shard's `plan.json` for every shard, writes the merged
+ * mutation-testing-elements report to `<dir>/mutation.json`, prints the per-file score table and, when
+ * GITHUB_STEP_SUMMARY is set, appends a Markdown summary to the job summary. It exits 1 when the overall score, computed
+ * like Stryker's, is below the configuration's `thresholds.break`, and fails on a missing, empty or unexpected shard
+ * report, a missing plan, overlapping plans or a report whose files differ from its plan instead of passing on
+ * incomplete input. The merge job installs no packages, so this script and report.mjs import only Node built-ins.
  */
 import { appendFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -63,6 +65,58 @@ export function loadShardReports(count, read, present) {
 }
 
 /**
+ * Reads the plans that scripts/mutation/shard.mjs wrote: the files each shard was to mutate. `read(index)` returns a
+ * shard's plan.json text or undefined when it is missing.
+ * @param {number} count @param {(index: number) => string | undefined} read
+ * @returns {string[][]}
+ */
+export function loadShardPlans(count, read) {
+  return Array.from({ length: count }, (_, position) => {
+    const index = position + 1;
+    const text = read(index);
+    if (text === undefined) throw new Error(`Shard ${index}/${count} wrote no plan`);
+    /** @type {{ shard?: unknown, shards?: unknown, files?: unknown }} */
+    let plan;
+    try {
+      plan = JSON.parse(text);
+    } catch (error) {
+      throw new Error(`Shard ${index}/${count} wrote an unreadable plan: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (typeof plan !== 'object' || plan === null) throw new Error(`Shard ${index}/${count} wrote an unreadable plan: not an object`);
+    if (plan.shard !== index || plan.shards !== count) throw new Error(`Shard ${index}/${count} wrote the plan of shard ${String(plan.shard)}/${String(plan.shards)}`);
+    const { files } = plan;
+    if (!Array.isArray(files) || files.length === 0 || !files.every(file => typeof file === 'string')) throw new Error(`Shard ${index}/${count} wrote a plan without a file list`);
+    return /** @type {string[]} */ (files);
+  });
+}
+
+/**
+ * Requires disjoint plans and every shard report to hold exactly its planned files. Stryker only warns when a mutate
+ * pattern matches no file, so a planned file missing from the report would otherwise drop out of the score unnoticed.
+ * @param {string[][]} plans @param {import('./report.mjs').Report[]} reports
+ */
+export function checkPlans(plans, reports) {
+  /** @type {Map<string, number>} */
+  const owners = new Map();
+  plans.forEach((files, position) => {
+    for (const file of files) {
+      const owner = owners.get(file);
+      if (owner !== undefined) throw new Error(`${file} is planned for shards ${owner} and ${position + 1}`);
+      owners.set(file, position + 1);
+    }
+  });
+  plans.forEach((files, position) => {
+    const label = `Shard ${position + 1}/${plans.length}`;
+    const reported = new Set(Object.keys(reports[position]?.files ?? {}));
+    const missing = files.filter(file => !reported.has(file));
+    if (missing.length > 0) throw new Error(`${label} reported no mutants for ${missing.join(', ')}, which it planned: Stryker matched no file or found nothing to mutate`);
+    const planned = new Set(files);
+    const unplanned = [...reported].filter(file => !planned.has(file));
+    if (unplanned.length > 0) throw new Error(`${label} reported ${unplanned.join(', ')}, which it did not plan`);
+  });
+}
+
+/**
  * Merges the shard reports and decides the outcome against `thresholds` from the Stryker configuration.
  * @param {import('./report.mjs').Report[]} reports
  * @param {{ high?: number, low?: number, break?: number | null } | undefined} thresholds
@@ -91,10 +145,13 @@ function main() {
     const match = /^shard-(\d+)$/.exec(entry.name);
     return entry.isDirectory() && match && existsSync(join(dir, entry.name, 'mutation.json')) ? [Number(match[1])] : [];
   }) : [];
-  const reports = loadShardReports(options.shards, index => {
-    const path = join(dir, `shard-${index}`, 'mutation.json');
+  /** @param {number} index @param {string} name */
+  const read = (index, name) => {
+    const path = join(dir, `shard-${index}`, name);
     return existsSync(path) ? readFileSync(path, 'utf8') : undefined;
-  }, present);
+  };
+  const reports = loadShardReports(options.shards, index => read(index, 'mutation.json'), present);
+  checkPlans(loadShardPlans(options.shards, index => read(index, 'plan.json')), reports);
   const { report, passed, verdict, summary } = judge(reports, config.thresholds);
   writeFileSync(join(dir, 'mutation.json'), JSON.stringify(report));
   process.stdout.write(`${scoreTable(report)}\n\n${verdict}\nMerged report: ${join(options.dir, 'mutation.json')}\n`);
