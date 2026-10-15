@@ -20,7 +20,8 @@ function reference(pattern: string): RegExp {
 function choices(seed: number) {
   return (options: readonly string[]) => {
     seed = (seed * 1103515245 + 12345) % 2147483648;
-    return options[seed % options.length]!;
+    // The high bits: the low bits of this generator repeat with a short period.
+    return options[(seed >>> 16) % options.length]!;
   };
 }
 

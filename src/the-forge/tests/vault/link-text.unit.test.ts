@@ -58,6 +58,7 @@ describe('destinations in source text', () => {
     expect(definitionDestination('   [ref]: a.md')).toMatchObject({ raw: 'a.md', start: 10, end: 14 });
     expect(definitionDestination('x [r]: a.md')).toBeUndefined();
     expect(definitionDestination('[]: a.md')).toBeUndefined();
+    expect(definitionDestination('[r]: <a.md')).toBeUndefined();
   });
 
   it('finds quoted, unquoted and empty attribute values', () => {
@@ -94,7 +95,8 @@ describe('destination rewriting', () => {
 describe('applying edits', () => {
   /** Deterministic pseudo-random text over a small alphabet, so shared prefixes and suffixes are common. */
   function generator(seed: number) {
-    const next = (limit: number) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % limit; };
+    // The high bits: the low bits of this generator repeat with a short period.
+    const next = (limit: number) => { seed = (seed * 1103515245 + 12345) % 2147483648; return (seed >>> 16) % limit; };
     return { next, text: (length: number) => Array.from({ length }, () => 'ab'[next(2)]).join('') };
   }
 
@@ -115,6 +117,12 @@ describe('applying edits', () => {
     const outer: TextEdit = { start: 2, end: 5, original: 'abc', text: 'ZZZ' }, inner: TextEdit = { start: 2, end: 3, original: 'a', text: 'Q' };
     expect(applyEdits('xxabcxx', [inner, outer])).toEqual({ text: 'xxZZZxx', skipped: [inner] });
     expect(applyEdits('xxabcxx', [outer, inner])).toEqual({ text: 'xxZZZxx', skipped: [inner] });
+  });
+
+  it('applies an edit nested in the unchanged start or end of another edit', () => {
+    const outer: TextEdit = { start: 0, end: 5, original: 'x-y-z', text: 'x-Y-z' };
+    expect(applyEdits('x-y-z', [outer, { start: 4, end: 5, original: 'z', text: 'w' }])).toEqual({ text: 'x-Y-w', skipped: [] });
+    expect(applyEdits('x-y-z', [outer, { start: 0, end: 1, original: 'x', text: 'v' }])).toEqual({ text: 'v-Y-z', skipped: [] });
   });
 
   it('skips edits that overlap an applied one even when they make the same change at the same end', () => {

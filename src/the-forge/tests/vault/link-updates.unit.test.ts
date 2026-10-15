@@ -235,9 +235,9 @@ describe('links the planner cannot rewrite', () => {
     });
   });
 
-  it('re-serializes a Canvas whose file values are not spelled as plain JSON keys, keeping its byte order mark', async () => {
-    const canvas = '\uFEFF{"nodes":[{"id":"n1","type":"file","fil\\u0065":"notes/Plan.md","x":0,"y":0,"width":1,"height":1},{"id":"n2","type":"file","file":"Other.md","x":0,"y":0,"width":1,"height":1}]}';
+  it.each(['\uFEFF', ''])('re-serializes a Canvas whose file values are not spelled as plain JSON keys, keeping a byte order mark %j', async bom => {
+    const canvas = `${bom}{"nodes":[{"id":"n1","type":"file","fil\\u0065":"notes/Plan.md","x":0,"y":0,"width":1,"height":1},{"id":"n2","type":"file","file":"Other.md","x":0,"y":0,"width":1,"height":1}]}`;
     const { texts } = await rewritten({ 'Board.canvas': canvas, 'notes/Plan.md': 'Plan', 'Other.md': 'Other' }, { 'notes/Plan.md': 'specs/Plan.md' });
-    expect(texts['Board.canvas']).toBe(`\uFEFF${JSON.stringify({ nodes: [{ id: 'n1', type: 'file', file: 'specs/Plan.md', x: 0, y: 0, width: 1, height: 1 }, { id: 'n2', type: 'file', file: 'Other.md', x: 0, y: 0, width: 1, height: 1 }] }, null, 2)}\n`);
+    expect(texts['Board.canvas']).toBe(`${bom}${JSON.stringify({ nodes: [{ id: 'n1', type: 'file', file: 'specs/Plan.md', x: 0, y: 0, width: 1, height: 1 }, { id: 'n2', type: 'file', file: 'Other.md', x: 0, y: 0, width: 1, height: 1 }] }, null, 2)}\n`);
   });
 });
