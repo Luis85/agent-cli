@@ -43,6 +43,9 @@ describe('destinations in source text', () => {
     ['[a](b (ti))', 'b'],
     ['[a](b "t" )', 'b'],
     ['[a](b "ti")', 'b'],
+    ['[a](Plan.md "x](y")', 'Plan.md'],
+    ["[a](Plan.md 't](u)')", 'Plan.md'],
+    ['[![t](a.png "](x)")](b.md)', 'b.md'],
   ])('finds the Markdown destination of %j', (original, raw) => {
     expect(markdownDestination(original)).toMatchObject({ raw });
   });

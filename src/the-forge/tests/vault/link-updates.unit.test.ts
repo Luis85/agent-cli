@@ -104,6 +104,11 @@ describe('planning link updates for moves', () => {
     });
   });
 
+  it('rewrites the destination of a Markdown link whose title contains "](", keeping the title', async () => {
+    const { texts } = await rewritten({ 'Index.md': '[a](Plan.md "x](y")', 'Plan.md': 'p' }, { 'Plan.md': 'specs/Roadmap.md' });
+    expect(texts['Index.md']).toBe('[a](specs/Roadmap.md "x](y")');
+  });
+
   it('pins a link that resolved through an alias when a moved file takes its name', async () => {
     const { texts } = await rewritten({ 'Index.md': '[[X]]', 'A.md': '---\naliases: [X]\n---\nA', 'B.md': 'B' }, { 'B.md': 'X.md' });
     expect(texts).toEqual({ 'Index.md': '[[A]]' });
