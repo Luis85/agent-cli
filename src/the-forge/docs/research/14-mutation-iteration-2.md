@@ -130,10 +130,10 @@ Recorded 2026-10-15 after integrating the six areas and two review follow-ups.
 | | Before | After |
 | --- | --- | --- |
 | Score | 81.51% | **96.08%** (96.22% of covered mutants) |
-| Mutants | 7,124 | 9,585, with static mutants enabled |
-| Killed | 5,286 | 9,078 |
+| Mutants | 7,124 | 9,629, with static mutants enabled |
+| Killed | 5,286 | 9,121 |
 | Timed out | 69 | 131 |
-| Survived | 960 | 362 |
+| Survived | 960 | 363 |
 | No coverage | 255 | 14 |
 | `thresholds.break` | 78 | 93 |
 
@@ -167,6 +167,7 @@ The "before" column ignores static mutants and the "after" column tests them. Ea
 | S10 | `link-text.ts` | Moving a note corrupted a link whose title contains `](`. |
 | R1 | `notes.ts` | Privacy, found by the review: a code span crossing a list item, heading or quote leaked a comment. Unclosed comments, comments around fences and escaped `\%%` markers did not follow Obsidian's documented behavior. |
 | R2 | `markdown-html.ts`, `notes.ts` | Found by the review: fences indented inside list items were no longer treated as code. A code span inside a link target left a placeholder in the `href`. |
+| R3 | backlog `sync-values.ts`, browser `tutorial-markdown.ts` | Found by the review. Privacy: a pulled description that ended inside an open fence or comment swallowed the note's re-appended comments, and the next sync pushed them. Tutorial parsing paired an escaped `\%%` with the next marker. |
 
 **Toolchain.**
 
@@ -181,7 +182,7 @@ The "before" column ignores static mutants and the "after" column tests them. Ea
   - The weekly forced run has its own concurrency group.
 - **CI only.** Mutation testing runs in CI, not as a local guardrail. The guide keeps the focused single-file run for investigating survivors.
 
-**Equivalent mutants.** Most of the 362 survivors are equivalent. Each area report listed them with a reason. The common kinds:
+**Equivalent mutants.** Most of the 363 survivors are equivalent. Each area report listed them with a reason. The common kinds:
 
 - guards that a later check makes redundant;
 - comparator results that V8's sort treats alike;
@@ -201,7 +202,4 @@ The largest groups are in `link-resolution.ts` (40), backlog `releases.ts` (28),
   - the agents mapping cluster.
 - *Fixtures to move first:* the `describe`-level parse in `tests/metadata/parser.unit.test.ts`, before `cache.ts` joins `mutate`.
 - *Deferred:* `domain/schema/json-schema.ts`, `documents/{file,canvas}.ts` and `application/plugins/*`, whose mutants re-run 25–45 test files each.
-- *Known edges:*
-  - The browser plugin's `blankObsidianComments` still pairs an escaped `\%%`.
-  - An indented fence that lazily continues a paragraph is read as code by `notes.ts`.
-  - A pulled description that ends inside an unclosed fence would re-append the note's comments inside that fence.
+- *Known edge:* `notes.ts` reads an indented fence that lazily continues a paragraph as code.
