@@ -215,6 +215,12 @@ describe('model rules', () => {
     expect(model.byPath.get('C.md')!.children).toEqual([]);
   });
 
+  it('cuts a loop that a listed note only leads into at the loop, not at the note', () => {
+    const notes = { 'X.md': { type: 'Task', parent: '[[A]]' }, 'A.md': { type: 'Epic', parent: '[[B]]' }, 'B.md': { type: 'Feature', parent: '[[A]]' } };
+    const model = build(notes, Object.keys(notes));
+    expect(model.items.map(item => [item.title, item.parent?.title ?? null, item.cycleCut])).toStrictEqual([['A', null, true], ['X', 'A', false], ['B', 'A', false]]);
+  });
+
   it('assigns rungs by type case-insensitively, below the parent for unknown and untyped notes, clamped at the deepest rung', () => {
     const notes = {
       'Root.md': { type: 'EPIC' }, 'Sub.md': { type: 'epic', parent: '[[Root]]' }, 'Spike.md': { type: 'Spike', parent: '[[Root]]' },

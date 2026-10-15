@@ -98,8 +98,15 @@ export function readPlacement(value: unknown): FieldReading<string> {
   return { value: null, invalid: !emptyish };
 }
 
+/** Milliseconds of a UTC midnight; unlike `Date.UTC`, years 0–99 stay years 0–99 instead of becoming 1900–1999. */
+function utcMidnight(year: number, monthIndex: number, day: number): number {
+  const date = new Date(0);
+  date.setUTCFullYear(year, monthIndex, day);
+  return date.getTime();
+}
+
 function daysInMonth(year: number, month: number): number {
-  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return new Date(utcMidnight(year, month, 0)).getUTCDate();
 }
 
 /** `YYYY-M-D` with an optional time suffix; month and day are validated. A list reads its first entry. */
@@ -123,7 +130,7 @@ export function readSoleDate(raw: unknown): FieldReading<CivilDate> {
   return readDate(raw);
 }
 
-const utc = (date: CivilDate) => Date.UTC(date.year, date.month - 1, date.day);
+const utc = (date: CivilDate) => utcMidnight(date.year, date.month - 1, date.day);
 export function daysBetween(a: CivilDate, b: CivilDate): number { return Math.round((utc(b) - utc(a)) / 86_400_000); }
 
 export function addDays(date: CivilDate, days: number): CivilDate {
