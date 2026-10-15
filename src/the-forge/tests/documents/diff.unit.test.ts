@@ -57,6 +57,8 @@ describe('unified dry-run diffs', () => {
 
   it('orders a swap deterministically and never lets a shared ending overlap a shared beginning', () => {
     expect(unifiedDiff({ path: 's.md', before: 'a\nb\n', after: 'b\na\n' })).toBe('--- a/s.md\n+++ b/s.md\n@@ -1,2 +1,2 @@\n-a\n b\n+a\n');
+    // Several minimal scripts keep one `a`; the preview always keeps the first.
+    expect(unifiedDiff({ path: 'x.md', before: 'a\nb\na\na\n', after: 'c\nc\na\nc\nc\n' })).toBe('--- a/x.md\n+++ b/x.md\n@@ -1,4 +1,5 @@\n+c\n+c\n a\n-b\n-a\n-a\n+c\n+c\n');
     expect(unifiedDiff({ path: 'd.md', before: 'a\n', after: 'a\na\n' })).toBe('--- a/d.md\n+++ b/d.md\n@@ -1 +1,2 @@\n a\n+a\n');
     expect(unifiedDiff({ path: 'd.md', before: 'a\na\n', after: 'a\n' })).toBe('--- a/d.md\n+++ b/d.md\n@@ -1,2 +1 @@\n a\n-a\n');
   });

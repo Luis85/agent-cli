@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { applyPlanSchema, editRequest, parsePlan, type EditOperation } from '../../src/domain/documents/apply-plan.ts';
-import { defaultIssues, schemaIssues } from '../../src/domain/schema/json-schema.ts';
+import { applyPlanSchema, editRequest, literalEditsSchema, parsePlan, type EditOperation } from '../../src/domain/documents/apply-plan.ts';
+import { defaultIssues, schemaIssues, type JsonSchema } from '../../src/domain/schema/json-schema.ts';
 
 const inPlan = (operation: unknown) => ({ version: 1, operations: [operation] });
 const failure = (value: unknown) => {
@@ -14,6 +14,27 @@ describe('apply plan contract', () => {
     expect(schemaIssues(applyPlanSchema)).toEqual([]);
     expect(defaultIssues(applyPlanSchema)).toEqual([]);
     expect(applyPlanSchema.$schema).toBe('https://json-schema.org/draft/2020-12/schema');
+  });
+
+  it('describes every plan property and names every operation shape, so help and schema readers can use them', () => {
+    const undocumented: string[] = [], titles: string[] = [];
+    const visit = (schema: JsonSchema, at: string) => {
+      if (!schema || typeof schema !== 'object') return;
+      if (Array.isArray(schema.oneOf)) for (const [index, branch] of (schema.oneOf as JsonSchema[]).entries()) { titles.push(String(branch.title ?? '')); visit(branch, `${at}.oneOf[${index}]`); }
+      if (schema.items) visit(schema.items as JsonSchema, `${at}[]`);
+      for (const [key, property] of Object.entries((schema.properties ?? {}) as Record<string, JsonSchema>)) {
+        // Discriminators state their only value; the plan version is a constant too.
+        if (property.const === undefined && !(typeof property.description === 'string' && property.description.length > 0)) undocumented.push(`${at}.${key}`);
+        visit(property, `${at}.${key}`);
+      }
+    };
+    for (const text of [applyPlanSchema.title, applyPlanSchema.description, literalEditsSchema.description]) expect(text).toMatch(/\S/);
+    visit(applyPlanSchema, 'plan');
+    // The plan's own description covers its operation list.
+    expect(undocumented).toEqual(['plan.operations']);
+    expect(titles).toHaveLength(12);
+    expect(new Set(titles).size).toBe(titles.length);
+    expect(titles.every(title => /^[a-z]+: \S/.test(title))).toBe(true);
   });
 
   it('accepts every operation shape and fills defaults', () => {
@@ -31,7 +52,7 @@ describe('apply plan contract', () => {
     expect(plan.operations[1]).toEqual({ op: 'edit', path: 'a.md', edits: [{ find: 'A', replace: 'B', all: false }] });
     expect(plan.operations[6]).toEqual({ op: 'move', from: 'a.md', to: 'b.md', updateLinks: true });
     expect(plan.operations[7]).toEqual({ op: 'delete', path: 'b.md', recursive: false, allowBrokenLinks: false });
-    expect(plan.operations.slice(1, 5).map(item => editRequest(item as EditOperation))).toEqual([
+    expect(plan.operations.slice(1, 5).map(item => editRequest(item as EditOperation))).toStrictEqual([
       { kind: 'literal', edits: [{ find: 'A', replace: 'B', all: false }] },
       { kind: 'append', content: 'more' },
       { kind: 'section', section: 'A > B', mode: 'prepend', content: 'x' },

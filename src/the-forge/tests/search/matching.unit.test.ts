@@ -73,7 +73,8 @@ describe('searched lines', () => {
     expect(lines('body')).toEqual([4, 5, 6, 7, 8]);
     expect(lines('all')).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
     expect(lines('body', new Set([6, 7, 8]))).toEqual([4, 5]);
-    expect(searchScopes.map(scope => lines(scope))).toEqual([[4, 5, 6, 7, 8], [1, 2], [0, 1, 2, 3, 4, 5, 6, 7, 8]]);
+    // The --scope values, in the order help lists them.
+    expect(searchScopes).toEqual(['body', 'frontmatter', 'all']);
     expect(note.map((_, index) => index).filter(searchedLines(note, 'text', 'frontmatter'))).toEqual([]);
     expect(note.map((_, index) => index).filter(searchedLines(note, 'text', 'body'))).toHaveLength(note.length);
   });
