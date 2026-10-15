@@ -15,9 +15,11 @@ checks:
   - unchanged: Projects/Beta.md
   - command: [stat, Projects]
     data: { pointer: /kind, equals: folder }
-  - command: [stat, Projects]
-    data: { pointer: /fileCount, equals: 2 }
-  - command: [stat, Projects]
+  # The fixture also has projects/demo, which shares the Projects folder on case-insensitive filesystems,
+  # so the descendant counts are checked on a folder without a case collision.
+  - command: [stat, Meetings]
+    data: { pointer: /fileCount, equals: 1 }
+  - command: [stat, Meetings]
     data: { pointer: /folderCount, equals: 0 }
   - command: [stat, Projects]
     data: { pointer: /revision, length: 64 }
