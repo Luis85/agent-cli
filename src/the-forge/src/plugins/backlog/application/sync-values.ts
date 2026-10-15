@@ -2,7 +2,7 @@ import type { Connection } from '../../../application/connectors/contract.ts';
 import type { ConnectorMapping, RemoteItem, SyncField } from '../../../domain/connectors/items.ts';
 import { formatCivil, ownValue, readNumber, readString, setOwn, type Frontmatter } from '../domain/fields.ts';
 import { displayType, type BacklogItem } from '../domain/model.ts';
-import { comments, sanitizeTitle, withoutComments } from '../domain/notes.ts';
+import { comments, sanitizeTitle, withComments, withoutComments } from '../domain/notes.ts';
 import { workflowOf } from '../domain/settings.ts';
 import { isIterationType } from '../domain/vocabulary.ts';
 import {
@@ -142,8 +142,8 @@ export interface PulledNote { write: ItemWrite; extra: Frontmatter; removed: str
 
 /**
  * Converts pulled remote values into note changes with the backlog's write rules; unmappable values are skipped.
- * A pulled description replaces the body but keeps the note's `%%comments%%`, appended after it, since comments
- * never sync.
+ * A pulled description replaces the body but keeps the note's `%%comments%%`, appended after it (closing
+ * any fence or comment the pulled text leaves open), since comments never sync.
  */
 export function pulledNote(context: ValueContext, item: BacklogItem, pulls: Values, pathOfRemote: (id: string) => string | null, body: string | null): PulledNote {
   const { session } = context;
@@ -176,7 +176,7 @@ export function pulledNote(context: ValueContext, item: BacklogItem, pulls: Valu
     else if (field === 'tags' && Array.isArray(value)) {
       const lower = new Set(value.map(tag => tag.toLowerCase()));
       note.write.tags = { add: value, remove: item.tags.filter(tag => !lower.has(tag.toLowerCase())) };
-    } else if (field === 'description') note.body = [value === null ? '' : String(value), ...comments(body ?? '')].filter(part => part.trim() !== '').join('\n\n');
+    } else if (field === 'description') note.body = withComments(value === null ? '' : String(value), comments(body ?? ''));
     else {
       const key = field === 'effort' ? context.connection.effortProperty : field === 'area' ? context.connection.areaProperty : field.slice(PROPERTY.length);
       if (value === null) note.removed.push(key); else setOwn(note.extra, key, value);
