@@ -52,6 +52,13 @@ describe('bounded read-many file inspection', () => {
     expect(Buffer.byteLength(JSON.stringify(result))).toBeGreaterThan(8 * 1024 * 1024);
     await expect(run(['a.bin', 'b.bin', 'c.bin'])).rejects.toMatchObject({ code: 'INVALID_ARGUMENT', details: { index: 2, path: 'c.bin', maxBytes: 8388608, bytes: 8388609 } });
   });
+  it('refuses a file over the remaining budget without parsing it or reporting it opened', async () => {
+    await writeFile(join(root, 'a.bin'), Buffer.alloc(8 * 1024 * 1024));
+    const invalid = '---\nvalue: [\n---\n';
+    await writeFile(join(root, 'bad.md'), invalid);
+    await expect(run(['a.bin', 'bad.md'])).rejects.toMatchObject({ code: 'INVALID_ARGUMENT', details: { index: 1, path: 'bad.md', bytes: 8 * 1024 * 1024 + Buffer.byteLength(invalid) } });
+    expect(events.history.filter(event => event.id === 'workspace.file-open').map(event => (event.payload as { path: string }).path)).toEqual(['a.bin']);
+  });
   it('fails the bundle at a missing file, reports its index, and does not read later files', async () => {
     await writeFile(join(root, 'valid.txt'), 'read first');
     await expect(run(['valid.txt', 'missing.md', 'never.txt'])).rejects.toMatchObject({ code: 'NOT_FOUND', details: { index: 1, path: 'missing.md' } });

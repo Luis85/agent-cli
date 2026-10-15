@@ -36,7 +36,7 @@ const commandEntry: JsonSchema = {
   type: 'object', required: ['id', 'description', 'usage', 'options', 'args', 'annotations', 'errors', 'inputSchema'],
   properties: {
     id: text, description: text, usage: text, options, args: { type: 'array', items: argumentSchema }, annotations,
-    errors: { ...texts, description: 'Codes the command reports itself, besides commonErrors.' },
+    errors: { ...texts, description: 'Codes the command reports itself, besides commonErrors; a command with a project option also lists the codes of naming a project.' },
     inputSchema: schemaDocument, outputSchema: schemaDocument,
   },
 };
@@ -53,7 +53,7 @@ export const schemaOutput: JsonSchema = {
     dialect: { type: 'string', const: 'https://json-schema.org/draft/2020-12/schema' },
     globalOptions: options, envelope: schemaDocument, eventOutput: { type: 'object' },
     commands: { type: 'array', items: commandEntry },
-    commonErrors: { ...texts, description: 'Input and runtime codes any command can report.' },
+    commonErrors: { ...texts, description: 'Input, routing and runtime codes any command can report.' },
     generators: { type: 'array', items: { type: 'object', required: ['id', 'description'], properties: { id: text, description: text } } },
     skills: texts,
     errors: { type: 'array', items: errorEntry },

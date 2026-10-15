@@ -10,7 +10,7 @@ export function statCommand(): Command {
     usage: 'stat <path> [--project id]', scope: 'project', projectOption: 'project', discovery: false, mutating: false,
     args: [{ name: 'path', description: 'Vault path relative to the command scope.', required: true }],
     options: { project: option.string('Use this project instead of the selected project.') },
-    errors: ['NOT_FOUND', 'INVALID_PATH', 'UNSAFE_PATH', 'PROJECT_NOT_FOUND', 'INVALID_PROJECT_NAME', 'INVALID_PROJECT', 'INVALID_PROJECT_CONTEXT'], output: statOutput,
+    errors: ['NOT_FOUND'], output: statOutput,
     async run(args, _flags, { workspace }) {
       arity(args, 1);
       const entry = await workspace.files.stat(args[0]!);

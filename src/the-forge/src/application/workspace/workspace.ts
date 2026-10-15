@@ -16,6 +16,8 @@ const changeSummary = (result: { changes: FileChange[]; renames?: FileRename[] }
   bytes: result.changes.reduce((total, change) => total + change.bytes, 0),
   ...(result.renames ? { renames: result.renames.map(({ from, to, kind }) => ({ from, to, kind })) } : {}),
 });
+/** `beforeParse` receives a file's raw byte count before the file is parsed; it refuses the file by throwing. */
+export interface ReadOptions { beforeParse?: (bytes: number) => void }
 /** Dry-run result options; `diff` adds a unified diff to each planned change. */
 export interface WriteOptions { diff?: boolean }
 /**
@@ -48,9 +50,10 @@ export class Workspace {
   }
   // CLI handlers and external plugins call this through the typed CommandContext workspace.
   // A successful read is Obsidian's file-open: it emits `workspace.file-open` with the scoped path.
-  async read(path: string) {
+  async read(path: string, options: ReadOptions = {}) {
     return this.observe('read', [path], async () => {
       const file = await this.files.read(path);
+      options.beforeParse?.(file.bytes.length);
       const result = { path, revision: file.revision, bytes: file.bytes.length, document: this.codec.inspect(path, file.bytes) };
       await publishHostEvent(this.events, 'workspace.file-open', { path });
       return result;

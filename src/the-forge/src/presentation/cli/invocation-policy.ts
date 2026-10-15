@@ -22,3 +22,19 @@ export function invocationPolicy(command: CommandMetadata, args: readonly string
     ...(requestedProject === undefined ? {} : { requestedProject }),
   };
 }
+
+/**
+ * Selecting a project through a declared `projectOption` fails with these codes: a malformed name, no such project,
+ * or invalid project metadata. Without the option the selected project applies, whose failures are `commonErrors`.
+ */
+export const projectOptionErrors = ['INVALID_PROJECT_NAME', 'PROJECT_NOT_FOUND', 'INVALID_PROJECT'] as const;
+
+/**
+ * The codes a command publishes in `help` and `schema`: its own `errors`, then `projectOptionErrors` when the command
+ * or one of its actions declares a `projectOption`, so no command lists project routing codes by hand.
+ */
+export function declaredErrors(command: CommandMetadata): string[] {
+  const own = command.errors ?? [];
+  const routed = command.projectOption !== undefined || Object.values(command.actions ?? {}).some(action => action.projectOption !== undefined);
+  return routed ? [...new Set([...own, ...projectOptionErrors])] : [...own];
+}

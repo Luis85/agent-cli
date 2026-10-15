@@ -18,8 +18,10 @@ content, and attachments or invalid UTF-8 text include base64. Markdown's separa
 
 `data.bytes` sums the raw byte counts and must not exceed 8 MiB (8,388,608 bytes).
 Exactly 32 files and exactly 8 MiB are permitted. JSON escaping, parsed metadata
-and base64 can make the serialized response larger. Files are read and inspected
-whole, so this is an accepted-content limit, not a streaming or hard memory limit.
+and base64 can make the serialized response larger. Each file is read whole and
+its raw bytes count against the budget before it is parsed, so the file that
+exceeds the budget fails the command without being parsed. This is an
+accepted-content limit, not a streaming or hard memory limit.
 For larger requests, split the path list into smaller invocations or use `read`
 for an individual file.
 
@@ -30,8 +32,9 @@ instead of being silently normalized. Symlink traversal remains forbidden.
 
 A missing, unsafe or invalid document, or exceeding the byte limit, fails the
 whole command. No partial `data.files` payload is returned. Per-file failures keep
-the original error code and add `error.details.index` (zero-based position) and
-`error.details.path`. Duplicate errors also identify `duplicateOf`. Limit and
+the original error code and add `error.details.index` (the zero-based position of
+the path argument) and `error.details.path`; the message names the same index, as
+in `read-many path at index 1: ...`. Duplicate errors also identify `duplicateOf`. Limit and
 argument-count violations use `INVALID_ARGUMENT`. The command stops at the first
 read failure. Standard read events for preceding successful reads may already
 have been delivered; no file writes or committed vault-change events occur.
