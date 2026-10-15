@@ -243,7 +243,7 @@ const engines = { "node": ">=22.12.0" };
 const config$1 = { "distribution": "../../bin" };
 const scripts = { "dev": "vite build --watch --emptyOutDir=false", "dev:server": "vite build --mode server --watch --emptyOutDir=false", "typecheck": "node scripts/quality/typecheck.mjs", "build": "vite build && vite build --mode server && node scripts/package.mjs", "test": "vitest run", "check": "npm run check:fast && npm run build && npm test && npm run showcase:check", "release": "npm run check && node scripts/release.mjs", "release:smoke": "node scripts/release-smoke.mjs", "install:release": "node scripts/install-forge.mjs", "lint": "node scripts/quality/lint.mjs", "analyze": "node scripts/quality/analyze.mjs", "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck && npm run check:contracts", "check:structure": "node scripts/quality/structure.mjs --source-layout forge", "eval": "node scripts/eval/run.mjs", "bench": "node scripts/bench/metadata.mjs", "showcase": "node scripts/showcase.mjs", "showcase:check": "node scripts/showcase.mjs --check", "vendor:docker-agent": "node scripts/vendor-docker-agent.mjs", "check:contracts": "vitest run tests/cli/commands.integration.test.ts tests/cli/localization-parity.integration.test.ts tests/cli/localization.integration.test.ts tests/evals/harness.unit.test.ts tests/documentation/consistency.integration.test.ts tests/cli/command-metadata.unit.test.ts tests/cli/input-schema.unit.test.ts", "mutate": "stryker run" };
 const dependencies$1 = { "ajv": "^8.20.0", "commander": "^15.0.0", "dayjs": "^1.11.23", "obsidian-bases-expression": "0.2.0", "parse5": "7.3.0", "playwright-core": "1.64.0", "remark-parse": "^11.0.0", "unified": "^11.0.5", "yaml": "^2.8.1", "zod": "^4.6.5" };
-const devDependencies = { "@angular/common": "21.2.25", "@angular/compiler": "21.2.25", "@angular/core": "21.2.25", "@angular/platform-browser": "21.2.25", "@stryker-mutator/core": "10.0.0", "@stryker-mutator/vitest-runner": "10.0.0", "@types/jsdom": "27.0.0", "@types/node": "^22.18.0", "@types/react": "19.3.0", "@types/react-dom": "19.3.0", "@vue/compiler-sfc": "3.5.43", "fallow": "3.31.0", "jsdom": "27.4.0", "oxlint": "1.86.0", "react": "19.3.0", "react-dom": "19.3.0", "remark-frontmatter": "^5.0.0", "svelte": "5.57.2", "typescript": "~5.9.3", "vite": "^7.1.9", "vitest": "^5.0.3", "vue": "3.5.43" };
+const devDependencies = { "@angular/common": "21.2.25", "@angular/compiler": "21.2.25", "@angular/core": "21.2.25", "@angular/platform-browser": "21.2.25", "@stryker-mutator/core": "10.0.0", "@stryker-mutator/vitest-runner": "10.0.0", "@types/jsdom": "27.0.0", "@types/node": "^22.18.0", "@types/react": "19.3.0", "@types/react-dom": "19.3.0", "@vue/compiler-sfc": "3.5.43", "fallow": "3.31.0", "jsdom": "27.4.0", "minimatch": "10.2.6", "oxlint": "1.86.0", "react": "19.3.0", "react-dom": "19.3.0", "remark-frontmatter": "^5.0.0", "svelte": "5.57.2", "typescript": "~5.9.3", "vite": "^7.1.9", "vitest": "^5.0.3", "vue": "3.5.43" };
 const allowScripts = { "esbuild": true, "fsevents": false };
 const overrides = { "typed-rest-client": { "qs": "6.16.0" } };
 const metadata$2 = {
@@ -6931,7 +6931,7 @@ function requireResolveBlockMap() {
     if (ctx.atRoot)
       ctx.atRoot = false;
     let offset = bm.offset;
-    let commentEnd = null;
+    let commentEnd2 = null;
     for (const collItem of bm.items) {
       const { start: start2, key, sep, value: value2 } = collItem;
       const keyProps = resolveProps2.resolveProps(start2, {
@@ -6951,7 +6951,7 @@ function requireResolveBlockMap() {
             onError(offset, "BAD_INDENT", startColMsg);
         }
         if (!keyProps.anchor && !keyProps.tag && !sep) {
-          commentEnd = keyProps.end;
+          commentEnd2 = keyProps.end;
           if (keyProps.comment) {
             if (map2.comment)
               map2.comment += "\n" + keyProps.comment;
@@ -7013,9 +7013,9 @@ function requireResolveBlockMap() {
         map2.items.push(pair);
       }
     }
-    if (commentEnd && commentEnd < offset)
-      onError(commentEnd, "IMPOSSIBLE", "Map comment with trailing content");
-    map2.range = [bm.offset, offset, commentEnd ?? offset];
+    if (commentEnd2 && commentEnd2 < offset)
+      onError(commentEnd2, "IMPOSSIBLE", "Map comment with trailing content");
+    map2.range = [bm.offset, offset, commentEnd2 ?? offset];
     return map2;
   }
   resolveBlockMap.resolveBlockMap = resolveBlockMap$1;
@@ -7037,7 +7037,7 @@ function requireResolveBlockSeq() {
     if (ctx.atKey)
       ctx.atKey = false;
     let offset = bs.offset;
-    let commentEnd = null;
+    let commentEnd2 = null;
     for (const { start: start2, value: value2 } of bs.items) {
       const props = resolveProps2.resolveProps(start2, {
         indicator: "seq-item-ind",
@@ -7054,7 +7054,7 @@ function requireResolveBlockSeq() {
           else
             onError(offset, "MISSING_CHAR", "Sequence item without - indicator");
         } else {
-          commentEnd = props.end;
+          commentEnd2 = props.end;
           if (props.comment)
             seq2.comment = props.comment;
           continue;
@@ -7066,7 +7066,7 @@ function requireResolveBlockSeq() {
       offset = node2.range[2];
       seq2.items.push(node2);
     }
-    seq2.range = [bs.offset, offset, commentEnd ?? offset];
+    seq2.range = [bs.offset, offset, commentEnd2 ?? offset];
     return seq2;
   }
   resolveBlockSeq.resolveBlockSeq = resolveBlockSeq$1;
@@ -18593,7 +18593,7 @@ const basesPlugin = {
 };
 const workflow = "---\nname: forge-workflow\ndescription: Drive the portable Forge CLI (node bin/forge.js) safely. Discover commands and their JSON Schema contract with schema, select projects, preview with --dry-run, guard writes with --if-match revisions and recover from CONFLICT and other error codes. Use when a workspace has bin/forge.js, when starting any Forge task, or when a Forge command fails.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\nTo bootstrap another project, download a pinned GitHub release rather than copying the source checkout's saved selection. Follow `bin/data/docs/how-to/install.md`: download the trusted release's `install-forge.mjs`, execute it with `--version` and `--workspace`, check its exit status and JSON `ok`, then preview `project create` and verify `project current`. The installer verifies the archive checksum, installs generic defaults and runs setup; it refuses an existing `bin/`. Upgrades preserve configuration, plugins, templates and project selection through a separately reviewed change.\n\nFor self-upgrades, run `update check --json`, review a pinned `update apply --release-version <version> --if-match <revision> --dry-run --json`, then apply with the same version and revision. Upgrades preserve local configuration, project selection, installed plugins, templates and custom webviews. A conflict requires new inspection. Check the next `--version` and `project current`, and restart any running server. See `bin/data/docs/reference/updates.md`.\n\n1. Locate the complete `bin` distribution: `forge.js`, `forge-runtime.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/forge.js config --json` to confirm the projects path, defaults, enabled plugins and their effective `plugins.settings.<plugin-id>` sections, then use `node bin/forge.js help --json` to discover the installed command catalog if needed. For a known task, start with `help <command>` and request `schema <command> --json` for its machine-readable contract. Reserve the complete `schema --json` for discovering the entire API; do not load it again on every task. `schema <command>` returns one command's contract: its JSON Schema 2020-12 `inputSchema`, its `outputSchema` (or `annotations.actions.<action>.outputSchema`) for `data`, the error codes it can report, and `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `scope`); `data.envelope` is the response schema. Prefer read-only commands for discovery and treat `destructiveHint: true` commands as needing a reviewed `--dry-run` first. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/forge.js --root <workspace> schema --json`. The selected workspace always uses its own `bin/config.json`; the same routing rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Keep shared selection fixed while parallel agents use file commands: checking the context does not lock it for the next invocation. Coordinate selection changes first; use separate workspaces when agents need different selections. Only commands that declare `--project` support a per-invocation target. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` (document commands include a unified `diff` per text file) and generator `preview` before applying. Edit only what changes: `edit --section \"A > B\"` or `--block <id>` for one part of a note, `edit --edits <list>` for several replacements in one file. When several files must change together (a move plus edits and property changes), write one plan for `apply <plan.json|->` and review `apply --dry-run`: it commits as one guarded batch or not at all. The plan's JSON Schema is the `contentSchema` of `apply`'s argument in `schema apply`. `apply` reports `idempotentHint: false`: an operation without `ifMatch` applies again on a repeat, so give each operation the `ifMatch` from your reads.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A `CONFLICT` reports `error.details.currentRevision`: reread and reconcile; never blindly retry with the new revision. `NO_MATCH` means `--find` text is absent and `AMBIGUOUS_EDIT` that it matches several lines (`details.lines`); with `--edits`, `details.edit` names the failing entry. `SECTION_NOT_FOUND` lists the note's `details.headings` or `details.blocks`, and `AMBIGUOUS_SECTION` its `details.candidates`: add an ancestor heading or pass a candidate's line as `--section-line`. An `apply` failure adds `details.operation`, the index of the failing operation, and `INVALID_PLAN` lists `details.issues`. Validation failures write nothing. On `ROLLBACK_FAILED`, inspect every reported path and the actual saved contents before doing more work; recovery could not restore every file.\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. On failure follow `error.hint`; only `error.retryable: true` permits an unchanged retry (for example `WORKSPACE_BUSY` or `SERVER_BUSY`); inspect `server status` before repeating `SERVER_STOP_FAILED`. `schema` lists every code at `data.errors`. The envelope's `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`; new parent folders appear as `kind: \"folder\"` records); reads and dry runs return `[]`. Use `--events all` on the original invocation when you need lifecycle records, or `--events none`. History is invocation-local; never rerun a mutation just to obtain more events. Warnings may report failed notification listeners after a successful write; inspect committed events and read back before considering any repeat.\n6. Read back the result and validate documents; after vault changes run `vault check --strict` and fix each error finding by its `hint` until it passes (`VAULT_CHECK_FAILED` lists them in `error.details.findings`). For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory's manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/forge.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a visual workspace overview, the agent may offer to start the read-only admin view. Once startup is authorized, run `node bin/forge.js server start --webview admin --json` and share `data.url` locally; the CLI never prompts or opens a browser. `server status` is read-only discovery, `server start` reuses an existing workspace server, and `server stop` ends it. Start/stop support `--dry-run`; a preview never starts or stops a process. These commands always use workspace scope and preserve project selection. Treat the launch URL as local session access information because its fragment contains a bearer token; retrieve a fresh link after restart. Use `help server`, `schema server --json` and `bin/data/docs/reference/server.md` for the lifecycle contract. The view inspects state and cannot change configuration.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying. Templates and `make document` come from the bundled `templates` core plugin, and the project and code scaffolds from `scaffolds`; when `plugins` lists one as disabled, its commands and generators are unknown, `setup` skips the templates with a warning and `project create`/`project component` fail with `PLUGIN_UNAVAILABLE`.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured folders and default framework in `plugins.settings.ui` (`framework`, `components`, `interactions`, `output`, `stories` and their import/export folders; `config --json` shows the effective values). The `ui` core plugin owns `components`, `interactions`, `make ui` and `make stories`; the `data-sources` core plugin owns `data-sources` and `make data-source`, with its folders in `plugins.settings.data-sources`. Feature folders never live under `paths`, which holds only `projects`. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project's framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor agent definitions, follow the forge-agents skill: definitions are docker-agent YAML in `agents/*.yaml`, `agents validate` checks them, and `agents generate --target claude` (with `--plan`, `--check` or `--revisions-from`) maintains `.claude/agents/`; never hand-edit generated agents.\n\nFor agent skills, `skills list` names the skills of the enabled plugins, `skills show <id>` returns one `SKILL.md`, and `skills install [--target both|claude|agents | --out <directory>]` writes them into the selected project's `.claude/skills` and `.agents/skills`; existing files are refused, so a repeat never overwrites an edited skill.\n\nFor native Claude Code configuration, use the `claude` command instead of hand-written JSON. `claude capabilities` lists the supported hook events, handler types, plugin components and runtime operations. `claude hooks inspect` returns the settings document (`--scope project|local|user|plugin`, default `project`) with its `revision`; `claude hooks check` validates it without running handlers; `hooks add <event> --stdin`, `set`, `remove <event> [--index n]`, `enable`, `disable` and `configure` edit it and need `--if-match <revision>` once the file exists. `claude agents list|inspect|create|update|remove|enable|disable|export` manages `.claude/agents/*.md`. `claude plugins create|inspect|manifest|check|asset|write-asset|remove-asset <directory>` authors a plugin folder without running Claude. `claude plugins list|details|install|update|uninstall|enable|disable|validate|configure|prune|init|tag|test|eval`, `claude marketplaces add|list|remove|update` and `claude runtime version|doctor|install|update` run the installed `claude` executable (`--claude-bin`, `--timeout`) and can change the user's Claude Code installation: preview them with `--dry-run`, keep `--scope project` unless the user asks otherwise, never pass `--scope user` without their consent, and expect `idempotentHint: false`. Hooks and plugins run commands; review them like code.\n\nAdd `--lang de` for German descriptions, hints, warnings and findings; commands, options, ids, codes and JSON keys stay the same, so match codes rather than message text.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values '{\"owner\":\"Team\"}' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n\nFor a self-contained browser prototype, use the `forge-webviews` skill and `project create <id> --type webview`. Build and test inside that independent project; `node bin/forge.js webview inspect --project <id>` reports publication state, `webview publish --dry-run` previews the build-output changes, and `server start --webview <id>` returns the packaged preview URL.\n\nFor on-demand webpage screenshots or illustrated flow documentation, follow `forge-browser`. Discover `schema browser`; screenshot and tutorial dry runs validate without launching a browser. Tutorials execute explicit reviewed JSON plans from JSON, Markdown or Canvas, then write guarded document folders.\n";
 const vault = '---\nname: forge-vault\ndescription: Read, search, link-check, create and edit Obsidian Markdown notes, frontmatter properties, Canvas, Bases and attachments through Forge with revision guards, link-preserving moves and trash deletes. Use when working with notes, wikilinks, backlinks, tags, .canvas or .base files, or any vault file edit in a Forge workspace.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nRun `node bin/forge.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nFor parallel work, use `read <path> --project <id>`, `read-many <paths...> --project <id>`, `stat <path> --project <id>` and `apply <plan.json|-> --project <id>` to target each invocation without changing saved selection. Keep the same explicit project for reads, preview and apply, and verify `context.root`. An `ifMatch` hash binds file bytes, not project identity; unknown targets fail without fallback. A plan filename and its operations resolve inside the named project. Writes in different projects still share the workspace writer lock, so an overlapping write may fail with `WORKSPACE_BUSY`; retry while `error.retryable` is true. Other file commands still follow saved selection unless their help declares `--project`.\n\nUse `read-many` for 1–32 explicit paths, at most 8 MiB aggregate raw bytes, returning ordered `data.files` with normal read documents/revisions and `data.bytes`. Any failure rejects the whole bundle; per-file failures identify `details.index` and `details.path`. Reads are sequential, not an atomic snapshot. The cap is not a hard memory bound and JSON/base64 output can be larger; split large reads. No `--parts` option is offered; use single-file `read --parts body` when needed.\n\nUse `stat <path>` to obtain a file\'s raw revision and byte count or a folder\'s revision and descendant counts without returning content or parsing structured documents. This also works when `read` fails on malformed frontmatter. The command hashes whole files and walks folders; it is not a cheap filesystem stat or validation. `stat <path> --project <id>` targets one project without changing selection; later mutations must use the same scope, and only commands whose help declares `--project` accept it. See `bin/data/docs/how-to/inspect-file-metadata.md`.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append; see precise edits below for sections, blocks and several replacements. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar, plus files named `Dockerfile` or `Containerfile` in any case, also with a suffix such as `Dockerfile.release`; see `formats` `textFilenames`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 or content with NUL characters reads as base64 and cannot be edited; edits cannot introduce NUL characters.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nPrecise edits change only what you address, in memory, with one guarded write:\n- Section: `edit notes/plan.md --section "Plan > Risks" --append --content "- Staffing" --if-match <revision>`; also `--prepend --content` or `--replace <text>`. The path lists headings outermost first, separated by ` > `; the section runs to the next heading of the same or a higher level, its heading line and the blank lines around its content stay. `SECTION_NOT_FOUND` lists `details.headings`; `AMBIGUOUS_SECTION` lists `details.candidates`: add an ancestor heading, or pass the candidate\'s `line` as `--section-line <n>` (`sectionLine` in a plan), the only way to pick between headings with the same full path. Write a ` > ` inside a heading as ` \\> `.\n- Block: `edit notes/plan.md --block ship --replace "New text" --if-match <revision>` addresses `^ship`; replacing keeps the marker so block links keep working. A list item or task keeps its indentation, marker and checkbox and its nested items: pass only the new text, or start it with a marker (`- [x] Done`) to change the checkbox. `--append`/`--prepend --content` add a separate block (blank lines around it) next to a paragraph or section; next to a list item the content must start with a list marker and becomes sibling items, else `INVALID_INPUT`.\n- Several literal replacements: `edit <file> --edits \'[{"find":"a","replace":"b"},{"find":"x","replace":"y","all":true}]\' --if-match <revision>` (or `--edits @edits.json`, `--edits -`). They apply in order; a failure names `details.edit` and writes nothing.\n- Several files as one unit: write a plan `{"version":1,"operations":[...]}` with `write`, `edit` (`edits`, `append`, or `section`/`block` with `replace`/`append`/`prepend`), `frontmatter` (`set`, `unset`), `move` (`from`, `to`) and `delete` (to `.trash`) operations, each with an optional `ifMatch` from your reads, and run `apply plan.json --dry-run`, then `apply plan.json` (or pipe it to `apply -`). Operations see the effects of earlier ones (edit a note after moving it by its new path); the plan commits as one batch or not at all. A failure keeps its code and adds `details.operation`; `INVALID_PLAN` lists schema `details.issues`. `help apply` shows the plan\'s JSON Schema, and `schema apply` publishes it as the argument\'s `contentSchema` with the result\'s `outputSchema`. Split a plan that writes to a path it also moves or deletes.\n\nFind before you edit: `search "release plan"` returns `data.hits` (`path`, 1-based `line` and `column`, `match`, `snippet`, `revision`) in path, line and column order, plus `total`. Narrow with `--path "notes/**"`, `--kind markdown`, `--tag project`, `--property status=active`, `--in body` (skip frontmatter) or `--skip-code`; add `--context 2` for surrounding lines. Exclude generated files before they are read with `--exclude "**/{dist,coverage}/**"` (one root-relative glob, brace alternatives allowed); exclusion wins over `--path`. Search does not interpret `.gitignore`, and pagination requires the same exclusion filter. Literal matching ignores case unless `--case-sensitive`; `--regex` takes a JavaScript regular expression matched per line. A hit\'s `revision` is the `--if-match` for an `edit` of that file. Pages hold 100 hits: repeat the same command with `--cursor <nextCursor>` until `nextCursor` is absent. `SEARCH_TIMEOUT` means the expression backtracks too much: simplify it or search literally. `list --path "notes/**" --kind markdown` lists files the same way.\n\nCheck the link graph before restructuring: `links back notes/plan.md` lists every file that links to it (`source`, 1-based `line`/`column`, `original`); `links out notes/plan.md` lists its own links with `status` and `target`. `links unresolved --path "notes/**"` reports broken links with `reason` `missing`, or `ambiguous` with `candidates` (use a longer link path that names one candidate). `links orphans` lists notes nothing links to and `links deadends` notes that link nowhere; list deliberate entry notes in `plugins.settings.links.roots`. Every report has `issues`: files whose metadata could not be parsed, whose links are missing from the report, so fix those first.\n\nVerify the vault before you finish: `vault check` returns `data.findings` (`rule`, `severity` `error`/`warning`/`info`, `path`, 1-based `line`/`column` or `null`, `message`, `hint`, and for a missing target `suggestion`, the closest existing file) in path and line order, plus `summary` counts. Rules: `unresolved-link`, `unresolved-embed`, `ambiguous-link`, `unresolved-anchor` (a missing `#Heading` or `#^block`), `invalid-frontmatter`, `invalid-canvas`, `invalid-base`, `property-type-mismatch` (against `.obsidian/types.json`, else the type most notes use), `duplicate-block-id`, `empty-file` and `orphan-attachment`. Narrow with `--path "notes/**"` and `--rule unresolved-link,invalid-frontmatter`. `vault check --strict` fails with `VAULT_CHECK_FAILED` (exit 2) while an `error` finding remains and lists them in `error.details.findings`: fix each by its `hint` and run it again until it passes. Before setting a property, run `vault properties --name <property>` to see its inferred and declared type, so values keep one type; `vault tags --sort count` lists tags with their files (nested tags count for their parents). Rule severities and ignore globs live in `plugins.settings.vault-check`.\n\nMove, rename and delete with the link-aware commands, never by writing a copy and removing the original:\n- Move or rename: `move notes/plan.md specs/plan.md --dry-run` (or `rename notes/plan.md Roadmap --dry-run`; a file keeps its extension) returns `data.revision` and a `diff` for every file whose links change: wikilinks and embeds keep `#Heading`, `#^block` and `|display` text, relative Markdown links are recomputed, frontmatter links and Canvas `file` nodes follow. Review `data.links.unrewritten`, then repeat without `--dry-run` and with `--if-match <revision>`. One batch commits the move and every rewritten file. `DESTINATION_EXISTS` means the target exists: Forge never overwrites it. A folder moves the same way; its `--if-match` is the folder revision the dry run reports.\n- Delete: `delete notes/scratch.md --if-match <revision>` moves the file to `.trash/` (numbered ` 1`, ` 2`… if taken); `--permanent` removes it; a folder needs `--recursive`. `HAS_BACKLINKS` lists the files still linking to it in `details.backlinks` (`source`, 1-based `line`, `original`): rewrite or remove those links first, or move the note instead. Pass `--allow-broken-links` only when broken links are intended. `.obsidian`, `.forge` and, at workspace scope, `bin` are protected in any letter case (`PROTECTED_PATH`). `--permanent` also refuses folders holding symlinks or `node_modules` (`PROTECTED_PATH`): trash them instead. `data.deleted` lists every removed file (`kind: "file"`) and folder (`kind: "folder"`).\n\nMarkdown `read` returns `content` and `properties`; add `--parts body` only when you need the body separately. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nForge removes a lock whose holder provably no longer runs (same host, container and boot; pid gone or reused; or written before the last restart) by itself and returns a warning: then inspect the interrupted changes with `git status` and read-back before continuing. On `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command, and on Linux pidNamespace, bootId and processStart), `path` the lock file and `stale` is `active`, `unknown` or `stale`. Wait and retry while it is `active` (`retryable: true`), also when `details.breaker` shows another writer removing a stale lock; never delete an `active` lock. `unknown` (`retryable: false`) covers another host, container or boot and unreadable locks: do not retry in a loop and never delete the lock blindly; delete the file in `details.path` only after verifying that the recorded pid on the recorded host and container is not a running Forge writer and inspecting its changes, then retry. `stale` (`retryable: false`) means the holder provably no longer runs but Forge could not remove the file: confirm no Forge process uses it, then delete the file in `details.path` and retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n\nFor documents explaining a webpage, UI problem or workflow with screenshots, follow `forge-browser` to capture and inspect evidence. Embed the actual saved PNG relative to the Markdown note, cite the clean source URL and capture metadata, and keep the guarded document-editing loop above.\n';
-const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript projects with Forge scaffolds (project create, project component, make entity, make use-case, make form, make plugin) and prove them with acceptance tests and quality gates. Use when adding domain or application code, forms or Forge plugins, or when running npm run check in a Forge-managed project.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. When several agents share a workspace, keep selection stable and use `read`, `read-many`, `stat` and `apply` with `--project <id>` for each read/preview/write. Writes in different projects still share the workspace writer lock and may return retryable `WORKSPACE_BUSY`. Bundle up to 32 explicit paths and 8 MiB raw bytes with `read-many`; revisions remain individual reads. Other commands only support an explicit target when their help declares it. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/forge.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`. These code generators belong to the bundled `scaffolds` core plugin and `make document` to `templates`; `plugins` shows whether they are enabled.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills, events and services under the plugin ID and error codes under its UPPER_SNAKE_CASE prefix. Declare each command's metadata (`scope`, `mutating`, described `options` and `args`, `errors`, and `destructive` or `idempotent` where the derived hints are wrong) so `help`, `schema` and the invocation policy describe it; declare `output`, the JSON Schema of `data`, on the command or per action, and `schema` on a string option or argument that holds or names a JSON document; declare settings as a JSON Schema read from `plugins.settings.<id>` via `context.settings`, German text in `strings.de` (descriptions of commands, actions, options, arguments and settings, the manifest name and description, error summaries and hints, and messages read with `context.t`), and shared capabilities through `provides`/`requires` instead of imports. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures; use `onUserEnable(context)` for idempotent one-time setup after enabling (it runs at least once, not exactly once) and `context.events.onLayoutReady`/`onQuit` for work that needs active plugins or invocation-end cleanup. Plugins may emit only `<plugin-id>.*` events; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`) and other plugins' events (such as `claude.*`) fail with `EVENT_OWNERSHIP`. To run the installed Claude Code CLI, require the `claude.lifecycle` service of the `claude` core plugin. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. Each project owns its CI: author GitHub workflows in the project's `src/infrastructure/workflows/<concern>/*.yml`, then run `node bin/forge.js workflows sync --dry-run`, review, and `workflows sync` from the workspace to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints. Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ from their sources.\n8. For changes to The Forge itself, work in its project directory (`src/the-forge` in the source checkout): run `npm ci`, iterate with `npm run check:fast` (including `check:contracts`), update docs and skills, then run `npm run check` and commit the rebuilt workspace executable and packaged assets with the source. `npm run check` also replays every agent evaluation task in `evals/tasks` with the reference driver; when you add an agent-facing command, add or extend an evaluation task with reference steps and deterministic checks, respecting the suite budget in `docs/how-to/evaluate-agents.md`, and validate it with `npm run eval -- --task <id>`. Preserve existing acceptance checks when extending a task. Measure an agent with the opt-in `npm run eval -- --driver claude`. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Use `npm run check:contracts` to diagnose source command/schema, localization, reference-doc and evaluation-budget failures without a built distribution; keep its seven selected suites source-only and the evaluation suite at most 35 tasks. Portable help and artifact behavior still require the full gate after build. Run the opt-in `npm run mutate` to measure how well unit tests detect injected faults in selected domain code; it is not part of `check`. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n\nFor an independent browser prototype, follow `forge-webviews`: `project create <id> --type webview` scaffolds Vue/Nuxt UI with local fixtures and Playwright; `webview publish` maintains built assets and `server start --webview <id>` manages the local preview. Library component generators do not target webview projects.\n";
+const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript projects with Forge scaffolds (project create, project component, make entity, make use-case, make form, make plugin) and prove them with acceptance tests and quality gates. Use when adding domain or application code, forms or Forge plugins, or when running npm run check in a Forge-managed project.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. When several agents share a workspace, keep selection stable and use `read`, `read-many`, `stat` and `apply` with `--project <id>` for each read/preview/write. Writes in different projects still share the workspace writer lock and may return retryable `WORKSPACE_BUSY`. Bundle up to 32 explicit paths and 8 MiB raw bytes with `read-many`; revisions remain individual reads. Other commands only support an explicit target when their help declares it. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/forge.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`. These code generators belong to the bundled `scaffolds` core plugin and `make document` to `templates`; `plugins` shows whether they are enabled.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills, events and services under the plugin ID and error codes under its UPPER_SNAKE_CASE prefix. Declare each command's metadata (`scope`, `mutating`, described `options` and `args`, `errors`, and `destructive` or `idempotent` where the derived hints are wrong) so `help`, `schema` and the invocation policy describe it; declare `output`, the JSON Schema of `data`, on the command or per action, and `schema` on a string option or argument that holds or names a JSON document; declare settings as a JSON Schema read from `plugins.settings.<id>` via `context.settings`, German text in `strings.de` (descriptions of commands, actions, options, arguments and settings, the manifest name and description, error summaries and hints, and messages read with `context.t`), and shared capabilities through `provides`/`requires` instead of imports. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures; use `onUserEnable(context)` for idempotent one-time setup after enabling (it runs at least once, not exactly once) and `context.events.onLayoutReady`/`onQuit` for work that needs active plugins or invocation-end cleanup. Plugins may emit only `<plugin-id>.*` events; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`) and other plugins' events (such as `claude.*`) fail with `EVENT_OWNERSHIP`. To run the installed Claude Code CLI, require the `claude.lifecycle` service of the `claude` core plugin. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. Each project owns its CI: author GitHub workflows in the project's `src/infrastructure/workflows/<concern>/*.yml`, then run `node bin/forge.js workflows sync --dry-run`, review, and `workflows sync` from the workspace to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints. Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ from their sources.\n8. For changes to The Forge itself, work in its project directory (`src/the-forge` in the source checkout): run `npm ci`, iterate with `npm run check:fast` (including `check:contracts`), update docs and skills, then run `npm run check` and commit the rebuilt workspace executable and packaged assets with the source. `npm run check` also replays every agent evaluation task in `evals/tasks` with the reference driver; when you add an agent-facing command, add or extend an evaluation task with reference steps and deterministic checks, respecting the suite budget in `docs/how-to/evaluate-agents.md`, and validate it with `npm run eval -- --task <id>`. Preserve existing acceptance checks when extending a task. Measure an agent with the opt-in `npm run eval -- --driver claude`. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Use `npm run check:contracts` to diagnose source command/schema, localization, reference-doc and evaluation-budget failures without a built distribution; keep its seven selected suites source-only and the evaluation suite at most 35 tasks. Portable help and artifact behavior still require the full gate after build. Mutation testing, which measures how well unit tests detect injected faults in selected domain code, runs in CI only and is not part of `check`; run the focused `npm run mutate -- --mutate <file>` form from `docs/how-to/develop-and-test.md` locally only to investigate a file's surviving mutants. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n\nFor an independent browser prototype, follow `forge-webviews`: `project create <id> --type webview` scaffolds Vue/Nuxt UI with local fixtures and Playwright; `webview publish` maintains built assets and `server start --webview <id>` manages the local preview. Library component generators do not target webview projects.\n";
 const bundledSkills = [
   { id: "forge-workflow", content: workflow },
   { id: "forge-vault", content: vault },
@@ -19460,16 +19460,16 @@ const linksPlugin = {
   })
 };
 const propertyTypes = ["text", "list", "number", "checkbox", "date", "datetime", "object"];
-const declaredAccepts = {
-  text: ["text", "date", "datetime"],
-  multitext: ["list"],
-  tags: ["list", "text"],
-  aliases: ["list", "text"],
-  number: ["number"],
-  checkbox: ["checkbox"],
-  date: ["date"],
-  datetime: ["datetime", "date"]
-};
+const declaredAccepts = /* @__PURE__ */ new Map([
+  ["text", ["text", "date", "datetime"]],
+  ["multitext", ["list"]],
+  ["tags", ["list", "text"]],
+  ["aliases", ["list", "text"]],
+  ["number", ["number"]],
+  ["checkbox", ["checkbox"]],
+  ["date", ["date"]],
+  ["datetime", ["datetime", "date"]]
+]);
 const date$3 = /^\d{4}-\d{2}-\d{2}$/;
 const datetime$1 = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})?$/;
 function inferPropertyType(value2) {
@@ -19482,7 +19482,7 @@ function inferPropertyType(value2) {
   return date$3.test(text2) ? "date" : datetime$1.test(text2) ? "datetime" : "text";
 }
 function acceptsType(declared, actual) {
-  const accepted2 = declaredAccepts[declared];
+  const accepted2 = declaredAccepts.get(declared);
   return accepted2 === void 0 || accepted2.includes(actual);
 }
 function typeRegistry(text2) {
@@ -19655,7 +19655,7 @@ function histogram(name2) {
   const counts2 = new Uint8Array(histogramSize);
   for (let index2 = 0; index2 < name2.length; index2++) {
     const slot2 = name2.charCodeAt(index2) % histogramSize;
-    if (counts2[slot2] < 255) counts2[slot2]++;
+    if (counts2[slot2] < 255) counts2[slot2] = counts2[slot2] + 1;
   }
   return counts2;
 }
@@ -30035,8 +30035,13 @@ function readPlacement(value2) {
   const emptyish = typeof value2 === "string" || Array.isArray(value2) && value2.length === 0;
   return { value: null, invalid: !emptyish };
 }
+function utcMidnight(year, monthIndex, day) {
+  const date2 = /* @__PURE__ */ new Date(0);
+  date2.setUTCFullYear(year, monthIndex, day);
+  return date2.getTime();
+}
 function daysInMonth(year, month) {
-  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return new Date(utcMidnight(year, month, 0)).getUTCDate();
 }
 function readDate(value2) {
   if (value2 === null || value2 === void 0) return absent();
@@ -30055,7 +30060,7 @@ function readSoleDate(raw) {
   if (typeof raw === "string" && raw.trim() === "") return { value: null, invalid: true };
   return readDate(raw);
 }
-const utc$3 = (date2) => Date.UTC(date2.year, date2.month - 1, date2.day);
+const utc$3 = (date2) => utcMidnight(date2.year, date2.month - 1, date2.day);
 function daysBetween(a, b) {
   return Math.round((utc$3(b) - utc$3(a)) / 864e5);
 }
@@ -30208,21 +30213,21 @@ const syncWarnings = {
 };
 const englishSyncWarning = (key, params) => fill$1(syncWarnings[key], params);
 const OPTIONAL_PROPERTIES = [
-  { field: "state", option: "stateProperty", suggested: "status", settingsKey: "stateKey" },
-  { field: "startedDate", option: "startedDateProperty", suggested: "started", settingsKey: "startedDateKey" },
-  { field: "finishedDate", option: "finishedDateProperty", suggested: "finished", settingsKey: "finishedDateKey" },
-  { field: "horizon", option: "horizonProperty", suggested: "horizon", settingsKey: "horizonKey" },
-  { field: "start", option: "startProperty", suggested: "start", settingsKey: "startKey" },
-  { field: "target", option: "targetProperty", suggested: "due", settingsKey: "targetKey" },
-  { field: "risk", option: "riskProperty", suggested: "risk", settingsKey: "riskKey" },
-  { field: "priority", option: "priorityProperty", suggested: "priority", settingsKey: "priorityKey" },
-  { field: "assignee", option: "assigneeProperty", suggested: "assignee", settingsKey: "assigneeKey" },
-  { field: "deliverableState", option: "deliverableStateProperty", suggested: "status", settingsKey: "deliverableStateKey" },
-  { field: "testState", option: "testStateProperty", suggested: "status", settingsKey: "testStateKey" },
-  { field: "dependsOn", option: "dependsOnProperty", suggested: "dependsOn", settingsKey: "dependsOnKey" },
-  { field: "iteration", option: "iterationProperty", suggested: "iteration", settingsKey: "iterationKey" },
-  { field: "iterationGoal", option: "iterationGoalProperty", suggested: "goal", settingsKey: "iterationGoalKey" },
-  { field: "release", option: "releaseProperty", suggested: "release", settingsKey: "releaseKey" }
+  { field: "state", option: "stateProperty", settingsKey: "stateKey" },
+  { field: "startedDate", option: "startedDateProperty", settingsKey: "startedDateKey" },
+  { field: "finishedDate", option: "finishedDateProperty", settingsKey: "finishedDateKey" },
+  { field: "horizon", option: "horizonProperty", settingsKey: "horizonKey" },
+  { field: "start", option: "startProperty", settingsKey: "startKey" },
+  { field: "target", option: "targetProperty", settingsKey: "targetKey" },
+  { field: "risk", option: "riskProperty", settingsKey: "riskKey" },
+  { field: "priority", option: "priorityProperty", settingsKey: "priorityKey" },
+  { field: "assignee", option: "assigneeProperty", settingsKey: "assigneeKey" },
+  { field: "deliverableState", option: "deliverableStateProperty", settingsKey: "deliverableStateKey" },
+  { field: "testState", option: "testStateProperty", settingsKey: "testStateKey" },
+  { field: "dependsOn", option: "dependsOnProperty", settingsKey: "dependsOnKey" },
+  { field: "iteration", option: "iterationProperty", settingsKey: "iterationKey" },
+  { field: "iterationGoal", option: "iterationGoalProperty", settingsKey: "iterationGoalKey" },
+  { field: "release", option: "releaseProperty", settingsKey: "releaseKey" }
 ];
 const DEFAULT_DONE_VALUES = ["Done", "Closed", "Completed", "Removed"];
 const DEFAULT_HORIZON_VALUES = ["Now", "Next", "Later"];
@@ -30573,24 +30578,75 @@ function withBody(text2, body) {
   return trimmed === "" ? head : `${head}${head === "" || head.endsWith("\n") ? "" : "\n"}${trimmed}
 `;
 }
-const FENCE = /(^|\n)(```|~~~)[^\n]*\n[\s\S]*?\n\2[^\n]*(?=\n|$)/g;
-const COMMENT = /%%[\s\S]*?%%/g;
-function outsideCode(text2, transform2) {
-  let result = "", last = 0;
-  for (const match of text2.matchAll(FENCE)) {
-    result += transform2(text2.slice(last, match.index)) + match[0];
-    last = match.index + match[0].length;
-  }
-  return result + transform2(text2.slice(last));
+const OPENING_FENCE = /^[ \t]*(`{3,}(?=[^`]*$)|~{3,})/;
+const CLOSING_FENCE = /^[ \t]*(`{3,}|~{3,})\s*$/;
+function indentation$1(line) {
+  let width = 0;
+  for (const char of /[ \t]*/.exec(line)[0]) width = char === "	" ? (Math.floor(width / 4) + 1) * 4 : width + 1;
+  return width;
 }
-const withoutComments = (body) => outsideCode(body, (part) => part.replace(COMMENT, ""));
-function comments(body) {
-  const found = [];
-  outsideCode(body, (part) => {
-    found.push(...part.match(COMMENT) ?? []);
-    return part;
-  });
-  return found;
+function fenceEnd(body, start2) {
+  const lineAt = (at2) => body.slice(at2, body.indexOf("\n", at2) + 1 || body.length);
+  const first = lineAt(start2), opener = OPENING_FENCE.exec(first)?.[1];
+  if (opener === void 0) return { end: start2, closer: "" };
+  const indent2 = indentation$1(first);
+  let at = start2 + first.length;
+  while (at < body.length) {
+    const line = lineAt(at);
+    if (line.trim() !== "" && indentation$1(line) < indent2 - 3) return { end: at, closer: "" };
+    at += line.length;
+    const closer2 = CLOSING_FENCE.exec(line)?.[1];
+    if (closer2 !== void 0 && closer2[0] === opener[0] && closer2.length >= opener.length && indentation$1(line) <= indent2 + 3) return { end: at, closer: "" };
+  }
+  return { end: at, closer: /^[ \t]*/.exec(first)[0] + opener };
+}
+const BLOCK_START = /\n(?=[ \t]*(?:[\r\n]|[#>|]|`{3}|~{3}|(?:[-*+]|\d+[.)])[ \t\r\n]|([-*_=])(?:[ \t]*\1)*[ \t]*[\r\n]))/g;
+function codeSpanEnd(body, start2) {
+  const run2 = /`+/y;
+  run2.lastIndex = start2;
+  const opener = run2.exec(body)[0], from = start2 + opener.length;
+  BLOCK_START.lastIndex = from;
+  const paragraph = body.slice(from, BLOCK_START.exec(body)?.index);
+  const closer2 = new RegExp(`(?<!\`)${opener}(?!\`)`).exec(paragraph);
+  return closer2 === null ? from : from + closer2.index + opener.length;
+}
+function commentEnd(body, from) {
+  const marker = /\\(?:\\|%%)|%%/g;
+  marker.lastIndex = from;
+  for (let found = marker.exec(body); found !== null; found = marker.exec(body)) if (found[0] === "%%") return marker.lastIndex;
+  return null;
+}
+function commentSpans(body) {
+  const spans = [];
+  let closer2 = "";
+  for (let index2 = 0; index2 < body.length; ) {
+    const fenced = index2 === 0 || body[index2 - 1] === "\n" ? fenceEnd(body, index2) : { end: index2, closer: "" };
+    closer2 = fenced.closer;
+    if (fenced.end > index2) index2 = fenced.end;
+    else if (body[index2] === "\\") index2 += body.startsWith("%%", index2 + 1) ? 3 : 2;
+    else if (body[index2] === "`") index2 = codeSpanEnd(body, index2);
+    else if (body.startsWith("%%", index2)) {
+      const end2 = commentEnd(body, index2 + 2);
+      if (end2 === null) closer2 = "%%";
+      spans.push([index2, end2 ?? body.length]);
+      index2 = end2 ?? body.length;
+    } else index2++;
+  }
+  return { spans, closer: closer2 };
+}
+function withoutComments(body) {
+  let visible = "", cursor = 0;
+  for (const [start2, end2] of commentSpans(body).spans) {
+    visible += body.slice(cursor, start2);
+    cursor = end2;
+  }
+  return visible + body.slice(cursor);
+}
+const comments = (body) => commentSpans(body).spans.map(([start2, end2]) => body.slice(start2, end2));
+function withComments(text2, kept) {
+  const closer2 = kept.length === 0 ? "" : commentSpans(text2).closer;
+  const closed = closer2 === "" ? text2 : `${text2}${text2.endsWith("\n") ? "" : "\n"}${closer2}`;
+  return [closed, ...kept].filter((part) => part.trim() !== "").join("\n\n");
 }
 function nextIterationName(items2) {
   let highest = 0;
@@ -30616,7 +30672,8 @@ function previousIteration(items2) {
     }
     const byTarget2 = daysBetween(best.plannedTarget.value, target);
     const start2 = item.plannedStart.value, bestStart = best.plannedStart.value;
-    const later = byTarget2 !== 0 ? byTarget2 > 0 : start2 === null || bestStart === null ? bestStart === null && start2 !== null : daysBetween(bestStart, start2) !== 0 ? daysBetween(bestStart, start2) > 0 : item.path > best.path;
+    const byStart = start2 === null || bestStart === null ? Number(start2 !== null) - Number(bestStart !== null) : daysBetween(bestStart, start2);
+    const later = byTarget2 !== 0 ? byTarget2 > 0 : byStart !== 0 ? byStart > 0 : item.path > best.path;
     if (later) best = item;
   }
   return best;
@@ -32460,7 +32517,7 @@ function pulledNote(context, item, pulls, pathOfRemote2, body) {
     else if (field2 === "tags" && Array.isArray(value2)) {
       const lower = new Set(value2.map((tag) => tag.toLowerCase()));
       note.write.tags = { add: value2, remove: item.tags.filter((tag) => !lower.has(tag.toLowerCase())) };
-    } else if (field2 === "description") note.body = [value2 === null ? "" : String(value2), ...comments(body ?? "")].filter((part) => part.trim() !== "").join("\n\n");
+    } else if (field2 === "description") note.body = withComments(value2 === null ? "" : String(value2), comments(body ?? ""));
     else {
       const key = field2 === "effort" ? context.connection.effortProperty : field2 === "area" ? context.connection.areaProperty : field2.slice(PROPERTY.length);
       if (value2 === null) note.removed.push(key);
@@ -44836,15 +44893,23 @@ function markdownToHtml(markdown) {
   };
   for (let index2 = 0; index2 < lines2.length; index2++) {
     const line = lines2[index2];
-    const fence = /^\s*(```|~~~)/.exec(line);
+    const fence = /^[ \t]*(`{3,}(?=[^`]*$)|~{3,})/.exec(line);
     if (fence) {
       flush();
-      const code2 = [];
-      for (index2++; index2 < lines2.length && !lines2[index2].trimStart().startsWith(fence[1]); index2++) code2.push(lines2[index2]);
+      const [indent2] = indentation(line), code2 = [];
+      for (index2++; index2 < lines2.length; index2++) {
+        const next = lines2[index2];
+        if (next.trim() !== "" && indentation(next)[0] < indent2 - 3) {
+          index2--;
+          break;
+        }
+        if (closesFence(next, fence[1], indent2)) break;
+        code2.push(next.slice(indentation(next, indent2)[1]));
+      }
       html2.push(`<pre><code>${escape$1(code2.join("\n"))}</code></pre>`);
       continue;
     }
-    const heading2 = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
+    const heading2 = /^\s{0,3}(#{1,6})\s+(?:#+\s*$)?(.*?)(?:\s+#+)?\s*$/.exec(line);
     const bullet = /^\s*[-*+]\s+(.*)$/.exec(line), numbered = /^\s*\d+[.)]\s+(.*)$/.exec(line), quote = /^\s*>\s?(.*)$/.exec(line);
     if (line.trim() === "") flush();
     else if (heading2) {
@@ -44869,18 +44934,33 @@ function markdownToHtml(markdown) {
   flush();
   return html2.join("");
 }
+function indentation(line, limit = Infinity) {
+  let width = 0, cut = 0;
+  for (; line[cut] === " " || line[cut] === "	"; cut++) {
+    const next = line[cut] === "	" ? (Math.floor(width / 4) + 1) * 4 : width + 1;
+    if (next > limit) break;
+    width = next;
+  }
+  return [width, cut];
+}
+function closesFence(line, opener, indent2) {
+  const run2 = /^[ \t]*(`{3,}|~{3,})\s*$/.exec(line)?.[1];
+  return run2 !== void 0 && run2[0] === opener[0] && run2.length >= opener.length && indentation(line)[0] <= indent2 + 3;
+}
 function escape$1(text2) {
   return text2.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 const safeHref = (href) => /^(https?:|mailto:)/i.test(href);
 function inline(text2) {
-  const codes = [];
-  let result = escape$1(text2).replace(/`([^`]+)`/g, (_, code2) => {
-    codes.push(`<code>${code2}</code>`);
-    return `<c${codes.length - 1}>`;
-  });
-  result = result.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2").replace(/\[\[([^\]]+)\]\]/g, "$1").replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, label2, href) => safeHref(href) ? `<a href="${href}">${label2}</a>` : label2).replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, (_, a, b) => `<strong>${a ?? b}</strong>`).replace(/\*([^*]+)\*|\b_([^_]+)_\b/g, (_, a, b) => `<em>${a ?? b}</em>`);
-  return result.replace(/<c(\d+)>/g, (_, index2) => codes[Number(index2)]);
+  const tokens = [], sources = [];
+  const token = (value2, source2 = value2) => {
+    sources.push(source2);
+    return `<c${tokens.push(value2) - 1}>`;
+  };
+  let result = escape$1(text2).replace(/(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)/g, (span, _run, code2) => token(`<code>${code2}</code>`, span));
+  const target = (href) => href.replace(/<c(\d+)>/g, (_, index2) => sources[Number(index2)]);
+  result = result.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2").replace(/\[\[([^\]]+)\]\]/g, "$1").replace(/\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g, (_, label2, href) => safeHref(target(href)) ? `<a href="${token(target(href))}">${label2}</a>` : label2).replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, (_, a, b) => `<strong>${a ?? b}</strong>`).replace(/\*([^*]+)\*|\b_([^_]+)_\b/g, (_, a, b) => `<em>${a ?? b}</em>`);
+  return result.replace(/<c(\d+)>/g, (_, index2) => tokens[Number(index2)]);
 }
 const field = (reference, value2) => value2 === null ? { op: "remove", path: `/fields/${reference}` } : { op: "add", path: `/fields/${reference}`, value: value2 };
 const AREA_PATH = "System.AreaPath";
@@ -44951,12 +45031,11 @@ function relationsLanded(read2, operations2, result) {
   const within2 = new Set(read2.filter((_relation, index2) => index2 <= reach).map(relationKey));
   const required2 = (relation, index2) => index2 <= reach ? !removed.has(index2) : within2.has(relationKey(relation));
   const expected = tally([...read2.filter(required2).map(relationKey), ...added]);
-  const optional2 = tally(read2.filter((relation, index2) => index2 > reach && !within2.has(relationKey(relation))).map(relationKey));
   const actual = tally(result.map(relationKey));
   if ([...expected].some(([key, count2]) => (actual.get(key) ?? 0) < count2)) return false;
   return [...removed].every((index2) => {
     const key = relationKey(read2[index2]);
-    return (actual.get(key) ?? 0) <= (expected.get(key) ?? 0) + (optional2.get(key) ?? 0);
+    return (actual.get(key) ?? 0) <= (expected.get(key) ?? 0);
   });
 }
 const byId = (a, b) => Number(a) - Number(b) || (a < b ? -1 : a > b ? 1 : 0);
@@ -51850,7 +51929,7 @@ function tokenizeHtmlText(effects, ok, nok) {
   function commentOpenInside(code2) {
     if (code2 === 45) {
       effects.consume(code2);
-      return commentEnd;
+      return commentEnd2;
     }
     return nok(code2);
   }
@@ -51872,11 +51951,11 @@ function tokenizeHtmlText(effects, ok, nok) {
   function commentClose(code2) {
     if (code2 === 45) {
       effects.consume(code2);
-      return commentEnd;
+      return commentEnd2;
     }
     return comment(code2);
   }
-  function commentEnd(code2) {
+  function commentEnd2(code2) {
     return code2 === 62 ? end2(code2) : code2 === 45 ? commentClose(code2) : comment(code2);
   }
   function cdataOpenInside(code2) {
@@ -54138,15 +54217,23 @@ function blankObsidianComments(source2) {
   walk(parser$1.parse(source2), (node2) => {
     if ((node2.type === "code" || node2.type === "inlineCode") && node2.position) code2.push([node2.position.start.offset ?? 0, node2.position.end.offset ?? 0]);
   });
+  const marker = (from) => {
+    for (let at = source2.indexOf("%%", from); at !== -1; at = source2.indexOf("%%", at + 2)) {
+      let backslashes = 0;
+      while (source2[at - backslashes - 1] === "\\") backslashes++;
+      if (backslashes % 2 === 0) return at;
+    }
+    return -1;
+  };
   let visible = "", cursor = 0;
-  for (let open2 = source2.indexOf("%%"); open2 !== -1; open2 = source2.indexOf("%%", cursor)) {
+  for (let open2 = marker(0); open2 !== -1; open2 = marker(cursor)) {
     const span = code2.find(([start2, end2]) => open2 >= start2 && open2 < end2);
     if (span) {
       visible += source2.slice(cursor, span[1]);
       cursor = span[1];
       continue;
     }
-    const close = source2.indexOf("%%", open2 + 2), stop = close === -1 ? source2.length : close + 2;
+    const close = marker(open2 + 2), stop = close === -1 ? source2.length : close + 2;
     visible += source2.slice(cursor, open2) + source2.slice(open2, stop).replace(/[^\r\n]/g, " ");
     cursor = stop;
   }
@@ -63999,12 +64086,11 @@ function destinationAt(text2, from) {
 }
 function markdownDestination(original) {
   if (!original.endsWith(")")) return void 0;
-  for (let open2 = original.lastIndexOf("]("); open2 >= 0; open2 = original.lastIndexOf("](", open2 - 1)) {
+  for (let open2 = original.indexOf("]("); open2 >= 0; open2 = original.indexOf("](", open2 + 1)) {
     const found = destinationAt(original, open2 + 2);
     if (!found) continue;
     const rest = original.slice(found.end + (found.angle ? 1 : 0), -1);
     if (/^\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\((?:[^()\\]|\\.)*\))?\s*$/.test(rest)) return found;
-    if (open2 === 0) break;
   }
   return void 0;
 }
