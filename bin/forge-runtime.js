@@ -30952,7 +30952,7 @@ function nearestFolderNote(path2, exists2) {
   if (folder !== null && noteOf(folder) === path2) folder = parentOf(folder);
   for (; folder !== null; folder = parentOf(folder)) {
     const candidate = noteOf(folder);
-    if (candidate !== path2 && exists2(candidate)) return candidate;
+    if (exists2(candidate)) return candidate;
   }
   return null;
 }
@@ -31128,7 +31128,7 @@ const compareSiblings = (a, b) => {
 };
 function buildModel(source2, results, settings2, exists2) {
   const store = createItems(source2, results, settings2, exists2);
-  let all2 = store.all;
+  const all2 = store.all;
   const byPath2 = store.byPath;
   for (const item of all2) Object.assign(item, { parent: null, children: [], orphan: false, cycleCut: false, prerequisites: [], brokenPrerequisites: [] });
   const roots = [];
@@ -31163,7 +31163,6 @@ function buildModel(source2, results, settings2, exists2) {
         stack.push(...current.children);
       }
     }
-    all2 = all2.filter((item) => byPath2.has(item.path));
   }
   const sortDeep = (list2) => {
     list2.sort(compareSiblings);

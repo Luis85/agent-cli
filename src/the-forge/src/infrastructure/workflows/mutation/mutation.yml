@@ -25,7 +25,7 @@ jobs:
   mutation:
     name: mutation (ubuntu-latest, Node 24)
     runs-on: ubuntu-latest
-    # A full run took about 13 minutes on four cores; incremental pull request runs reuse earlier results.
+    # A full run takes about 20 minutes on four cores; incremental pull request runs reuse earlier results.
     timeout-minutes: 45
     steps:
       # Actions are pinned to full commit SHAs; the comment names the release.
