@@ -165,6 +165,7 @@ describe('Obsidian comments around code', () => {
     ['a fence indented by two spaces', '  ```\n%%keep%%\n  ```\n', '  ```\n%%keep%%\n  ```\n', []],
     ['a fence indented by three spaces', '   ~~~\n%%k%%\n~~~\n%%c%%', '   ~~~\n%%k%%\n~~~\n', ['%%c%%']],
     ['a four-space fence ends at an unindented line', '    ```\n%%x%%\n', '    ```\n\n', ['%%x%%']],
+    ['a fence ended by a dedent opens no code span', '    ```\na %%c%% ```', '    ```\na  ```', ['%%c%%']],
     ['a tab-indented fence ends at an unindented line', '\t~~~\n%%x%%\n', '\t~~~\n\n', ['%%x%%']],
     ['a tab-indented fence in a list item', '- step\n\t```\n\tprintf("%%d", x); y %% z\n\t```\n%%c%%', '- step\n\t```\n\tprintf("%%d", x); y %% z\n\t```\n', ['%%c%%']],
     ['a four-space fence in a numbered item', '1. step\n    ~~~\n    %%k%%\n    ~~~\n%%c%%', '1. step\n    ~~~\n    %%k%%\n    ~~~\n', ['%%c%%']],
@@ -293,6 +294,7 @@ describe('comments kept after a replaced body', () => {
   // [case, new text, what closes it before the kept comments]
   it.each([
     ['prose', 'Plan the stops.', ''],
+    ['a one-character last line', 'Plan\nA', ''],
     ['a closed fence', '```\ncode\n```', ''],
     ['an unclosed backtick fence', 'Run:\n```sh\nnpm test', '\n```'],
     ['an unclosed fence ending in a line break', 'Run:\n```\nnpm test\n', '```'],
