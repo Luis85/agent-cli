@@ -36,6 +36,32 @@ describe('the search core plugin through the portable CLI', () => {
     expect((await cli(['search', 'plan', '--property', 'status=draft', '--regex', '--case-sensitive'])).body.data.total).toBe(1);
   });
 
+  it('excludes generated hits before paging and exposes the option in help and schema', async () => {
+    for (const path of ['src/plan.ts', 'src/dist/plan.ts', 'src/coverage/plan.ts']) {
+      expect((await cli(['create', path, '--content', 'plan\nplan\n'])).status).toBe(0);
+    }
+    await writeFile(join(fixture.project, '.gitignore'), '**/dist/\n**/coverage/\n');
+    expect((await cli(['search', 'plan', '--path', 'src/**'])).body.data.total).toBe(6);
+    const args = ['search', 'plan', '--path', 'src/**', '--exclude', '**/{dist,coverage}/**', '--limit', '1'];
+    const first = await cli(args);
+    expect(first.status, first.stdout).toBe(0);
+    expect(first.body.data).toMatchObject({ hits: [{ path: 'src/plan.ts', line: 1 }], total: 2, nextCursor: expect.any(String) });
+    const last = await cli([...args, '--cursor', first.body.data.nextCursor]);
+    expect(last.body.data).toMatchObject({ hits: [{ path: 'src/plan.ts', line: 2 }], total: 2 });
+    expect(last.body.data.nextCursor).toBeUndefined();
+    expect((await cli(['search', 'plan', '--path', 'src/**', '--cursor', first.body.data.nextCursor])).body.error.code).toBe('INVALID_ARGUMENT');
+    const invalid = await cli(['search', 'plan', '--exclude', '**/[z-a]']);
+    expect(invalid.status).toBe(2);
+    expect(invalid.body.error.code).toBe('INVALID_ARGUMENT');
+    const schema = (await cli(['schema', 'search'])).body.data;
+    expect(schema.commands[0].options.exclude).toMatchObject({ type: 'string', description: expect.stringContaining('Skip files') });
+    const help = (await cli(['help', 'search'])).body.data;
+    expect(help.options.exclude.description).toContain('Skip files whose root-relative path matches this glob');
+    const german = (await cli(['--lang', 'de', 'help', 'search'])).body.data;
+    expect(german.options.exclude.description).toContain('Dateien überspringen');
+    expect((await cli(['search', 'plan', '--exclude', 'dist/**', '--exclude', 'coverage/**'])).body.error.code).toBe('DUPLICATE_OPTION');
+  });
+
   it('reports invalid patterns and inputs with localized plugin error codes', async () => {
     const invalid = await cli(['search', '(', '--regex']);
     expect(invalid.status).toBe(2);

@@ -11,6 +11,7 @@ export const searchStrings: PluginStrings = {
       'Skip fenced and indented code blocks in Markdown.': 'Umzäunte und eingerückte Codeblöcke in Markdown überspringen.',
       'Only files of this text kind.': 'Nur Dateien dieser Textart.',
       'Only files whose root-relative path matches this glob.': 'Nur Dateien, deren Pfad relativ zum Stammverzeichnis diesem Glob entspricht.',
+      'Skip files whose root-relative path matches this glob; use braces for alternatives.': 'Dateien überspringen, deren Pfad relativ zum Stammverzeichnis diesem Glob entspricht; geschweifte Klammern für Alternativen verwenden.',
       'Only notes with this tag or a nested tag below it.': 'Nur Notizen mit diesem Tag oder einem darunter verschachtelten Tag.',
       'Only notes whose frontmatter has key (not null), or key=value.': 'Nur Notizen, deren Frontmatter key (nicht null) oder key=value enthält.',
       'Lines of context before and after each hit (0–50).': 'Kontextzeilen vor und nach jedem Treffer (0–50).',

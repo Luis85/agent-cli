@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -60,6 +60,63 @@ describe('searching vault text files', () => {
     expect(places(await search('plan', { path: 'notes/**' }))).toHaveLength(4);
     const [hit] = (await search('roadmap names', { context: 2 })).hits;
     expect(hit).toMatchObject({ path: 'notes/b.md', line: 6, before: ['---', '# Roadmap'], after: ['```ts', 'const plan = 1;'] });
+  });
+
+  it('excludes root-relative globs and brace alternatives without treating .gitignore as search policy', async () => {
+    await put('src/dist/plan.ts', 'plan');
+    await put('src/coverage/plan.ts', 'plan');
+    await put('dist/plan.ts', 'plan');
+    await put('.gitignore', '**/dist/\n**/coverage/\n');
+    expect((await search('plan', { path: 'src/**' })).total).toBe(4);
+    const result = await search('plan', { path: 'src/**', exclude: '**/{dist,coverage}/**' });
+    expect(places(result)).toEqual(['src/plan.ts:1:14', 'src/plan.ts:1:22']);
+    expect((await search('plan', { exclude: '**/{dist,coverage}/**' })).total).toBe(7);
+    expect(await search('plan', { path: 'src/dist/**', exclude: '**/dist/**' })).toEqual({ hits: [], total: 0 });
+    expect((await search('plan', { path: 'src/**', exclude: 'src/DIST/**' })).total).toBe(4);
+  });
+
+  it('never reads excluded files, including unreadable candidates, or parses their metadata', async () => {
+    const files = await NodeFiles.at(root);
+    const originalRead = files.read.bind(files);
+    const read = vi.spyOn(files, 'read').mockImplementation(path => {
+      if (path === 'notes/b.md') throw new Error('excluded file cannot be read');
+      return originalRead(path);
+    });
+    const parse = vi.fn(async () => null);
+    const result = await searchFiles({
+      files, paths: async () => ['notes/a.md', 'notes/b.md'], parse, budget: vmSearchBudget(10_000),
+    }, query('plan', { exclude: 'notes/b.md', skipCode: true }), {});
+    expect(places(result)).toEqual(['notes/a.md:4:1', 'notes/a.md:4:13']);
+    expect(read.mock.calls).toEqual([['notes/a.md']]);
+    expect(parse).toHaveBeenCalledTimes(1);
+  });
+
+  it('binds cursors to the exact exclusion and resumes matching pages without duplicates', async () => {
+    const filter = { exclude: '{board.canvas,src/**}' };
+    const first = await search('plan', filter, { limit: 2 });
+    expect(first).toMatchObject({ total: 4, nextCursor: expect.any(String) });
+    const last = await search('plan', filter, { limit: 2, cursor: first.nextCursor });
+    expect([...places(first), ...places(last)]).toEqual(places(await search('plan', filter)));
+    expect(last.nextCursor).toBeUndefined();
+    for (const extra of [{}, { exclude: 'src/**' }]) {
+      await expect(search('plan', extra, { cursor: first.nextCursor })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    }
+    const unfiltered = await search('plan', {}, { limit: 1 });
+    await expect(search('plan', filter, { cursor: unfiltered.nextCursor })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+  });
+
+  it('rejects malformed exclusions before enumerating or reading files', async () => {
+    const files = await NodeFiles.at(root);
+    const read = vi.spyOn(files, 'read');
+    const paths = vi.fn(async () => []);
+    const sources = { files, paths, parse: async () => null, budget: vmSearchBudget(10_000) };
+    for (const exclude of ['', '**/[z-a]', '**/{dist,coverage', 'x'.repeat(1025)]) {
+      await expect(searchFiles(sources, query('plan', { exclude }), {})).rejects.toMatchObject({
+        code: 'INVALID_ARGUMENT', message: expect.stringContaining('--exclude'),
+      });
+    }
+    expect(paths).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
   });
 
   it('reads the Markdown body or frontmatter only, and skips code blocks through the metadata cache', async () => {

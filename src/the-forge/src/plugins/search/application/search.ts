@@ -78,10 +78,11 @@ export async function searchFiles(sources: SearchSources, query: SearchQuery, pa
   const { context: _context, ...ordering } = query;
   const pager = new Pager<PendingHit>(page, { command: 'search', ...ordering }, hit => [hit.path, hit.line, hit.column]);
   const inPath = query.path === undefined ? () => true : pathGlob(query.path);
+  const excluded = query.exclude === undefined ? () => false : pathGlob(query.exclude, '--exclude');
   const kinds: readonly string[] = query.kind ? [query.kind] : searchKinds;
   const listed = await sources.paths();
   // Path filtering spends the same budget as matching, so no part of a search runs unbounded.
-  const candidates = sources.budget.run(() => listed.filter(path => kinds.includes(fileKind(path)) && inPath(path)));
+  const candidates = sources.budget.run(() => listed.filter(path => kinds.includes(fileKind(path)) && inPath(path) && !excluded(path)));
   const filtered = query.tag !== undefined || query.property !== undefined;
   for (let start = 0; start < candidates.length; start += batchSize) {
     const batch = await Promise.all(candidates.slice(start, start + batchSize).map(path => readExisting(sources.files, path)));

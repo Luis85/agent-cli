@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -30,15 +30,48 @@ describe('portable browser runtime boundaries', () => {
   it('reports a missing managed browser without launching or installing it', async () => {
     const { runtime, root } = await fixture();
     vi.stubEnv('FORGE_BROWSER_EXECUTABLE', undefined);
-    expect(await runtime.status()).toEqual({ available: false, executablePath: join(root, 'managed-browser'), source: 'managed', version: '1.64.0' });
+    expect(await runtime.status()).toEqual({ available: false, executablePath: join(root, 'managed-browser'), source: 'managed', version: '1.64.0', verification: 'executable-only', reason: 'missing', nextStep: expect.stringContaining('browser install') });
     expect(existsSync(join(root, 'managed-browser'))).toBe(false);
   });
 
   it('uses explicit executable selection before environment configuration', async () => {
     const { runtime } = await fixture();
     vi.stubEnv('FORGE_BROWSER_EXECUTABLE', '/missing/environment-browser');
-    expect(await runtime.status()).toMatchObject({ available: false, source: 'environment' });
-    expect(await runtime.status(process.execPath)).toMatchObject({ available: true, source: 'explicit', executablePath: process.execPath });
+    expect(await runtime.status()).toMatchObject({ available: false, source: 'environment', reason: 'missing', nextStep: expect.stringContaining('FORGE_BROWSER_EXECUTABLE') });
+    expect(await runtime.status(process.execPath)).toMatchObject({ available: true, source: 'explicit', executablePath: process.execPath, verification: 'executable-only', reason: 'available', nextStep: null });
+  });
+
+  it('reports a directory as not-file and preserves the explicitly selected path', async () => {
+    const { runtime, root } = await fixture();
+    const result = await runtime.status(root);
+    expect(result).toMatchObject({ available: false, executablePath: root, source: 'explicit', reason: 'not-file', nextStep: expect.stringContaining('--browser-executable') });
+    expect(await runtime.status(join(root, 'missing'))).toMatchObject({ reason: 'missing' });
+  });
+
+  it.skipIf(process.platform === 'win32')('distinguishes a non-executable file without running it', async () => {
+    const { runtime, root } = await fixture();
+    const file = join(root, 'selected-browser');
+    await writeFile(file, 'This is not a browser and must never be executed.');
+    await chmod(file, 0o600);
+    expect(await runtime.status(file)).toMatchObject({ available: false, reason: 'not-executable', nextStep: expect.stringContaining('execution permissions') });
+    await chmod(file, 0o700);
+    expect(await runtime.status(file)).toMatchObject({ available: true, reason: 'available', verification: 'executable-only', nextStep: null });
+    expect(await readFile(file, 'utf8')).toBe('This is not a browser and must never be executed.');
+    expect(await runtime.status(join(file, 'child'))).toMatchObject({ reason: 'missing' });
+  });
+
+  it.skipIf(process.platform === 'win32')('reports filesystem access failures without exposing raw diagnostics', async () => {
+    const { runtime, root } = await fixture();
+    const file = join(root, 'loop');
+    await symlink(file, file);
+    expect(await runtime.status(file)).toMatchObject({ available: false, reason: 'inaccessible', nextStep: expect.stringContaining('Check access') });
+  });
+
+  it('uses an available environment executable without asserting browser compatibility', async () => {
+    const { runtime } = await fixture();
+    vi.stubEnv('FORGE_BROWSER_EXECUTABLE', process.execPath);
+    expect(await runtime.status()).toMatchObject({ available: true, source: 'environment', verification: 'executable-only', reason: 'available' });
+    expect(await runtime.status('/missing/explicit-browser')).toMatchObject({ available: false, source: 'explicit', reason: 'missing' });
   });
 
   it('executes the shipped Chromium installer without exposing child stdout', async () => {
