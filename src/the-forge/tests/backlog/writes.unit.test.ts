@@ -3,21 +3,22 @@ import { resolveSettings } from '../../src/plugins/backlog/domain/settings-resol
 import { applyItemWrite, type ItemWrite, type WriteEnv } from '../../src/plugins/backlog/domain/writes.ts';
 import { linkpathFromRawValue, readTags, normalizeTag, readDate, typedTags } from '../../src/plugins/backlog/domain/fields.ts';
 
-const settings = resolveSettings({
+/** Settings and environment resolve inside each test, so a mutant is active while they are read. */
+const settings = () => resolveSettings({
   stateProperty: 'note.status', stateValues: 'Open, Active, Done', startedStates: 'Active', startedDateProperty: 'note.started', finishedDateProperty: 'note.finished',
   startProperty: 'note.start', targetProperty: 'note.due', horizonProperty: 'note.horizon', dependsOnProperty: 'note.dependsOn', releaseProperty: 'note.release',
   iterationProperty: 'note.iteration', assigneeProperty: 'note.assignee', riskProperty: 'note.risk',
 });
 const types: Record<string, string> = { 'r/1.0.md': 'Release', 'p/Ada.md': 'Resource', 'n/Other.md': 'PBI', 'i/1 - Iteration.md': 'Iteration' };
-const env: WriteEnv = {
-  settings,
+const env = (): WriteEnv => ({
+  settings: settings(),
   wikilink: target => `[[${target.slice(target.lastIndexOf('/') + 1, -3)}]]`,
   resolve: linkpath => Object.keys(types).find(path => path.endsWith(`/${linkpath}.md`)) ?? null,
   typeOf: path => types[path] ?? null,
-};
+});
 const apply = (frontmatter: Record<string, unknown>, write: Omit<ItemWrite, 'path'>) => {
   const copy = structuredClone(frontmatter);
-  return { refusal: applyItemWrite(copy, { path: 'n/Item.md', ...write }, env), frontmatter: copy };
+  return { refusal: applyItemWrite(copy, { path: 'n/Item.md', ...write }, env()), frontmatter: copy };
 };
 
 describe('state writes', () => {

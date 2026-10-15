@@ -6,8 +6,7 @@ import { checkMessages } from '../../src/plugins/backlog/domain/messages.ts';
 import { resolveSettings } from '../../src/plugins/backlog/domain/settings-resolve.ts';
 import { germanCheckMessages, localizedCheck } from '../../src/plugins/backlog/presentation/messages.ts';
 
-const settings = resolveSettings({ stateProperty: 'note.status' });
-function problems(notes: Record<string, Record<string, unknown>>, resolved = settings) {
+function problems(notes: Record<string, Record<string, unknown>>, resolved = resolveSettings({ stateProperty: 'note.status' })) {
   const source: NoteSource = { frontmatter: path => notes[path], frontmatterLinks: () => [], resolve: () => null };
   const model = buildModel(source, Object.keys(notes), resolved, path => path in notes);
   return checkBacklog({ model, settings: resolved, releaseProblems: [], unresolvedMemberships: [], typeOf: () => null });

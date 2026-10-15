@@ -34,18 +34,18 @@ describe('note names', () => {
 });
 
 describe('new note frontmatter', () => {
-  const settings = resolveSettings({ iterationProperty: 'note.iteration', releaseProperty: 'note.release', iterationGoalProperty: 'note.goal', horizonProperty: 'note.horizon', startProperty: 'note.start', targetProperty: 'note.due' });
+  const settings = () => resolveSettings({ iterationProperty: 'note.iteration', releaseProperty: 'note.release', iterationGoalProperty: 'note.goal', horizonProperty: 'note.horizon', startProperty: 'note.start', targetProperty: 'note.due' });
   it('writes the plugin\'s key order and only frontmatter', () => {
-    const frontmatter = newItemFrontmatter(settings, {
+    const frontmatter = newItemFrontmatter(settings(), {
       id: 4, typeName: 'PBI', order: 7.03125, parentLink: '[[Route sharing]]', iterationLink: '[[1 - Iteration]]', releaseLink: '[[1.0]]', iterationGoal: 'ignored on purpose',
       axis: { horizon: 'Now', start: '2026-10-01', target: '2026-10-14' },
     });
     expect(Object.keys(frontmatter)).toEqual(['pbl-id', 'type', 'parent', 'order', 'goal', 'iteration', 'release', 'horizon', 'start', 'due']);
     expect(noteText(stringify(frontmatter))).toBe('---\npbl-id: 4\ntype: PBI\nparent: "[[Route sharing]]"\norder: 7.03125\ngoal: ignored on purpose\niteration: "[[1 - Iteration]]"\nrelease: "[[1.0]]"\nhorizon: Now\nstart: 2026-10-01\ndue: 2026-10-14\n---\n');
     expect(Object.keys(newItemFrontmatter(resolveSettings({ inferFolderHierarchy: true }), { id: 1, typeName: 'Epic', order: 1000, parentLink: null }))).toEqual(['pbl-id', 'type', 'parent', 'order']);
-    expect(Object.keys(newItemFrontmatter(settings, { id: 1, typeName: 'Epic', order: 1000, parentLink: null }))).toEqual(['pbl-id', 'type', 'order']);
+    expect(Object.keys(newItemFrontmatter(settings(), { id: 1, typeName: 'Epic', order: 1000, parentLink: null }))).toEqual(['pbl-id', 'type', 'order']);
     // A release is never seeded with an iteration, release or planning axis.
-    expect(newItemFrontmatter(settings, { id: 2, typeName: 'Release', order: 5, parentLink: null, iterationLink: '[[x]]', axis: { start: '2026-01-01' } })).toEqual({ 'pbl-id': 2, type: 'Release', order: 5 });
+    expect(newItemFrontmatter(settings(), { id: 2, typeName: 'Release', order: 5, parentLink: null, iterationLink: '[[x]]', axis: { start: '2026-01-01' } })).toEqual({ 'pbl-id': 2, type: 'Release', order: 5 });
   });
 
   it('writes releases with only the bound and stated keys', () => {

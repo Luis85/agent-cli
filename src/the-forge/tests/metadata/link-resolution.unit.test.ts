@@ -75,11 +75,13 @@ describe('indexed link resolution', () => {
 });
 
 describe('alias resolution', () => {
-  const index = linkIndex(['Notes/Plan.md', 'Notes/Roadmap.md', 'People/Ada.md', 'People/Grace.md'], new Map([
+  // Indexes are built inside each test, so a mutant is active while they are built.
+  const aliased = () => linkIndex(['Notes/Plan.md', 'Notes/Roadmap.md', 'People/Ada.md', 'People/Grace.md'], new Map([
     ['Notes/Roadmap.md', ['Plan', 'Q4 goals']], ['People/Ada.md', ['Countess', 'AL']], ['People/Grace.md', ['al']],
   ]));
 
   it('resolves wikilink text to a note alias case-insensitively after path matching fails', () => {
+    const index = aliased();
     expect(resolveLinkpath(index, 'q4 GOALS#Scope', 'Root.md', { aliases: true })).toEqual({ status: 'resolved', path: 'Notes/Roadmap.md', via: 'alias' });
     expect(resolveLinkpath(index, 'Plan', 'Root.md', { aliases: true })).toEqual({ status: 'resolved', path: 'Notes/Plan.md', via: 'path' });
     expect(resolveLinkpath(index, 'Q4 goals', 'Root.md')).toEqual({ status: 'unresolved', reason: 'missing', linkpath: 'Q4 goals' });
@@ -87,6 +89,7 @@ describe('alias resolution', () => {
   });
 
   it('records a shared alias as ambiguous instead of choosing a note', () => {
+    const index = aliased();
     expect(resolveLinkpath(index, 'Al', 'Root.md', { aliases: true })).toEqual({
       status: 'unresolved', reason: 'ambiguous', via: 'alias', linkpath: 'Al', candidates: ['People/Ada.md', 'People/Grace.md'],
     });
@@ -94,9 +97,10 @@ describe('alias resolution', () => {
 });
 
 describe('shortest link text', () => {
-  const index = linkIndex(paths);
+  const indexed = () => linkIndex(paths);
 
   it('uses the file name when it resolves back from the source and the full path otherwise', () => {
+    const index = indexed();
     expect(fileToLinktext(index, 'Projects/Ünïcode.md', 'Root.md')).toBe('Ünïcode');
     expect(fileToLinktext(index, 'Notes/Plan.md', 'Root.md')).toBe('Notes/Plan');
     expect(fileToLinktext(index, 'Notes/Plan.md', 'Notes/Today.md')).toBe('Plan');
@@ -107,6 +111,7 @@ describe('shortest link text', () => {
   });
 
   it('opens the closest candidate of an ambiguous path and leaves missing and alias matches unresolved', () => {
+    const index = indexed();
     const readmes = ['archive/README.md', 'docs/README.md'];
     expect(closestCandidate(readmes, 'docs/sub/Source.md')).toBe('docs/README.md');
     expect(closestCandidate(readmes, 'archive/old/x/Note.md')).toBe('archive/README.md');
@@ -121,6 +126,7 @@ describe('shortest link text', () => {
   });
 
   it('always produces link text that resolves to the file from every source', () => {
+    const index = indexed();
     for (const path of paths) {
       for (const source of sources) {
         expect(resolveLinkpath(index, fileToLinktext(index, path, source), source), `${path} from ${source}`).toMatchObject({ status: 'resolved', path });
