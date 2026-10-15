@@ -1,6 +1,10 @@
 import { type WriteRequest, type FileChange, type FileSnapshot, type PlannedChange } from '../../domain/documents/file.ts';
 import type { FileRepository, DocumentCodec, CommitObserver, FileBatch, BatchResult } from './ports.ts';
 import type { EventBus } from '../plugins/events.ts';
+/** `beforeParse` receives a file's raw byte count before the file is parsed; it refuses the file by throwing. */
+export interface ReadOptions {
+    beforeParse?: (bytes: number) => void;
+}
 /** Dry-run result options; `diff` adds a unified diff to each planned change. */
 export interface WriteOptions {
     diff?: boolean;
@@ -32,7 +36,7 @@ export declare class Workspace {
      * Commit observers are bound to one scope, so the new scope has only the `observer` given here.
      */
     within(files: FileRepository, root: string | null, observer?: CommitObserver): Workspace;
-    read(path: string): Promise<{
+    read(path: string, options?: ReadOptions): Promise<{
         path: string;
         revision: string;
         bytes: number;
