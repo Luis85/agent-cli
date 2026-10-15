@@ -14,6 +14,7 @@ function walk(node: MarkdownNode, visit: (node: MarkdownNode) => void): void {
 /**
  * Replaces Obsidian `%%comments%%` with spaces, keeping line breaks. A `%%` inside code is literal, as in Obsidian;
  * one outside code opens a comment that hides everything, fences included, up to the next `%%` or the end of the text.
+ * A `%%` after an odd number of backslashes is escaped: it neither opens nor closes a comment.
  */
 function blankObsidianComments(source: string): string {
   if (!source.includes('%%')) return source;
@@ -21,11 +22,19 @@ function blankObsidianComments(source: string): string {
   walk(parser.parse(source), node => {
     if ((node.type === 'code' || node.type === 'inlineCode') && node.position) code.push([node.position.start.offset ?? 0, node.position.end.offset ?? 0]);
   });
+  const marker = (from: number): number => {
+    for (let at = source.indexOf('%%', from); at !== -1; at = source.indexOf('%%', at + 2)) {
+      let backslashes = 0;
+      while (source[at - backslashes - 1] === '\\') backslashes++;
+      if (backslashes % 2 === 0) return at;
+    }
+    return -1;
+  };
   let visible = '', cursor = 0;
-  for (let open = source.indexOf('%%'); open !== -1; open = source.indexOf('%%', cursor)) {
+  for (let open = marker(0); open !== -1; open = marker(cursor)) {
     const span = code.find(([start, end]) => open >= start && open < end);
     if (span) { visible += source.slice(cursor, span[1]); cursor = span[1]; continue; }
-    const close = source.indexOf('%%', open + 2), stop = close === -1 ? source.length : close + 2;
+    const close = marker(open + 2), stop = close === -1 ? source.length : close + 2;
     visible += source.slice(cursor, open) + source.slice(open, stop).replace(/[^\r\n]/g, ' ');
     cursor = stop;
   }
