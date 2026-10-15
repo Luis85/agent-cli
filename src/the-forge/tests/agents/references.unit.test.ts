@@ -28,6 +28,21 @@ describe('agent references', () => {
   ])('tells whether %s is external', (input, external) => {
     expect(isExternalReference(input)).toBe(external);
   });
+
+  it.each<[string, boolean]>([
+    ['org/team/agent', true], ['Registry.Example-1.com/agent', true], ['localhost:5000/agent', true], ['registry.example.com:5000/org/agent:v1.2-rc', true],
+    ['ns/host:port/agent', false], ['localhost:/agent', false], ['org//agent', false], ['org/agent/', false], ['/org/agent', false],
+    ['org/my_agent', true], ['org/my.agent', true], ['org/my__agent', true], ['org/my---agent', true], ['org/my9agent2', true],
+    ['org/my___agent', false], ['org/my_.agent', false], ['org/agent_', false], ['org/_agent', false], ['org/team_/agent', false], ['org/my agent', false],
+    ['org/agent:latest', true], ['org/agent:_tag', true], ['org/agent:', false], ['org/agent:-x', false], ['org/agent:.x', false], ['org/agent:a+b', false],
+    [`org/agent:${'a'.repeat(128)}`, true], [`org/agent:${'a'.repeat(129)}`, false],
+    [`org/agent@sha256:${'0123456789abcdef'.repeat(4)}`, true], [`org/agent:v1@sha256:${'a'.repeat(64)}`, true], [`org/agent@sha256:${'a'.repeat(63)}`, false],
+    [`org/agent@sha256:${'a'.repeat(65)}`, false], [`org/agent@sha256:${'A'.repeat(64)}`, false], [`org/agent@sha256:${'g'.repeat(64)}`, false], [`org/agent@sha512:${'a'.repeat(64)}`, false],
+    ['x!org/agent', false], ['org/agent!', false],
+    ['org/agent.yaml', false], ['org/agent.yml', false], ['org/agent.YML', false], ['org/agent.hcl', false], ['org/agent.yamlx', true], ['org/agent.yaml.bak', true],
+  ])('reads %s as an OCI reference: %s', (input, external) => {
+    expect(isExternalReference(input)).toBe(external);
+  });
 });
 
 describe('model references', () => {

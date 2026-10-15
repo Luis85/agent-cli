@@ -56,6 +56,23 @@ describe('top-level docker-agent permissions', () => {
     expect(unsupported(result.diagnostics).map(entry => `${entry.severity} ${entry.message}`)).toStrictEqual([finding]);
   });
 
+  it.each([
+    ['read_file', 'Read'], ['read_multiple_files', 'Read'], ['list_directory', 'Glob'], ['directory_tree', 'Glob'], ['search_files_content', 'Grep'],
+    ['write_file', 'Write'], ['edit_file', 'Edit'], ['shell', 'Bash'], ['fetch', 'WebFetch'], ['user_prompt', 'AskUserQuestion'],
+    ['create_todo', 'TaskCreate'], ['create_todos', 'TaskCreate'], ['update_todos', 'TaskUpdate'], ['list_todos', 'TaskList'],
+    ['create_task', 'TaskCreate'], ['get_task', 'TaskGet'], ['list_tasks', 'TaskList'], ['update_task', 'TaskUpdate'],
+  ])('maps the built-in tool %s to the Claude rule %s', (tool, rule) => {
+    const { rules, diagnostics } = mapped('deny', [tool]);
+    expect(rules).toStrictEqual([{ list: 'deny', rule, at: '/permissions/deny/0' }]);
+    expect(unsupported(diagnostics)).toStrictEqual([]);
+  });
+
+  it.each(['create_directory', 'remove_directory', 'next_task', 'delete_task', 'add_dependency', 'remove_dependency', 'think'])('never widens the built-in tool %s to a rule', tool => {
+    const { rules, diagnostics } = mapped('deny', [tool]);
+    expect(rules).toStrictEqual([]);
+    expect(unsupported(diagnostics).map(entry => entry.message)).toStrictEqual([`The deny pattern ${tool} matches ${tool}, which has no Claude permission rule of the same reach; it is not emitted.`]);
+  });
+
   it('maps shell and MCP patterns to rules per generated server name', () => {
     const server = (name: string): McpServer => ({ name, declared: 'github', at: '/agents/a/toolsets/0', config: {} });
     const servers = serverNames([{ servers: [server('github'), server('github-2')] }, { servers: [server('github')] }]);
