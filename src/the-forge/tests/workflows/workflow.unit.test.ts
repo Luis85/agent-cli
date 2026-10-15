@@ -30,7 +30,8 @@ describe('workflow sources and generated entrypoints', () => {
 
   it.each([
     authored('check.yml'), authored('check/nested/check.yml'), authored('check/notes.md'), authored('check/check.yml.bak'), authored('check/.yml'),
-    authored('check/checkyml'), 'src/other/src/infrastructure/workflows/check/check.yml', 'src/demo/src/infrastructure/check/check.yml',
+    authored('check/checkyml'), authored('check/nested.yml/check.yml'), 'src/other/src/infrastructure/workflows/check/check.yml',
+    'src/demx/src/infrastructure/workflows/check/check.yml', 'src/demo/src/infrastructure/check/check.yml',
     'src/demo/check/check.yml', `docs/${authored('check/check.yml')}`,
   ])('ignores %s, which is not a direct YAML file of a project concern folder', path => {
     expect(workflowSource('demo', 'src/demo', path)).toBeUndefined();

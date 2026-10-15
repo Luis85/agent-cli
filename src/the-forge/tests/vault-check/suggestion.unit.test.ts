@@ -60,14 +60,29 @@ describe('closest file suggestions', () => {
 
   it('suggests nothing beyond a third of the name length', () => {
     expect(closest('Roadmap')).toBeUndefined();
-    expect(closest('')).toBeUndefined();
     expect(closest('x', [])).toBeUndefined();
+    expect(closest('plan', ['pxyn.md'])).toBeUndefined();
+  });
+
+  it.each([[''], ['folder/'], ['.md']])('suggests nothing for the link %j, which names no file', linkpath => {
+    expect(closest(linkpath, ['x.md', 'a/.md', 'ab.md'])).toBeUndefined();
+  });
+
+  it('allows at least one edit, even for a link name of one or two characters', () => {
+    expect(closest('ab', ['a.md'])).toBe('a.md');
+    expect(closest('b', ['a.md'])).toBe('a.md');
+  });
+
+  it('compares long names whose characters repeat many times', () => {
+    expect(closest('a'.repeat(256), [`${'a'.repeat(255)}b.md`])).toBe(`${'a'.repeat(255)}b.md`);
   });
 
   it('breaks ties by fewer path segments, then by vault path order', () => {
     expect(closest('plan', ['b/c/plan.md', 'a/plam.md', 'z/plan.md'])).toBe('z/plan.md');
     expect(closest('plan', ['b/plam.md', 'a/plin.md'])).toBe('b/plam.md');
     expect(closest('plan', ['x/y/plan.md', 'plam.md'])).toBe('x/y/plan.md');
+    expect(closest('plan', ['a/plan.md', 'b/Plan.md', 'plam.md'])).toBe('a/plan.md');
+    expect(closest('plam', ['a/plan.md', 'b/plan.md'])).toBe('a/plan.md');
     expect(closest('abcdef', ['abdcef.md', 'abcxef.md'])).toBe('abdcef.md');
   });
 
@@ -78,13 +93,14 @@ describe('closest file suggestions', () => {
 
   it('counts swaps of adjacent characters as one edit and compares names of other lengths', () => {
     expect(closest('ab', ['ba.md', 'abc.md'])).toBe('ba.md');
+    expect(closest('plan', ['x/y/paln.md', 'pxyn.md'])).toBe('x/y/paln.md');
     expect(closest('roadmap', ['raodmap.md'])).toBe('raodmap.md');
     expect(closest('roadmap', ['roadmaps.md', 'road.md'])).toBe('roadmaps.md');
     expect(closest('Ä-Notiz', ['ä-notiz.md', 'a-notiz.md'])).toBe('ä-notiz.md');
   });
 
-  it('returns exactly what comparing every path returns', () => {
-    const pick = sequence(7), alphabet = 'abcde fgh-1Ä';
+  it.each([[7, 'abcde fgh-1Ä'], [11, 'ab']])('returns exactly what comparing every path returns (seed %i, letters %j)', (seed, alphabet) => {
+    const pick = sequence(seed);
     const word = (length: number) => Array.from({ length }, () => alphabet[pick(alphabet.length)]).join('');
     const vault = Array.from({ length: 400 }, () => {
       const folders = Array.from({ length: pick(3) }, () => word(1 + pick(3)));
