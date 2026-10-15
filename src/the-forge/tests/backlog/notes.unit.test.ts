@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
 import {
   baseFileContent, basePath, comments, iterationNoteName, newItemFrontmatter, nextItemId, nextIterationDates, nextIterationName, noteBody, noteText, previousIteration, releaseFrontmatter,
-  sanitizeTitle, uniqueNotePath, withBody, withoutComments,
+  sanitizeTitle, uniqueNotePath, withBody, withComments, withoutComments,
 } from '../../src/plugins/backlog/domain/notes.ts';
 import { resolveReleaseSettings, resolveSettings } from '../../src/plugins/backlog/domain/settings-resolve.ts';
 import {
@@ -165,6 +165,7 @@ describe('Obsidian comments around code', () => {
     ['a fence indented by two spaces', '  ```\n%%keep%%\n  ```\n', '  ```\n%%keep%%\n  ```\n', []],
     ['a fence indented by three spaces', '   ~~~\n%%k%%\n~~~\n%%c%%', '   ~~~\n%%k%%\n~~~\n', ['%%c%%']],
     ['a four-space fence ends at an unindented line', '    ```\n%%x%%\n', '    ```\n\n', ['%%x%%']],
+    ['a fence ended by a dedent opens no code span', '    ```\na %%c%% ```', '    ```\na  ```', ['%%c%%']],
     ['a tab-indented fence ends at an unindented line', '\t~~~\n%%x%%\n', '\t~~~\n\n', ['%%x%%']],
     ['a tab-indented fence in a list item', '- step\n\t```\n\tprintf("%%d", x); y %% z\n\t```\n%%c%%', '- step\n\t```\n\tprintf("%%d", x); y %% z\n\t```\n', ['%%c%%']],
     ['a four-space fence in a numbered item', '1. step\n    ~~~\n    %%k%%\n    ~~~\n%%c%%', '1. step\n    ~~~\n    %%k%%\n    ~~~\n', ['%%c%%']],
@@ -284,7 +285,42 @@ describe('Obsidian comments', () => {
       const found = comments(body);
       expect(interleaves(body, withoutComments(body), found), JSON.stringify(body)).toBe(true);
       for (const comment of found) expect(comment.startsWith('%%') && ((comment.length >= 4 && comment.endsWith('%%')) || body.endsWith(comment)), JSON.stringify(body)).toBe(true);
+      expect(withoutComments(withComments(body, ['%%secret%%', '%%open'])), JSON.stringify(body)).not.toMatch(/secret|open/);
     }
+  });
+});
+
+describe('comments kept after a replaced body', () => {
+  // [case, new text, what closes it before the kept comments]
+  it.each([
+    ['prose', 'Plan the stops.', ''],
+    ['a one-character last line', 'Plan\nA', ''],
+    ['a closed fence', '```\ncode\n```', ''],
+    ['an unclosed backtick fence', 'Run:\n```sh\nnpm test', '\n```'],
+    ['an unclosed fence ending in a line break', 'Run:\n```\nnpm test\n', '```'],
+    ['an unclosed tilde fence', '~~~\ncode', '\n~~~'],
+    ['an unclosed longer fence', '`````md\n```\ncode\n```', '\n`````'],
+    ['an unclosed fence opened on the last line', 'Then:\n~~~~', '\n~~~~'],
+    ['an unclosed fence indented in a list item', '- step\n\t```\n\tcode', '\n\t```'],
+    ['an unclosed fence indented by spaces', '1. step\n    ```\n    code', '\n    ```'],
+    ['an unclosed fence indented by three spaces', '   ```\ncode', '\n   ```'],
+    ['an unclosed comment', 'Plan %% the hidden rest', '\n%%'],
+    ['an unclosed inline code span', 'Use `npm', ''],
+    ['an escaped marker', 'Use \\%% literally', ''],
+  ])('keeps the comments private after %s', (_, text, closing) => {
+    const old = 'old %%secret one%% body\n\n%%secret\n\ntwo';
+    const kept = comments(old);
+    const body = withComments(text, kept);
+    expect(body).toBe(`${text}${closing}\n\n%%secret one%%\n\n%%secret\n\ntwo`);
+    expect(withoutComments(body)).not.toContain('secret');
+    expect(comments(body).slice(-kept.length)).toEqual(kept);
+  });
+
+  it('leaves the text as it is when no comment is kept, and drops blank parts', () => {
+    expect(withComments('Run:\n```\nnpm test', [])).toBe('Run:\n```\nnpm test');
+    expect(withComments('', ['%%a%%'])).toBe('%%a%%');
+    expect(withComments(' \n', ['%%a%%', '%%b%%'])).toBe('%%a%%\n\n%%b%%');
+    expect(withComments('Text', [])).toBe('Text');
   });
 });
 
