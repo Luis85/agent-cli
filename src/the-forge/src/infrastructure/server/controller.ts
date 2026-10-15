@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { request as httpRequest } from 'node:http';
 import { realpath, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -13,13 +14,33 @@ export function serverInfo(state: ServerState): ServerInfo {
   return { pid: state.pid, startedAt: state.startedAt, host: '127.0.0.1', port: state.port, version: state.version,
     nodeVersion: state.nodeVersion, uptimeSeconds: Math.max(0, Math.floor((Date.now() - Date.parse(state.startedAt)) / 1000)) };
 }
+/**
+ * Calls the daemon over a fresh, unpooled loopback connection without following redirects; every transport failure
+ * and the timeout reject. Global fetch is
+ * unsuitable: Node 24's bundled undici sets the IP type of service on each new socket and throws from the socket's
+ * connect event when that fails, which macOS does for a connection the stopping daemon already reset.
+ */
+function callDaemon(state: ServerState, method: 'GET' | 'POST', path: string, timeoutMs: number): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest({ host: '127.0.0.1', port: state.port, method, path, agent: false,
+      headers: { authorization: `Bearer ${state.token}` }, signal: AbortSignal.timeout(timeoutMs) }, response => {
+      const chunks: Buffer[] = [];
+      response.on('data', (chunk: Buffer) => chunks.push(chunk));
+      response.on('error', reject);
+      response.on('close', () => reject(new Error('The daemon closed the response early.')));
+      response.on('end', () => resolve({ status: response.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8') }));
+    });
+    request.on('error', reject);
+    request.on('close', () => reject(new Error('The daemon closed the connection.')));
+    request.end();
+  });
+}
+const succeeded = (status: number): boolean => status >= 200 && status < 300;
 async function healthy(state: ServerState): Promise<boolean> {
   try {
-    const response = await fetch(`http://127.0.0.1:${state.port}/api/health`, {
-      headers: { authorization: `Bearer ${state.token}` }, signal: AbortSignal.timeout(1200), redirect: 'error',
-    });
-    if (!response.ok) return false;
-    const body: unknown = await response.json();
+    const response = await callDaemon(state, 'GET', '/api/health', 1200);
+    if (!succeeded(response.status)) return false;
+    const body: unknown = JSON.parse(response.body);
     const health = isRecord(body) && isRecord(body.data) ? body.data : body;
     return isRecord(health) && health.instanceId === state.instanceId && health.pid === state.pid;
   } catch { return false; }
@@ -99,10 +120,8 @@ export class NodeServerController implements ServerController {
       if (!state || !await healthy(state)) return { ...stopped(Boolean(state)), changed: false, ...(options.dryRun ? { dryRun: true } : {}) };
       if (options.dryRun) return { ...running(state), dryRun: true, changed: true };
       try {
-        const response = await fetch(`http://127.0.0.1:${state.port}/api/shutdown`, {
-          method: 'POST', headers: { authorization: `Bearer ${state.token}` }, signal: AbortSignal.timeout(2000), redirect: 'error',
-        });
-        if (!response.ok) throw new Error('Shutdown rejected.');
+        const response = await callDaemon(state, 'POST', '/api/shutdown', 2000);
+        if (!succeeded(response.status)) throw new Error('Shutdown rejected.');
         const deadline = Date.now() + 5000;
         // A closed listener does not mean the daemon has released its workspace.
         // Windows keeps the working directory locked until the process exits.
