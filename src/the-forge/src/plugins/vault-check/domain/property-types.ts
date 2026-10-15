@@ -7,17 +7,20 @@ import { isRecord } from '../../../domain/shared/errors.ts';
 export const propertyTypes = ['text', 'list', 'number', 'checkbox', 'date', 'datetime', 'object'] as const;
 export type PropertyType = typeof propertyTypes[number];
 
-/** Type names Obsidian records in `.obsidian/types.json`, with the inferred types each accepts. */
-const declaredAccepts: Readonly<Record<string, readonly PropertyType[]>> = {
-  text: ['text', 'date', 'datetime'],
-  multitext: ['list'],
-  tags: ['list', 'text'],
-  aliases: ['list', 'text'],
-  number: ['number'],
-  checkbox: ['checkbox'],
-  date: ['date'],
-  datetime: ['datetime', 'date'],
-};
+/**
+ * Type names Obsidian records in `.obsidian/types.json`, with the inferred types each accepts. A map, so a declared
+ * name such as `toString` is unknown rather than an inherited object member.
+ */
+const declaredAccepts: ReadonlyMap<string, readonly PropertyType[]> = new Map<string, readonly PropertyType[]>([
+  ['text', ['text', 'date', 'datetime']],
+  ['multitext', ['list']],
+  ['tags', ['list', 'text']],
+  ['aliases', ['list', 'text']],
+  ['number', ['number']],
+  ['checkbox', ['checkbox']],
+  ['date', ['date']],
+  ['datetime', ['datetime', 'date']],
+]);
 
 const date = /^\d{4}-\d{2}-\d{2}$/;
 const datetime = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})?$/;
@@ -38,7 +41,7 @@ export function inferPropertyType(value: unknown): PropertyType | null {
 
 /** Whether a value of `actual` type fits a declared Obsidian type; unknown declared names accept everything. */
 export function acceptsType(declared: string, actual: PropertyType): boolean {
-  const accepted = declaredAccepts[declared];
+  const accepted = declaredAccepts.get(declared);
   return accepted === undefined || accepted.includes(actual);
 }
 

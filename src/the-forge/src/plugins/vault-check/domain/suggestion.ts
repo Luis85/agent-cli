@@ -12,7 +12,7 @@ function histogram(name: string): Uint8Array {
   const counts = new Uint8Array(histogramSize);
   for (let index = 0; index < name.length; index++) {
     const slot = name.charCodeAt(index) % histogramSize;
-    if (counts[slot]! < 255) counts[slot]!++;
+    if (counts[slot]! < 255) counts[slot] = counts[slot]! + 1;
   }
   return counts;
 }
