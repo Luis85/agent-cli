@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -13,22 +12,8 @@ const portable = portableCli();
  * standard error. Resolves with the exit status, what reached standard output and everything written to standard error.
  */
 function closedEarly(args: string[], closed: 'stdout' | 'stdout-unread' | 'stderr' = 'stdout') {
-  return new Promise<{ status: number | null; signal: NodeJS.Signals | null; stderr: string; stdout: string; received: number }>((resolve, reject) => {
-    const child = spawn(process.execPath, [join(portable.bundle, 'bin/forge.js'), '--root', portable.project, ...args], { cwd: portable.project, stdio: ['ignore', 'pipe', 'pipe'] });
-    const stderr: Buffer[] = [], stdout: Buffer[] = [];
-    let received = 0;
-    const timer = setTimeout(() => { child.kill(); reject(new Error(`forge ${args.join(' ')} did not finish`)); }, 30_000);
-    if (closed === 'stdout') child.stdout.once('data', (chunk: Buffer) => { received = chunk.length; child.stdout.destroy(); });
-    else if (closed === 'stdout-unread') child.stdout.destroy();
-    else child.stdout.on('data', (chunk: Buffer) => { received += chunk.length; stdout.push(chunk); });
-    if (closed === 'stderr') child.stderr.destroy();
-    else child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
-    child.on('error', error => { clearTimeout(timer); reject(error); });
-    child.on('close', (status, signal) => {
-      clearTimeout(timer);
-      resolve({ status, signal, stderr: Buffer.concat(stderr).toString('utf8'), stdout: Buffer.concat(stdout).toString('utf8'), received });
-    });
-  });
+  if (closed === 'stderr') return portable.spawnCli(args, { closeStderr: true });
+  return portable.spawnCli(args, { stdout: closed === 'stdout' ? 'first-chunk' : 'unread' });
 }
 
 /** A user plugin command that logs to standard error, waits, then writes a note. */
