@@ -72,18 +72,18 @@ describe('sibling fallback on a global tie', () => {
 describe('unchanged placement', () => {
   it('is a no-op only under the same parent at the same rankable index', () => {
     const parent = row('P', 1, 0), other = row('O', 2, 1);
-    const a = { ...row('a', 10, 2), parent }, b = { ...row('b', 20, 3), parent }, u = context('u', null, 4);
+    const a: Row = { ...row('a', 10, 2), parent }, b: Row = { ...row('b', 20, 3), parent }, u = context('u', null, 4);
     expect(unchangedPlacement(b, { parent, peers: [a], insertIndex: 1 }, [a, b])).toBe(true);
     expect(unchangedPlacement(b, { parent, peers: [a], insertIndex: 0 }, [a, b])).toBe(false);
     expect(unchangedPlacement(b, { parent: other, peers: [], insertIndex: 0 }, [b])).toBe(false);
     expect(unchangedPlacement(b, { parent: null, peers: [], insertIndex: 0 }, [b])).toBe(false);
     expect(unchangedPlacement(a, { parent, peers: [u], insertIndex: 0 }, [u, a])).toBe(true);
-    const linked = { ...b, hasParentValue: true };
+    const linked: Row = { ...b, hasParentValue: true };
     expect(unchangedPlacement(linked, { parent, peers: [a], insertIndex: 1 }, [a, linked])).toBe(true);
   });
 
   it('moves a root note that still holds a stale parent link', () => {
-    const root = row('r', 10, 0), stale = { ...row('s', 20, 1), hasParentValue: true };
+    const root = row('r', 10, 0), stale: Row = { ...row('s', 20, 1), hasParentValue: true };
     expect(unchangedPlacement(root, { parent: null, peers: [], insertIndex: 0 }, [root])).toBe(true);
     expect(unchangedPlacement(stale, { parent: null, peers: [], insertIndex: 0 }, [stale])).toBe(false);
     expect(unchangedPlacement(root, { parent: row('P', 1, 2), peers: [], insertIndex: 0 }, [root])).toBe(false);
