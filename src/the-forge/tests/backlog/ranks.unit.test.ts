@@ -56,6 +56,10 @@ describe('placing runs', () => {
     expect(placeRun(count, floor, ceiling)).toStrictEqual(expected);
   });
 
+  it('steps evenly from the floor of a finite span, rounding thirds of a large rank to 6 decimals', () => {
+    expect(placeRun(2, 832677219, 832677220)).toStrictEqual([832677219.333333, 832677219.666667]);
+  });
+
   it('interpolates a run between bounds whose distance overflows', () => {
     expect(placeRun(1, -MAX, MAX)).toStrictEqual([0]);
     const run = placeRun(3, -MAX, MAX)!;
