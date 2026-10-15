@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { createServer as createTcpServer, Socket, type Server } from 'node:net';
 import { execFileSync, spawn } from 'node:child_process';
 import { copyFile, lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -10,6 +11,13 @@ import { distribution } from '../support/workspace.ts';
 
 const staleState = (workspaceRoot: string): ServerState => ({ schemaVersion: 1, instanceId: '00000000-0000-0000-0000-000000000000',
   token: 'f'.repeat(64), workspaceRoot, pid: process.pid, port: 1, startedAt: new Date().toISOString(), version: '0.1.0', nodeVersion: process.version, webviews: [] });
+
+async function listen(server: Server): Promise<number> {
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('Missing address');
+  return address.port;
+}
 
 describe('detached server lifecycle', () => {
   let root: string;
@@ -138,6 +146,44 @@ describe('detached server lifecycle', () => {
     expect(await controller.stop({ dryRun: false })).toMatchObject({ running: false, stale: true, changed: false });
     expect((await readState(root))?.pid).toBe(process.pid);
     expect(await controller.start({ dryRun: false })).toMatchObject({ running: true, stale: false });
+  });
+
+  it('controls the daemon without socket QoS calls that macOS rejects on connections the daemon already reset', async () => {
+    const started = await controller.start({ dryRun: false });
+    // XNU fails setsockopt() with EINVAL once the peer has shut the connection down. Node 24's bundled fetch sets the
+    // type of service on each new socket and throws that from the connect event, outside any awaiting caller.
+    const descriptor = Object.getOwnPropertyDescriptor(Socket.prototype, 'setTypeOfService');
+    let calls = 0;
+    Object.defineProperty(Socket.prototype, 'setTypeOfService', { configurable: true, writable: true, value: () => {
+      calls++;
+      throw Object.assign(new Error('setTypeOfService EINVAL'), { errno: -22, code: 'EINVAL', syscall: 'setTypeOfService' });
+    } });
+    try {
+      expect(await controller.status()).toMatchObject({ running: true, server: { pid: started.server?.pid } });
+      expect(await controller.stop({ dryRun: false })).toMatchObject({ running: false, changed: true });
+    } finally {
+      if (descriptor) Object.defineProperty(Socket.prototype, 'setTypeOfService', descriptor);
+      else Reflect.deleteProperty(Socket.prototype, 'setTypeOfService');
+    }
+    expect(calls).toBe(0);
+    expect(await readState(root)).toBeNull();
+  });
+
+  it.each([
+    ['resets every connection', (socket: Socket) => { socket.resetAndDestroy(); }],
+    ['accepts connections without answering', () => undefined],
+  ])('reports a recorded daemon that %s as stale without stopping it', async (_case, accept) => {
+    const sockets = new Set<Socket>();
+    const other = createTcpServer(socket => { sockets.add(socket); socket.on('error', () => undefined); accept(socket); });
+    try {
+      await writeState(root, { ...staleState(root), port: await listen(other) });
+      expect(await controller.status()).toMatchObject({ running: false, stale: true, server: null });
+      expect(await controller.stop({ dryRun: false })).toMatchObject({ running: false, stale: true, changed: false });
+      expect((await readState(root))?.pid).toBe(process.pid);
+    } finally {
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>((resolve, reject) => other.close(error => error ? reject(error) : resolve()));
+    }
   });
 
   it('reports occupied ports without altering a healthy unrelated server', async () => {
