@@ -123,6 +123,8 @@ describe('applying edits', () => {
     const outer: TextEdit = { start: 0, end: 5, original: 'x-y-z', text: 'x-Y-z' };
     expect(applyEdits('x-y-z', [outer, { start: 4, end: 5, original: 'z', text: 'w' }])).toEqual({ text: 'x-Y-w', skipped: [] });
     expect(applyEdits('x-y-z', [outer, { start: 0, end: 1, original: 'x', text: 'v' }])).toEqual({ text: 'v-Y-z', skipped: [] });
+    expect(applyEdits('x-y-z', [outer, { start: 3, end: 4, original: '-', text: '+' }])).toEqual({ text: 'x-Y+z', skipped: [] });
+    expect(applyEdits('x-y-z', [outer, { start: 1, end: 2, original: '-', text: '+' }])).toEqual({ text: 'x+Y-z', skipped: [] });
   });
 
   it('skips edits that overlap an applied one even when they make the same change at the same end', () => {
