@@ -34,9 +34,10 @@ describe('search expressions', () => {
 });
 
 describe('searched lines', () => {
-  const note = splitLines('---\ntitle: Plan\ntags: [x]\n---\n# Plan\r\nBody plan\r```\nplan()\n```');
+  const noteLines = () => splitLines('---\ntitle: Plan\ntags: [x]\n---\n# Plan\r\nBody plan\r```\nplan()\n```');
 
   it('splits lines like the metadata cache and finds leading frontmatter delimiters', () => {
+    const note = noteLines();
     expect(note).toEqual(['---', 'title: Plan', 'tags: [x]', '---', '# Plan', 'Body plan', '```', 'plan()', '```']);
     expect(frontmatterRange(note)).toEqual({ start: 0, end: 3 });
     expect(frontmatterRange(['---', 'unclosed'])).toBeUndefined();
@@ -44,6 +45,7 @@ describe('searched lines', () => {
   });
 
   it('reads the body, the frontmatter content or everything, and never skipped code lines', () => {
+    const note = noteLines();
     const lines = (scope: 'body' | 'frontmatter' | 'all', skipped?: Set<number>) => note.map((_, index) => index).filter(searchedLines(note, 'markdown', scope, skipped));
     expect(lines('frontmatter')).toEqual([1, 2]);
     expect(lines('body')).toEqual([4, 5, 6, 7, 8]);

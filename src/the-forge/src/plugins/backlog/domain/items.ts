@@ -83,7 +83,7 @@ export function nearestFolderNote(path: string, exists: (path: string) => boolea
   if (folder !== null && noteOf(folder) === path) folder = parentOf(folder);
   for (; folder !== null; folder = parentOf(folder)) {
     const candidate = noteOf(folder);
-    if (candidate !== path && exists(candidate)) return candidate;
+    if (exists(candidate)) return candidate;
   }
   return null;
 }

@@ -28,18 +28,23 @@ const notes = {
   'w/Doc.md': { type: 'Deliverable', order: 60, status: 'Draft', release: '[[1.0]]', effort: 'big' },
   'm/Gate.md': { type: 'Milestone', order: 70, release: '[[1.0]]' },
 };
-const source = vault(notes);
-const plan = resolveSettings({ stateProperty: 'note.status', dependsOnProperty: 'note.dependsOn', releaseProperty: 'note.release' });
-const release = resolveReleaseSettings({
-  membershipProperty: 'note.release', targetDateProperty: 'note.target-date', releasedDateProperty: 'note.released', releaseStatusProperty: 'note.status',
-  estimateProperty: 'note.effort', capacityProperty: 'note.capacity', dependsOnProperty: 'note.dependsOn', riskProperty: 'note.risk',
-  criticalRiskValues: 'High', addressedRiskValues: 'Mitigated', releaseNotesFolder: 'docs/notes/',
-});
-const model = buildModel(source, Object.keys(notes), plan, path => path in notes);
+/** The fixture vault, settings and model, built inside each test so a mutant is active while they are read. */
+function fixture() {
+  const source = vault(notes);
+  const plan = resolveSettings({ stateProperty: 'note.status', dependsOnProperty: 'note.dependsOn', releaseProperty: 'note.release' });
+  const release = resolveReleaseSettings({
+    membershipProperty: 'note.release', targetDateProperty: 'note.target-date', releasedDateProperty: 'note.released', releaseStatusProperty: 'note.status',
+    estimateProperty: 'note.effort', capacityProperty: 'note.capacity', dependsOnProperty: 'note.dependsOn', riskProperty: 'note.risk',
+    criticalRiskValues: 'High', addressedRiskValues: 'Mitigated', releaseNotesFolder: 'docs/notes/',
+  });
+  const model = buildModel(source, Object.keys(notes), plan, path => path in notes);
+  return { source, plan, release, model };
+}
 const today = { year: 2026, month: 10, day: 5 };
 
 describe('release membership and index', () => {
   it('resolves exactly one link to a Release and reports every other membership as unresolved', () => {
+    const { source, plan, release, model } = fixture();
     const paths = new Set(model.releases.map(item => item.path));
     const of = (path: string) => membershipTarget(source, model.byPath.get(path)!, paths, release);
     expect(of('w/Story.md')).toBe('r/1.0.md');
@@ -58,6 +63,7 @@ describe('release membership and index', () => {
 
 describe('readiness', () => {
   it('reports estimated, blocked and risk criteria over the direct members', () => {
+    const { source, plan, release, model } = fixture();
     const paths = new Set(model.releases.map(item => item.path));
     const rows = scopeRows(model, item => membershipTarget(source, item, paths, release) === 'r/1.0.md');
     expect(rows.map(row => [row.item.title, row.depth, row.context])).toEqual([['Epic', 0, true], ['Story', 1, false], ['Fix', 1, false], ['Doc', 0, false]]);
@@ -77,6 +83,7 @@ describe('readiness', () => {
 
 describe('release notes', () => {
   it('writes the plugin\'s marker, headings and type groups byte for byte', () => {
+    const { source, release, model } = fixture();
     const paths = new Set(model.releases.map(item => item.path));
     const rows = scopeRows(model, item => membershipTarget(source, item, paths, release) === 'r/1.0.md');
     const source0 = releaseNotesSource('docs/Product Backlog.base', 'Release › Management', 'r/1.0.md');

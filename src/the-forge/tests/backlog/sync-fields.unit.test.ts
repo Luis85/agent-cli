@@ -52,29 +52,30 @@ describe('the three-way field decision', () => {
 });
 
 describe('name mappings', () => {
-  const agile = processMapping('agile');
-  const scrum = processMapping('scrum');
+  // Mappings resolve inside each test, so a mutant is active while they are read.
+  const agile = () => processMapping('agile');
+  const scrum = () => processMapping('scrum');
 
   it('maps backlog types to process work item types and back to the first local type', () => {
-    expect(remoteType(agile, 'pbi')).toBe('User Story');
-    expect(remoteType(scrum, 'PBI')).toBe('Product Backlog Item');
-    expect(remoteType(agile, 'Milestone')).toBeUndefined();
-    expect(localType(agile, 'User Story', null)).toBe('PBI');
+    expect(remoteType(agile(), 'pbi')).toBe('User Story');
+    expect(remoteType(scrum(), 'PBI')).toBe('Product Backlog Item');
+    expect(remoteType(agile(), 'Milestone')).toBeUndefined();
+    expect(localType(agile(), 'User Story', null)).toBe('PBI');
     expect(localType(processMapping('basic'), 'Issue', 'Bug')).toBe('Bug');
     expect(localType(processMapping('basic'), 'Issue', null)).toBe('PBI');
-    expect(localType(agile, 'Risk', 'PBI')).toBeUndefined();
+    expect(localType(agile(), 'Risk', 'PBI')).toBeUndefined();
   });
 
   it('maps states with Type:State entries first and reads them back in the view\'s declared vocabulary', () => {
-    expect(remoteState(agile, 'PBI', 'Done')).toBe('Closed');
-    expect(remoteState(scrum, 'PBI', 'Active')).toBe('Committed');
-    expect(remoteState(scrum, 'Task', 'Active')).toBe('In Progress');
-    expect(remoteState(agile, 'PBI', 'Blocked')).toBe('Blocked');
-    expect(localState(agile, 'PBI', 'Closed', null, [])).toBe('Closed');
-    expect(localState(agile, 'PBI', 'Closed', null, ['Open', 'Active', 'Done'])).toBe('Done');
-    expect(localState(agile, 'PBI', 'New', null, ['Open', 'Active', 'Done'])).toBe('Open');
-    expect(localState(agile, 'PBI', 'Active', 'In Progress', [])).toBe('In Progress');
-    expect(localState(scrum, 'Task', 'In Progress', null, [])).toBe('In Progress');
+    expect(remoteState(agile(), 'PBI', 'Done')).toBe('Closed');
+    expect(remoteState(scrum(), 'PBI', 'Active')).toBe('Committed');
+    expect(remoteState(scrum(), 'Task', 'Active')).toBe('In Progress');
+    expect(remoteState(agile(), 'PBI', 'Blocked')).toBe('Blocked');
+    expect(localState(agile(), 'PBI', 'Closed', null, [])).toBe('Closed');
+    expect(localState(agile(), 'PBI', 'Closed', null, ['Open', 'Active', 'Done'])).toBe('Done');
+    expect(localState(agile(), 'PBI', 'New', null, ['Open', 'Active', 'Done'])).toBe('Open');
+    expect(localState(agile(), 'PBI', 'Active', 'In Progress', [])).toBe('In Progress');
+    expect(localState(scrum(), 'Task', 'In Progress', null, [])).toBe('In Progress');
   });
 
   it('maps priority labels by their leading number and iteration paths under the iteration root', () => {

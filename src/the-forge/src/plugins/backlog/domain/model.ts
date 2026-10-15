@@ -56,7 +56,7 @@ const compareSiblings = (a: RawItem, b: RawItem) => {
  */
 export function buildModel(source: NoteSource, results: readonly string[], settings: BacklogSettings, exists: (path: string) => boolean): BacklogModel {
   const store = createItems(source, results, settings, exists);
-  let all = store.all as BacklogItem[];
+  const all = store.all as BacklogItem[];
   const byPath = store.byPath as Map<string, BacklogItem>;
   for (const item of all) Object.assign(item, { parent: null, children: [], orphan: false, cycleCut: false, prerequisites: [], brokenPrerequisites: [] });
   const roots: BacklogItem[] = [];
@@ -87,7 +87,6 @@ export function buildModel(source: NoteSource, results: readonly string[], setti
         stack.push(...current.children);
       }
     }
-    all = all.filter(item => byPath.has(item.path));
   }
   const sortDeep = (list: BacklogItem[]) => { list.sort(compareSiblings); for (const item of list) sortDeep(item.children); };
   sortDeep(roots);
