@@ -4,6 +4,8 @@ import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { errorCodes } from '../../src/domain/shared/error-catalog.ts';
 import { commonErrors } from '../../src/presentation/cli/catalog-commands.ts';
+import { projectOptionErrors } from '../../src/presentation/cli/invocation-policy.ts';
+import type { CommandContext } from '../../src/application/plugins/registry.ts';
 import type { Registry } from '../../src/application/plugins/registry.ts';
 import { inventoryErrorCodes, type ErrorCodeInventory } from '../support/error-codes.ts';
 import { fullRegistry } from '../support/full-registry.ts';
@@ -151,6 +153,30 @@ describe('declared command errors', async () => {
       for (const code of raised.get(file) ?? []) if (!common.has(code) && !declared.has(code)) missing.push(`${code} in ${file} (${ids.join(', ')})`);
     }
     expect(missing).toEqual([]);
+  });
+
+  it('publishes the project routing codes on every command or action that declares a projectOption', async () => {
+    const routed = [...registry.commands.values()].filter(command => command.projectOption !== undefined || Object.values(command.actions ?? {}).some(action => action.projectOption !== undefined));
+    expect(routed.map(command => command.id)).toEqual(expect.arrayContaining(['read', 'read-many', 'stat', 'apply', 'make', 'webview', 'browser']));
+    const context = {} as CommandContext;
+    const contract = async (id: string) => await registry.commands.get('schema')!.run([id], {}, context) as { commands: Array<{ errors: string[] }>; errors: Array<{ code: string }> };
+    for (const command of routed) {
+      const schema = await contract(command.id);
+      expect(schema.commands[0]!.errors, command.id).toEqual(expect.arrayContaining([...projectOptionErrors]));
+      expect(schema.errors.map(entry => entry.code), command.id).toEqual(expect.arrayContaining([...projectOptionErrors]));
+      const help = await registry.commands.get('help')!.run([command.id], {}, context) as { errors: string[] };
+      expect(help.errors, command.id).toEqual(schema.commands[0]!.errors);
+      expect(new Set(help.errors).size, `${command.id} lists each code once`).toBe(help.errors.length);
+    }
+    // A command without a project option publishes only its own codes.
+    expect((await contract('write')).commands[0]!.errors).toEqual(registry.commands.get('write')!.errors);
+  });
+
+  it('declares no code by hand that commonErrors or the project routing codes already publish', () => {
+    const derived = new Set<string>([...commonErrors, ...projectOptionErrors]);
+    for (const id of ['read', 'read-many', 'stat', 'apply']) {
+      expect((registry.commands.get(id)!.errors ?? []).filter(code => derived.has(code)), id).toEqual([]);
+    }
   });
 
   it('leaves no catalog code undeclared except the plugin host contract', () => {

@@ -5,7 +5,7 @@ import { portableCli } from '../support/portable-cli.ts';
  * `tests/cli/command-errors.integration.test.ts` attributes the codes a plugin raises in its own source. A plugin
  * command also fails with codes the kernel ports it calls raise, such as NOT_FOUND from a file read. These failing
  * invocations each reach such a code, which `schema <command>` must publish in the command's `errors` or in
- * `commonErrors`.
+ * `commonErrors`; so does a project option naming a missing or malformed project.
  */
 const { cli } = portableCli();
 const probes: ReadonlyArray<readonly [code: string, args: readonly string[]]> = [
@@ -20,6 +20,11 @@ const probes: ReadonlyArray<readonly [code: string, args: readonly string[]]> = 
   ['NOT_FOUND', ['claude', 'agents', 'inspect', 'nope']],
   ['NOT_FOUND', ['read', 'nope.md']],
   ['NOT_FOUND', ['move', 'nope.md', 'x.md', '--if-match', 'abc']],
+  ['PROJECT_NOT_FOUND', ['read', 'nope.md', '--project', 'missing']],
+  ['INVALID_PROJECT_NAME', ['read-many', 'nope.md', '--project', 'Not_A_Name']],
+  ['PROJECT_NOT_FOUND', ['stat', 'nope.md', '--project', 'missing']],
+  ['PROJECT_NOT_FOUND', ['apply', 'plan.json', '--project', 'missing']],
+  ['PROJECT_NOT_FOUND', ['webview', 'inspect', '--project', 'missing']],
   ['INVALID_TEMPLATE_DATE', ['make', 'document', 'T', '--template', 'entity.md', '--date', '2026-13-45', '--dry-run']],
   ['INVALID_CLAUDE_OPTION', ['claude', 'plugins', 'create', 'x', '--scope', 'user']],
 ];

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { invocationPolicy } from '../../src/presentation/cli/invocation-policy.ts';
+import { declaredErrors, invocationPolicy } from '../../src/presentation/cli/invocation-policy.ts';
 import type { CommandMetadata } from '../../src/application/plugins/command-metadata.ts';
 import { builtinCommands } from '../support/builtin-commands.ts';
 
@@ -59,5 +59,14 @@ describe('invocation scope and plugin activation policy from command metadata', 
     expect(invocationPolicy(declared, ['publish'], { target: 'web' })).toEqual({ scope: 'project', activatePlugins: true, requestedProject: 'web' });
     expect(invocationPolicy(declared, ['doctor'], {})).toEqual({ scope: 'workspace', activatePlugins: false });
     expect(invocationPolicy(declared, ['unknown'], {})).toEqual({ scope: 'workspace', activatePlugins: true });
+  });
+
+  it('declares the project routing codes for a project option on the command or any of its actions', () => {
+    const routing = ['INVALID_PROJECT_NAME', 'PROJECT_NOT_FOUND', 'INVALID_PROJECT'];
+    const options = { target: { type: 'string', description: 'Project' } } as const;
+    expect(declaredErrors({ ...plugin, errors: ['CONFLICT'] })).toEqual(['CONFLICT']);
+    expect(declaredErrors({ ...plugin, options, projectOption: 'target', errors: ['CONFLICT', 'PROJECT_NOT_FOUND'] })).toEqual(['CONFLICT', 'PROJECT_NOT_FOUND', 'INVALID_PROJECT_NAME', 'INVALID_PROJECT']);
+    expect(declaredErrors({ ...plugin, options, actions: { list: { description: 'List' }, publish: { description: 'Publish', projectOption: 'target' } } })).toEqual(routing);
+    expect(declaredErrors({ ...plugin, options, actions: { list: { description: 'List' } } })).toEqual([]);
   });
 });

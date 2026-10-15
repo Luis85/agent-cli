@@ -26,7 +26,7 @@ export function readManyCommand(): Command {
     args: [{ name: 'paths', description: 'Vault path relative to the command scope.', required: true, variadic: true }],
     options: { project: option.string('Use this project instead of the selected project.') },
     output: readManyOutput,
-    errors: ['INVALID_ARGUMENT', 'INVALID_PATH', 'UNSAFE_PATH', 'NOT_FOUND', 'INVALID_FRONTMATTER', 'INVALID_YAML', 'INVALID_CANVAS', 'INVALID_BASE', 'INVALID_ENCODING', 'OPERATION_FAILED'],
+    errors: ['NOT_FOUND', 'INVALID_FRONTMATTER', 'INVALID_YAML', 'INVALID_CANVAS', 'INVALID_BASE', 'INVALID_ENCODING'],
     async run(args, _flags, context) {
       arity(args, 1, maxFiles);
       // Validate the entire path list before reading; vaultPath accepts only canonical relative POSIX paths.
