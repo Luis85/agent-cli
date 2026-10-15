@@ -55,6 +55,7 @@ describe('property uses and types', () => {
     [[], null],
     [[null, null], null],
     [[null, null, 'text'], 'text'],
+    [['text', null, null], 'text'],
     [['text', 'number', 'number'], 'number'],
     [['number', 'text'], 'number'],
     [['text', null, 'number', 'list', 'number', 'text', 'text'], 'text'],
