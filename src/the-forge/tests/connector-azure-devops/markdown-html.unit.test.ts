@@ -94,6 +94,7 @@ describe('Markdown to HTML fenced code', () => {
     ['a line within three columns of the opener stays code', '    ```\n a\n    ```', '<pre><code>a</code></pre>'],
     ['a tab after spaces reaches the next tab stop', '  \t```\n a\n  \t```', '<pre><code>a</code></pre>'],
     ['a blank line stays in an indented fence', '\t```\n\n\ta\n\t```', '<pre><code>\na</code></pre>'],
+    ['a whitespace-only line stays in an indented fence', '\t\t```\n  \n\t\ta\n\t\t```', '<pre><code>\na</code></pre>'],
     ['a line leaving the list item ends the fence', '\t```\ncode\n# H', '<pre><code></code></pre><p>code</p><h1>H</h1>'],
     ['backticks inside a line are not a fence', 'Use ``` here', '<p>Use ``` here</p>'],
     ['a backtick info string cannot hold a backtick', '```foo``` bar', '<p><code>foo</code> bar</p>'],
@@ -113,7 +114,8 @@ describe('Markdown to HTML fenced code', () => {
     ['a closer three columns past an indented opener', '\t```\n\ta\n\t   ```\nb', '<pre><code>a</code></pre><p>b</p>'],
     ['a closer four columns past an indented opener is code', '\t```\n\ta\n\t    ```', '<pre><code>a\n    ```</code></pre>'],
     ['a closer less indented than its opener', '\t```\n\ta\n ```\nb', '<pre><code>a</code></pre><p>b</p>'],
-    ['text after the closing run is code', '```\na\n``` x\nb', '<pre><code>a\n``` x\nb</code></pre>'],
+    ['a line ending in a fence run is code', '```\na ```\nb', '<pre><code>a ```\nb</code></pre>'],
+    ['text after the closing run is code','```\na\n``` x\nb', '<pre><code>a\n``` x\nb</code></pre>'],
   ])('closes fences like CommonMark: %s', (_, markdown, html) => {
     expect(markdownToHtml(markdown)).toBe(html);
   });
@@ -149,7 +151,8 @@ describe('Markdown to HTML inline markup', () => {
     ['backticks in the target stay literal', '[x](https://a.b/`code`)', '<p><a href="https://a.b/`code`">x</a></p>'],
     ['backticks in the target stay escaped', '[x](https://a.b/`"q<`)', '<p><a href="https://a.b/`&quot;q&lt;`">x</a></p>'],
     ['code in the label and the target', '`a` [b](https://c.d/`e`) `f`', '<p><code>a</code> <a href="https://c.d/`e`">b</a> <code>f</code></p>'],
-    ['a target in backticks is not a scheme', '[x](`https://a.b`)', '<p>x</p>'],
+    ['backticks in a target after ten code spans', `${'`c` '.repeat(10)}[x](https://a.b/\`d\`)`, `<p>${'<code>c</code> '.repeat(10)}<a href="https://a.b/\`d\`">x</a></p>`],
+    ['a target in backticks is not a scheme','[x](`https://a.b`)', '<p>x</p>'],
     ['a target with a space is not a link', '[x](a b)', '<p>[x](a b)</p>'],
     ['an unbalanced target is not a link', '[x](https://a.b/(c)', '<p>[x](https://a.b/(c)</p>'],
     ['a javascript target keeps only the label', '[x](javascript:alert(1))', '<p>x</p>'],

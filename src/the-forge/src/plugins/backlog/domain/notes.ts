@@ -112,7 +112,7 @@ const CLOSING_FENCE = /^[ \t]*(`{3,}|~{3,})\s*$/;
 /** The columns a line's indentation takes, a tab reaching the next multiple of four. */
 function indentation(line: string): number {
   let width = 0;
-  for (const char of /^[ \t]*/.exec(line)![0]) width = char === '\t' ? (Math.floor(width / 4) + 1) * 4 : width + 1;
+  for (const char of /[ \t]*/.exec(line)![0]) width = char === '\t' ? (Math.floor(width / 4) + 1) * 4 : width + 1;
   return width;
 }
 
@@ -150,7 +150,8 @@ function codeSpanEnd(body: string, start: number): number {
 
 /** Where the comment whose text starts at `from` ends: after the next unescaped `%%`, or at the end of the body. */
 function commentEnd(body: string, from: number): number {
-  const marker = /\\(?:%%|[\s\S])|%%/g;
+  // An escaped backslash cannot escape the marker after it; any other escaped character is not a `%%`.
+  const marker = /\\(?:\\|%%)|%%/g;
   marker.lastIndex = from;
   for (let found = marker.exec(body); found !== null; found = marker.exec(body)) if (found[0] === '%%') return marker.lastIndex;
   return body.length;

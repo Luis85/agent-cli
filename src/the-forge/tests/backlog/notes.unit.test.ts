@@ -177,7 +177,8 @@ describe('Obsidian comments around code', () => {
     ['backticks do not close a tilde fence', '~~~\n```\n%%k%%\n~~~\n%%c%%', '~~~\n```\n%%k%%\n~~~\n', ['%%c%%']],
     ['a shorter run does not close', '````\n```\n%%k%%\n````\n%%c%%', '````\n```\n%%k%%\n````\n', ['%%c%%']],
     ['a longer run closes', '```\n%%k%%\n`````\n%%c%%', '```\n%%k%%\n`````\n', ['%%c%%']],
-    ['a line with an info string does not close', '```\n```js\n%%k%%\n```\n%%c%%', '```\n```js\n%%k%%\n```\n', ['%%c%%']],
+    ['a line ending in a fence run does not close', '```\nx ```\n%%k%%\n```\n%%c%%', '```\nx ```\n%%k%%\n```\n', ['%%c%%']],
+    ['a line with an info string does not close','```\n```js\n%%k%%\n```\n%%c%%', '```\n```js\n%%k%%\n```\n', ['%%c%%']],
     ['a closer with trailing spaces closes', '```\n%%k%%\n```  \n%%c%%', '```\n%%k%%\n```  \n', ['%%c%%']],
     ['a closer indented by three spaces closes', '```\n%%k%%\n   ```\n%%c%%', '```\n%%k%%\n   ```\n', ['%%c%%']],
     ['a closer indented by four spaces is code', '```\n    ```\n%%k%%\n```\n%%c%%', '```\n    ```\n%%k%%\n```\n', ['%%c%%']],
@@ -241,6 +242,8 @@ describe('Obsidian comments around code', () => {
     ['a number glued to text', 'a `b\n1.x %%k%% `'],
     ['an underline character before text', 'a `b\n==x %%k%% `'],
     ['mixed rule characters', 'a `b\n-*\n%%k%% `'],
+    ['a closing run starting a line', 'a `b %%k%%\n` c'],
+    ['a tilde starting a line', 'a `b\n~ %%k%% `'],
     ['an indented paragraph line', 'a `b\n    %%k%% `'],
   ])('continues a code span on a paragraph line: %s', (_, body) => {
     expect(withoutComments(body)).toBe(body);
@@ -262,6 +265,9 @@ describe('Obsidian comments', () => {
     ['three backslashes escape the marker', 'a \\\\\\%%x %%y%%', 'a \\\\\\%%x ', ['%%y%%']],
     ['an escaped marker does not close a comment', '%%a \\%% b%% c', ' c', ['%%a \\%% b%%']],
     ['an escaped character in a comment', '%%a\\b%% c', ' c', ['%%a\\b%%']],
+    ['an escaped backslash in a comment', '%%a\\\\%% b%% c', ' b', ['%%a\\\\%%', '%% c']],
+    ['an escaped marker then a percent sign', 'a \\%%% b %%c%%', 'a \\%%% b ', ['%%c%%']],
+    ['an escaped marker then a percent sign in a comment', '%%a \\%%% b', '', ['%%a \\%%% b']],
     ['a backslash before a line break', 'a\\\n```\n%%k%%\n```\n%%c%%', 'a\\\n```\n%%k%%\n```\n', ['%%c%%']],
     ['a backslash ending the body', 'a %%b%% \\', 'a  \\', ['%%b%%']],
   ])('hides what Obsidian hides: %s', (_, body, without, found) => {
