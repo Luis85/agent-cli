@@ -8,7 +8,7 @@ export type { GenerationService } from './application/generation/plans.ts';
 export type { EventDefinition, EventRecord, EventChannel } from './application/plugins/events.ts';
 export type { HostEventMap, HostEventId, HostEventRecord, VaultChange, VaultFileChange, VaultFolderChange, VaultRename, CachedMetadataRecord } from './application/plugins/host-events.ts';
 export type { FileSnapshot, FileChange, FileRename, FileStat, GuardRequest, PlannedChange, RemoveRequest, RenameRequest, WriteRequest } from './domain/documents/file.ts';
-export type { CommitOptions, WriteOptions } from './application/workspace/workspace.ts';
+export type { CommitOptions, ReadOptions, WriteOptions } from './application/workspace/workspace.ts';
 export type { BatchResult, CommittedBatch, FileBatch, FileRepository, DocumentCodec, WriteBatchResult } from './application/workspace/ports.ts';
 export type { App, Guard, VaultFacade, MetadataCacheFacade, WorkspaceFacade } from './application/vault/app.ts';
 export type { FileManager, MoveOptions, DeleteOptions, BrokenLink } from './application/vault/file-manager.ts';
