@@ -37,7 +37,7 @@ export const nativeFormats = {
 /** Source, data and configuration extensions read and edited as UTF-8 text. */
 export const textExtensions = [
   'ts', 'tsx', 'mts', 'cts', 'js', 'jsx', 'mjs', 'cjs', 'json', 'jsonc', 'yaml', 'yml', 'toml', 'ini',
-  'css', 'scss', 'less', 'html', 'htm', 'xml', 'vue', 'svelte', 'txt', 'log', 'csv', 'tsv', 'sh', 'py', 'sql',
+  'css', 'scss', 'less', 'html', 'htm', 'xml', 'vue', 'svelte', 'txt', 'log', 'csv', 'tsv', 'sh', 'ps1', 'py', 'sql',
 ] as const;
 /** Basenames and their nonempty dot-suffix variants read as UTF-8 text, case-insensitively; native extensions win. */
 export const textFilenames = ['Dockerfile', 'Containerfile'] as const;
