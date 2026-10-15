@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { editSection, type RangeEditMode } from '../../src/domain/documents/sections.ts';
+import { editSection, lineStart, nextLine, type RangeEditMode } from '../../src/domain/documents/sections.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 import { ObsidianMetadataParser } from '../../src/infrastructure/metadata/parser.ts';
 
@@ -84,5 +84,79 @@ describe('unaddressable sections', () => {
     expect(section(note, 'In \\> Out > Step \\> Next', 'replace', 'x')).toBe(note.replace('step', 'x'));
     expect(failure(() => section(note, 'Missing', 'append', 'x')).details!.headings).toEqual([{ section: 'In \\> Out', line: 1 }, { section: 'In \\> Out > Step \\> Next', line: 5 }]);
     expect(section('# a -> b\n\nx\n', 'a -> b', 'replace', 'y')).toBe('# a -> b\n\ny\n');
+  });
+});
+
+describe('section path matching', () => {
+  it('needs each ancestor segment in order before the heading, never the heading itself', () => {
+    expect(failure(() => section('# A\n\nx\n', 'A > A', 'replace', 'y'))).toMatchObject({ code: 'SECTION_NOT_FOUND' });
+    // `A > B` names both `## B` and `### B` under `# A`; an ancestor `B` never stands for a later segment.
+    expect(failure(() => section('# A\n## B\n### B\n', 'A > B', 'replace', 'x'))).toMatchObject({
+      code: 'AMBIGUOUS_SECTION', details: { matches: 2, candidates: [{ section: 'A > B', line: 2 }, { section: 'A > B > B', line: 3 }] },
+    });
+  });
+
+  it('prefers an exact heading over headings that differ only in letter case', () => {
+    const note = '# Plan\n\nx\n\n# plan\n\ny\n';
+    expect(section(note, 'Plan', 'replace', 'z')).toBe('# Plan\n\nz\n\n# plan\n\ny\n');
+    expect(failure(() => section(note, 'PLAN', 'replace', 'z'))).toMatchObject({ code: 'AMBIGUOUS_SECTION', details: { matches: 2 } });
+  });
+
+  it('trims the spaces around each path segment', () => {
+    expect(section(plan, ' Plan >  Mitigations ', 'replace', 'Train.')).toBe(plan.replace('Hire early.', 'Train.'));
+  });
+
+  it('does not depend on the order in which the metadata lists headings', () => {
+    const parsed = metadata(plan);
+    const reversed = { ...parsed, headings: [...parsed.headings!].reverse() };
+    expect(editSection(plan, reversed, 'Plan > Risks', 'replace', '- Budget')).toBe(section(plan, 'Plan > Risks', 'replace', '- Budget'));
+    expect(failure(() => editSection('text\n', {}, 'A', 'append', 'x'))).toMatchObject({ code: 'SECTION_NOT_FOUND', details: { section: 'A', headings: [] } });
+  });
+});
+
+describe('section edit failures', () => {
+  const message = (edit: () => string) => (failure(edit) as unknown as Error).message;
+
+  it('explains each failure with the path, the line and a way to tell candidates apart', () => {
+    expect(message(() => section(plan, 'Budget', 'append', 'x'))).toBe('No heading matches the section path "Budget".');
+    expect(message(() => section(plan, 'Risks', 'append', 'x', 4))).toBe('No heading matching the section path "Risks" starts on line 4.');
+    expect(message(() => section(plan, 'Risks', 'append', 'x'))).toContain('matches 2 headings; add an ancestor heading, such as "Parent > Risks", or pass one candidate\'s line');
+    expect(message(() => section(plan, 'Plan >  > Risks', 'append', 'x'))).toContain('write a " > " inside a heading as " \\> "');
+  });
+
+  it('lists at most 50 headings or candidates while counting every match', () => {
+    const many = Array.from({ length: 51 }, (_, index) => `# Same\n\nbody ${index}\n`).join('\n');
+    const ambiguous = failure(() => section(many, 'Same', 'append', 'x'));
+    expect(ambiguous.details).toMatchObject({ matches: 51 });
+    expect(ambiguous.details!.candidates).toHaveLength(50);
+    expect(failure(() => section(many, 'Other', 'append', 'x')).details!.headings).toHaveLength(50);
+    expect(failure(() => section(many, 'Same', 'append', 'x', 2)).details!.headings).toHaveLength(50);
+  });
+});
+
+describe('section body boundaries', () => {
+  it('writes inserted lines with the line ending of the first line break', () => {
+    expect(section('# A\n\ntext\r\n', 'A', 'append', 'x\ny')).toBe('# A\n\ntext\r\nx\ny\n');
+  });
+
+  it('removes the content for empty replacement text and prepends after every blank line below the heading', () => {
+    expect(section('# A\n\ntext\n\n# B\n', 'A', 'replace', '')).toBe('# A\n\n\n# B\n');
+    expect(section('# A\n\n\ntext\n', 'A', 'prepend', 'x')).toBe('# A\n\n\nx\ntext\n');
+  });
+
+  it('separates appended lines only from a last line that ends in a block id', () => {
+    expect(section('# A\n\n| a |\n| - |\n\n^tbl\n# B\n', 'A', 'append', 'x')).toBe('# A\n\n| a |\n| - |\n\n^tbl\n\nx\n# B\n');
+    expect(section('# A\n\nSee ^ref here\n# B\n', 'A', 'append', 'x')).toBe('# A\n\nSee ^ref here\nx\n# B\n');
+    expect(section('# A\n\nWow ^p!\n# B\n', 'A', 'append', 'x')).toBe('# A\n\nWow ^p!\nx\n# B\n');
+  });
+});
+
+describe('line helpers', () => {
+  it('finds the start of a line and the start of the next one', () => {
+    expect(nextLine('\nabc', 0)).toBe(1);
+    expect(nextLine('ab\ncd', 1)).toBe(3);
+    expect(nextLine('ab', 1)).toBe(2);
+    expect(lineStart('ab\ncd', 4)).toBe(3);
+    expect(lineStart('ab\ncd', 1)).toBe(0);
   });
 });

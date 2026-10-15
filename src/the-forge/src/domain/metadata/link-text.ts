@@ -69,15 +69,18 @@ function destinationAt(text: string, from: number): Destination | undefined {
   return end > start ? { start, end, raw: text.slice(start, end), angle: false } : undefined;
 }
 
-/** The destination of `[text](dest "title")` or `![alt](dest)` source text. */
+/**
+ * The destination of `[text](dest "title")` or `![alt](dest)` source text: the first `](` after which a destination
+ * and an optional title run to the closing `)`. Scanning from the left skips links nested in the text and never
+ * mistakes a `](` inside the title for the destination.
+ */
 export function markdownDestination(original: string): Destination | undefined {
   if (!original.endsWith(')')) return undefined;
-  for (let open = original.lastIndexOf(']('); open >= 0; open = original.lastIndexOf('](', open - 1)) {
+  for (let open = original.indexOf(']('); open >= 0; open = original.indexOf('](', open + 1)) {
     const found = destinationAt(original, open + 2);
     if (!found) continue;
     const rest = original.slice(found.end + (found.angle ? 1 : 0), -1);
     if (/^\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\((?:[^()\\]|\\.)*\))?\s*$/.test(rest)) return found;
-    if (open === 0) break;
   }
   return undefined;
 }

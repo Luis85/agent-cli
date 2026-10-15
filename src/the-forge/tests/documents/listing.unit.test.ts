@@ -53,10 +53,12 @@ describe('path globs', () => {
     expect(pathGlob('?.md')('😀.md')).toBe(true);
   });
 
+  // A backtracking matcher would try about C(200, 16) or C(60, 10) splits of these paths, while polynomial matching
+  // takes milliseconds even under mutation-testing instrumentation, so the budget only fails exponential matchers.
   it.each([
-    ['many stars in one segment', `g/${'*a'.repeat(40)}*c`, `g/${'a'.repeat(5000)}`],
-    ['many globstars', `${'**/a/'.repeat(30)}c`, `${'a/'.repeat(400)}b`],
-    ['stars across braces', `{${'*a'.repeat(20)}*c,${'*b'.repeat(20)}*c}`, 'ab'.repeat(3000)],
+    ['many stars in one segment', `g/${'*a'.repeat(16)}*c`, `g/${'a'.repeat(200)}`],
+    ['many globstars', `${'**/a/'.repeat(10)}c`, `${'a/'.repeat(60)}b`],
+    ['stars across braces', `{${'*a'.repeat(12)}*c,${'*b'.repeat(12)}*c}`, 'ab'.repeat(100)],
   ])('matches adversarial globs with %s in polynomial time', (_name, pattern, path) => {
     const started = performance.now();
     expect(pathGlob(pattern)(path)).toBe(false);

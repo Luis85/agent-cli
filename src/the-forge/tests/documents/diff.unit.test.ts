@@ -55,6 +55,33 @@ describe('unified dry-run diffs', () => {
     }
   });
 
+  it('orders a swap deterministically and never lets a shared ending overlap a shared beginning', () => {
+    expect(unifiedDiff({ path: 's.md', before: 'a\nb\n', after: 'b\na\n' })).toBe('--- a/s.md\n+++ b/s.md\n@@ -1,2 +1,2 @@\n-a\n b\n+a\n');
+    // Several minimal scripts keep one `a`; the preview always keeps the first.
+    expect(unifiedDiff({ path: 'x.md', before: 'a\nb\na\na\n', after: 'c\nc\na\nc\nc\n' })).toBe('--- a/x.md\n+++ b/x.md\n@@ -1,4 +1,5 @@\n+c\n+c\n a\n-b\n-a\n-a\n+c\n+c\n');
+    expect(unifiedDiff({ path: 'd.md', before: 'a\n', after: 'a\na\n' })).toBe('--- a/d.md\n+++ b/d.md\n@@ -1 +1,2 @@\n a\n+a\n');
+    expect(unifiedDiff({ path: 'd.md', before: 'a\na\n', after: 'a\n' })).toBe('--- a/d.md\n+++ b/d.md\n@@ -1,2 +1 @@\n a\n-a\n');
+  });
+
+  it('joins changes separated by at most twice the context into one hunk', () => {
+    const before = numbered(20);
+    const hunks = (second: number) => unifiedDiff({ path: 'f.md', before, after: before.replace('line 2\n', 'two\n').replace(`line ${second}\n`, 'changed\n') }).match(/^@@.*@@$/gm);
+    expect(hunks(9)).toEqual(['@@ -1,12 +1,12 @@']);
+    expect(hunks(10)).toEqual(['@@ -1,5 +1,5 @@', '@@ -7,7 +7,7 @@']);
+  });
+
+  it('searches a minimal script up to 2000 line edits and replaces the whole region beyond', () => {
+    const shifted = (count: number) => ({ before: `${numbered(count, 'old')}kept\n`, after: `kept\n${numbered(count, 'new')}` });
+    const minimal = shifted(1000), fallback = shifted(1001);
+    const exact = unifiedDiff({ path: 'large.txt', ...minimal });
+    expect(exact).toContain('\n kept\n');
+    expect(applyUnifiedDiff(minimal.before, exact)).toBe(minimal.after);
+    const replaced = unifiedDiff({ path: 'large.txt', ...fallback });
+    expect(replaced).toContain('\n-kept\n');
+    expect(replaced).toContain('\n+kept\n');
+    expect(applyUnifiedDiff(fallback.before, replaced)).toBe(fallback.after);
+  });
+
   it('stays exact when the edit distance exceeds the minimal-search limit', () => {
     const before = numbered(2500, 'old'), after = numbered(2500, 'new');
     expect(applyUnifiedDiff(before, unifiedDiff({ path: 'large.txt', before, after }))).toBe(after);

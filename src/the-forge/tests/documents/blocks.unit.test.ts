@@ -69,6 +69,65 @@ describe('block edits by ^id', () => {
   });
 });
 
+describe('block separation', () => {
+  it('separates content from the neighbouring lines of a paragraph at the start or end of a file', () => {
+    expect(block('Para ^p\n', 'p', 'prepend', 'X')).toBe('X\n\nPara ^p\n');
+    expect(block('\nPara ^p\n', 'p', 'prepend', 'X')).toBe('\nX\n\nPara ^p\n');
+    expect(block('Para ^p', 'p', 'append', 'X')).toBe('Para ^p\n\nX\n');
+    expect(block('Para ^p\n  ', 'p', 'append', 'X')).toBe('Para ^p\n\nX\n  ');
+    expect(block('Para ^p\n```\ncode\n```\n', 'p', 'append', 'X')).toBe('Para ^p\n\nX\n\n```\ncode\n```\n');
+  });
+
+  it('keeps the id of a paragraph whose replacement repeats the marker in another letter case', () => {
+    expect(block('Ship it. ^Ship\n', 'ship', 'replace', 'Now. ^ship')).toBe('Now. ^ship\n');
+    expect(block('Ship it. ^Ship\n', 'ship', 'replace', 'Now.')).toBe('Now. ^Ship\n');
+  });
+});
+
+describe('list item block layout', () => {
+  it('keeps ordered markers of several digits and the spacing after markers and checkboxes', () => {
+    expect(block('10. ten ^t\n', 't', 'replace', 'X')).toBe('10. X ^t\n');
+    expect(block('-  wide ^w\n', 'w', 'replace', 'X\nY')).toBe('-  X\n   Y ^w\n');
+    expect(block('- [ ]  task ^x\n', 'x', 'replace', 'X')).toBe('- [ ]  X ^x\n');
+    expect(block('- - inner ^x\n', 'x', 'replace', 'a\nb')).toBe('- - a\n    b ^x\n');
+  });
+
+  it('indents continuation lines of a replacement, keeping blank lines free of indentation', () => {
+    expect(block('- one ^li\n', 'li', 'replace', 'a\n\nb\n')).toBe('- a\n\n  b ^li\n');
+    expect(block('- one ^li\n', 'li', 'replace', 'a\n   \nb')).toBe('- a\n   \n  b ^li\n');
+    expect(block('> - one ^q\n', 'q', 'replace', 'a\n\nb')).toBe('> - a\n>\n>   b ^q\n');
+    expect(block('- one ^li\n', 'li', 'replace', 'x ^LI')).toBe('- x ^LI\n');
+  });
+
+  it('adds sibling items before the first line, after nested items at any depth and inside quotes', () => {
+    expect(block('- one ^li\n', 'li', 'prepend', '- zero')).toBe('- zero\n- one ^li\n');
+    expect(block('- a ^pa\n  - child\n    - grand\n- b\n', 'pa', 'append', '- x')).toBe('- a ^pa\n  - child\n    - grand\n- x\n- b\n');
+    expect(block('> - one ^q\n', 'q', 'append', '- a\n\n- b')).toBe('> - one ^q\n> - a\n>\n> - b\n');
+    expect(block('> - one ^q\n', 'q', 'append', '- a\n \n- b')).toBe('> - one ^q\n> - a\n>\n> - b\n');
+  });
+
+  it('suggests a list marker for content that is not a list item', () => {
+    const plain = failure(() => block('- one ^li\n', 'li', 'append', '  probe '));
+    expect(plain).toMatchObject({ code: 'INVALID_INPUT', details: { block: 'li' } });
+    expect(plain.message).toBe('Content added next to the list item ^li becomes sibling list items, so it must start with a list marker, such as "- probe".');
+    expect(failure(() => block('- one ^li\n', 'li', 'prepend', '')).message).toContain('such as "- Item"');
+  });
+});
+
+describe('block lookup', () => {
+  it('names unknown and duplicate ids in its messages and lists known ids in document order', () => {
+    expect(failure(() => block('Para ^p\n', 'nope', 'append', 'x')).message).toBe('No block has the id ^nope.');
+    expect(failure(() => block('Para ^p\n', 'p^', 'append', 'x'))).toMatchObject({ code: 'SECTION_NOT_FOUND', details: { block: 'p^' } });
+    expect(failure(() => block('One ^dup\n\nTwo ^dup\n', 'dup', 'append', 'x')).message).toContain('^dup occurs 2 times');
+    const text = 'One ^a\n\nTwo ^b\n\nThree ^c\n', parsed = metadata(text);
+    const reversed = { ...parsed, blocks: Object.fromEntries(Object.entries(parsed.blocks!).reverse()) };
+    expect(failure(() => editBlock(text, reversed, 'z', 'append', 'x')).details).toEqual({ block: 'z', blocks: ['a', 'b', 'c'] });
+    expect(failure(() => editBlock('text\n', {}, 'z', 'append', 'x')).details).toEqual({ block: 'z', blocks: [] });
+    const many = Array.from({ length: 51 }, (_, index) => `Para ^b${index}\n`).join('\n');
+    expect(failure(() => block(many, 'z', 'append', 'x')).details!.blocks).toEqual(Array.from({ length: 50 }, (_, index) => `b${index}`));
+  });
+});
+
 describe('the block id keeps resolving after every edit', () => {
   const fixtures: { name: string; text: string; id: string; item: boolean }[] = [
     { name: 'paragraph', text: 'Para ^p\n\nafter\n', id: 'p', item: false },
