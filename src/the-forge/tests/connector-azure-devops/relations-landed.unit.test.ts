@@ -75,3 +75,49 @@ describe('relationsLanded over every concurrent removal', () => {
     expect(relationsLanded(read, operations, [returned, { ...added, url: `${organization}/0f3c1d2e/_apis/wit/workItems/5` }])).toBe(true);
   });
 });
+
+describe('relationsLanded on a returned item that differs from the plan', () => {
+  const remove = (index: number): PatchOperation => ({ op: 'remove', path: `/relations/${index}` });
+  const add = (relation: Relation): PatchOperation => ({ op: 'add', path: '/relations/-', value: relation });
+  const links = () => [item('System.LinkTypes.Dependency-Reverse', 4), item('System.LinkTypes.Related', 9), item('System.LinkTypes.Hierarchy-Reverse', 1)];
+
+  it('judges only relation removals and relation additions', () => {
+    const [predecessor, related] = links(), added = item('System.LinkTypes.Dependency-Reverse', 5);
+    const fields: PatchOperation[] = [{ op: 'test', path: '/rev', value: 3 }, { op: 'add', path: '/fields/System.State', value: 'Active' }, { op: 'remove', path: '/fields/Microsoft.VSTS.Common.Priority' }];
+    expect(relationsLanded([predecessor, related], [...fields, remove(0), add(added)], [related, added])).toBe(true);
+    expect(relationsLanded([predecessor, related], [...fields, remove(0), add(added)], [related])).toBe(false);
+    // Without a removal by index, nothing could have hit the wrong relation.
+    expect(relationsLanded([predecessor, related], [...fields, { op: 'test', path: '/relations/0', value: predecessor }, add(added)], [])).toBe(true);
+  });
+
+  it('requires a removed relation to be gone although everything else landed', () => {
+    const [predecessor, related, parent] = links(), added = item('System.LinkTypes.Dependency-Reverse', 5);
+    expect(relationsLanded([predecessor, related, parent], [remove(0), add(added)], [predecessor, related, added])).toBe(false);
+    expect(relationsLanded([predecessor, related, parent], [remove(0), add(added)], [related, added])).toBe(true);
+  });
+
+  it('requires every removed relation to be gone, not only one', () => {
+    const [predecessor, related, parent] = links();
+    expect(relationsLanded([predecessor, related, parent], [remove(1), remove(0)], [predecessor, parent])).toBe(false);
+    expect(relationsLanded([predecessor, related, parent], [remove(1), remove(0)], [related, parent])).toBe(false);
+    expect(relationsLanded([predecessor, related, parent], [remove(1), remove(0)], [parent])).toBe(true);
+  });
+
+  it('counts a repeated link beyond the reach of the removals as one that must stay', () => {
+    const [predecessor, related, parent] = links(), read = [predecessor, related, parent, { ...predecessor }];
+    expect(relationsLanded(read, [remove(0)], [predecessor, related, parent, predecessor])).toBe(false);
+    expect(relationsLanded(read, [remove(0)], [related, parent, predecessor])).toBe(true);
+  });
+
+  it('tells apart links of the same type to different URLs', () => {
+    const [pull, issue] = [hyperlink('https://github.com/contoso/app/pull/7'), hyperlink('https://github.com/contoso/docs/issues/7')];
+    expect(relationsLanded([pull, issue], [remove(0)], [pull])).toBe(false);
+    expect(relationsLanded([pull, issue], [remove(0)], [issue])).toBe(true);
+  });
+
+  it('tolerates relations that are not objects', () => {
+    const [predecessor, related] = links();
+    expect(relationsLanded([predecessor, null, related], [remove(0)], [null, related])).toBe(true);
+    expect(relationsLanded([predecessor, null, related], [remove(0)], [related])).toBe(false);
+  });
+});
