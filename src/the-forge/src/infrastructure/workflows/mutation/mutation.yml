@@ -1,0 +1,71 @@
+# Mutation testing for The Forge, authored inside the project. `workflows sync` generates
+# .github/workflows/the-forge--mutation.yml from this file: run steps start in the project directory
+# (defaults.run.working-directory) and env.FORGE_PROJECT_PATH names it for action inputs, because
+# working-directory applies only to run steps. Paths starting with / are workspace-relative.
+name: Mutation The Forge
+# Stryker mutates the domain code named in stryker.config.json and runs only unit tests,
+# so pull requests trigger it only through code, tests or its toolchain. This workflow is advisory: it is
+# not part of `npm run check` and must not be a required status check (its path filter would leave
+# unrelated pull requests waiting). The weekly run re-tests every mutant and refreshes the cached baseline.
+on:
+  pull_request:
+    paths: ['src/**', 'tests/**', 'scripts/mutation/**', 'stryker.config.json', 'vitest.config.ts', 'vitest.mutation.config.ts', 'package.json', 'package-lock.json']
+  schedule:
+    - cron: '23 4 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mutation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
+jobs:
+  mutation:
+    name: mutation (ubuntu-latest, Node 24)
+    runs-on: ubuntu-latest
+    # A full run took about 13 minutes on four cores; incremental pull request runs reuse earlier results.
+    timeout-minutes: 45
+    steps:
+      # Actions are pinned to full commit SHAs; the comment names the release.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ${{ env.FORGE_PROJECT_PATH }}/package-lock.json
+      # Stryker's incremental file records earlier results, so a rerun tests only mutants whose code or tests
+      # changed. Pull requests restore the latest result saved on their branch or the default branch. Incremental
+      # mode cannot see toolchain changes, so the lockfile, the mutation configuration and the runner key the cache.
+      - name: Hash the mutation toolchain
+        id: toolchain
+        env:
+          TOOLCHAIN: ${{ hashFiles(format('{0}/package-lock.json', env.FORGE_PROJECT_PATH), format('{0}/stryker.config.json', env.FORGE_PROJECT_PATH), format('{0}/vitest*.config.ts', env.FORGE_PROJECT_PATH), format('{0}/scripts/mutation/**', env.FORGE_PROJECT_PATH)) }}
+        run: echo "hash=$TOOLCHAIN" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.FORGE_PROJECT_PATH }}/.quality-reports/mutation/incremental.json
+          key: mutation-${{ steps.toolchain.outputs.hash }}-${{ github.run_id }}
+          restore-keys: mutation-${{ steps.toolchain.outputs.hash }}-
+      - name: Report toolchain
+        run: |
+          node --version
+          npm --version
+      - run: npm ci
+      # The scheduled run passes --force: it re-tests every mutant instead of trusting the incremental file.
+      - name: Mutation testing
+        env:
+          FORCE: ${{ github.event_name == 'schedule' && '--force' || '' }}
+        run: npm run mutate -- $FORCE
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutation-report
+          path: ${{ env.FORGE_PROJECT_PATH }}/.quality-reports/mutation/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 14

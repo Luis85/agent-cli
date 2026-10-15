@@ -214,10 +214,11 @@ const type$3 = "module";
 const license = "MIT";
 const engines = { "node": ">=22.12.0" };
 const config$1 = { "distribution": "../../bin" };
-const scripts = { "dev": "vite build --watch --emptyOutDir=false", "dev:server": "vite build --mode server --watch --emptyOutDir=false", "typecheck": "node scripts/quality/typecheck.mjs", "build": "vite build && vite build --mode server && node scripts/package.mjs", "test": "vitest run", "check": "npm run check:fast && npm run build && npm test && npm run showcase:check", "release": "npm run check && node scripts/release.mjs", "release:smoke": "node scripts/release-smoke.mjs", "install:release": "node scripts/install-forge.mjs", "lint": "node scripts/quality/lint.mjs", "analyze": "node scripts/quality/analyze.mjs", "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck", "check:structure": "node scripts/quality/structure.mjs --source-layout forge", "eval": "node scripts/eval/run.mjs", "bench": "node scripts/bench/metadata.mjs", "showcase": "node scripts/showcase.mjs", "showcase:check": "node scripts/showcase.mjs --check", "vendor:docker-agent": "node scripts/vendor-docker-agent.mjs" };
+const scripts = { "dev": "vite build --watch --emptyOutDir=false", "dev:server": "vite build --mode server --watch --emptyOutDir=false", "typecheck": "node scripts/quality/typecheck.mjs", "build": "vite build && vite build --mode server && node scripts/package.mjs", "test": "vitest run", "check": "npm run check:fast && npm run build && npm test && npm run showcase:check", "release": "npm run check && node scripts/release.mjs", "release:smoke": "node scripts/release-smoke.mjs", "install:release": "node scripts/install-forge.mjs", "lint": "node scripts/quality/lint.mjs", "analyze": "node scripts/quality/analyze.mjs", "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck", "check:structure": "node scripts/quality/structure.mjs --source-layout forge", "eval": "node scripts/eval/run.mjs", "bench": "node scripts/bench/metadata.mjs", "showcase": "node scripts/showcase.mjs", "showcase:check": "node scripts/showcase.mjs --check", "vendor:docker-agent": "node scripts/vendor-docker-agent.mjs", "mutate": "stryker run" };
 const dependencies$1 = { "ajv": "^8.20.0", "commander": "^15.0.0", "dayjs": "^1.11.23", "obsidian-bases-expression": "0.2.0", "parse5": "7.3.0", "playwright-core": "1.64.0", "remark-parse": "^11.0.0", "unified": "^11.0.5", "yaml": "^2.8.1", "zod": "^4.6.5" };
-const devDependencies = { "@angular/common": "21.2.25", "@angular/compiler": "21.2.25", "@angular/core": "21.2.25", "@angular/platform-browser": "21.2.25", "@types/jsdom": "27.0.0", "@types/node": "^22.18.0", "@types/react": "19.3.0", "@types/react-dom": "19.3.0", "@vue/compiler-sfc": "3.5.43", "fallow": "3.31.0", "jsdom": "27.4.0", "oxlint": "1.86.0", "react": "19.3.0", "react-dom": "19.3.0", "remark-frontmatter": "^5.0.0", "svelte": "5.57.2", "typescript": "~5.9.3", "vite": "^7.1.9", "vitest": "^5.0.3", "vue": "3.5.43" };
+const devDependencies = { "@angular/common": "21.2.25", "@angular/compiler": "21.2.25", "@angular/core": "21.2.25", "@angular/platform-browser": "21.2.25", "@stryker-mutator/core": "10.0.0", "@stryker-mutator/vitest-runner": "10.0.0", "@types/jsdom": "27.0.0", "@types/node": "^22.18.0", "@types/react": "19.3.0", "@types/react-dom": "19.3.0", "@vue/compiler-sfc": "3.5.43", "fallow": "3.31.0", "jsdom": "27.4.0", "oxlint": "1.86.0", "react": "19.3.0", "react-dom": "19.3.0", "remark-frontmatter": "^5.0.0", "svelte": "5.57.2", "typescript": "~5.9.3", "vite": "^7.1.9", "vitest": "^5.0.3", "vue": "3.5.43" };
 const allowScripts = { "esbuild": true, "fsevents": false };
+const overrides = { "typed-rest-client": { "qs": "6.16.0" } };
 const metadata$2 = {
   name,
   version: version$1,
@@ -230,7 +231,8 @@ const metadata$2 = {
   scripts,
   dependencies: dependencies$1,
   devDependencies,
-  allowScripts
+  allowScripts,
+  overrides
 };
 const placeholder = /\{([A-Za-z][A-Za-z0-9]*)\}/g;
 function fill$1(template, params = {}) {
@@ -44737,19 +44739,19 @@ function fields(process2) {
     description: "System.Description"
   };
 }
-function processMapping(process2, overrides = {}) {
+function processMapping(process2, overrides2 = {}) {
   const resolved = fields(process2);
-  for (const [field2, reference] of Object.entries(overrides.fields ?? {})) if (Object.hasOwn(resolved, field2)) resolved[field2] = reference.trim() === "" ? null : reference.trim();
+  for (const [field2, reference] of Object.entries(overrides2.fields ?? {})) if (Object.hasOwn(resolved, field2)) resolved[field2] = reference.trim() === "" ? null : reference.trim();
   return {
-    types: { ...types[process2], ...overrides.types },
-    states: { ...states[process2], ...overrides.states },
+    types: { ...types[process2], ...overrides2.types },
+    states: { ...states[process2], ...overrides2.states },
     fields: resolved,
-    properties: { ...overrides.properties }
+    properties: { ...overrides2.properties }
   };
 }
-function unknownFields(overrides) {
+function unknownFields(overrides2) {
   const known2 = Object.keys(fields("agile"));
-  return Object.keys(overrides.fields ?? {}).filter((field2) => !known2.includes(field2));
+  return Object.keys(overrides2.fields ?? {}).filter((field2) => !known2.includes(field2));
 }
 function markdownToHtml(markdown) {
   const lines2 = markdown.replace(/\r\n?/g, "\n").split("\n");
@@ -44991,10 +44993,10 @@ class AzureDevOpsConnector {
     };
   }
   mapping(connection) {
-    const overrides = isRecord$1(connection.settings.mappings) ? connection.settings.mappings : {};
-    const unknown2 = unknownFields(overrides);
+    const overrides2 = isRecord$1(connection.settings.mappings) ? connection.settings.mappings : {};
+    const unknown2 = unknownFields(overrides2);
     if (unknown2.length > 0) throw Object.assign(new Error(`Connection ${connection.id} maps unknown fields: ${unknown2.join(", ")}.`), { code: "CONNECTION_INVALID", details: { connection: connection.id, issues: unknown2.map((name2) => `mappings.fields.${name2}: not a neutral field`) } });
-    return processMapping(setting(connection, "process") ?? "agile", overrides);
+    return processMapping(setting(connection, "process") ?? "agile", overrides2);
   }
   link(connection, id2) {
     return `${organizationOf(connection)}/${encodeURIComponent(setting(connection, "project"))}/_workitems/edit/${id2}`;

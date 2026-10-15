@@ -150,9 +150,10 @@ npm ci
 npm run check:fast
 npm run check
 npm run release
+npm run mutate
 ```
 
-`check:fast` checks source/test structure, then runs Oxlint, fallow and TypeScript checks during development. `check` adds a fresh build and the labeled unit, integration and end-to-end tests. Fix the cause of a failing stage, rerun it, then finish with `check`; see the [development feedback loop](docs/how-to/develop-and-test.md#agent-feedback-loop). Commit source and the rebuilt workspace `bin` distribution together. The checkout tracks its self-management configuration and selection; installed plugins, editable templates and other workspaces' local context remain operating data. The CLI bundle needs only Node; developing The Forge or a generated project requires its development dependencies, including native Oxlint/fallow binaries.
+`check:fast` checks source/test structure, then runs Oxlint, fallow and TypeScript checks during development. `check` adds a fresh build and the labeled unit, integration and end-to-end tests. Fix the cause of a failing stage, rerun it, then finish with `check`; see the [development feedback loop](docs/how-to/develop-and-test.md#agent-feedback-loop). `mutate` runs Stryker mutation testing of selected domain code against the unit tests and writes reports to `.quality-reports/mutation/`; it is not part of `check`. See [mutation testing](docs/how-to/develop-and-test.md#mutation-testing). Commit source and the rebuilt workspace `bin` distribution together. The checkout tracks its self-management configuration and selection; installed plugins, editable templates and other workspaces' local context remain operating data. The CLI bundle needs only Node; developing The Forge or a generated project requires its development dependencies, including native Oxlint/fallow binaries.
 
 Maintainers plan in the [product research](https://github.com/Luis85/agent-cli/tree/main/src/the-forge/docs/research): perspective reports on the product, the next iteration plan with its milestones and the record of how they shipped, and the reference contracts of backlog-view and docker-agent. The folder lives in `docs/research/`; it is planning material, not product documentation, so `npm run build` leaves it out of the packaged `bin/data/docs`.
 

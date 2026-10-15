@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "plugins": ["@stryker-mutator/vitest-runner", "./scripts/mutation/vitest-runner.mjs"],
+  "testRunner": "forge-vitest",
+  "vitest": {
+    "configFile": "vitest.mutation.config.ts",
+    "related": true
+  },
+  "checkers": [],
+  "coverageAnalysis": "perTest",
+  "ignoreStatic": true,
+  "mutate": [
+    "src/plugins/backlog/domain/**/*.ts",
+    "src/domain/documents/{diff,apply-plan,literal-edit}.ts",
+    "src/domain/metadata/link-resolution.ts",
+    "src/plugins/search/domain/*.ts",
+    "src/plugins/agents/domain/{claude-merge,claude-rule-ownership,claude-permissions,semantics,references}.ts",
+    "src/plugins/connector-azure-devops/domain/{work-items,markdown-html,processes}.ts",
+    "!**/messages.ts",
+    "!**/errors.ts"
+  ],
+  "ignorePatterns": ["/.quality-reports", "/release", "/coverage"],
+  "tempDirName": ".quality-reports/stryker-tmp",
+  "incremental": true,
+  "incrementalFile": ".quality-reports/mutation/incremental.json",
+  "reporters": ["clear-text", "progress", "html", "json"],
+  "htmlReporter": { "fileName": ".quality-reports/mutation/index.html" },
+  "jsonReporter": { "fileName": ".quality-reports/mutation/mutation.json" },
+  "clearTextReporter": { "allowColor": false, "logTests": false, "reportScoreTable": true, "reportMutants": false },
+  "timeoutMS": 10000,
+  "timeoutFactor": 2,
+  "thresholds": { "high": 80, "low": 70, "break": 65 }
+}
