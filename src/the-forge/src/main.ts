@@ -1,3 +1,4 @@
+import { standardOutput } from './infrastructure/cli/standard-output.ts';
 import { NodeServerController } from './infrastructure/server/controller.ts';
 import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -228,21 +229,14 @@ async function run(): Promise<void> {
     await quitInvocation(events);
     await registry.dispose(events);
   }
-  try { process.stdout.write(JSON.stringify({ ...result, ...(activeContext ? { context: activeContext } : {}), events: selectEventOutput(events.history, eventLevel), warnings: events.warningRecords.map(warning => localizer.warning(warning)) }, null, compact ? undefined : 2) + '\n'); }
+  let response: string;
+  try { response = JSON.stringify({ ...result, ...(activeContext ? { context: activeContext } : {}), events: selectEventOutput(events.history, eventLevel), warnings: events.warningRecords.map(warning => localizer.warning(warning)) }, null, compact ? undefined : 2) + '\n'; }
   catch {
     process.exitCode = 1;
     // Keep committed change evidence even if a plugin command returns invalid data.
-    process.stdout.write(JSON.stringify({ ok: false, error: localizer.error(forgeError('INVALID_RESULT', 'Command returned non-serializable data. Inspect committed events before retrying.')), ...(activeContext ? { context: activeContext } : {}), events: selectEventOutput(events.history, eventLevel), warnings: events.warningRecords.map(warning => localizer.warning(warning)) }) + '\n');
+    response = JSON.stringify({ ok: false, error: localizer.error(forgeError('INVALID_RESULT', 'Command returned non-serializable data. Inspect committed events before retrying.')), ...(activeContext ? { context: activeContext } : {}), events: selectEventOutput(events.history, eventLevel), warnings: events.warningRecords.map(warning => localizer.warning(warning)) }) + '\n';
   }
+  output(response);
 }
-/**
- * A reader that closed standard output early (`forge schema | head -c 10`) wants no more output: stop quietly with the
- * status so far instead of an unhandled stream error. Windows reports a closed pipe as EOF. Standard error carries
- * only diagnostics, so a failed write there never ends the command: it completes and answers on standard output.
- */
-process.stdout.on('error', (error: NodeJS.ErrnoException) => {
-  if (error.code !== 'EPIPE' && error.code !== 'EOF') throw error;
-  process.exit(process.exitCode ?? 0);
-});
-process.stderr.on('error', () => {});
+const output = standardOutput();
 void run();
