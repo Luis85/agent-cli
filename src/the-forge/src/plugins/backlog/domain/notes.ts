@@ -97,22 +97,39 @@ export function withBody(text: string, body: string): string {
   return trimmed === '' ? head : `${head}${head === '' || head.endsWith('\n') ? '' : '\n'}${trimmed}\n`;
 }
 
-const FENCE = /(^|\n)(```|~~~)[^\n]*\n[\s\S]*?\n\2[^\n]*(?=\n|$)/g;
-const COMMENT = /%%[\s\S]*?%%/g;
+// Fenced code as Obsidian (CommonMark) reads it: up to three spaces of indentation, a run of three or more backticks
+// (whose info string holds no backtick) or tildes, closed by a run of the same character at least as long with nothing
+// but whitespace after it; an unclosed fence runs to the end of the note.
+const OPENING_FENCE = /^ {0,3}(`{3,}(?=[^`]*$)|~{3,})/;
+const CLOSING_FENCE = /^ {0,3}(`{3,}|~{3,})\s*$/;
 /** Applies `transform` to the text outside fenced code blocks, where Obsidian comments live. */
 function outsideCode(text: string, transform: (part: string) => string): string {
-  let result = '', last = 0;
-  for (const match of text.matchAll(FENCE)) { result += transform(text.slice(last, match.index)) + match[0]; last = match.index + match[0].length; }
-  return result + transform(text.slice(last));
+  let result = '', prose = '', fence = '';
+  for (const line of text.split(/(?<=\n)/)) {
+    if (fence === '') {
+      const opening = OPENING_FENCE.exec(line)?.[1];
+      if (opening === undefined) prose += line;
+      else { result += transform(prose) + line; prose = ''; fence = opening; }
+      continue;
+    }
+    const closing = CLOSING_FENCE.exec(line)?.[1];
+    if (closing !== undefined && closing[0] === fence[0] && closing.length >= fence.length) fence = '';
+    result += line;
+  }
+  return result + transform(prose);
 }
 
-/** The body without Obsidian `%%comments%%` (inline or multi-line; fenced code is kept as it is). */
-export const withoutComments = (body: string) => outsideCode(body, part => part.replace(COMMENT, ''));
+// A code span (a backtick run closed by a run of the same length, within one paragraph) or an Obsidian comment;
+// whichever starts first wins, so `%%` shown as code opens no comment and a comment hides the backticks inside it.
+const SPAN_OR_COMMENT = /(?<!`)(`+)(?!`)(?:[^\n]|\n(?![ \t]*\r?\n))*?(?<!`)\1(?!`)|%%[\s\S]*?%%/g;
+
+/** The body without Obsidian `%%comments%%` (inline or multi-line; fenced and inline code are kept as they are). */
+export const withoutComments = (body: string) => outsideCode(body, part => part.replace(SPAN_OR_COMMENT, (match, run?: string) => (run === undefined ? '' : match)));
 
 /** The Obsidian `%%comments%%` of a body, in order. */
 export function comments(body: string): string[] {
   const found: string[] = [];
-  outsideCode(body, part => { found.push(...(part.match(COMMENT) ?? [])); return part; });
+  outsideCode(body, part => { for (const match of part.matchAll(SPAN_OR_COMMENT)) if (match[1] === undefined) found.push(match[0]); return part; });
   return found;
 }
 
@@ -143,9 +160,9 @@ export function previousIteration<T extends IterationLike>(items: Iterable<T>): 
     if (best === null) { best = item; continue; }
     const byTarget = daysBetween(best.plannedTarget.value!, target);
     const start = item.plannedStart.value, bestStart = best.plannedStart.value;
-    const later = byTarget !== 0 ? byTarget > 0
-      : start === null || bestStart === null ? bestStart === null && start !== null
-        : daysBetween(bestStart, start) !== 0 ? daysBetween(bestStart, start) > 0 : item.path > best.path;
+    // A dated start is later than a missing one; two missing starts tie and fall through to the path.
+    const byStart = start === null || bestStart === null ? Number(start !== null) - Number(bestStart !== null) : daysBetween(bestStart, start);
+    const later = byTarget !== 0 ? byTarget > 0 : byStart !== 0 ? byStart > 0 : item.path > best.path;
     if (later) best = item;
   }
   return best;

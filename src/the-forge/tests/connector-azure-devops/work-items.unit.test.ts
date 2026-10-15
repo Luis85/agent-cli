@@ -136,6 +136,6 @@ describe('Markdown to HTML', () => {
   it('converts common Markdown and escapes everything else', () => {
     expect(markdownToHtml('# Plan\n\nSome **bold** and *em* with `a<b>` and [docs](https://example.com).\nNext line\n\n- one\n- [[Note|two]]\n\n1. first\n\n> quote\n\n```\n<script>\n```'))
       .toBe('<h1>Plan</h1><p>Some <strong>bold</strong> and <em>em</em> with <code>a&lt;b&gt;</code> and <a href="https://example.com">docs</a>.<br>Next line</p><ul><li>one</li><li>two</li></ul><ol><li>first</li></ol><blockquote>quote</blockquote><pre><code>&lt;script&gt;</code></pre>');
-    expect(markdownToHtml('<img src=x onerror=alert(1)> [x](javascript:alert(1))')).toBe('<p>&lt;img src=x onerror=alert(1)&gt; x)</p>');
+    expect(markdownToHtml('<img src=x onerror=alert(1)> [x](javascript:alert(1))')).toBe('<p>&lt;img src=x onerror=alert(1)&gt; x</p>');
   });
 });
