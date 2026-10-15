@@ -48,7 +48,27 @@ describe('tutorial plan validation and extraction', () => {
     expect(extractTutorial(canvas([example, block()]), 'flow.canvas')).toEqual(tutorialPlan(base()));
     expect(() => extractTutorial(canvas([block(), block()]), 'flow.canvas')).toThrow('exactly one');
     expect(extractTutorial(canvas(['````markdown', block()]), 'flow.canvas')).toEqual(tutorialPlan(base()));
-    expect(() => extractTutorial(canvas(['```forge-tutorial', `${JSON.stringify(base())}\n\`\`\``]), 'flow.canvas')).toThrow();
+    expect(() => extractTutorial(canvas(['```forge-tutorial', `${JSON.stringify(base())}\n\`\`\``]), 'flow.canvas'))
+      .toThrow(expect.objectContaining({ code: 'BROWSER_FLOW_INVALID', message: 'Tutorial source must contain valid JSON.' }));
+  });
+  it.each([
+    ['a block comment', ['%%', block(), '%%'].join('\n')],
+    ['a comment opened in prose', ['Draft %% not ready:', block(), 'until review %% done.'].join('\n')],
+    ['an unclosed comment', ['%% draft', block()].join('\n')],
+  ])('ignores a plan inside %s in Markdown and Canvas text', (_name, example) => {
+    const canvas = (texts: string[]) => JSON.stringify({ nodes: texts.map(text => ({ type: 'text', text })), edges: [] });
+    expect(() => extractTutorial(example, 'flow.md')).toThrow('exactly one');
+    expect(extractTutorial(`${block()}\n\n${example}`, 'flow.md')).toEqual(tutorialPlan(base()));
+    expect(() => extractTutorial(canvas([example]), 'flow.canvas')).toThrow('exactly one');
+    expect(extractTutorial(canvas([example, block()]), 'flow.canvas')).toEqual(tutorialPlan(base()));
+  });
+  it('keeps %% literal inside code, where it opens no comment', () => {
+    const plan = { ...base(), title: 'Reach 100%% coverage' };
+    expect(extractTutorial(block(plan), 'flow.md')).toEqual(tutorialPlan(plan));
+    for (const prefix of [['```text', '%% literal', '```'].join('\n'), 'Type `%%` to start a comment.']) {
+      expect(extractTutorial(`${prefix}\n\n${block()}`, 'flow.md')).toEqual(tutorialPlan(base()));
+      expect(extractTutorial(`${prefix}\n\n%% hidden %%\n\n${block()}`, 'flow.md')).toEqual(tutorialPlan(base()));
+    }
   });
   it('rejects prose, ambiguous embedded plans and indirect Canvas references', () => {
     for (const [source, path] of [['Click new note', 'flow.md'], [`${block()}\n${block()}`, 'flow.md'],

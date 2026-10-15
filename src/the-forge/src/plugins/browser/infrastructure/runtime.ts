@@ -38,6 +38,12 @@ function locate(page: Page, locator: TutorialLocator) {
   return page.locator(locator.css);
 }
 
+/** Maps a failed filesystem check to a status reason; only the access check can reveal missing execution permission. */
+function reasonFor(code: string | undefined, accessCheck = false): BrowserStatus['reason'] {
+  if (code === 'ENOENT' || code === 'ENOTDIR') return 'missing';
+  return accessCheck && process.platform !== 'win32' && (code === 'EACCES' || code === 'EPERM') ? 'not-executable' : 'inaccessible';
+}
+
 /** The module is shipped intact: its internal asset resolution must retain the upstream directory layout. */
 export function createBrowserRuntime(distributionPath: string): BrowserRuntime {
   const packageRoot = join(resolve(distributionPath), 'browser-runtime/playwright-core');
@@ -57,28 +63,15 @@ export function createBrowserRuntime(distributionPath: string): BrowserRuntime {
     let reason: BrowserStatus['reason'] = 'available';
     try {
       if (!(await stat(path)).isFile()) reason = 'not-file';
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      reason = code === 'ENOENT' || code === 'ENOTDIR' ? 'missing' : 'inaccessible';
-    }
+    } catch (error) { reason = reasonFor((error as NodeJS.ErrnoException).code); }
     if (reason === 'available') {
       try { await access(path, process.platform === 'win32' ? constants.F_OK : constants.X_OK); }
-      catch (error) {
-        const code = (error as NodeJS.ErrnoException).code;
-        reason = code === 'ENOENT' || code === 'ENOTDIR' ? 'missing'
-          : process.platform !== 'win32' && (code === 'EACCES' || code === 'EPERM') ? 'not-executable' : 'inaccessible';
-      }
+      catch (error) { reason = reasonFor((error as NodeJS.ErrnoException).code, true); }
     }
-    const selection = source === 'managed' ? 'Run browser install or pass --browser-executable for an installed Chromium.'
-      : source === 'environment' ? 'Update FORGE_BROWSER_EXECUTABLE or pass --browser-executable for an installed Chromium.'
-        : 'Pass --browser-executable with the path to an installed Chromium.';
-    const nextStep = reason === 'available' ? null : reason === 'not-executable'
-      ? 'Check execution permissions on the selected file. ' + selection
-      : reason === 'inaccessible' ? 'Check access to the selected path and its parent directories. ' + selection : selection;
     let version: string;
     try { version = (JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8')) as { version: string }).version; }
     catch { throw browserError('BROWSER_UNAVAILABLE', 'The packaged browser runtime metadata is missing. Replace the complete Forge distribution.'); }
-    return { available: reason === 'available', executablePath: path, source, version, verification: 'executable-only', reason, nextStep };
+    return { available: reason === 'available', executablePath: path, source, version, verification: 'executable-only', reason };
   }
 
   async function session(options: BrowserOptions): Promise<Session> {

@@ -25,6 +25,11 @@ describe('portable browser status diagnostics', () => {
       verification: 'executable-only', reason: 'available', nextStep: null });
     expect(output.properties.version.description).toContain('Playwright');
     expect(validateJsonValue(output, available.body.data, 'data').issues).toEqual([]);
+    const german = await fixture.cli(['--lang', 'de', 'browser', 'status'], undefined, { env: { FORGE_BROWSER_EXECUTABLE: missing } });
+    expect(german.status).toBe(0);
+    expect(german.body.data).toMatchObject({ available: false, source: 'environment', reason: 'missing',
+      nextStep: 'Passen Sie FORGE_BROWSER_EXECUTABLE an oder übergeben Sie mit --browser-executable einen installierten Chromium-Browser.' });
+    expect(validateJsonValue(output, german.body.data, 'data').issues).toEqual([]);
     expect(available.body.events).toEqual([]);
     expect(await readdir(fixture.project)).toEqual(before);
   }, 30_000);
