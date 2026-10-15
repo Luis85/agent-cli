@@ -41,7 +41,7 @@ describe('container build files through the portable CLI', () => {
     const german = await cli(['--lang', 'de', 'formats']);
     expect(german.status).toBe(0);
     expect(german.body.data.textFilenames).toEqual(['Dockerfile', 'Containerfile']);
-    expect(german.body.data.textFiles).toMatch(/^textFilenames gelten ohne Beachtung der Groß- und Kleinschreibung, auch mit nichtleeren Punkt-Suffixen; native Erweiterungen haben Vorrang\. UTF-8 lesen/);
+    expect(german.body.data.textFiles).toMatch(/^textFilenames gelten ohne Beachtung der Groß- und Kleinschreibung, auch mit Punkt-Suffixen, die mit einem anderen Zeichen als einem Punkt beginnen; native Erweiterungen haben Vorrang\. UTF-8 lesen/);
     const content = 'FROM unique-container-image\n';
     for (const path of ['images/DOCKERFILE', 'images/Containerfile', 'images/Dockerfile.release', 'images/Containerfile.dev', 'images/Makefile', 'images/.Dockerfile']) {
       expect((await cli(['create', path, '--stdin'], content)).status).toBe(0);

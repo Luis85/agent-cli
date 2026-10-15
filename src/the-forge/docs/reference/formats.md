@@ -2,7 +2,7 @@
 
 [Documentation](../index.md) · Reference
 
-The native inventory follows [Obsidian accepted file formats](https://help.obsidian.md/Files+and+folders/Accepted+file+formats), checked on 2026-10-07. Common source, data and configuration extensions and the basenames `Dockerfile` and `Containerfile` (including nonempty dot-suffix variants) are additionally handled as [UTF-8 text](#utf-8-text). Other extensions, unknown extensionless files, dotfiles such as `.gitignore` and `.obsidian` configuration files can be copied/replaced as opaque bytes; community-plugin semantics are not inferred.
+The native inventory follows [Obsidian accepted file formats](https://help.obsidian.md/Files+and+folders/Accepted+file+formats), checked on 2026-10-07. Common source, data and configuration extensions and the basenames `Dockerfile` and `Containerfile` (including dot-suffix variants such as `Dockerfile.release`) are additionally handled as [UTF-8 text](#utf-8-text). Other extensions, unknown extensionless files, dotfiles such as `.gitignore` and `.obsidian` configuration files can be copied/replaced as opaque bytes; community-plugin semantics are not inferred.
 
 | Format | Extensions | Processing |
 | --- | --- | --- |
