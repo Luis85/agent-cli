@@ -43,6 +43,11 @@ describe('mutation score', () => {
     const report = shardReport({ 'b.ts': ['Killed', 'Survived'], 'a.ts': ['Killed', 'NoCoverage'], 'c.ts': ['Survived', 'Survived', 'NoCoverage'], 'd.ts': ['Killed'] });
     expect(fileScores(report).map(file => [file.path, file.score])).toStrictEqual([['c.ts', 0], ['a.ts', 50], ['b.ts', 50], ['d.ts', 100]]);
   });
+
+  it('orders paths by code unit, whatever the locale', () => {
+    const report = shardReport({ 'b.ts': ['Killed'], 'a.ts': ['Killed'], 'B.ts': ['Killed'], 'ä.ts': ['Killed'], 'z.ts': ['Killed'] });
+    expect(fileScores(report).map(file => file.path)).toStrictEqual(['B.ts', 'a.ts', 'b.ts', 'z.ts', 'ä.ts']);
+  });
 });
 
 describe('merging shard reports', () => {
@@ -78,13 +83,40 @@ describe('merging shard reports', () => {
     expect(seeded.testFiles).toStrictEqual({
       'tests/a.unit.test.ts': { source: 'changed test source', tests: [{ id: '0', name: 'reads', location: { start: { line: 1, column: 1 } } }, { id: '1', name: 'writes' }] },
     });
-    // A test merged from a report with different test source loses its location, which belongs to that source.
-    other.testFiles!['tests/a.unit.test.ts']!.tests.push({ id: '9', name: 'renamed', location: { start: { line: 9, column: 1 } } });
-    const mixed = mergeReports([report, other], { prefer: (_, candidates) => candidates[0]! });
-    expect(mixed.testFiles).toStrictEqual({
-      'tests/a.unit.test.ts': { source: 'test source', tests: [{ id: '0', name: 'reads', location: { start: { line: 1, column: 1 } } }, { id: '1', name: 'writes' }, { id: '2', name: 'renamed' }] },
-      'tests/b.unit.test.ts': { tests: [{ id: '3', name: 'unrelated' }] },
-    });
+  });
+
+  it('drops references to a test file recorded against other source, so Stryker retests instead of reusing a stale kill', () => {
+    // Report 1 records the test file as it is now; report 2 recorded `writes` killing a mutant of b.ts in an older version.
+    const fresh = shardReport({ 'a.ts': ['Killed'] }, 'new test source');
+    const stale = shardReport({ 'b.ts': ['Killed', 'Survived'] }, 'old test source');
+    stale.files['b.ts']!.mutants[1] = { id: '1', status: 'Survived', coveredBy: ['0', '7'] };
+    stale.testFiles!['tests/c.unit.test.ts'] = { source: 'c', tests: [{ id: '7', name: 'covers', location: { start: { line: 3, column: 1 } } }] };
+    for (const allTests of [true, false]) {
+      const merged = mergeReports([fresh, stale], { prefer: (_, candidates) => candidates[0]!, allTests });
+      expect(merged.files['a.ts']!.mutants[0]).toStrictEqual({ id: '1.0', status: 'Killed', coveredBy: ['0', '1'], killedBy: ['1'] });
+      // Without a killing test Stryker cannot reuse the kill; without the covering test the survivor gains an added test.
+      expect(merged.files['b.ts']!.mutants).toStrictEqual([
+        { id: '2.0', status: 'Killed', coveredBy: [], killedBy: [] },
+        { id: '2.1', status: 'Survived', coveredBy: ['2'] },
+      ]);
+      // Every merged test belongs to the source it is listed with.
+      expect(merged.testFiles).toStrictEqual({
+        'tests/a.unit.test.ts': { source: 'new test source', tests: [{ id: '0', name: 'reads', location: { start: { line: 1, column: 1 } } }, { id: '1', name: 'writes' }] },
+        'tests/c.unit.test.ts': { source: 'c', tests: [{ id: '2', name: 'covers', location: { start: { line: 3, column: 1 } } }] },
+      });
+    }
+  });
+
+  it('takes a test file\'s source from the first report that contributes a file, whatever the file order', () => {
+    const first = shardReport({ 'z.ts': ['Killed'] }, 'first test source');
+    const second = shardReport({ 'a.ts': ['Killed'] }, 'second test source');
+    const merged = mergeReports([first, second, shardReport({}, 'unused test source')], { allTests: false });
+    expect(merged.testFiles!['tests/a.unit.test.ts']!.source).toBe('first test source');
+    expect(merged.files['z.ts']!.mutants[0]).toMatchObject({ killedBy: ['1'] });
+    expect(merged.files['a.ts']!.mutants[0]).toMatchObject({ coveredBy: [], killedBy: [] });
+    // A report that contributes no file does not decide the source.
+    const seeded = mergeReports([shardReport({}, 'unused test source'), second], { allTests: false });
+    expect(seeded.testFiles!['tests/a.unit.test.ts']!.source).toBe('second test source');
   });
 });
 

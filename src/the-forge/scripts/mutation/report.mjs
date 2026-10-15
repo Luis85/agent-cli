@@ -45,15 +45,19 @@ export function mutantsOf(report) {
 export function fileScores(report) {
   return Object.entries(report.files)
     .map(([path, file]) => ({ path, ...score(file.mutants) }))
-    .sort((a, b) => (b.survived + b.noCoverage) - (a.survived + a.noCoverage) || a.path.localeCompare(b.path));
+    .sort((a, b) => (b.survived + b.noCoverage) - (a.survived + a.noCoverage) || compareCodeUnits(a.path, b.path));
 }
 
 /**
  * Merges reports into one. Each mutated file must come from exactly one report unless `prefer` picks among duplicates
  * (used when seeding an incremental file from several earlier runs). Test files are united and every test is
- * identified by file and name, so the merged ids and each mutant's `coveredBy`/`killedBy` stay consistent. Mutant ids
- * are prefixed with the report's position because every Stryker run numbers its mutants from 0. `allTests: false` keeps
- * only the tests that a kept mutant references.
+ * identified by file and name, so the merged ids and each mutant's `coveredBy`/`killedBy` stay consistent. A test
+ * file's source comes from the first report (in the given order) that contributes a mutated file, or any report with
+ * `allTests`; tests of a report that recorded the file against other source are dropped together with the references
+ * to them, because a test's location and verdicts belong to its source. Stryker then retests a killed mutant that has
+ * lost its killing test, and a mutant whose covering tests now look added, instead of reusing a stale result. Mutant
+ * ids are prefixed with the report's position because every Stryker run numbers its mutants from 0. `allTests: false`
+ * keeps only the tests that a kept mutant references.
  * @param {Report[]} reports
  * @param {{ keepFile?: (path: string) => boolean, prefer?: (path: string, candidates: FileResult[]) => FileResult, allTests?: boolean }} [options]
  * @returns {Report}
@@ -67,26 +71,27 @@ export function mergeReports(reports, { keepFile = () => true, prefer, allTests 
       candidates.set(path, [...(candidates.get(path) ?? []), { file, index }]);
     }
   });
-  const tests = new TestIndex();
-  /** @type {Record<string, FileResult>} */
-  const files = {};
-  for (const path of [...candidates.keys()].sort()) {
+  const chosen = [...candidates.keys()].sort().map(path => {
     const entries = /** @type {Array<{ file: FileResult, index: number }>} */ (candidates.get(path));
     if (entries.length > 1 && !prefer) throw new Error(`${path} appears in more than one report; shards must mutate disjoint files`);
-    const chosen = entries.length > 1 && prefer ? prefer(path, entries.map(entry => entry.file)) : entries[0]?.file;
-    const { file, index } = /** @type {{ file: FileResult, index: number }} */ (entries.find(entry => entry.file === chosen));
-    const report = /** @type {Report} */ (reports[index]);
+    const file = entries.length > 1 && prefer ? prefer(path, entries.map(entry => entry.file)) : entries[0]?.file;
+    return { path, .../** @type {{ file: FileResult, index: number }} */ (entries.find(entry => entry.file === file)) };
+  });
+  const tests = new TestIndex(reports, allTests ? reports.map((_, index) => index) : chosen.map(entry => entry.index));
+  /** @type {Record<string, FileResult>} */
+  const files = {};
+  for (const { path, file, index } of chosen) {
     files[path] = {
       ...file,
       mutants: file.mutants.map(mutant => ({
         ...mutant,
         id: `${index + 1}.${mutant.id}`,
-        ...(mutant.coveredBy ? { coveredBy: tests.ids(report, index, mutant.coveredBy) } : {}),
-        ...(mutant.killedBy ? { killedBy: tests.ids(report, index, mutant.killedBy) } : {}),
+        ...(mutant.coveredBy ? { coveredBy: tests.ids(index, mutant.coveredBy) } : {}),
+        ...(mutant.killedBy ? { killedBy: tests.ids(index, mutant.killedBy) } : {}),
       })),
     };
   }
-  if (allTests) reports.forEach((report, index) => tests.ids(report, index, Object.values(report.testFiles ?? {}).flatMap(file => file.tests.map(test => test.id))));
+  if (allTests) reports.forEach((report, index) => tests.ids(index, Object.values(report.testFiles ?? {}).flatMap(file => file.tests.map(test => test.id))));
   const [first] = reports;
   return {
     schemaVersion: first?.schemaVersion ?? '1.0',
@@ -98,64 +103,86 @@ export function mergeReports(reports, { keepFile = () => true, prefer, allTests 
   };
 }
 
-/** Tests referenced by kept mutants, merged by file and name across reports. */
+/** Tests referenced by kept mutants, merged by file and name across reports recorded against the same test source. */
 class TestIndex {
-  /** @type {Map<string, { source?: string, tests: Map<string, TestDefinition> }>} */
+  /** @type {Report[]} */
+  #reports;
+  /** @type {Map<string, string | undefined>} the source each test file is merged against */
+  #sources = new Map();
+  /** @type {Map<string, Map<string, TestDefinition>>} */
   #files = new Map();
-  /** @type {Map<number, Map<string, { file: string, test: TestDefinition, source?: string }>>} */
+  /** @type {Map<number, Map<string, { file: string, test: TestDefinition }>>} */
   #byReport = new Map();
   #next = 0;
 
   /**
-   * Merged ids of a report's test ids; ids the report does not define are dropped, as Stryker does.
-   * @param {Report} report @param {number} index @param {string[]} ids
+   * A test file's source is that of the first contributing report that lists the file.
+   * @param {Report[]} reports @param {number[]} contributing indices of the reports whose test files count
    */
-  ids(report, index, ids) {
-    const lookup = this.#lookup(report, index);
+  constructor(reports, contributing) {
+    this.#reports = reports;
+    for (const index of [...new Set(contributing)].sort((a, b) => a - b)) {
+      for (const [file, testFile] of Object.entries(reports[index]?.testFiles ?? {})) {
+        if (!this.#sources.has(file)) this.#sources.set(file, testFile.source);
+      }
+    }
+  }
+
+  /**
+   * Merged ids of a report's test ids. Ids the report does not define are dropped, as Stryker does, and so are tests
+   * the report recorded against other source than the merged one.
+   * @param {number} index @param {string[]} ids
+   */
+  ids(index, ids) {
+    const lookup = this.#lookup(index);
     return ids.flatMap(id => {
       const entry = lookup.get(id);
-      return entry ? [this.#add(entry.file, entry.test, entry.source)] : [];
+      return entry ? [this.#add(entry.file, entry.test)] : [];
     });
   }
 
   testFiles() {
     /** @type {Record<string, TestFile>} */
     const result = {};
-    for (const path of [...this.#files.keys()].sort()) {
-      const { source, tests } = /** @type {{ source?: string, tests: Map<string, TestDefinition> }} */ (this.#files.get(path));
+    for (const [path, tests] of [...this.#files].sort(([a], [b]) => compareCodeUnits(a, b))) {
+      const source = this.#sources.get(path);
       result[path] = { ...(source === undefined ? {} : { source }), tests: [...tests.values()] };
     }
     return result;
   }
 
-  /** @param {Report} report @param {number} index */
-  #lookup(report, index) {
+  /** @param {number} index */
+  #lookup(index) {
     let lookup = this.#byReport.get(index);
     if (!lookup) {
       lookup = new Map();
-      for (const [file, testFile] of Object.entries(report.testFiles ?? {})) {
-        for (const test of testFile.tests) lookup.set(test.id, { file, test, source: testFile.source });
+      for (const [file, testFile] of Object.entries(this.#reports[index]?.testFiles ?? {})) {
+        if (!this.#sources.has(file) || this.#sources.get(file) !== testFile.source) continue;
+        for (const test of testFile.tests) lookup.set(test.id, { file, test });
       }
       this.#byReport.set(index, lookup);
     }
     return lookup;
   }
 
-  /** @param {string} file @param {TestDefinition} test @param {string | undefined} source */
-  #add(file, test, source) {
-    let entry = this.#files.get(file);
-    if (!entry) {
-      entry = { source, tests: new Map() };
-      this.#files.set(file, entry);
+  /** @param {string} file @param {TestDefinition} test */
+  #add(file, test) {
+    let tests = this.#files.get(file);
+    if (!tests) {
+      tests = new Map();
+      this.#files.set(file, tests);
     }
-    const existing = entry.tests.get(test.name);
+    const existing = tests.get(test.name);
     if (existing) return existing.id;
-    // A location only means something against the source it was recorded in.
     const merged = { ...test, id: String(this.#next++) };
-    if (entry.source !== source) delete merged.location;
-    entry.tests.set(test.name, merged);
+    tests.set(test.name, merged);
     return merged.id;
   }
+}
+
+/** Orders strings by UTF-16 code units, independently of the locale. @param {string} a @param {string} b */
+function compareCodeUnits(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 /** @param {number} value */
