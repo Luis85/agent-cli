@@ -34,8 +34,8 @@ jobs:
   shard:
     name: mutation shard ${{ matrix.shard }}/2 (ubuntu-latest, Node 24)
     runs-on: ubuntu-latest
-    # Budget: 25 minutes per forced shard on four cores; incremental pull request runs reuse earlier results
-    # and take a few minutes.
+    # A forced run of the whole scope takes about 25 minutes on four cores, so each forced shard takes about
+    # 13 (budget 25); incremental pull request runs reuse earlier results and take a few minutes.
     timeout-minutes: 40
     strategy:
       fail-fast: false

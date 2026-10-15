@@ -123,4 +123,85 @@ Each area runs in its own worktree and branch. Areas own disjoint source and tes
 
 ## Results
 
-Filled in after integration.
+Recorded 2026-10-15 after integrating the six areas and two review follow-ups.
+
+**Score.** The forced run took 25 minutes in one process on four cores; an incremental run after the review fixes took under 3 minutes.
+
+| | Before | After |
+| --- | --- | --- |
+| Score | 81.51% | **96.08%** (96.22% of covered mutants) |
+| Mutants | 7,124 | 9,585, with static mutants enabled |
+| Killed | 5,286 | 9,078 |
+| Timed out | 69 | 131 |
+| Survived | 960 | 362 |
+| No coverage | 255 | 14 |
+| `thresholds.break` | 78 | 93 |
+
+`high` and `low` rise to 95 and 90, so the report colors stay meaningful above the break threshold.
+
+The "before" column ignores static mutants and the "after" column tests them. Each cell gives the score, then the number of valid mutants, then how many survived or had no coverage.
+
+| Area | Before | After |
+| --- | --- | --- |
+| Backlog domain | 80.99% (3,782; 510 / 209) | 96.02% (4,122; 161 / 3) |
+| Agents plugin | 84.84% (1,214; 172 / 12) | 98.06% (1,289; 24 / 1) |
+| Azure DevOps | 74.04% (597; 132 / 23) | 97.52% (766; 19 / 0) |
+| Search | 85.11% (235; 28 / 7) | 96.71% (243; 7 / 1) |
+| Kernel documents and links already in scope | 83.56% (742; 118 / 4) | 92.32% (899; 67 / 2) |
+| Kernel documents, links and paging, new | not mutated | 96.36% (1,619; 52 / 7) |
+| Vault-check and workflows, new | not mutated | 95.05% (647; 32 / 0) |
+
+**Defects fixed.** Each fix began with a failing test.
+
+| # | Location | Defect |
+| --- | --- | --- |
+| S1 | `markdown-html.ts` | A heading lost a closing `#` that had no space before it, as in `# C#`. |
+| S2 | `markdown-html.ts` | Code fences closed on lines that cannot close them, so code leaked into paragraphs. |
+| S3 | `markdown-html.ts` | Link targets stopped at the first `)`. |
+| S4 | `notes.ts` | Privacy: empty or indented fences paired wrongly, so Obsidian comments were pushed to Azure DevOps. |
+| S5 | backlog `fields.ts` | Years 0–99 were read as 1900–1999. |
+| S6 | `markdown-html.ts` | Emphasis markup was applied inside link targets. |
+| S7 | `notes.ts` | Privacy: a `%%` shown in inline code paired with a later comment and leaked it. |
+| S8 | `notes.ts` | `previousIteration` broke ties by input order, not by path. |
+| S9 | vault-check `property-types.ts` | Declared types named `toString`, `constructor` or `__proto__` made `vault check` throw. |
+| S10 | `link-text.ts` | Moving a note corrupted a link whose title contains `](`. |
+| R1 | `notes.ts` | Privacy, found by the review: a code span crossing a list item, heading or quote leaked a comment. Unclosed comments, comments around fences and escaped `\%%` markers did not follow Obsidian's documented behavior. |
+| R2 | `markdown-html.ts`, `notes.ts` | Found by the review: fences indented inside list items were no longer treated as code. A code span inside a link target left a placeholder in the `href`. |
+
+**Toolchain.**
+
+- **Static mutants** are enabled.
+- **No checker**, and the `forge-vitest` wrapper is kept.
+- **Sharding.** CI runs two size-balanced shards and a merge job. Shard files are selected by Stryker's own minimatch rules, which an integration test compares with Stryker's project reader. Each shard records its plan. The merge job checks every shard report against its plan, applies `thresholds.break` to the overall score, and writes a per-file summary for the job.
+- **Seeding.** A shard seeds its incremental file from every earlier result, dropping test references whose test source changed.
+- **Triggers and caching.**
+  - The workflow also runs on pushes to `main`.
+  - A failing run still saves its cache.
+  - Re-run attempts get their own cache key.
+  - The weekly forced run has its own concurrency group.
+- **CI only.** Mutation testing runs in CI, not as a local guardrail. The guide keeps the focused single-file run for investigating survivors.
+
+**Equivalent mutants.** Most of the 362 survivors are equivalent. Each area report listed them with a reason. The common kinds:
+
+- guards that a later check makes redundant;
+- comparator results that V8's sort treats alike;
+- `?? []` and `''` fallbacks that cannot be reached;
+- performance-only pruning in `suggestion.ts` and the prefix and suffix optimizations in `diff.ts`;
+- deduplication of inputs that never repeat.
+
+The largest groups are in `link-resolution.ts` (40), backlog `releases.ts` (28), `suggestion.ts` (27) and `diff.ts` (24). Some `suggestion.ts` and scanner mutants only slow a test down, so they time out or survive depending on machine load.
+
+**Iteration 3.**
+
+- *Second-wave scope:*
+  - the Claude validators `domain/claude/{hooks,agents}.ts`;
+  - the UI domain;
+  - the metadata snapshot and its encoding;
+  - the browser tutorial, skill, release and connector-profile validators;
+  - the agents mapping cluster.
+- *Fixtures to move first:* the `describe`-level parse in `tests/metadata/parser.unit.test.ts`, before `cache.ts` joins `mutate`.
+- *Deferred:* `domain/schema/json-schema.ts`, `documents/{file,canvas}.ts` and `application/plugins/*`, whose mutants re-run 25–45 test files each.
+- *Known edges:*
+  - The browser plugin's `blankObsidianComments` still pairs an escaped `\%%`.
+  - An indented fence that lazily continues a paragraph is read as code by `notes.ts`.
+  - A pulled description that ends inside an unclosed fence would re-append the note's comments inside that fence.

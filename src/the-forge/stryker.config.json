@@ -33,5 +33,5 @@
   "clearTextReporter": { "allowColor": false, "logTests": false, "reportScoreTable": true, "reportMutants": false },
   "timeoutMS": 10000,
   "timeoutFactor": 2,
-  "thresholds": { "high": 80, "low": 70, "break": 78 }
+  "thresholds": { "high": 95, "low": 90, "break": 93 }
 }
