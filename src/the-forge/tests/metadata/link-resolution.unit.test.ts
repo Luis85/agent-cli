@@ -1,6 +1,6 @@
 import { posix } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { closestCandidate, closestDestination, fileToLinktext, joinPath, linkIndex, resolveLinkpath, type LinkResolution } from '../../src/domain/metadata/link-resolution.ts';
+import { closestCandidate, closestDestination, fileToLinktext, isExternalLink, joinPath, linkIndex, resolveLinkpath, type LinkResolution } from '../../src/domain/metadata/link-resolution.ts';
 
 // Reference rules as a direct scan over every path: exact spelling, then one case-insensitive match,
 // then (for wiki-style targets) one case-insensitive `/`-suffix match.
@@ -71,6 +71,43 @@ describe('indexed link resolution', () => {
         expect(joinPath(folder, target), `${target} from ${folder}`).toBe(posix.normalize(posix.join(folder, target)));
       }
     }
+  });
+});
+
+describe('link target edge cases', () => {
+  it.each([
+    ['https://example.com', true], ['h2o:x', true], ['//cdn.example.com/a.png', true], ['MAILTO:a@b.c', true],
+    ['docs/a:b', false], ['my note: x', false], ['a//b', false], ['2fa:x', false], ['Plan', false],
+  ])('treats %s as external: %s', (target, external) => {
+    expect(isExternalLink(target)).toBe(external);
+  });
+
+  it('joins targets onto folders that still need normalizing', () => {
+    expect(joinPath('a/../b', 'c')).toBe('b/c');
+    expect(joinPath('a//b', 'c')).toBe('a/b/c');
+    expect(joinPath('./a', 'c')).toBe('a/c');
+  });
+
+  it('lists every case-insensitive spelling with and without .md as ambiguous candidates', () => {
+    expect(resolveLinkpath(linkIndex(['Note', 'Note.md', 'NOTE']), 'note', 'Root.md')).toEqual({
+      status: 'unresolved', reason: 'ambiguous', via: 'path', linkpath: 'note', candidates: ['Note', 'Note.md', 'NOTE'],
+    });
+    expect(resolveLinkpath(linkIndex(['Note.md', 'Note', 'NOTE.MD']), 'note', 'Root.md')).toMatchObject({ candidates: ['Note.md', 'Note', 'NOTE.MD'] });
+  });
+
+  it('resolves a link without a path to its source and reports missing relative links as unresolved', () => {
+    const index = linkIndex(['Notes/Plan.md']);
+    expect(resolveLinkpath(index, '#Heading', 'Notes/Today.md')).toEqual({ status: 'resolved', path: 'Notes/Today.md', via: 'path' });
+    expect(closestDestination(resolveLinkpath(index, '#Heading', 'Notes/Today.md'), 'Notes/Today.md')).toBe('Notes/Today.md');
+    expect(resolveLinkpath(index, 'Gone.md', 'Notes/Today.md', { relative: true })).toEqual({ status: 'unresolved', reason: 'missing', linkpath: 'Gone.md' });
+  });
+
+  it('opens candidates by folder distance, then depth, then vault path order, and never an alias match', () => {
+    expect(closestCandidate(['b/x.md', 'a/x.md'], 'c/s.md')).toBe('a/x.md');
+    expect(closestCandidate(['a/x.md', 'b/x.md'], 'c/s.md')).toBe('a/x.md');
+    expect(closestCandidate(['other/x.md', 'here/x.md'], 'here/s.md')).toBe('here/x.md');
+    expect(closestDestination({ status: 'resolved', path: 'People/Ada.md', via: 'alias' }, 'Root.md')).toBeNull();
+    expect(closestDestination({ status: 'external' }, 'Root.md')).toBeNull();
   });
 });
 
