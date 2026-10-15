@@ -69,6 +69,10 @@ describe('Markdown to HTML blocks', () => {
   ])('renders quotes and block order: %s', (_, markdown, html) => {
     expect(markdownToHtml(markdown)).toBe(html);
   });
+
+  it.each([['a bullet', '- a'], ['a numbered item', '1. a'], ['a quote', '> a']])('keeps a whole line holding a Unicode line separator: %s', (_, start) => {
+    expect(markdownToHtml(`${start}\u2028b`)).toContain('a\u2028b');
+  });
 });
 
 describe('Markdown to HTML fenced code', () => {
