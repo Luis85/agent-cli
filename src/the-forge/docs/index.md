@@ -26,6 +26,8 @@ For users who already know their goal. Each guide states the needed context and 
 | Create and iterate a self-contained Vue and Nuxt UI prototype | [Prototype a webview](how-to/prototype-webviews.md) |
 | Inspect workspace context, plugins and runtime health in a browser | [Use the admin webview](how-to/use-admin-webview.md) |
 | Select a project and control file scope | [Set up and manage projects](how-to/manage-projects.md) |
+| Read and edit a named project without changing shared selection | [Target a project for one invocation](how-to/target-projects.md) |
+| Read related files with revisions in one bounded response | [Read several files](how-to/read-many.md) |
 | Edit one section, block or several literals of a note, or change several files as one unit | [Make precise edits](how-to/make-precise-edits.md) |
 | Change paths, transfer definitions or update generated UI | [Maintain and regenerate components](how-to/manage-components.md) |
 | Add and maintain reusable browser behavior | [Manage interaction definitions](how-to/manage-interactions.md) |

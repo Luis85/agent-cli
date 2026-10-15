@@ -27,6 +27,7 @@ export const germanDescriptions: Record<string, string> = {
   'With sync: fail with WORKFLOW_DRIFT instead of writing when generated workflows differ.': 'Mit sync: mit WORKFLOW_DRIFT fehlschlagen, statt zu schreiben, wenn generierte Workflows abweichen.',
   'list (default) or sync.': 'list (Standard) oder sync.',
   // File commands.
+  'Use this project instead of the selected project.': 'Dieses Projekt statt des ausgewählten Projekts verwenden.',
   'Only files of this kind.': 'Nur Dateien dieser Art.',
   'Only files whose root-relative path matches this glob (*, **, ?, [abc], {a,b}).': 'Nur Dateien, deren Pfad relativ zum Stammverzeichnis diesem Glob entspricht (*, **, ?, [abc], {a,b}).',
   'Maximum number of files; a truncated page returns nextCursor.': 'Höchstzahl der Dateien; eine gekürzte Seite liefert nextCursor.',

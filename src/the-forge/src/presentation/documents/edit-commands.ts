@@ -81,11 +81,12 @@ export function editCommand(): Command {
 
 export function applyCommand(): Command {
   return {
-    id: 'apply', description: 'Run a JSON plan of writes, edits, frontmatter changes, moves and deletions as one guarded batch.', usage: 'apply <plan.json|->',
+    id: 'apply', description: 'Run a JSON plan of writes, edits, frontmatter changes, moves and deletions as one guarded batch.', usage: 'apply <plan.json|-> [--project id]',
     // Destructive: write, edit and delete replace or remove content. Not idempotent: an operation without ifMatch,
     // such as an append, applies again on a repeat; only a plan whose every operation carries ifMatch fails instead.
-    scope: 'project', discovery: false, mutating: true, destructive: true, idempotent: false, errors: applyErrors, output: applyOutput,
+    scope: 'project', projectOption: 'project', discovery: false, mutating: true, destructive: true, idempotent: false, errors: applyErrors, output: applyOutput,
     args: [{ name: 'plan', description: 'Plan file in the command scope, or - to read the plan from standard input.', required: true, schema: applyPlanSchema }],
+    options: { project: option.string('Use this project instead of the selected project.') },
     async run(args, _flags, context) {
       arity(args, 1);
       const plan = parsePlan(await jsonInput(args[0] === '-' ? '-' : `@${args[0]!}`, context));
