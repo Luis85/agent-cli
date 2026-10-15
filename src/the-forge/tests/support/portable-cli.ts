@@ -1,5 +1,5 @@
-import { afterAll, beforeAll, expect } from 'vitest';
-import { spawn, type ChildProcessByStdio } from 'node:child_process';
+import { afterAll, afterEach, beforeAll, expect } from 'vitest';
+import { spawn, type ChildProcess, type ChildProcessByStdio } from 'node:child_process';
 import type { Readable, Writable } from 'node:stream';
 import { copyFile, cp, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -11,10 +11,14 @@ interface Invocation { root?: string | null; entry?: string; cwd?: string; env?:
 interface CliResult { status: number | null; body: any; stdout: string }
 
 /**
- * Every portable call finishes well within this. It stays below Vitest's 30 s test timeout, so a hung child is killed
- * and fails its own test instead of outliving it.
+ * Children still running when their test or hook ends. The test's own timeout (which slow workflows may raise) bounds
+ * each call; killing leftovers afterwards keeps a hung child from outliving the test that started it.
  */
-const callTimeout = 20_000;
+const running = new Set<ChildProcess>();
+function killRunning() {
+  for (const child of running) child.kill();
+  running.clear();
+}
 
 /** How a test drives one Node child process. */
 interface NodeProcessOptions {
@@ -45,10 +49,7 @@ function runNode(args: string[], options: NodeProcessOptions): Promise<NodeProce
     }) as ChildProcessByStdio<Writable, Readable | null, Readable>;
     const stdout: Buffer[] = [], stderr: Buffer[] = [];
     let received = 0;
-    const timer = setTimeout(() => {
-      child.kill();
-      reject(new Error(`node ${args.join(' ')} did not finish within ${callTimeout} ms`));
-    }, callTimeout);
+    running.add(child);
     if (out === 'first-chunk') child.stdout!.once('data', (chunk: Buffer) => { received = chunk.length; child.stdout!.destroy(); });
     else if (out === 'unread') child.stdout!.destroy();
     else child.stdout?.on('data', (chunk: Buffer) => { received += chunk.length; stdout.push(chunk); });
@@ -56,9 +57,9 @@ function runNode(args: string[], options: NodeProcessOptions): Promise<NodeProce
     else child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
     // A command that does not read its input may exit first: POSIX reports EPIPE, Windows EOF.
     child.stdin.on('error', () => {});
-    child.on('error', error => { clearTimeout(timer); reject(error); });
+    child.on('error', error => { running.delete(child); reject(error); });
     child.on('close', (status, signal) => {
-      clearTimeout(timer);
+      running.delete(child);
       resolve({ status, signal, stdout: Buffer.concat(stdout).toString('utf8'), stderr: Buffer.concat(stderr).toString('utf8'), received });
     });
     child.stdin.end(options.input);
@@ -79,7 +80,9 @@ export function portableCli() {
     await rm(join(bundle, 'bin/data/context.json'), { force: true });
     await writeFile(join(bundle, 'package.json'), '{"type":"module"}');
   });
+  afterEach(killRunning);
   afterAll(async () => {
+    killRunning();
     await rm(project, { recursive: true, force: true });
     await rm(bundle, { recursive: true, force: true });
   });
