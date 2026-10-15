@@ -51,6 +51,35 @@ describe('apply plan contract', () => {
     expect(failure({ version: 1, operations: [{ op: 'edit', path: 'a.md', section: 'A', sectionLine: 0, append: 'y' }] })).toMatchObject({ details: { operation: 0 } });
   });
 
+  it('summarizes the first three schema issues in the message and lists at most 20 in the details', () => {
+    const operations = Array.from({ length: 25 }, () => ({ op: 'move', from: 'a.md' }));
+    const error = failure({ version: 1, operations });
+    expect(error.message).toBe('The plan does not match its schema: plan.operations[0].to: is required; plan.operations[1].to: is required; plan.operations[2].to: is required');
+    expect(error.details).toMatchObject({ operation: 0 });
+    expect(error.details!.issues).toHaveLength(20);
+    expect(failure({ operations: [] }).details).not.toHaveProperty('operation');
+  });
+
+  it('names an invalid operation by its full index', () => {
+    const operations = [...Array.from({ length: 12 }, () => ({ op: 'delete', path: 'a.md' })), { op: 'delete' }];
+    expect(failure({ version: 1, operations })).toMatchObject({ details: { operation: 12, issues: ['plan.operations[12].path: is required'] } });
+  });
+
+  it('checks operations that are not objects or not a list against the schema', () => {
+    expect(failure({ version: 1, operations: 5 })).toMatchObject({ code: 'INVALID_PLAN', details: { issues: [expect.stringMatching(/^plan\.operations: /)] } });
+    expect(failure({ version: 1, operations: [5] })).toMatchObject({ code: 'INVALID_PLAN', details: { operation: 0 } });
+    expect(failure({ version: 1, operations: [5] }).message).not.toContain('op must be one of');
+    expect(failure({ version: 1, operations: [{ op: 'rename' }] }).message).toBe('Operation 0: op must be one of write, edit, frontmatter, move, delete.');
+  });
+
+  it('needs set, unset or both in a frontmatter operation', () => {
+    const plan = parsePlan({ version: 1, operations: [{ op: 'frontmatter', path: 'a.md', set: { a: 1 } }, { op: 'frontmatter', path: 'a.md', unset: ['b'] }] });
+    expect(plan.operations).toHaveLength(2);
+    expect(failure({ version: 1, operations: [{ op: 'write', path: 'a.md', content: '' }, { op: 'frontmatter', path: 'a.md' }] })).toMatchObject({
+      code: 'INVALID_PLAN', message: 'Operation 1: frontmatter needs set, unset or both.', details: { operation: 1 },
+    });
+  });
+
   it('carries sectionLine into a section edit', () => {
     const plan = parsePlan({ version: 1, operations: [{ op: 'edit', path: 'a.md', section: 'A > B', sectionLine: 9, replace: 'x' }] });
     expect(editRequest(plan.operations[0] as EditOperation)).toEqual({ kind: 'section', section: 'A > B', line: 9, mode: 'replace', content: 'x' });
