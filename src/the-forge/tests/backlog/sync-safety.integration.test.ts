@@ -85,6 +85,19 @@ describe('descriptions without a declared format', () => {
     expect(await vault!.read('work/Draft a trip.md')).toMatch(/\n---\nPlan the \*\*stops\*\* first\.\n\n%%private%%\n$/);
     expect((await sync()).data.counts).toMatchObject({ updated: 0, pulled: 0, conflicts: 0 });
   });
+
+  it('never pushes the text an unclosed comment hides, and keeps that comment when a description is pulled', async () => {
+    const id = await linked();
+    const draft = id('work/Draft a trip.md');
+    await vault!.write('work/Draft a trip.md', (await vault!.read('work/Draft a trip.md')).replace('Plan the **stops**.', 'Plan the **stops** soon.\n\n%% private notes\n```\nnever closed\n```\n'));
+    expect((await sync()).data.views[0].updated).toEqual([expect.objectContaining({ fields: ['description'] })]);
+    expect(fake.item('contoso', draft).fields[DESCRIPTION]).toBe('Plan the **stops** soon.');
+    fake.returnsFormats = true;
+    fake.edit('contoso', draft, { [DESCRIPTION]: 'Plan the **stops** first.' });
+    expect((await sync()).data.views[0].pulled).toEqual([expect.objectContaining({ fields: ['description'] })]);
+    expect(await vault!.read('work/Draft a trip.md')).toMatch(/\n---\nPlan the \*\*stops\*\* first\.\n\n%% private notes\n```\nnever closed\n```\n$/);
+    expect((await sync()).data.counts).toMatchObject({ updated: 0, pulled: 0, conflicts: 0 });
+  });
 });
 
 describe('failures part-way through a sync', () => {
