@@ -24,5 +24,7 @@ export function editBytes(path: string, bytes: Uint8Array, request: TextEditRequ
   ensureEditable(path, request);
   const text = decodeText(bytes);
   ensure(isTextContent(path, text), 'INVALID_ENCODING', 'Text file edits require UTF-8 without NUL characters; use write for UTF-16 or binary content.');
-  return new TextEncoder().encode(applyTextEdit(text, request, () => metadata.parseContent(path, bytes)!));
+  const edited = applyTextEdit(text, request, () => metadata.parseContent(path, bytes)!);
+  ensure(isTextContent(path, edited), 'INVALID_ENCODING', 'Text file edits cannot introduce NUL characters; use write for binary content.');
+  return new TextEncoder().encode(edited);
 }

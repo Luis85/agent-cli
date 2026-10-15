@@ -48,6 +48,13 @@ describe('UTF-8 text files', () => {
     expect(new TextDecoder().decode(editBytes('src/x.ts', encodeText('export {};\n'), { kind: 'append', content: '// done\n' }, noMetadata))).toBe('export {};\n// done\n');
   });
 
+  it('rejects text edits whose result would contain NUL characters, but not in Markdown', () => {
+    const source = encodeText('one\ntwo\n');
+    expect(() => editBytes('notes.txt', source, { kind: 'replace', find: 'two', replace: 'tw\u0000o' }, noMetadata)).toThrow(expect.objectContaining({ code: 'INVALID_ENCODING' }));
+    expect(() => editBytes('src/x.ts', source, { kind: 'append', content: '\u0000' }, noMetadata)).toThrow(expect.objectContaining({ code: 'INVALID_ENCODING' }));
+    expect(new TextDecoder().decode(editBytes('note.md', source, { kind: 'append', content: 'a\u0000b\n' }, noMetadata))).toBe('one\ntwo\na\u0000b\n');
+  });
+
   it('validates text as UTF-8 without interpreting its syntax', () => {
     expect(() => codec.validate('broken.json', encodeText('{ "unterminated": '))).not.toThrow();
     for (const path of ['src/x.ts', 'scripts/deploy.ps1', 'Dockerfile', 'Containerfile', 'Dockerfile.release', 'Containerfile.dev']) {

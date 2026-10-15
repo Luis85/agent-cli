@@ -21,7 +21,7 @@ export const germanErrors = {
   INVALID_INPUT: { summary: 'Die Eingabeoptionen sind ungültig oder widersprüchlich.', hint: 'Verwenden Sie genau eine Eingabequelle und die in der Meldung genannte Optionskombination.' },
   INPUT_REQUIRED: { summary: '--stdin wurde ohne weitergeleitete Eingabe angegeben.', hint: 'Leiten Sie den Inhalt an den Befehl weiter oder verwenden Sie --content oder --from.' },
   INVALID_JSON: { summary: 'Die Eingabe ist kein gültiges JSON.', hint: 'Übergeben Sie einen gültigen JSON-Wert und maskieren Sie ihn für Ihre Shell.' },
-  INVALID_ENCODING: { summary: 'Der Inhalt ist in der erforderlichen Kodierung ungültig.', hint: 'Verwenden Sie gültiges UTF-8. Binärinhalte schreiben Sie mit write oder create über --stdin, --from oder --encoding base64; edit und strukturierte Befehle akzeptieren nur UTF-8-Text.' },
+  INVALID_ENCODING: { summary: 'Der Inhalt ist in der erforderlichen Kodierung ungültig.', hint: 'Verwenden Sie gültiges UTF-8, in Textdateien ohne NUL-Zeichen. Binärinhalte schreiben Sie mit write oder create über --stdin, --from oder --encoding base64; edit und strukturierte Befehle akzeptieren nur UTF-8-Text.' },
   INVALID_LANGUAGE: { summary: 'Die Sprache wird nicht unterstützt.', hint: 'Verwenden Sie --lang en oder --lang de.' },
   INVALID_NAME: { summary: 'Der Name entspricht nicht der erforderlichen Namensregel.', hint: 'Verwenden Sie das in der Meldung beschriebene Format, zum Beispiel PascalCase.' },
   INVALID_KEY: { summary: 'Der Eigenschaftsschlüssel ist reserviert oder unsicher.', hint: 'Verwenden Sie einen anderen Eigenschaftsschlüssel.' },

@@ -53,6 +53,13 @@ describe('searching vault text files', () => {
     expect(first).toEqual({ path: 'notes/a.md', line: 4, column: 1, match: 'Plan', snippet: 'Plan first, plan again.', revision: expect.stringMatching(/^[0-9a-f]{64}$/) });
   });
 
+  it('skips text files with NUL characters, which read as attachments, but searches Markdown containing NUL', async () => {
+    await put('nul.txt', new Uint8Array([0x61, 0x00, 0x62, 0x0a, ...new TextEncoder().encode('hello\n')]));
+    await put('notes/nul.md', 'a\u0000b\nhello\n');
+    await put('notes/clean.txt', 'hello\n');
+    expect(places(await search('hello'))).toEqual(['notes/clean.txt:1:1', 'notes/nul.md:2:1']);
+  });
+
   it('honours case sensitivity, regular expressions, kinds, paths and context lines', async () => {
     expect(places(await search('PLAN', { caseSensitive: true }))).toEqual(['src/plan.ts:1:22']);
     expect((await search('^#+ \\w+', { regex: true })).hits.map(hit => hit.match)).toEqual(['# Roadmap']);
