@@ -104,6 +104,7 @@ describe('refusals', () => {
   it('checks the planned ends against the live type, and the span only for two-ended types', () => {
     expect(apply({ type: 'Milestone' }, { axis: { start: '2026-10-01', ends: ['start'] } }).refusal).toBe('field-not-held');
     expect(apply({ type: 'PBI' }, { axis: { target: '2026-10-01', ends: ['target'] } }).refusal).toBe('field-not-held');
+    expect(apply({ type: 'PBI' }, { axis: { target: '2026-10-01', ends: ['target', 'target'] } }).refusal).toBe('field-not-held');
     expect(written({ type: 'Milestone', start: '2026-12-01' }, { axis: { target: '2026-10-01', ends: ['target'] } })).toStrictEqual({ type: 'Milestone', start: '2026-12-01', due: '2026-10-01' });
     expect(written({ type: 'Iteration', start: '2026-10-01' }, { axis: { target: '2026-10-15', ends: ['start', 'target'] } }, { iterationBars: true }))
       .toStrictEqual({ type: 'Iteration', start: '2026-10-01', due: '2026-10-15' });
@@ -158,6 +159,7 @@ describe('planned horizon and dates', () => {
     expect(written({ type: 'PBI' }, { axis: { horizon: 'Next', start: '2026-10-01', target: '2026-10-09' } }, { horizonProperty: '', startProperty: '', targetProperty: '' }))
       .toStrictEqual({ type: 'PBI' });
     expect(written({ type: 'PBI', horizon: 'Now' }, { axis: { start: '2026-10-01' } })).toStrictEqual({ type: 'PBI', horizon: 'Now', start: '2026-10-01' });
+    expect(written({ type: 'PBI', horizon: ['Now', 'Later'] }, { axis: { horizon: 'Next' } })).toStrictEqual({ type: 'PBI', horizon: 'Next' });
   });
 
   it.each<[string, unknown, unknown]>([

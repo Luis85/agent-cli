@@ -89,6 +89,8 @@ describe('spreading around context rows', () => {
   it.each<[string, Ranked[], number[]]>([
     ['an unranked context row before the run', [row('ctx', null, 0, true), row('a', 1, 1), row('ctx10', 10, 2, true)], [-990]],
     ['a negative context rank', [row('a', 1, 0), row('ctx', -5, 1, true)], [-1005]],
+    ['a negative leading context rank', [row('ctx', -5, 0, true), row('a', 1, 1)], [995]],
+    ['an unranked context row above a negative floor', [row('ctx', -5, 0, true), row('a', 1, 1), row('u', null, 2, true), row('b', 2, 3)], [995, 1995]],
     ['an unranked context row inside the run', [row('ctx', 10, 0, true), row('a', 1, 1), row('u', null, 2, true), row('b', 2, 3)], [1010, 2010]],
     ['a higher context row', [row('ctx', 1, 0, true), row('a', 9, 1), row('ctx3', 3, 2, true), row('b', 9, 3)], [2, 1003]],
     ['a tied context row', [row('ctx', 1, 0, true), row('a', 9, 1), row('ctx1', 1, 2, true), row('b', 9, 3)], [1001, 2001]],

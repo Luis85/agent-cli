@@ -87,6 +87,8 @@ describe('tags', () => {
     expect(hasTag(['Foo'], 'foo')).toBe(true);
     expect(hasTag(['Foo'], 'bar')).toBe(false);
     expect(hasTag([], 'x')).toBe(false);
+    expect(hasTag(['ß'], 'SS')).toBe(false);
+    expect(readTags('ß SS')).toStrictEqual(['ß', 'SS']);
     expect(typedTags(['#Sprint-12!, sprint-12 2026-07', '2026 ##x//y/ release--candidate'])).toStrictEqual(['Sprint-12', '2026-07', 'x/y', 'release--candidate']);
     expect(typedTags(['!!', '42', 'a', 'A'])).toStrictEqual(['a']);
   });

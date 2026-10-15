@@ -95,6 +95,7 @@ describe('field problems', () => {
     expect(check({ 'p.md': { type: 'PBI', order: 1, release: '[[r]]', horizon: 'Now', iteration: '[[i]]', goal: 'x', start: '2026-10-01', due: '2026-10-09' }, 'r.md': { type: 'Release' }, 'i.md': { type: 'Iteration', order: 2 } }))
       .toStrictEqual([]);
     expect(check({ 'r.md': { type: 'Release', horizon: '' } })).toStrictEqual([]);
+    expect(check({ 'r.md': { type: 'Release', iteration: '' }, 's.md': { type: 'Release', iteration: 5 } })).toStrictEqual([]);
     expect(check({ 'r.md': { type: 'Release', horizon: 'Now', iteration: '[[i]]' }, 'i.md': { type: 'Iteration', order: 1 } }, { view: { horizonProperty: '', iterationProperty: '' } })).toStrictEqual([]);
   });
 

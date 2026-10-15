@@ -37,6 +37,7 @@ describe('drop placement over the global rank', () => {
     expect(dropPlacement(null, { parent: b, peers: [], insertIndex: 0 }, [])).toStrictEqual({ order: 3000 });
     expect(dropPlacement(null, { parent: n, peers: [], insertIndex: 0 }, [])).toStrictEqual({ refusal: 'unranked' });
     expect(dropPlacement(null, { parent: null, peers: [b], insertIndex: 0 }, [])).toStrictEqual({ order: 1000 });
+    expect(dropPlacement(null, { parent: null, peers: [b], insertIndex: 1 }, [])).toStrictEqual({ order: 3000 });
     expect(dropPlacement(null, { parent: null, peers: [a], insertIndex: 1 }, [a, n, c])).toStrictEqual({ refusal: 'unranked' });
     expect(dropPlacement(null, { parent: null, peers: [c], insertIndex: 0 }, [a, n, c])).toStrictEqual({ refusal: 'unranked' });
     expect(dropPlacement(null, { parent: null, peers: [n], insertIndex: 1 }, [a, n, c])).toStrictEqual({ refusal: 'unranked' });

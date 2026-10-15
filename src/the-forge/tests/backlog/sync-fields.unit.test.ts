@@ -119,6 +119,9 @@ describe('canonical field texts', () => {
   it('orders remote ids numerically, then other ids by text', () => {
     expect(sortedIds(['100', '20', '3', '12a', 'new:12', 'new:b', 'new:a', '20'])).toStrictEqual(['3', '20', '100', '12a', 'new:12', 'new:a', 'new:b']);
     expect(sortedIds(['x1', '1x', '2'])).toStrictEqual(['2', '1x', 'x1']);
+    expect(sortedIds(['new:2', 'new:10'])).toStrictEqual(['new:10', 'new:2']);
+    const placeholders = Array.from({ length: 120 }, (_, k) => `new:${String((k * 37) % 120).padStart(3, '0')}`);
+    expect(sortedIds(placeholders)).toStrictEqual([...placeholders].sort());
   });
 });
 
@@ -127,6 +130,7 @@ describe('description decisions', () => {
 
   it.each<[string, ReturnType<typeof sides>, string]>([
     ['no text on either side', sides(undefined, undefined), 'unchanged'], ['no remote text', sides('md', undefined, 'md', 'md'), 'skip'],
+    ['no remote text known as Markdown', sides('md', undefined, 'md', 'md', true), 'skip'],
     ['no local text', sides(undefined, 'md', 'md', 'md'), 'skip'], ['no remote base', sides('a', 'b', 'a', undefined), 'conflict'],
     ['no local base', sides('a', 'b', undefined, 'b'), 'conflict'], ['one base and equal texts', sides('a', 'a', 'a', undefined), 'converged'],
     ['equal texts unchanged', sides('x', 'x', 'x', 'x'), 'unchanged'], ['equal texts changed locally', sides('y', 'y', 'x', 'y'), 'converged'],
@@ -156,6 +160,7 @@ describe('custom name mappings', () => {
     expect(remoteState(mapping(), 'PBI', 'Done')).toBe('Resolved');
     expect(remoteState(mapping(), 'Bug', 'Done')).toBe('Closed');
     expect(remoteState(mapping(), 'Bug', 'Parked')).toBe('Parked');
+    expect(remoteState(mapping(), null, 's')).toBe('s');
   });
 
   it('reads remote states back, never through another type\'s qualified entry', () => {
