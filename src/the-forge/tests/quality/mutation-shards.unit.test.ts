@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { literalPattern, parseArgs, partition, planShards, selectFiles, shardOptions } from '../../scripts/mutation/shard.mjs';
-
-const project = process.cwd();
-const strykerConfig = () => JSON.parse(readFileSync('stryker.config.json', 'utf8')) as { mutate: string[], tempDirName: string, thresholds: Record<string, number | null> };
+import { ignoreRules, literalPattern, matchFiles, parseArgs, partition, planShards, shardOptions } from '../../scripts/mutation/shard.mjs';
 
 describe('mutation shard partitioning', () => {
   it('assigns every file to exactly one shard, largest first to the lightest shard, ties by path and lowest shard', () => {
@@ -22,55 +18,9 @@ describe('mutation shard partitioning', () => {
     expect(() => partition([{ path: 'a.ts', size: 1 }], count)).toThrow('The shard count must be a positive integer');
   });
 
-  it('balances the configured scope into deterministic, disjoint shards that together cover every selected file', () => {
-    const config = strykerConfig();
-    const selected = selectFiles(config.mutate, project);
-    const shards = planShards(config, 2, project);
-    expect(planShards(config, 2, project)).toStrictEqual(shards);
-    expect(shards.flat().sort()).toStrictEqual(selected);
-    expect(new Set(shards.flat()).size).toBe(selected.length);
-    expect(shards.flat().map(literalPattern)).toStrictEqual(shards.flat());
-    const sizes = shards.map(files => files.reduce((total, file) => total + readFileSync(file).length, 0));
-    const largest = Math.max(...selected.map(file => readFileSync(file).length));
-    // Greedy balancing keeps the shards within one file of each other.
-    expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThanOrEqual(largest);
-  });
-
-  it.each([
-    ['no patterns', { mutate: [] }, 'must list mutate patterns'],
-    ['patterns that select nothing', { mutate: ['src/does-not-exist/**/*.ts'] }, 'select no file'],
-  ])('refuses to plan with %s', (_, config, message) => {
-    expect(() => planShards(config, 2, project)).toThrow(message);
-  });
-});
-
-describe('mutate pattern expansion', () => {
-  it('applies patterns in order like Stryker: a negated pattern removes the files selected before it', () => {
-    const all = selectFiles(['src/plugins/backlog/domain/*.ts'], project);
-    expect(all).toEqual(expect.arrayContaining(['src/plugins/backlog/domain/messages.ts', 'src/plugins/backlog/domain/writes.ts']));
-    expect(all).toStrictEqual([...all].sort());
-    const excluded = selectFiles(['src/plugins/backlog/domain/*.ts', '!**/messages.ts'], project);
-    expect(excluded).toStrictEqual(all.filter(file => file !== 'src/plugins/backlog/domain/messages.ts'));
-    // A later positive pattern selects the file again.
-    expect(selectFiles(['src/plugins/backlog/domain/*.ts', '!**/messages.ts', 'src/plugins/backlog/domain/messages.ts'], project)).toStrictEqual(all);
-    expect(selectFiles(['src/domain/documents/{diff,literal-edit}.ts'], project)).toStrictEqual(['src/domain/documents/diff.ts', 'src/domain/documents/literal-edit.ts']);
-    expect(selectFiles(['src/domain/documents'], project)).toStrictEqual([]);
-  });
-
-  it('refuses line ranges, which cannot be split into whole-file shards', () => {
-    expect(() => selectFiles(['src/domain/documents/diff.ts:10-20'], project)).toThrow('remove the line range');
-    expect(() => selectFiles(['src/domain/documents/diff.ts:10:2-20:5'], project)).toThrow('remove the line range');
-  });
-
-  it('keeps every pattern of stryker.config.json effective, so a typo cannot silently shrink the scope', () => {
-    const { mutate } = strykerConfig();
-    const ineffective = mutate.filter((pattern, index) => {
-      const before = selectFiles(mutate.slice(0, index), project);
-      const after = selectFiles(mutate.slice(0, index + 1), project);
-      // A positive pattern must select a file, a negated one must remove one.
-      return pattern.startsWith('!') ? after.length === before.length : selectFiles([pattern], project).length === 0;
-    });
-    expect(ineffective).toStrictEqual([]);
+  it('refuses to plan without mutate patterns', () => {
+    expect(() => planShards({ mutate: [] }, 2, '/nowhere')).toThrow('must list mutate patterns');
+    expect(() => planShards({}, 2, '/nowhere')).toThrow('must list mutate patterns');
   });
 
   it('uses a file path as its own mutate pattern and refuses paths with glob syntax, which Stryker would expand', () => {
@@ -78,6 +28,41 @@ describe('mutate pattern expansion', () => {
     for (const file of ['src/[id].ts', 'src/page (copy).ts', 'src/{a,b}.ts', 'src/a*.ts', 'src/a?.ts', 'src/!a.ts', 'src/a+b.ts', 'src/@a.ts', 'src\\a.ts']) {
       expect(() => literalPattern(file), file).toThrow(`Cannot shard ${file}: its path contains glob syntax`);
     }
+  });
+
+  it('ignores what Stryker ignores for a configuration: its sandbox, incremental file, reports and ignorePatterns', () => {
+    expect(ignoreRules({
+      tempDirName: '.tmp', incrementalFile: 'out/incremental.json', htmlReporter: { fileName: 'out/index.html' },
+      jsonReporter: { fileName: 'out/mutation.json' }, ignorePatterns: ['/coverage', '!/coverage/keep'],
+    })).toStrictEqual(['.tmp', 'out/incremental.json', 'out/index.html', 'out/mutation.json', '/coverage', '!/coverage/keep']);
+    expect(ignoreRules({ htmlReporter: {}, jsonReporter: {} })).toStrictEqual([]);
+    expect(ignoreRules({})).toStrictEqual([]);
+  });
+});
+
+describe('mutate pattern matching', () => {
+  const files = () => ['src/a.ts', 'src/b.ts', 'src/messages.ts', 'src/deep/c.ts', 'src/notes.md', 'src/Upper.ts', 'src/.hidden.ts', 'src/.cache/d.ts'];
+
+  it.each([
+    [['src/*.ts'], ['src/Upper.ts', 'src/a.ts', 'src/b.ts', 'src/messages.ts']],
+    // A negated pattern removes the files selected before it; a later positive pattern selects them again.
+    [['src/*.ts', '!**/messages.ts'], ['src/Upper.ts', 'src/a.ts', 'src/b.ts']],
+    [['!**/messages.ts', 'src/messages.ts'], ['src/messages.ts']],
+    [['src/*.ts', '!**/messages.ts', 'src/messages.ts'], ['src/Upper.ts', 'src/a.ts', 'src/b.ts', 'src/messages.ts']],
+    [['src/{a,messages}.ts', 'src/**/c.ts'], ['src/a.ts', 'src/deep/c.ts', 'src/messages.ts']],
+    [['./src/deep/../a.ts'], ['src/a.ts']],
+    // Matching is case-sensitive on every platform, and wildcards skip dot files that a literal name selects.
+    [['src/upper.ts'], []],
+    [['src/**/*.ts', '!src/upper.ts', '!src/deep/**'], ['src/Upper.ts', 'src/a.ts', 'src/b.ts', 'src/messages.ts']],
+    [['src/.hidden.ts', 'src/.cache/*.ts'], ['src/.cache/d.ts', 'src/.hidden.ts']],
+    // Only files are selected.
+    [['src', 'src/deep'], []],
+  ])('selects for %j: %j', (patterns, expected) => {
+    expect(matchFiles(patterns, files(), '/project')).toStrictEqual(expected);
+  });
+
+  it.each(['src/a.ts:10-20', 'src/a.ts:10:2-20:5', '!src/a.ts:1-2'])('refuses the line range in %s, which cannot be split into whole-file shards', pattern => {
+    expect(() => matchFiles([pattern], files(), '/project')).toThrow(`remove the line range from mutate pattern "${pattern}"`);
   });
 });
 
@@ -105,15 +90,15 @@ describe('shard command line and Stryker options', () => {
   });
 
   it('runs a shard on its own files with separate reports, incremental file and sandbox, and without the break threshold', () => {
-    const options = shardOptions(strykerConfig(), { configFile: 'stryker.config.json', dir: '.quality-reports/mutation', index: 2, files: ['src/a.ts', 'src/b.ts'], force: false });
-    expect(options).toStrictEqual({
+    const config = { tempDirName: '.quality-reports/stryker-tmp', thresholds: { high: 80, low: 70, break: 78 } };
+    expect(shardOptions(config, { configFile: 'stryker.config.json', dir: '.quality-reports/mutation', index: 2, files: ['src/a.ts', 'src/b.ts'], force: false })).toStrictEqual({
       configFile: 'stryker.config.json',
       mutate: ['src/a.ts', 'src/b.ts'],
       incrementalFile: '.quality-reports/mutation/shard-2/incremental.json',
       htmlReporter: { fileName: '.quality-reports/mutation/shard-2/index.html' },
       jsonReporter: { fileName: '.quality-reports/mutation/shard-2/mutation.json' },
-      tempDirName: `${strykerConfig().tempDirName}-shard-2`,
-      thresholds: { ...strykerConfig().thresholds, break: null },
+      tempDirName: '.quality-reports/stryker-tmp-shard-2',
+      thresholds: { high: 80, low: 70, break: null },
     });
     expect(shardOptions({}, { configFile: 'c.json', dir: 'out', index: 1, files: ['a.ts'], force: true })).toMatchObject({ force: true, tempDirName: '.stryker-tmp-shard-1', thresholds: { break: null } });
   });

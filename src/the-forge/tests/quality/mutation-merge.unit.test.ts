@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { judge, loadShardReports, parseArgs } from '../../scripts/mutation/merge.mjs';
+import { checkPlans, judge, loadShardPlans, loadShardReports, parseArgs } from '../../scripts/mutation/merge.mjs';
 import { fileScores, mergeReports, score, scoreTable, summaryMarkdown } from '../../scripts/mutation/report.mjs';
 import type { MutantResult, Report } from '../../scripts/mutation/report.mjs';
 
@@ -43,6 +43,11 @@ describe('mutation score', () => {
     const report = shardReport({ 'b.ts': ['Killed', 'Survived'], 'a.ts': ['Killed', 'NoCoverage'], 'c.ts': ['Survived', 'Survived', 'NoCoverage'], 'd.ts': ['Killed'] });
     expect(fileScores(report).map(file => [file.path, file.score])).toStrictEqual([['c.ts', 0], ['a.ts', 50], ['b.ts', 50], ['d.ts', 100]]);
   });
+
+  it('orders paths by code unit, whatever the locale', () => {
+    const report = shardReport({ 'b.ts': ['Killed'], 'a.ts': ['Killed'], 'B.ts': ['Killed'], 'ä.ts': ['Killed'], 'z.ts': ['Killed'] });
+    expect(fileScores(report).map(file => file.path)).toStrictEqual(['B.ts', 'a.ts', 'b.ts', 'z.ts', 'ä.ts']);
+  });
 });
 
 describe('merging shard reports', () => {
@@ -78,13 +83,40 @@ describe('merging shard reports', () => {
     expect(seeded.testFiles).toStrictEqual({
       'tests/a.unit.test.ts': { source: 'changed test source', tests: [{ id: '0', name: 'reads', location: { start: { line: 1, column: 1 } } }, { id: '1', name: 'writes' }] },
     });
-    // A test merged from a report with different test source loses its location, which belongs to that source.
-    other.testFiles!['tests/a.unit.test.ts']!.tests.push({ id: '9', name: 'renamed', location: { start: { line: 9, column: 1 } } });
-    const mixed = mergeReports([report, other], { prefer: (_, candidates) => candidates[0]! });
-    expect(mixed.testFiles).toStrictEqual({
-      'tests/a.unit.test.ts': { source: 'test source', tests: [{ id: '0', name: 'reads', location: { start: { line: 1, column: 1 } } }, { id: '1', name: 'writes' }, { id: '2', name: 'renamed' }] },
-      'tests/b.unit.test.ts': { tests: [{ id: '3', name: 'unrelated' }] },
-    });
+  });
+
+  it('drops references to a test file recorded against other source, so Stryker retests instead of reusing a stale kill', () => {
+    // Report 1 records the test file as it is now; report 2 recorded `writes` killing a mutant of b.ts in an older version.
+    const fresh = shardReport({ 'a.ts': ['Killed'] }, 'new test source');
+    const stale = shardReport({ 'b.ts': ['Killed', 'Survived'] }, 'old test source');
+    stale.files['b.ts']!.mutants[1] = { id: '1', status: 'Survived', coveredBy: ['0', '7'] };
+    stale.testFiles!['tests/c.unit.test.ts'] = { source: 'c', tests: [{ id: '7', name: 'covers', location: { start: { line: 3, column: 1 } } }] };
+    for (const allTests of [true, false]) {
+      const merged = mergeReports([fresh, stale], { prefer: (_, candidates) => candidates[0]!, allTests });
+      expect(merged.files['a.ts']!.mutants[0]).toStrictEqual({ id: '1.0', status: 'Killed', coveredBy: ['0', '1'], killedBy: ['1'] });
+      // Without a killing test Stryker cannot reuse the kill; without the covering test the survivor gains an added test.
+      expect(merged.files['b.ts']!.mutants).toStrictEqual([
+        { id: '2.0', status: 'Killed', coveredBy: [], killedBy: [] },
+        { id: '2.1', status: 'Survived', coveredBy: ['2'] },
+      ]);
+      // Every merged test belongs to the source it is listed with.
+      expect(merged.testFiles).toStrictEqual({
+        'tests/a.unit.test.ts': { source: 'new test source', tests: [{ id: '0', name: 'reads', location: { start: { line: 1, column: 1 } } }, { id: '1', name: 'writes' }] },
+        'tests/c.unit.test.ts': { source: 'c', tests: [{ id: '2', name: 'covers', location: { start: { line: 3, column: 1 } } }] },
+      });
+    }
+  });
+
+  it('takes a test file\'s source from the first report that contributes a file, whatever the file order', () => {
+    const first = shardReport({ 'z.ts': ['Killed'] }, 'first test source');
+    const second = shardReport({ 'a.ts': ['Killed'] }, 'second test source');
+    const merged = mergeReports([first, second, shardReport({}, 'unused test source')], { allTests: false });
+    expect(merged.testFiles!['tests/a.unit.test.ts']!.source).toBe('first test source');
+    expect(merged.files['z.ts']!.mutants[0]).toMatchObject({ killedBy: ['1'] });
+    expect(merged.files['a.ts']!.mutants[0]).toMatchObject({ coveredBy: [], killedBy: [] });
+    // A report that contributes no file does not decide the source.
+    const seeded = mergeReports([shardReport({}, 'unused test source'), second], { allTests: false });
+    expect(seeded.testFiles!['tests/a.unit.test.ts']!.source).toBe('second test source');
   });
 });
 
@@ -151,6 +183,37 @@ describe('reading shard reports', () => {
     ['more shards on disk than expected', 2, () => valid(), [1, 2, 3], 'Found reports of shards 3, but the run has 2 shards'],
   ])('fails loudly on %s', (_, count, read, present, message) => {
     expect(() => loadShardReports(count, read, present)).toThrow(message);
+  });
+
+  it('reads every shard\'s plan in shard order', () => {
+    const texts = [JSON.stringify({ shard: 1, shards: 2, files: ['a.ts'] }), JSON.stringify({ shard: 2, shards: 2, files: ['b.ts', 'c.ts'] })];
+    expect(loadShardPlans(2, index => texts[index - 1])).toStrictEqual([['a.ts'], ['b.ts', 'c.ts']]);
+  });
+
+  it.each([
+    ['a missing plan', 2, (index: number) => index === 1 ? '{"shard":1,"shards":2,"files":["a.ts"]}' : undefined, 'Shard 2/2 wrote no plan'],
+    ['an unreadable plan', 1, () => '{', 'Shard 1/1 wrote an unreadable plan'],
+    ['a plan of another shard', 2, (index: number) => `{"shard":1,"shards":2,"files":["${index}.ts"]}`, 'Shard 2/2 wrote the plan of shard 1/2'],
+    ['a plan of another partition', 2, (index: number) => `{"shard":${index},"shards":3,"files":["a.ts"]}`, 'Shard 1/2 wrote the plan of shard 1/3'],
+    ['a plan without files', 1, () => '{"shard":1,"shards":1}', 'Shard 1/1 wrote a plan without a file list'],
+    ['a plan with an empty file list', 1, () => '{"shard":1,"shards":1,"files":[]}', 'Shard 1/1 wrote a plan without a file list'],
+    ['a plan listing a non-path', 1, () => '{"shard":1,"shards":1,"files":["a.ts",3]}', 'Shard 1/1 wrote a plan without a file list'],
+    ['a null plan', 1, () => 'null', 'Shard 1/1 wrote an unreadable plan'],
+  ])('fails loudly on %s', (_, count, read, message) => {
+    expect(() => loadShardPlans(count, read)).toThrow(message);
+  });
+
+  it('accepts reports that cover exactly their disjoint plans', () => {
+    expect(() => checkPlans([['a.ts', 'b.ts'], ['c.ts']], [shardReport({ 'b.ts': ['Killed'], 'a.ts': ['Survived'] }), shardReport({ 'c.ts': ['Killed'] })])).not.toThrow();
+  });
+
+  it.each([
+    // Stryker only warns when a mutate pattern matches no file, and a file without mutants leaves no trace either.
+    ['planned files the report lacks', [['a.ts', 'b.ts', 'd.ts', 'e.ts'], ['c.ts']], 'Shard 1/2 reported no mutants for d.ts, e.ts, which it planned: Stryker matched no file or found nothing to mutate'],
+    ['a reported file the shard did not plan', [['a.ts'], ['c.ts']], 'Shard 1/2 reported b.ts, which it did not plan'],
+    ['plans that overlap', [['a.ts', 'b.ts'], ['b.ts', 'c.ts']], 'b.ts is planned for shards 1 and 2'],
+  ])('refuses %s', (_, plans, message) => {
+    expect(() => checkPlans(plans, [shardReport({ 'b.ts': ['Killed'], 'a.ts': ['Survived'] }), shardReport({ 'c.ts': ['Killed'] })])).toThrow(message);
   });
 
   it.each([
