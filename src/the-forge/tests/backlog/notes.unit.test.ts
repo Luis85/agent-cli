@@ -164,8 +164,14 @@ describe('Obsidian comments around code', () => {
     ['an empty block before code holding %%', '```\n```\n%%secret%%\n```js\ncode %%x%%\n```\n', '```\n```\n\n```js\ncode %%x%%\n```\n', ['%%secret%%']],
     ['a fence indented by two spaces', '  ```\n%%keep%%\n  ```\n', '  ```\n%%keep%%\n  ```\n', []],
     ['a fence indented by three spaces', '   ~~~\n%%k%%\n~~~\n%%c%%', '   ~~~\n%%k%%\n~~~\n', ['%%c%%']],
-    ['four spaces of indentation are not a fence', '    ```\n%%x%%\n', '    ```\n\n', ['%%x%%']],
-    ['a tab is not fence indentation', '\t~~~\n%%x%%\n', '\t~~~\n\n', ['%%x%%']],
+    ['a four-space fence ends at an unindented line', '    ```\n%%x%%\n', '    ```\n\n', ['%%x%%']],
+    ['a tab-indented fence ends at an unindented line', '\t~~~\n%%x%%\n', '\t~~~\n\n', ['%%x%%']],
+    ['a tab-indented fence in a list item', '- step\n\t```\n\tprintf("%%d", x); y %% z\n\t```\n%%c%%', '- step\n\t```\n\tprintf("%%d", x); y %% z\n\t```\n', ['%%c%%']],
+    ['a four-space fence in a numbered item', '1. step\n    ~~~\n    %%k%%\n    ~~~\n%%c%%', '1. step\n    ~~~\n    %%k%%\n    ~~~\n', ['%%c%%']],
+    ['a line within three columns of the opener stays code', '\t```\n %%k%%\n\t```\n%%c%%', '\t```\n %%k%%\n\t```\n', ['%%c%%']],
+    ['a blank line stays in an indented fence', '\t```\n\n\t%%k%%\n\t```\n%%c%%', '\t```\n\n\t%%k%%\n\t```\n', ['%%c%%']],
+    ['a tab after spaces reaches the next tab stop', '  \t```\n %%k%%\n  \t```\n%%c%%', '  \t```\n %%k%%\n  \t```\n', ['%%c%%']],
+    ['a line leaving the list item may open a fence', '\t```\n%%c%%\n```\n%%k%%\n```', '\t```\n\n```\n%%k%%\n```', ['%%c%%']],
     ['one or two tildes are not a fence', '~\n%%x%%\n~~\n%%y%%', '~\n\n~~\n', ['%%x%%', '%%y%%']],
     ['the other fence character does not close', '```\n~~~\n%%k%%\n```\n%%c%%', '```\n~~~\n%%k%%\n```\n', ['%%c%%']],
     ['backticks do not close a tilde fence', '~~~\n```\n%%k%%\n~~~\n%%c%%', '~~~\n```\n%%k%%\n~~~\n', ['%%c%%']],
@@ -175,6 +181,9 @@ describe('Obsidian comments around code', () => {
     ['a closer with trailing spaces closes', '```\n%%k%%\n```  \n%%c%%', '```\n%%k%%\n```  \n', ['%%c%%']],
     ['a closer indented by three spaces closes', '```\n%%k%%\n   ```\n%%c%%', '```\n%%k%%\n   ```\n', ['%%c%%']],
     ['a closer indented by four spaces is code', '```\n    ```\n%%k%%\n```\n%%c%%', '```\n    ```\n%%k%%\n```\n', ['%%c%%']],
+    ['a closer three columns past an indented opener closes', '\t```\n\t   ```\n%%c%%', '\t```\n\t   ```\n', ['%%c%%']],
+    ['a closer four columns past an indented opener is code', '\t```\n\t    ```\n %%k%%\n\t```\n%%c%%', '\t```\n\t    ```\n %%k%%\n\t```\n', ['%%c%%']],
+    ['a closer less indented than its opener closes', '\t```\n %%k%%\n ```\n%%c%%', '\t```\n %%k%%\n ```\n', ['%%c%%']],
     ['an unclosed fence runs to the end', 'a %%c%%\n```\n%%k%%', 'a \n```\n%%k%%', ['%%c%%']],
     ['a backtick info string cannot hold a backtick', '```a`b\n%%c%%\n```\n%%k%%', '```a`b\n\n```\n%%k%%', ['%%c%%']],
     ['a tilde info string may hold backticks', '~~~ a`b\n%%k%%\n~~~\n%%c%%', '~~~ a`b\n%%k%%\n~~~\n', ['%%c%%']],
@@ -195,11 +204,98 @@ describe('Obsidian comments around code', () => {
     ['a blank line ends a span', 'a `b\n\n%%c%%\n\nd `e', 'a `b\n\n\n\nd `e', ['%%c%%']],
     ['a whitespace-only line ends a span', 'a `b\n \t\n%%c%% `', 'a `b\n \t\n `', ['%%c%%']],
     ['a comment opened first wins over code', '%%a `b%% c`', ' c`', ['%%a `b%%']],
+    ['an escaped backtick opens no span', 'a \\`b %%c%% `', 'a \\`b  `', ['%%c%%']],
   ])('keeps inline code: %s', (_, body, without, found) => {
     expect(withoutComments(body)).toBe(without);
     expect(comments(body)).toEqual(found);
   });
+
+  it.each([
+    ['a list item', 'Run `npm\n- %%private plan%%\n- next `\n', 'Run `npm\n- \n- next `\n', ['%%private plan%%']],
+    ['a star item', 'a `b\n* %%c%% `', 'a `b\n*  `', ['%%c%%']],
+    ['a plus item', 'a `b\n+\t%%c%% `', 'a `b\n+\t `', ['%%c%%']],
+    ['an indented item', 'a `b\n  - %%c%% `', 'a `b\n  -  `', ['%%c%%']],
+    ['an empty item', 'a `b\n-\n%%c%% `', 'a `b\n-\n `', ['%%c%%']],
+    ['an empty item before CRLF', 'a `b\r\n-\r\n%%c%% `', 'a `b\r\n-\r\n `', ['%%c%%']],
+    ['a numbered item', 'a `b\n12. %%c%% `', 'a `b\n12.  `', ['%%c%%']],
+    ['a parenthesis-numbered item', 'a `b\n3) %%c%% `', 'a `b\n3)  `', ['%%c%%']],
+    ['a heading', 'para `x\n# heading %%secret%% `\n', 'para `x\n# heading  `\n', ['%%secret%%']],
+    ['a quote', 'para `x\n> quote %%secret%% `\n', 'para `x\n> quote  `\n', ['%%secret%%']],
+    ['a table row', 'a `b\n| %%c%% `', 'a `b\n|  `', ['%%c%%']],
+    ['a backtick fence', 'para `x\n```\ncode\n```\n%%c%% `', 'para `x\n```\ncode\n```\n `', ['%%c%%']],
+    ['a tilde fence', 'para `x\n  ~~~\n%%k%%\n~~~\n%%c%% `', 'para `x\n  ~~~\n%%k%%\n~~~\n `', ['%%c%%']],
+    ['a thematic break', 'a `b\n***\n%%c%% `', 'a `b\n***\n `', ['%%c%%']],
+    ['a spaced thematic break', 'a `b\n_ _ _ \n%%c%% `', 'a `b\n_ _ _ \n `', ['%%c%%']],
+    ['an equals underline', 'a `b\n===\n%%c%% `', 'a `b\n===\n `', ['%%c%%']],
+    ['a single underline character', 'a `b\n=\n%%c%% `', 'a `b\n=\n `', ['%%c%%']],
+    ['a dash underline before CRLF', 'a `b\r\n--\r\n%%c%% `', 'a `b\r\n--\r\n `', ['%%c%%']],
+    ['a CRLF blank line', 'a `b\r\n\r\n%%c%% `', 'a `b\r\n\r\n `', ['%%c%%']],
+  ])('ends a code span at a block start: %s', (_, body, without, found) => {
+    expect(withoutComments(body)).toBe(without);
+    expect(comments(body)).toEqual(found);
+  });
+
+  it.each([
+    ['a dash glued to text', 'a `b\n-c %%k%% `'],
+    ['a number without a marker', 'a `b\n12 %%k%% `'],
+    ['a number glued to text', 'a `b\n1.x %%k%% `'],
+    ['an underline character before text', 'a `b\n==x %%k%% `'],
+    ['mixed rule characters', 'a `b\n-*\n%%k%% `'],
+    ['an indented paragraph line', 'a `b\n    %%k%% `'],
+  ])('continues a code span on a paragraph line: %s', (_, body) => {
+    expect(withoutComments(body)).toBe(body);
+    expect(comments(body)).toEqual([]);
+  });
 });
+
+describe('Obsidian comments', () => {
+  it.each([
+    ['an unclosed comment hides the rest', 'visible\n%% secret till end\n', 'visible\n', ['%% secret till end\n']],
+    ['a block comment around a fence', '%%\n```\nsecret\n```\n%%\nvisible\n', '\nvisible\n', ['%%\n```\nsecret\n```\n%%']],
+    ['an inline comment spanning a fence', 'a %% hidden\n```\nsecret\n``` \nstill %% b\n', 'a  b\n', ['%% hidden\n```\nsecret\n``` \nstill %%']],
+    ['a comment holding blank lines and Markdown', 'a\n%%\n# H\n\n- `x\n%%\nb', 'a\n\nb', ['%%\n# H\n\n- `x\n%%']],
+    ['an unclosed comment after code', '```\n%%k%%\n```\nend %% private\n```\nx\n```\n', '```\n%%k%%\n```\nend ', ['%% private\n```\nx\n```\n']],
+    ['single percent signs', '50% done %', '50% done %', []],
+    ['three percent signs', 'a %%%b%%', 'a ', ['%%%b%%']],
+    ['an escaped marker', 'Use \\%% as literal, then %%secret%% here', 'Use \\%% as literal, then  here', ['%%secret%%']],
+    ['two backslashes escape each other', 'a \\\\%%x%% b', 'a \\\\ b', ['%%x%%']],
+    ['three backslashes escape the marker', 'a \\\\\\%%x %%y%%', 'a \\\\\\%%x ', ['%%y%%']],
+    ['an escaped marker does not close a comment', '%%a \\%% b%% c', ' c', ['%%a \\%% b%%']],
+    ['an escaped character in a comment', '%%a\\b%% c', ' c', ['%%a\\b%%']],
+    ['a backslash before a line break', 'a\\\n```\n%%k%%\n```\n%%c%%', 'a\\\n```\n%%k%%\n```\n', ['%%c%%']],
+    ['a backslash ending the body', 'a %%b%% \\', 'a  \\', ['%%b%%']],
+  ])('hides what Obsidian hides: %s', (_, body, without, found) => {
+    expect(withoutComments(body)).toBe(without);
+    expect(comments(body)).toEqual(found);
+  });
+
+  it('finds exactly the comments it removes, for any body', () => {
+    const parts = ['%%', '%%', '`', '``', '```', '~~~', '\n', '\n\n', '\r\n', '\\', 'a', ' ', '\t', '    ', '- ', '# ', '> ', '---', '1. '];
+    let seed = 7;
+    const next = (limit: number) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % limit; };
+    for (let run = 0; run < 600; run++) {
+      const body = Array.from({ length: 4 + next(24) }, () => parts[next(parts.length)]!).join('');
+      const found = comments(body);
+      expect(interleaves(body, withoutComments(body), found), JSON.stringify(body)).toBe(true);
+      for (const comment of found) expect(comment.startsWith('%%') && ((comment.length >= 4 && comment.endsWith('%%')) || body.endsWith(comment)), JSON.stringify(body)).toBe(true);
+    }
+  });
+});
+
+/** Whether `body` is `visible` with each of `found`, in order, inserted somewhere. */
+function interleaves(body: string, visible: string, found: string[]): boolean {
+  const failed = new Set<string>();
+  const from = (at: number, shown: number, next: number): boolean => {
+    if (at === body.length) return shown === visible.length && next === found.length;
+    const key = `${at}:${shown}:${next}`;
+    if (failed.has(key)) return false;
+    const comment = found[next];
+    const ok = (comment !== undefined && body.startsWith(comment, at) && from(at + comment.length, shown, next + 1)) || (body[at] === visible[shown] && from(at + 1, shown + 1, next));
+    if (!ok) failed.add(key);
+    return ok;
+  };
+  return from(0, 0, 0);
+}
 
 describe('type vocabulary', () => {
   it('matches types case-insensitively and writes canonical spelling', () => {
