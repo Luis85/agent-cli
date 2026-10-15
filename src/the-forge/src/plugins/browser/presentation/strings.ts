@@ -1,10 +1,28 @@
 import type { PluginStrings } from '../../../application/plugins/plugin-catalog.ts';
 
-export const browserStrings: PluginStrings = { de: {
+/** English `browser status` recovery guidance, keyed by status source and by the reasons that need a check first. */
+const englishMessages: Record<string, string> = {
+  'status.source.managed': 'Run browser install or pass --browser-executable for an installed Chromium.',
+  'status.source.environment': 'Update FORGE_BROWSER_EXECUTABLE or pass --browser-executable for an installed Chromium.',
+  'status.source.explicit': 'Pass --browser-executable with the path to an installed Chromium.',
+  'status.reason.not-executable': 'Check execution permissions on the selected file.',
+  'status.reason.inaccessible': 'Check access to the selected path and its parent directories.',
+};
+
+const germanMessages: Record<string, string> = {
+  'status.source.managed': 'Führen Sie browser install aus oder übergeben Sie mit --browser-executable einen installierten Chromium-Browser.',
+  'status.source.environment': 'Passen Sie FORGE_BROWSER_EXECUTABLE an oder übergeben Sie mit --browser-executable einen installierten Chromium-Browser.',
+  'status.source.explicit': 'Übergeben Sie mit --browser-executable den Pfad zu einem installierten Chromium-Browser.',
+  'status.reason.not-executable': 'Prüfen Sie die Ausführungsrechte der ausgewählten Datei.',
+  'status.reason.inaccessible': 'Prüfen Sie den Zugriff auf den ausgewählten Pfad und seine übergeordneten Ordner.',
+};
+
+export const browserStrings: PluginStrings = { en: { messages: englishMessages }, de: {
+  messages: germanMessages,
   manifest: { name: 'Browser-Werkzeuge', description: 'Geschützte Webseiten-Screenshots und wiederholbare bebilderte Anleitungen mit einem verwalteten Browser erstellen.' },
   commands: { browser: 'Webseiten-Screenshots und wiederholbare bebilderte Anleitungen über das portable CLI erstellen.' },
   actions: {
-    'browser status': 'Die Browser-Verfügbarkeit ohne Browserstart oder Netzwerkzugriff prüfen.',
+    'browser status': 'Die Verfügbarkeit der ausführbaren Datei ohne Browserstart oder Prüfung der Browser-Kompatibilität prüfen.',
     'browser install': 'Den verwalteten Chromium-Browser ausdrücklich herunterladen; ein Probelauf startet keine Installation.',
     'browser screenshot': 'Einen Webseiten-Screenshot als geschützte PNG-Datei speichern und eine Markdown-Bildreferenz zurückgeben.',
     'browser validate': 'Einen deklarierten Anleitungsablauf ohne Browser prüfen und die Ausgaberevision anzeigen.',

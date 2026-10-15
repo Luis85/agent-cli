@@ -27,7 +27,11 @@ export interface Destination {
     raw: string;
     angle: boolean;
 }
-/** The destination of `[text](dest "title")` or `![alt](dest)` source text. */
+/**
+ * The destination of `[text](dest "title")` or `![alt](dest)` source text: the first `](` after which a destination
+ * and an optional title run to the closing `)`. Scanning from the left skips links nested in the text and never
+ * mistakes a `](` inside the title for the destination.
+ */
 export declare function markdownDestination(original: string): Destination | undefined;
 /** The destination of a reference definition such as `[id]: ../Plan.md "Title"`. */
 export declare function definitionDestination(original: string): Destination | undefined;

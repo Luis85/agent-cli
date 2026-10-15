@@ -38,6 +38,12 @@ function locate(page: Page, locator: TutorialLocator) {
   return page.locator(locator.css);
 }
 
+/** Maps a failed filesystem check to a status reason; only the access check can reveal missing execution permission. */
+function reasonFor(code: string | undefined, accessCheck = false): BrowserStatus['reason'] {
+  if (code === 'ENOENT' || code === 'ENOTDIR') return 'missing';
+  return accessCheck && process.platform !== 'win32' && (code === 'EACCES' || code === 'EPERM') ? 'not-executable' : 'inaccessible';
+}
+
 /** The module is shipped intact: its internal asset resolution must retain the upstream directory layout. */
 export function createBrowserRuntime(distributionPath: string): BrowserRuntime {
   const packageRoot = join(resolve(distributionPath), 'browser-runtime/playwright-core');
@@ -53,13 +59,19 @@ export function createBrowserRuntime(distributionPath: string): BrowserRuntime {
     const api = await playwright();
     const configured = managed ? undefined : executablePath ?? process.env.FORGE_BROWSER_EXECUTABLE;
     const path = configured === undefined ? api.chromium.executablePath() : resolve(configured);
-    let available = false;
-    try { available = (await stat(path)).isFile(); await access(path, process.platform === 'win32' ? constants.F_OK : constants.X_OK); }
-    catch { available = false; }
+    const source = configured === undefined ? 'managed' : executablePath === undefined ? 'environment' : 'explicit';
+    let reason: BrowserStatus['reason'] = 'available';
+    try {
+      if (!(await stat(path)).isFile()) reason = 'not-file';
+    } catch (error) { reason = reasonFor((error as NodeJS.ErrnoException).code); }
+    if (reason === 'available') {
+      try { await access(path, process.platform === 'win32' ? constants.F_OK : constants.X_OK); }
+      catch (error) { reason = reasonFor((error as NodeJS.ErrnoException).code, true); }
+    }
     let version: string;
     try { version = (JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8')) as { version: string }).version; }
     catch { throw browserError('BROWSER_UNAVAILABLE', 'The packaged browser runtime metadata is missing. Replace the complete Forge distribution.'); }
-    return { available, executablePath: path, source: configured === undefined ? 'managed' : executablePath === undefined ? 'environment' : 'explicit', version };
+    return { available: reason === 'available', executablePath: path, source, version, verification: 'executable-only', reason };
   }
 
   async function session(options: BrowserOptions): Promise<Session> {

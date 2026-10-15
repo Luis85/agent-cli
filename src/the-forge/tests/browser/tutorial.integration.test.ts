@@ -10,6 +10,7 @@ import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts'
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 import type { CommandContext } from '../../src/application/plugins/registry.ts';
 import type { BrowserRuntime, BrowserFlowRequest } from '../../src/plugins/browser/application/runtime.ts';
+import { tutorialBlocks } from '../../src/plugins/browser/infrastructure/tutorial-markdown.ts';
 import { BrowserTutorial } from '../../src/plugins/browser/application/tutorial.ts';
 
 let root: string, files: NodeFiles, events: EventBus;
@@ -30,7 +31,7 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'forge-tutorial-')); files = await NodeFiles.at(root);
   events = new EventBus(new NodeEventScope()); registerHostEvents(events);
   flow = vi.fn(async (_request: BrowserFlowRequest) => ({ screenshots: [capture], browserVersion: 'test-browser' }));
-  tutorial = new BrowserTutorial({ flow } as unknown as BrowserRuntime);
+  tutorial = new BrowserTutorial({ flow } as unknown as BrowserRuntime, tutorialBlocks);
   await put('intent.json', JSON.stringify(plan));
 });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
@@ -42,6 +43,15 @@ describe('tutorial publication', () => {
     expect(await tutorial.run(context(true), { source: 'intent.json', out: 'docs/manual' })).toMatchObject({ dryRun: true, executed: false, changes: [] });
     expect(flow).not.toHaveBeenCalled(); expect(await files.list()).toEqual(['intent.json']);
     expect(events.history.filter(event => event.id.startsWith('vault.'))).toEqual([]);
+  });
+  it.each(['md', 'canvas'])('rejects a literal example in %s before browser work or publication', async extension => {
+    const example = ['````markdown', '```forge-tutorial', JSON.stringify(plan), '```', '````'].join('\n');
+    const source = extension === 'md' ? example : JSON.stringify({ nodes: [{ type: 'text', text: example }], edges: [] });
+    await put(`example.${extension}`, source);
+    await expect(tutorial.validate(context(), `example.${extension}`)).rejects.toMatchObject({ code: 'BROWSER_FLOW_INVALID' });
+    await expect(tutorial.run(context(), { source: `example.${extension}`, out: 'docs/manual' })).rejects.toMatchObject({ code: 'BROWSER_FLOW_INVALID' });
+    expect(flow).not.toHaveBeenCalled();
+    expect(await files.list()).toEqual([`example.${extension}`, 'intent.json']);
   });
   it('publishes Markdown, relative screenshots and a replayable plan as one batch', async () => {
     const commit = vi.spyOn(files, 'commit');

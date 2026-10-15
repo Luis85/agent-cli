@@ -32,7 +32,7 @@ const image = (): BrowserImage => ({ bytes: png, width: 1, height: 1, url: 'http
 function runtime(capture = vi.fn(async () => image())): BrowserRuntime {
   return {
     screenshot: capture,
-    async status() { return { available: true, executablePath: '/browser', source: 'managed', version: '1.64.0' }; },
+    async status() { return { available: true, executablePath: '/browser', source: 'managed', version: '1.64.0', verification: 'executable-only', reason: 'available' }; },
     async install() { throw new Error('Screenshots must not install browsers'); },
     async flow() { throw new Error('Screenshots must not replay tutorials'); },
   };

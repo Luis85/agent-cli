@@ -105,7 +105,7 @@ const tally = (keys: readonly string[]) => keys.reduce((counts, key) => counts.s
  * the highest removed index, a removal can only have hit a relation up to `n` positions above that index: relations
  * read further up may have gone meanwhile, unless one read up to there is the same link, which they could stand in
  * for. Every other relation read and not removed and every one added must still be there, and every removed one gone
- * (unless a relation with the same key was allowed to go); relations added meanwhile are ignored.
+ * (unless a relation with the same key must stay); relations added meanwhile are ignored.
  */
 export function relationsLanded(read: readonly unknown[], operations: readonly PatchOperation[], result: readonly unknown[]): boolean {
   const removed = new Set(operations.flatMap(operation => (operation.op === 'remove' && RELATION_INDEX.test(operation.path) ? [Number(RELATION_INDEX.exec(operation.path)![1])] : [])));
@@ -115,12 +115,13 @@ export function relationsLanded(read: readonly unknown[], operations: readonly P
   const within = new Set(read.filter((_relation, index) => index <= reach).map(relationKey));
   const required = (relation: unknown, index: number) => (index <= reach ? !removed.has(index) : within.has(relationKey(relation)));
   const expected = tally([...read.filter(required).map(relationKey), ...added]);
-  const optional = tally(read.filter((relation, index) => index > reach && !within.has(relationKey(relation))).map(relationKey));
   const actual = tally(result.map(relationKey));
   if ([...expected].some(([key, count]) => (actual.get(key) ?? 0) < count)) return false;
+  // A removed relation lies within reach, so a relation that may have gone never shares its key: the key may remain
+  // only as often as relations with it must stay.
   return [...removed].every(index => {
     const key = relationKey(read[index]);
-    return (actual.get(key) ?? 0) <= (expected.get(key) ?? 0) + (optional.get(key) ?? 0);
+    return (actual.get(key) ?? 0) <= (expected.get(key) ?? 0);
   });
 }
 

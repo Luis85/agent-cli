@@ -97,23 +97,110 @@ export function withBody(text: string, body: string): string {
   return trimmed === '' ? head : `${head}${head === '' || head.endsWith('\n') ? '' : '\n'}${trimmed}\n`;
 }
 
-const FENCE = /(^|\n)(```|~~~)[^\n]*\n[\s\S]*?\n\2[^\n]*(?=\n|$)/g;
-const COMMENT = /%%[\s\S]*?%%/g;
-/** Applies `transform` to the text outside fenced code blocks, where Obsidian comments live. */
-function outsideCode(text: string, transform: (part: string) => string): string {
-  let result = '', last = 0;
-  for (const match of text.matchAll(FENCE)) { result += transform(text.slice(last, match.index)) + match[0]; last = match.index + match[0].length; }
-  return result + transform(text.slice(last));
+// Obsidian comments (https://obsidian.md/help/syntax, Comments). A `%%` outside code opens a comment that hides
+// everything up to the next `%%`, blank lines, Markdown and fences included, or the rest of the note when it is never
+// closed. A `%%` inside fenced code, or inside a code span that opened before it, is text, and so is an escaped `\%%`.
+// When the Markdown is ambiguous, text counts as prose, so a comment is removed rather than pushed.
+
+// Fenced code as CommonMark reads it inside list items, whose content Obsidian indents with tabs or spaces: a run of
+// three or more backticks (whose info string holds no backtick) or tildes after any indentation, closed by a run of
+// the same character at least as long, indented at most three columns past the opener, with only whitespace after
+// it. A line indented more than three columns less than the opener leaves its list item, which ends the block.
+const OPENING_FENCE = /^[ \t]*(`{3,}(?=[^`]*$)|~{3,})/;
+const CLOSING_FENCE = /^[ \t]*(`{3,}|~{3,})\s*$/;
+
+/** The columns a line's indentation takes, a tab reaching the next multiple of four. */
+function indentation(line: string): number {
+  let width = 0;
+  for (const char of /[ \t]*/.exec(line)![0]) width = char === '\t' ? (Math.floor(width / 4) + 1) * 4 : width + 1;
+  return width;
 }
 
-/** The body without Obsidian `%%comments%%` (inline or multi-line; fenced code is kept as it is). */
-export const withoutComments = (body: string) => outsideCode(body, part => part.replace(COMMENT, ''));
+/**
+ * Where fenced code opening on the line at `start` ends (after its closing line), or `start` when none opens there,
+ * with the line that closes it when it runs to the end of the body unclosed: the opener's indentation and run.
+ */
+function fenceEnd(body: string, start: number): { end: number; closer: string } {
+  const lineAt = (at: number) => body.slice(at, body.indexOf('\n', at) + 1 || body.length);
+  const first = lineAt(start), opener = OPENING_FENCE.exec(first)?.[1];
+  if (opener === undefined) return { end: start, closer: '' };
+  const indent = indentation(first);
+  let at = start + first.length;
+  while (at < body.length) {
+    const line = lineAt(at);
+    if (line.trim() !== '' && indentation(line) < indent - 3) return { end: at, closer: '' };
+    at += line.length;
+    const closer = CLOSING_FENCE.exec(line)?.[1];
+    if (closer !== undefined && closer[0] === opener[0] && closer.length >= opener.length && indentation(line) <= indent + 3) return { end: at, closer: '' };
+  }
+  return { end: at, closer: /^[ \t]*/.exec(first)![0] + opener };
+}
 
-/** The Obsidian `%%comments%%` of a body, in order. */
-export function comments(body: string): string[] {
-  const found: string[] = [];
-  outsideCode(body, part => { found.push(...(part.match(COMMENT) ?? [])); return part; });
-  return found;
+// A paragraph, and so a code span, ends before a blank line or a line that starts another block: a heading, quote,
+// table row, list item, fence, thematic break or setext underline.
+const BLOCK_START = /\n(?=[ \t]*(?:[\r\n]|[#>|]|`{3}|~{3}|(?:[-*+]|\d+[.)])[ \t\r\n]|([-*_=])(?:[ \t]*\1)*[ \t]*[\r\n]))/g;
+
+/** Where the code span opening with the backtick run at `start` ends, or the end of that run when it opens none. */
+function codeSpanEnd(body: string, start: number): number {
+  const run = /`+/y;
+  run.lastIndex = start;
+  const opener = run.exec(body)![0], from = start + opener.length;
+  BLOCK_START.lastIndex = from;
+  const paragraph = body.slice(from, BLOCK_START.exec(body)?.index);
+  const closer = new RegExp(`(?<!\`)${opener}(?!\`)`).exec(paragraph);
+  return closer === null ? from : from + closer.index + opener.length;
+}
+
+/** Where the comment whose text starts at `from` ends: after the next unescaped `%%`, or `null` when none follows. */
+function commentEnd(body: string, from: number): number | null {
+  // An escaped backslash cannot escape the marker after it; any other escaped character is not a `%%`.
+  const marker = /\\(?:\\|%%)|%%/g;
+  marker.lastIndex = from;
+  for (let found = marker.exec(body); found !== null; found = marker.exec(body)) if (found[0] === '%%') return marker.lastIndex;
+  return null;
+}
+
+/**
+ * The `[start, end)` offsets of a body's Obsidian comments, in order, and what closes the fenced code or comment left
+ * open at its end (`''` when none is).
+ */
+function commentSpans(body: string): { spans: Array<[number, number]>; closer: string } {
+  const spans: Array<[number, number]> = [];
+  let closer = '';
+  for (let index = 0; index < body.length;) {
+    const fenced = index === 0 || body[index - 1] === '\n' ? fenceEnd(body, index) : { end: index, closer: '' };
+    closer = fenced.closer;
+    if (fenced.end > index) index = fenced.end;
+    else if (body[index] === '\\') index += body.startsWith('%%', index + 1) ? 3 : 2;
+    else if (body[index] === '`') index = codeSpanEnd(body, index);
+    else if (body.startsWith('%%', index)) {
+      const end = commentEnd(body, index + 2);
+      if (end === null) closer = '%%';
+      spans.push([index, end ?? body.length]);
+      index = end ?? body.length;
+    } else index++;
+  }
+  return { spans, closer };
+}
+
+/** The body without its Obsidian `%%comments%%`; fenced and inline code are kept as they are. */
+export function withoutComments(body: string): string {
+  let visible = '', cursor = 0;
+  for (const [start, end] of commentSpans(body).spans) { visible += body.slice(cursor, start); cursor = end; }
+  return visible + body.slice(cursor);
+}
+
+/** The Obsidian `%%comments%%` of a body, in order: exactly the text `withoutComments` removes. */
+export const comments = (body: string) => commentSpans(body).spans.map(([start, end]) => body.slice(start, end));
+
+/**
+ * `text` followed by the `kept` comments, each in a paragraph of its own, blank parts dropped. Fenced code or a comment
+ * that `text` leaves open is closed first, so the kept comments stay comments rather than becoming code that pushes.
+ */
+export function withComments(text: string, kept: readonly string[]): string {
+  const closer = kept.length === 0 ? '' : commentSpans(text).closer;
+  const closed = closer === '' ? text : `${text}${text.endsWith('\n') ? '' : '\n'}${closer}`;
+  return [closed, ...kept].filter(part => part.trim() !== '').join('\n\n');
 }
 
 // Iterations: `<N> - Iteration[ - <goal>]`, starting the day after the latest iteration's target.
@@ -143,9 +230,9 @@ export function previousIteration<T extends IterationLike>(items: Iterable<T>): 
     if (best === null) { best = item; continue; }
     const byTarget = daysBetween(best.plannedTarget.value!, target);
     const start = item.plannedStart.value, bestStart = best.plannedStart.value;
-    const later = byTarget !== 0 ? byTarget > 0
-      : start === null || bestStart === null ? bestStart === null && start !== null
-        : daysBetween(bestStart, start) !== 0 ? daysBetween(bestStart, start) > 0 : item.path > best.path;
+    // A dated start is later than a missing one; two missing starts tie and fall through to the path.
+    const byStart = start === null || bestStart === null ? Number(start !== null) - Number(bestStart !== null) : daysBetween(bestStart, start);
+    const later = byTarget !== 0 ? byTarget > 0 : byStart !== 0 ? byStart > 0 : item.path > best.path;
     if (later) best = item;
   }
   return best;

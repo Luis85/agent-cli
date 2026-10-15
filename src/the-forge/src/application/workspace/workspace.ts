@@ -1,5 +1,5 @@
 import { ensure, summarizeError, errorMessage } from '../../domain/shared/errors.ts';
-import { isInTrash, isStructured, isTextLike, type WriteRequest, type FileChange, type FileRename, type FileSnapshot, type PlannedChange } from '../../domain/documents/file.ts';
+import { isInTrash, isStructured, isTextContent, isTextLike, type WriteRequest, type FileChange, type FileRename, type FileSnapshot, type PlannedChange } from '../../domain/documents/file.ts';
 import { revisionConflict, snapshotWriteRequests } from '../../domain/documents/write-plan.ts';
 import { unifiedDiff } from '../../domain/documents/diff.ts';
 import { snapshotBatch } from './batch-plan.ts';
@@ -16,6 +16,8 @@ const changeSummary = (result: { changes: FileChange[]; renames?: FileRename[] }
   bytes: result.changes.reduce((total, change) => total + change.bytes, 0),
   ...(result.renames ? { renames: result.renames.map(({ from, to, kind }) => ({ from, to, kind })) } : {}),
 });
+/** `beforeParse` receives a file's raw byte count before the file is parsed; it refuses the file by throwing. */
+export interface ReadOptions { beforeParse?: (bytes: number) => void }
 /** Dry-run result options; `diff` adds a unified diff to each planned change. */
 export interface WriteOptions { diff?: boolean }
 /**
@@ -28,9 +30,12 @@ export interface WriteOptions { diff?: boolean }
  */
 export interface CommitOptions { operation: 'move' | 'delete' | 'apply'; trash?: readonly string[]; previous?: ReadonlyMap<string, FileSnapshot> }
 const into = (path: string, folder: string) => path === folder || path.startsWith(`${folder}/`);
-const utf8 = (bytes: Uint8Array): string | undefined => {
-  try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
+/** The text a dry run diffs, or undefined for content that reads as binary. */
+const utf8 = (path: string, bytes: Uint8Array): string | undefined => {
+  let text: string;
+  try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
   catch { return undefined; }
+  return isTextContent(path, text) ? text : undefined;
 };
 
 export class Workspace {
@@ -48,9 +53,10 @@ export class Workspace {
   }
   // CLI handlers and external plugins call this through the typed CommandContext workspace.
   // A successful read is Obsidian's file-open: it emits `workspace.file-open` with the scoped path.
-  async read(path: string) {
+  async read(path: string, options: ReadOptions = {}) {
     return this.observe('read', [path], async () => {
       const file = await this.files.read(path);
+      options.beforeParse?.(file.bytes.length);
       const result = { path, revision: file.revision, bytes: file.bytes.length, document: this.codec.inspect(path, file.bytes) };
       await publishHostEvent(this.events, 'workspace.file-open', { path });
       return result;
@@ -76,11 +82,11 @@ export class Workspace {
   private async preview(changes: FileChange[], requests: WriteRequest[], previous: ReadonlyMap<string, FileSnapshot>): Promise<PlannedChange[]> {
     return Promise.all(changes.map(async change => {
       const request = requests.find(candidate => candidate.path === change.path);
-      const after = request && isTextLike(change.path) ? utf8(request.bytes) : undefined;
+      const after = request && isTextLike(change.path) ? utf8(change.path, request.bytes) : undefined;
       if (after === undefined || change.operation === 'deleted') return { ...change, diff: null };
       if (change.operation === 'created') return { ...change, diff: unifiedDiff({ path: change.path, before: '', after, created: true }) };
       const snapshot = previous.get(change.path) ?? await this.files.read(change.path);
-      const before = snapshot.revision === request!.expectedRevision ? utf8(snapshot.bytes) : undefined;
+      const before = snapshot.revision === request!.expectedRevision ? utf8(change.path, snapshot.bytes) : undefined;
       return { ...change, diff: before === undefined ? null : unifiedDiff({ path: change.path, before, after }) };
     }));
   }

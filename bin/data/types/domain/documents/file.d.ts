@@ -16,10 +16,20 @@ export declare const nativeFormats: {
     readonly video: readonly ["mkv", "mov", "mp4", "ogv", "webm"];
     readonly pdf: readonly ["pdf"];
 };
-/** Source, data and configuration files read and edited as UTF-8 text. Extensionless names and dotfiles stay attachments. */
-export declare const textExtensions: readonly ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "json", "jsonc", "yaml", "yml", "toml", "ini", "css", "scss", "less", "html", "htm", "xml", "vue", "svelte", "txt", "log", "csv", "tsv", "sh", "py", "sql"];
+/** Source, data and configuration extensions read and edited as UTF-8 text. */
+export declare const textExtensions: readonly ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "json", "jsonc", "yaml", "yml", "toml", "ini", "css", "scss", "less", "html", "htm", "xml", "vue", "svelte", "txt", "log", "csv", "tsv", "sh", "ps1", "psm1", "psd1", "py", "sql"];
+/**
+ * Basenames read as UTF-8 text, case-insensitively, alone or with a dot suffix that starts with another character
+ * (`Dockerfile.release`, not `Dockerfile.` or `Dockerfile..release`); native extensions win.
+ */
+export declare const textFilenames: readonly ["Dockerfile", "Containerfile"];
 export declare const fileKinds: string[];
 export declare function fileKind(path: string): string;
+/**
+ * Whether decoded UTF-8 is usable as the content of `path`. A `text` extension is only a hint: content holding U+0000
+ * is binary, as Git treats NUL bytes, which also keeps BOM-less UTF-16 (valid UTF-8 byte for byte) out of text edits.
+ */
+export declare const isTextContent: (path: string, text: string) => boolean;
 export declare const isStructured: (path: string) => boolean;
 /** Kinds whose UTF-8 content can be edited literally and previewed as a line diff. */
 export declare const isTextLike: (path: string) => boolean;

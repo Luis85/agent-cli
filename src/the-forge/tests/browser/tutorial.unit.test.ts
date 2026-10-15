@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { extractTutorial, tutorialPlan } from '../../src/plugins/browser/domain/tutorial.ts';
+import { tutorialBlocks } from '../../src/plugins/browser/infrastructure/tutorial-markdown.ts';
+import { extractTutorial as extract, tutorialPlan } from '../../src/plugins/browser/domain/tutorial.ts';
+const extractTutorial = (source: string, path: string) => extract(source, path, tutorialBlocks);
 const base = () => ({ version: 1, title: 'Create a note', startUrl: 'http://localhost:4100/#/notes', steps: [
   { id: 'open', title: 'Open notes', actions: [{ type: 'click', locator: { role: 'button', name: 'New note' } }] },
 ] });
@@ -14,8 +16,64 @@ describe('tutorial plan validation and extraction', () => {
       JSON.stringify({ nodes: [{ type: 'text', text: block() }], edges: [] });
     expect(extractTutorial(source, `source.${extension}`)).toEqual(tutorialPlan(base()));
   });
-  it('accepts CRLF fenced Markdown', () => {
-    expect(extractTutorial(block().replaceAll('\n', '\r\n'), 'flow.md')).toEqual(tutorialPlan(base()));
+  it.each([
+    ['backticks', '```forge-tutorial', '```'],
+    ['longer closing fence', '```forge-tutorial', '`````'],
+    ['tildes', '~~~forge-tutorial', '~~~~'],
+    ['indented fences and whitespace', '   ``` forge-tutorial\t', '   ````  '],
+  ])('accepts CommonMark %s with LF and CRLF', (_name, open, close) => {
+    for (const newline of ['\n', '\r\n']) {
+      expect(extractTutorial([open, JSON.stringify(base()), close].join(newline), 'flow.md')).toEqual(tutorialPlan(base()));
+    }
+  });
+  it.each([
+    ['nested backticks', ['````markdown', block(), '````'].join('\n')],
+    ['nested tildes', ['~~~~markdown', block(), '~~~~'].join('\n')],
+    ['indented code', block().split('\n').map(line => `    ${line}`).join('\n')],
+    ['HTML comment', ['<!--', block(), '-->'].join('\n')],
+    ['inline code', `before \`\`\`forge-tutorial ${JSON.stringify(base())}\`\`\` after`],
+    ['extra info text', block().replace('forge-tutorial', 'forge-tutorial example')],
+  ])('ignores %s rather than interpreting it as an executable plan', (_name, example) => {
+    expect(() => extractTutorial(example, 'flow.md')).toThrow('exactly one');
+    expect(extractTutorial(`${example}\n\n${block()}`, 'flow.md')).toEqual(tutorialPlan(base()));
+  });
+  it.each(['> ', '- '])('extracts a fenced plan from a CommonMark container %s', prefix => {
+    const nested = block().split('\n').map((line, index) => `${prefix === '- ' && index > 0 ? '  ' : prefix}${line}`).join('\n');
+    expect(extractTutorial(nested, 'flow.md')).toEqual(tutorialPlan(base()));
+  });
+  it('parses each Canvas text node independently and rejects multiple executable plans', () => {
+    const example = ['````markdown', block(), '````'].join('\n');
+    const canvas = (texts: string[]) => JSON.stringify({ nodes: texts.map(text => ({ type: 'text', text })), edges: [] });
+    expect(() => extractTutorial(canvas([example]), 'flow.canvas')).toThrow('exactly one');
+    expect(extractTutorial(canvas([example, block()]), 'flow.canvas')).toEqual(tutorialPlan(base()));
+    expect(() => extractTutorial(canvas([block(), block()]), 'flow.canvas')).toThrow('exactly one');
+    expect(extractTutorial(canvas(['````markdown', block()]), 'flow.canvas')).toEqual(tutorialPlan(base()));
+    expect(() => extractTutorial(canvas(['```forge-tutorial', `${JSON.stringify(base())}\n\`\`\``]), 'flow.canvas'))
+      .toThrow(expect.objectContaining({ code: 'BROWSER_FLOW_INVALID', message: 'Tutorial source must contain valid JSON.' }));
+  });
+  it.each([
+    ['a block comment', ['%%', block(), '%%'].join('\n')],
+    ['a comment opened in prose', ['Draft %% not ready:', block(), 'until review %% done.'].join('\n')],
+    ['an unclosed comment', ['%% draft', block()].join('\n')],
+    ['a comment an escaped marker does not close', ['%% draft \\%% still hidden', block(), '%%'].join('\n')],
+    ['a comment after an escaped backslash', ['Path C:\\\\%% draft', block(), '%%'].join('\n')],
+  ])('ignores a plan inside %s in Markdown and Canvas text', (_name, example) => {
+    const canvas = (texts: string[]) => JSON.stringify({ nodes: texts.map(text => ({ type: 'text', text })), edges: [] });
+    expect(() => extractTutorial(example, 'flow.md')).toThrow('exactly one');
+    expect(extractTutorial(`${block()}\n\n${example}`, 'flow.md')).toEqual(tutorialPlan(base()));
+    expect(() => extractTutorial(canvas([example]), 'flow.canvas')).toThrow('exactly one');
+    expect(extractTutorial(canvas([example, block()]), 'flow.canvas')).toEqual(tutorialPlan(base()));
+  });
+  it('keeps %% literal inside code, where it opens no comment', () => {
+    const plan = { ...base(), title: 'Reach 100%% coverage' };
+    expect(extractTutorial(block(plan), 'flow.md')).toEqual(tutorialPlan(plan));
+    for (const prefix of [['```text', '%% literal', '```'].join('\n'), 'Type `%%` to start a comment.']) {
+      expect(extractTutorial(`${prefix}\n\n${block()}`, 'flow.md')).toEqual(tutorialPlan(base()));
+      expect(extractTutorial(`${prefix}\n\n%% hidden %%\n\n${block()}`, 'flow.md')).toEqual(tutorialPlan(base()));
+    }
+  });
+  it.each(['Type \\%% to start a comment.', 'Type \\\\\\%% after a backslash.'])('keeps an escaped marker literal: %s', prefix => {
+    expect(extractTutorial(`${prefix}\n\n${block()}\n\nThen %% hidden %%`, 'flow.md')).toEqual(tutorialPlan(base()));
   });
   it('rejects prose, ambiguous embedded plans and indirect Canvas references', () => {
     for (const [source, path] of [['Click new note', 'flow.md'], [`${block()}\n${block()}`, 'flow.md'],

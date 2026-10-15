@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { MemoryFiles, metadataIndex } from '../support/metadata.ts';
-import { planLinkUpdates, rewriteText } from '../../src/application/vault/link-plan.ts';
+import { planLinkUpdates, rewriteText, type UnrewrittenLink } from '../../src/application/vault/link-plan.ts';
 import { applyEdits, markdownDestination, definitionDestination, attributeDestination, relativePath } from '../../src/domain/metadata/link-text.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
+import type { MetadataCache } from '../../src/application/metadata/ports.ts';
 
 const codec = new ObsidianDocuments();
 const replaceInYaml = codec.replaceInYamlStrings.bind(codec);
@@ -12,9 +13,13 @@ async function rewritten(vault: Record<string, string>, moves: Record<string, st
   const files = new MemoryFiles(vault);
   const cache = await metadataIndex(files).load();
   const plan = planLinkUpdates(cache, new Map(Object.entries(moves)));
-  const texts: Record<string, string> = {};
-  for (const file of plan.files) texts[file.source] = rewriteText(file, vault[file.source]!, cache.getFileCache(file.source)!, replaceInYaml)!.text;
-  return { texts, plan };
+  const texts: Record<string, string> = {}, unrewritten: UnrewrittenLink[] = [];
+  for (const file of plan.files) {
+    const result = rewriteText(file, vault[file.source]!, cache.getFileCache(file.source)!, replaceInYaml)!;
+    texts[file.source] = result.text;
+    unrewritten.push(...result.unrewritten);
+  }
+  return { texts, plan, unrewritten };
 }
 
 describe('link text helpers', () => {
@@ -77,11 +82,36 @@ describe('planning link updates for moves', () => {
   });
 
   it('recomputes relative Markdown links, definitions and HTML, keeping fragments, titles and encoding', async () => {
-    const { texts } = await rewritten({
+    const { texts, plan, unrewritten } = await rewritten({
       'notes/Index.md': '[a](Plan.md#Goals "T") [b](./Plan.md) ![c](<Plan.md>) [d](/notes/Plan.md) [e][r] <img src="Plan.md">\n\n[r]: Plan.md "Ref"\n',
       'notes/Plan.md': '# Plan\n\n## Goals\n',
     }, { 'notes/Plan.md': 'specs/My Plan.md' });
     expect(texts['notes/Index.md']).toBe('[a](../specs/My%20Plan.md#Goals "T") [b](../specs/My%20Plan.md) ![c](<../specs/My Plan.md>) [d](/specs/My%20Plan.md) [e][r] <img src="../specs/My%20Plan.md">\n\n[r]: ../specs/My%20Plan.md "Ref"\n');
+    // The reference use `[e][r]` carries no path; only its definition is rewritten.
+    expect(plan).toMatchObject({ references: 6, unrewritten: [] });
+    expect(unrewritten).toEqual([]);
+  });
+
+  it('resolves Markdown links and definitions from their own folder first, and Canvas nodes by vault path', async () => {
+    const { texts } = await rewritten({
+      'notes/Index.md': '[a](Plan.md) [e][r]\n\n[r]: Plan.md\n',
+      'boards/Board.canvas': '{"nodes":[{"id":"n","type":"file","file":"Plan.md","x":0,"y":0,"width":1,"height":1}]}',
+      'notes/Plan.md': 'local', 'Plan.md': 'root', 'boards/Plan.md': 'board',
+    }, { 'notes/Plan.md': 'archive/Plan.md', 'Plan.md': 'top/Plan.md' });
+    expect(texts).toEqual({
+      'notes/Index.md': '[a](../archive/Plan.md) [e][r]\n\n[r]: ../archive/Plan.md\n',
+      'boards/Board.canvas': '{"nodes":[{"id":"n","type":"file","file":"top/Plan.md","x":0,"y":0,"width":1,"height":1}]}',
+    });
+  });
+
+  it('rewrites the destination of a Markdown link whose title contains "](", keeping the title', async () => {
+    const { texts } = await rewritten({ 'Index.md': '[a](Plan.md "x](y")', 'Plan.md': 'p' }, { 'Plan.md': 'specs/Roadmap.md' });
+    expect(texts['Index.md']).toBe('[a](specs/Roadmap.md "x](y")');
+  });
+
+  it('pins a link that resolved through an alias when a moved file takes its name', async () => {
+    const { texts } = await rewritten({ 'Index.md': '[[X]]', 'A.md': '---\naliases: [X]\n---\nA', 'B.md': 'B' }, { 'B.md': 'X.md' });
+    expect(texts).toEqual({ 'Index.md': '[[A]]' });
   });
 
   it('keeps percent-encoding and a missing .md extension in Markdown links', async () => {
@@ -99,11 +129,19 @@ describe('planning link updates for moves', () => {
   });
 
   it('rewrites quoted frontmatter links including list values', async () => {
-    const { texts } = await rewritten({
+    const { texts, unrewritten } = await rewritten({
       'Index.md': '---\nrelated: "[[Plan]]"\nlist:\n  - "[[Plan#Goals|goals]]"\n  - "[x](notes/Plan.md)"\nother: "[[Else]]"\n---\nBody [[Plan]]\n',
       'notes/Plan.md': 'Plan', 'Else.md': 'Else',
     }, { 'notes/Plan.md': 'notes/Roadmap.md' });
     expect(texts['Index.md']).toBe('---\nrelated: "[[Roadmap]]"\nlist:\n  - "[[Roadmap#Goals|goals]]"\n  - "[x](notes/Roadmap.md)"\nother: "[[Else]]"\n---\nBody [[Roadmap]]\n');
+    expect(unrewritten).toEqual([]);
+  });
+
+  it('rewrites a link repeated in one frontmatter value once for both occurrences', async () => {
+    const { texts, plan, unrewritten } = await rewritten({ 'Index.md': '---\nrel: "[[Plan]] and [[Plan]]"\n---\n', 'notes/Plan.md': 'Plan' }, { 'notes/Plan.md': 'notes/Roadmap.md' });
+    expect(texts['Index.md']).toBe('---\nrel: "[[Roadmap]] and [[Roadmap]]"\n---\n');
+    expect(plan.files[0]!.frontmatter).toHaveLength(1);
+    expect(unrewritten).toEqual([]);
   });
 
   it('rewrites Canvas file nodes and keeps their subpath and layout', async () => {
@@ -170,5 +208,36 @@ describe('planning link updates for moves', () => {
     }, { 'Note.md': 'Renamed.md', 'F/a.png': 'G/a.png', 'F/b.md': 'G/b.md' });
     expect(texts['Index.md']).toBe('| a | [[Renamed\\|alias]] |\n\n[about [[Renamed]]](Renamed.md) [![t](G/a.png)](G/b.md)\n');
     expect(plan.unrewritten).toEqual([]);
+  });
+});
+
+describe('links the planner cannot rewrite', () => {
+  it('reports references whose source text it does not recognize', async () => {
+    const cache = await metadataIndex(new MemoryFiles({ 'Index.md': '[[Plan]] [a](Plan.md)', 'Plan.md': 'Plan' })).load();
+    const garbled = (path: string) => {
+      const metadata = cache.getFileCache(path);
+      if (path !== 'Index.md' || !metadata) return metadata;
+      return { ...metadata, links: metadata.links!.map(link => ({ ...link, original: link.syntax === 'wikilink' ? '[[Plan' : '[a](<Plan.md)' })) };
+    };
+    const plan = planLinkUpdates({ files: () => cache.files(), getFileCache: garbled } as unknown as MetadataCache, new Map([['Plan.md', 'Roadmap.md']]));
+    expect(plan).toEqual({ files: [], references: 0, unrewritten: [
+      { source: 'Index.md', original: '[[Plan', reason: 'Unrecognized link syntax.' },
+      { source: 'Index.md', original: '[a](<Plan.md)', reason: 'Unrecognized link syntax.' },
+    ] });
+  });
+
+  it('refuses a body that changed since planning and reports edits nested in another rewritten reference', () => {
+    const edit = (start: number, end: number, original: string, text: string) => ({ start, end, original, text });
+    const plan = { source: 'n.md', edits: [edit(0, 5, '[[x]]', '[[z]]'), edit(0, 5, '[[x]]', '[[w]]')], frontmatter: [], canvas: [] };
+    expect(rewriteText(plan, 'other', {}, replaceInYaml)).toBeUndefined();
+    expect(rewriteText(plan, '[[x]]', {}, replaceInYaml)).toEqual({
+      text: '[[z]]', unrewritten: [{ source: 'n.md', original: '[[x]]', reason: 'It overlaps another rewritten reference it is nested in; edit it by hand.' }],
+    });
+  });
+
+  it.each(['\uFEFF', ''])('re-serializes a Canvas whose file values are not spelled as plain JSON keys, keeping a byte order mark %j', async bom => {
+    const canvas = `${bom}{"nodes":[{"id":"n1","type":"file","fil\\u0065":"notes/Plan.md","x":0,"y":0,"width":1,"height":1},{"id":"n2","type":"file","file":"Other.md","x":0,"y":0,"width":1,"height":1}]}`;
+    const { texts } = await rewritten({ 'Board.canvas': canvas, 'notes/Plan.md': 'Plan', 'Other.md': 'Other' }, { 'notes/Plan.md': 'specs/Plan.md' });
+    expect(texts['Board.canvas']).toBe(`${bom}${JSON.stringify({ nodes: [{ id: 'n1', type: 'file', file: 'specs/Plan.md', x: 0, y: 0, width: 1, height: 1 }, { id: 'n2', type: 'file', file: 'Other.md', x: 0, y: 0, width: 1, height: 1 }] }, null, 2)}\n`);
   });
 });

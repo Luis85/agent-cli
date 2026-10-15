@@ -7,7 +7,7 @@
 ```sh
 node bin/forge.js search "release plan"
 node bin/forge.js search "^#+ Risks" --regex --kind markdown --in body
-node bin/forge.js search TODO --path "src/**" --case-sensitive --context 2
+node bin/forge.js search TODO --path "src/**" --exclude "**/{dist,coverage}/**" --case-sensitive --context 2
 node bin/forge.js search owner --tag project/alpha --property status=active --in frontmatter
 node bin/forge.js search plan --limit 20 --cursor <nextCursor>
 node bin/forge.js search -- --dry-run
@@ -24,6 +24,7 @@ node bin/forge.js search -- --dry-run
 | `--skip-code` | Skip fenced and indented Markdown code blocks, as the [metadata cache](formats.md#metadata-index) records them |
 | `--kind markdown / canvas / base / text` | Only files of this kind; attachment kinds are rejected with `INVALID_OPTION_VALUE` |
 | `--path <glob>` | Only files whose root-relative path matches the [path glob](cli.md#path-globs-and-paging) |
+| `--exclude <glob>` | Skip files whose root-relative path matches one [path glob](cli.md#path-globs-and-paging), before reading their contents; use braces for alternatives, for example `"**/{dist,coverage}/**"` |
 | `--tag <tag>` | Only notes with the tag or a nested tag below it (`project` matches `#project/alpha`), case-insensitively, with or without `#`; inline and frontmatter tags count |
 | `--property <key>` / `--property <key>=<value>` | Only notes whose top-level frontmatter has `key` with a non-null value, or whose value (or any scalar list element) has exactly the text `value` |
 | `--context <n>` | Up to `n` lines (0–50, default 0) before and after each hit, as `before` and `after` |
@@ -50,7 +51,9 @@ Hits are ordered by path (code-unit order, as `list` reports), then line, then c
 
 ## What is searched
 
-Search reads visible files of the kinds `markdown`, `canvas`, `base` and `text` (the [text extensions](formats.md#utf-8-text)). It never reads attachments, files below a dot-prefixed folder or with a dot-prefixed name (`.obsidian`, `.trash`, `.forge`), `.git` or `node_modules`, or, at the workspace root, the workspace's own `bin/` distribution (the [vault rule](formats.md#metadata-index)), and it skips files whose bytes are not valid UTF-8. Canvas and Bases files are searched as their JSON or YAML text. Each candidate file is read once and matched first. Tag, property and `--skip-code` filters then take the metadata of only the files with hits from the metadata cache (`context.metadata.parseFile`), which reuses the parse result an earlier command [stored](../explanation/architecture.md#persisted-parse-results) for the same content and parses only content it has not seen, so they never build the index of the whole vault and `--path` narrows the work (parsing a note with thousands of separate lists is slow the first time; see the [known limit](formats.md#metadata-index)); a note that cannot be parsed has no metadata, so it fails tag and property filters and its code blocks are not skipped. `total` counts every hit from that single read, and snippets and context lines are built only for the returned page.
+`--path` includes matching paths and `--exclude` removes matching paths from that set before reading files. Exclusion wins when both match. Both use case-sensitive root-relative globs; quote them so the shell does not expand them. Supply one exclusion glob, with brace alternatives for several directories. Without `--exclude`, search keeps its existing vault-wide behavior: it does not interpret `.gitignore` or automatically exclude build output. Pagination cursors require the same exclusion along with the same pattern and other filters; changing or removing it fails with `INVALID_ARGUMENT`.
+
+Search reads visible files of the kinds `markdown`, `canvas`, `base` and `text` (the [text extensions](formats.md#utf-8-text)). It never reads attachments, files below a dot-prefixed folder or with a dot-prefixed name (`.obsidian`, `.trash`, `.forge`), `.git` or `node_modules`, or, at the workspace root, the workspace's own `bin/` distribution (the [vault rule](formats.md#metadata-index)), and it skips files whose bytes are not valid UTF-8 and text files containing NUL characters, which `read` returns as attachments. Canvas and Bases files are searched as their JSON or YAML text. Each candidate file is read once and matched first. Tag, property and `--skip-code` filters then take the metadata of only the files with hits from the metadata cache (`context.metadata.parseFile`), which reuses the parse result an earlier command [stored](../explanation/architecture.md#persisted-parse-results) for the same content and parses only content it has not seen, so they never build the index of the whole vault and `--path` and `--exclude` narrow the work (parsing a note with thousands of separate lists is slow the first time; see the [known limit](formats.md#metadata-index)); a note that cannot be parsed has no metadata, so it fails tag and property filters and its code blocks are not skipped. `total` counts every hit from that single read, and snippets and context lines are built only for the returned page.
 
 Searching reads files through the repository port: it publishes no `vault.*`, `workspace.file-open` or `operation.*` records and takes no writer lock. Each invocation reads the current files; only parse results are reused, and search itself never stores them.
 
@@ -64,7 +67,7 @@ The budget is `plugins.settings.search.timeoutMs` in `bin/config.json` (default 
 { "plugins": { "settings": { "search": { "timeoutMs": 30000 } } } }
 ```
 
-To recover from a timeout, avoid nested quantifiers and ambiguous alternations, narrow the files with `--path` or `--kind`, or search literally.
+To recover from a timeout, avoid nested quantifiers and ambiguous alternations, narrow the files with `--path`, `--exclude` or `--kind`, or search literally.
 
 ## Errors
 

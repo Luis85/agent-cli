@@ -22,7 +22,12 @@ export interface BrowserStatus {
   available: boolean;
   executablePath: string | null;
   source: 'explicit' | 'environment' | 'managed';
+  /** Version of the packaged Playwright runtime, not the browser executable. */
   version: string;
+  /** Filesystem checks only; no browser process was launched. */
+  verification: 'executable-only';
+  /** Language-independent outcome; presentation derives localized recovery guidance from it and `source`. */
+  reason: 'available' | 'missing' | 'not-file' | 'not-executable' | 'inaccessible';
 }
 export interface BrowserFlowRequest extends BrowserOptions { plan: TutorialPlan }
 export interface BrowserFlowResult { screenshots: Array<BrowserImage & { stepId: string }>; browserVersion: string }

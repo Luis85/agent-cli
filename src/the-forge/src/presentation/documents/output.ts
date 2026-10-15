@@ -21,7 +21,7 @@ export const readOutput: JsonSchema = {
       { title: 'text', type: 'object', required: ['kind', 'content'], properties: { kind: kind('text'), content: text } },
       {
         title: 'bytes', type: 'object', required: ['kind', 'encoding', 'content'],
-        description: 'Attachments, and text-extension files that are not valid UTF-8, as base64.',
+        description: 'Attachments, and text-extension files that are not valid UTF-8 or contain NUL characters, as base64.',
         properties: { kind: kind(...attachmentKinds), encoding: kind('base64'), content: text },
       },
     ] },

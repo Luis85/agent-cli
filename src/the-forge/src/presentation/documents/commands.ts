@@ -64,8 +64,8 @@ export function documentCommands(): Command[] {
       const nextCursor = pager.nextCursor();
       return { files: pager.items.map(path => ({ path, kind: fileKind(path) })), ...(nextCursor === undefined ? {} : { nextCursor }) };
     } },
-    { id: 'read', description: 'Read a document, UTF-8 text or base64 attachment with its SHA-256 revision.', usage: 'read <path> [--parts body]', ...reading, args: [pathArgument()], errors: ['NOT_FOUND', 'INVALID_FRONTMATTER'],
-      options: { parts: option.string('Comma-separated optional parts of a Markdown read.', { enum: readParts, list: true }) }, output: readOutput, async run(args, flags, { workspace }) {
+    { id: 'read', description: 'Read a document, UTF-8 text or base64 attachment with its SHA-256 revision.', usage: 'read <path> [--parts body] [--project id]', ...reading, projectOption: 'project', args: [pathArgument()], errors: ['NOT_FOUND', 'INVALID_FRONTMATTER'],
+      options: { parts: option.string('Comma-separated optional parts of a Markdown read.', { enum: readParts, list: true }), project: option.string('Use this project instead of the selected project.') }, output: readOutput, async run(args, flags, { workspace }) {
       arity(args, 1); const parts = selectedParts(flags, fileKind(args[0]!));
       const result = await workspace.read(args[0]!);
       if (!isRecord(result.document) || result.document.kind !== 'markdown' || parts.has('body')) return result;

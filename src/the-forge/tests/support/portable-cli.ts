@@ -1,5 +1,6 @@
-import { afterAll, beforeAll, expect } from 'vitest';
-import { spawn } from 'node:child_process';
+import { afterAll, afterEach, beforeAll, expect } from 'vitest';
+import { spawn, type ChildProcess, type ChildProcessByStdio } from 'node:child_process';
+import type { Readable, Writable } from 'node:stream';
 import { copyFile, cp, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,28 +10,59 @@ import { distribution } from './workspace.ts';
 interface Invocation { root?: string | null; entry?: string; cwd?: string; env?: Record<string, string | undefined> }
 interface CliResult { status: number | null; body: any; stdout: string }
 
-/** Every portable call finishes well within this; a hung child fails its test instead of the whole run. */
-const callTimeout = 30_000;
+/**
+ * Children still running when their test or hook ends. The test's own timeout (which slow workflows may raise) bounds
+ * each call; killing leftovers afterwards keeps a hung child from outliving the test that started it.
+ */
+const running = new Set<ChildProcess>();
+function killRunning() {
+  for (const child of running) child.kill();
+  running.clear();
+}
 
-/** Start Node with `args`, write `input` to its standard input and collect its output. */
-function run(args: string[], cwd: string, input: string | Buffer | undefined, env: Record<string, string | undefined> = {}) {
-  return new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve, reject) => {
-    const child = spawn(process.execPath, args, { cwd, env: { ...process.env, NODE_PATH: '', ...env }, stdio: ['pipe', 'pipe', 'pipe'] });
+/** How a test drives one Node child process. */
+interface NodeProcessOptions {
+  cwd: string;
+  input?: string | Buffer;
+  /** Adds variables to the test process's environment; an undefined value removes that variable. */
+  env?: Record<string, string | undefined>;
+  /** Node options placed before the script, such as `--require` for a fault-injecting preload. */
+  nodeArgs?: string[];
+  /**
+   * Standard output: collected through a pipe (the default), an inherited file descriptor, or a pipe whose reader
+   * closes after the first chunk (`first-chunk`, as `| head -c 10` does) or before reading anything (`unread`).
+   */
+  stdout?: 'pipe' | 'first-chunk' | 'unread' | number;
+  /** Close the read end of standard error at once, as a harness that never reads it does. */
+  closeStderr?: boolean;
+}
+/** The exit, the collected output and the number of standard output bytes read before any early close. */
+export interface NodeProcessResult { status: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string; received: number }
+
+/** Start Node with `args` portably, write `input` to its standard input and collect its output. */
+function runNode(args: string[], options: NodeProcessOptions): Promise<NodeProcessResult> {
+  return new Promise((resolve, reject) => {
+    const out = options.stdout ?? 'pipe';
+    // Standard output is null when the child inherits a file descriptor.
+    const child = spawn(process.execPath, [...(options.nodeArgs ?? []), ...args], {
+      cwd: options.cwd, env: { ...process.env, NODE_PATH: '', ...options.env }, stdio: ['pipe', typeof out === 'number' ? out : 'pipe', 'pipe'],
+    }) as ChildProcessByStdio<Writable, Readable | null, Readable>;
     const stdout: Buffer[] = [], stderr: Buffer[] = [];
-    const timer = setTimeout(() => {
-      child.kill();
-      reject(new Error(`forge ${args.slice(1).join(' ')} did not finish within ${callTimeout} ms`));
-    }, callTimeout);
-    child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
-    child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
+    let received = 0;
+    running.add(child);
+    if (out === 'first-chunk') child.stdout!.once('data', (chunk: Buffer) => { received = chunk.length; child.stdout!.destroy(); });
+    else if (out === 'unread') child.stdout!.destroy();
+    else child.stdout?.on('data', (chunk: Buffer) => { received += chunk.length; stdout.push(chunk); });
+    if (options.closeStderr) child.stderr.destroy();
+    else child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
     // A command that does not read its input may exit first: POSIX reports EPIPE, Windows EOF.
     child.stdin.on('error', () => {});
-    child.on('error', error => { clearTimeout(timer); reject(error); });
-    child.on('close', status => {
-      clearTimeout(timer);
-      resolve({ status, stdout: Buffer.concat(stdout).toString('utf8'), stderr: Buffer.concat(stderr).toString('utf8') });
+    child.on('error', error => { running.delete(child); reject(error); });
+    child.on('close', (status, signal) => {
+      running.delete(child);
+      resolve({ status, signal, stdout: Buffer.concat(stdout).toString('utf8'), stderr: Buffer.concat(stderr).toString('utf8'), received });
     });
-    child.stdin.end(input);
+    child.stdin.end(options.input);
   });
 }
 
@@ -48,7 +80,9 @@ export function portableCli() {
     await rm(join(bundle, 'bin/data/context.json'), { force: true });
     await writeFile(join(bundle, 'package.json'), '{"type":"module"}');
   });
+  afterEach(killRunning);
   afterAll(async () => {
+    killRunning();
     await rm(project, { recursive: true, force: true });
     await rm(bundle, { recursive: true, force: true });
   });
@@ -60,9 +94,13 @@ export function portableCli() {
   async function cli(args: string[], input?: string | Buffer, invocation: Invocation = {}): Promise<CliResult> {
     const root = invocation.root === undefined ? project : invocation.root;
     const entry = invocation.entry ?? join(bundle, 'bin/forge.js');
-    const result = await run([entry, ...(root === null ? [] : ['--root', root]), '--json', ...args], invocation.cwd ?? project, input, invocation.env);
+    const result = await runNode([entry, ...(root === null ? [] : ['--root', root]), '--json', ...args], { cwd: invocation.cwd ?? project, input, env: invocation.env });
     expect(result.stderr).toBe('');
     return { status: result.status, body: JSON.parse(result.stdout), stdout: result.stdout };
   }
-  return { get project() { return project; }, get bundle() { return bundle; }, cli };
+  /** Run the copied CLI on the project with raw `args`, keeping its exit signal, standard error and transport `options`. */
+  function spawnCli(args: string[], options: Omit<NodeProcessOptions, 'cwd'> = {}): Promise<NodeProcessResult> {
+    return runNode([join(bundle, 'bin/forge.js'), '--root', project, ...args], { cwd: project, ...options });
+  }
+  return { get project() { return project; }, get bundle() { return bundle; }, cli, spawnCli };
 }

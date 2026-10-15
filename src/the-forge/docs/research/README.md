@@ -22,6 +22,7 @@ This research asks four questions about The Forge at v0.1.0. What can it help wi
 | 11 | [docker-agent contract](11-docker-agent-contract.md) | Reference: docker-agent YAML format, Claude Code artifacts and the generation mapping | none |
 | 10 | [Next iteration plan](10-next-iteration-plan.md) | Product direction, kernel and core-plugin architecture, event parity, milestones M1–M6 | none |
 | 12 | [Agent-first polishing review](12-agent-first-polish-review.md) | Current review of existing workflows, resolved gaps, research and verification evidence | No new capabilities |
+| 14 | [Mutation testing, iteration 2](14-mutation-iteration-2.md) | Mutation baseline, defects found by survivors, scope extension, toolchain and CI decisions | None |
 
 ## Strengths at the research baseline
 

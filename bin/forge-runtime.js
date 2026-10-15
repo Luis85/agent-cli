@@ -1,5 +1,6 @@
 "use strict";
 const childProcess = require("node:child_process");
+const node_http = require("node:http");
 const promises$1 = require("node:fs/promises");
 const path$3 = require("node:path");
 const node_crypto = require("node:crypto");
@@ -15,6 +16,32 @@ const node_vm = require("node:vm");
 const node_util = require("node:util");
 const process$1 = require("node:process");
 const node_events = require("node:events");
+function standardOutput() {
+  let reportedFailure = false;
+  function failed(error2) {
+    const value2 = error2 !== null && typeof error2 === "object" && "code" in error2 ? error2.code : void 0;
+    const code2 = typeof value2 === "string" && /^[A-Z][A-Z0-9_]{0,31}$/.test(value2) ? value2 : "UNKNOWN";
+    if (code2 === "EPIPE" || code2 === "EOF") process.exit(process.exitCode ?? 0);
+    process.exitCode ||= 1;
+    if (reportedFailure) return;
+    reportedFailure = true;
+    try {
+      process.stderr.write(`The Forge could not write standard output (${code2}). Check the output destination and available storage. Command effects may already be committed; inspect state before retrying.
+`);
+    } catch {
+    }
+  }
+  process.stdout.on("error", failed);
+  process.stderr.on("error", () => {
+  });
+  return (text2) => {
+    try {
+      process.stdout.write(text2);
+    } catch (error2) {
+      failed(error2);
+    }
+  };
+}
 const categoryExitCodes = {
   input: 2,
   conflict: 2,
@@ -43,7 +70,7 @@ const errorCatalog = {
   INVALID_INPUT: entry("input", "The input options are invalid or contradictory.", "Use exactly one input source and the option combination named in the message."),
   INPUT_REQUIRED: entry("input", "--stdin was requested without piped input.", "Pipe the content into the command, or use --content or --from instead."),
   INVALID_JSON: entry("input", "The input is not valid JSON.", "Pass a valid JSON value; quote it for your shell."),
-  INVALID_ENCODING: entry("input", "The content is not valid in the required encoding.", "Use valid UTF-8 text. For binary content use write or create with --stdin, --from or --encoding base64; edit and structured commands accept only UTF-8 text."),
+  INVALID_ENCODING: entry("input", "The content is not valid in the required encoding.", "Use valid UTF-8 text without NUL characters in text files. For binary content use write or create with --stdin, --from or --encoding base64; edit and structured commands accept only UTF-8 text."),
   INVALID_LANGUAGE: entry("input", "The language is not supported.", "Use --lang en or --lang de."),
   INVALID_NAME: entry("input", "The name does not follow the required naming rule.", "Use the name format described in the message, for example PascalCase."),
   INVALID_KEY: entry("input", "The property key is reserved or unsafe.", "Use a different property key."),
@@ -214,10 +241,11 @@ const type$3 = "module";
 const license = "MIT";
 const engines = { "node": ">=22.12.0" };
 const config$1 = { "distribution": "../../bin" };
-const scripts = { "dev": "vite build --watch --emptyOutDir=false", "dev:server": "vite build --mode server --watch --emptyOutDir=false", "typecheck": "node scripts/quality/typecheck.mjs", "build": "vite build && vite build --mode server && node scripts/package.mjs", "test": "vitest run", "check": "npm run check:fast && npm run build && npm test && npm run showcase:check", "release": "npm run check && node scripts/release.mjs", "release:smoke": "node scripts/release-smoke.mjs", "install:release": "node scripts/install-forge.mjs", "lint": "node scripts/quality/lint.mjs", "analyze": "node scripts/quality/analyze.mjs", "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck", "check:structure": "node scripts/quality/structure.mjs --source-layout forge", "eval": "node scripts/eval/run.mjs", "bench": "node scripts/bench/metadata.mjs", "showcase": "node scripts/showcase.mjs", "showcase:check": "node scripts/showcase.mjs --check", "vendor:docker-agent": "node scripts/vendor-docker-agent.mjs" };
+const scripts = { "dev": "vite build --watch --emptyOutDir=false", "dev:server": "vite build --mode server --watch --emptyOutDir=false", "typecheck": "node scripts/quality/typecheck.mjs", "build": "vite build && vite build --mode server && node scripts/package.mjs", "test": "vitest run", "check": "npm run check:fast && npm run build && npm test && npm run showcase:check", "release": "npm run check && node scripts/release.mjs", "release:smoke": "node scripts/release-smoke.mjs", "install:release": "node scripts/install-forge.mjs", "lint": "node scripts/quality/lint.mjs", "analyze": "node scripts/quality/analyze.mjs", "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck && npm run check:contracts", "check:structure": "node scripts/quality/structure.mjs --source-layout forge", "eval": "node scripts/eval/run.mjs", "bench": "node scripts/bench/metadata.mjs", "showcase": "node scripts/showcase.mjs", "showcase:check": "node scripts/showcase.mjs --check", "vendor:docker-agent": "node scripts/vendor-docker-agent.mjs", "check:contracts": "vitest run tests/cli/commands.integration.test.ts tests/cli/localization-parity.integration.test.ts tests/cli/localization.integration.test.ts tests/evals/harness.unit.test.ts tests/documentation/consistency.integration.test.ts tests/cli/command-metadata.unit.test.ts tests/cli/input-schema.unit.test.ts", "mutate": "stryker run" };
 const dependencies$1 = { "ajv": "^8.20.0", "commander": "^15.0.0", "dayjs": "^1.11.23", "obsidian-bases-expression": "0.2.0", "parse5": "7.3.0", "playwright-core": "1.64.0", "remark-parse": "^11.0.0", "unified": "^11.0.5", "yaml": "^2.8.1", "zod": "^4.6.5" };
-const devDependencies = { "@angular/common": "21.2.25", "@angular/compiler": "21.2.25", "@angular/core": "21.2.25", "@angular/platform-browser": "21.2.25", "@types/jsdom": "27.0.0", "@types/node": "^22.18.0", "@types/react": "19.3.0", "@types/react-dom": "19.3.0", "@vue/compiler-sfc": "3.5.43", "fallow": "3.31.0", "jsdom": "27.4.0", "oxlint": "1.86.0", "react": "19.3.0", "react-dom": "19.3.0", "remark-frontmatter": "^5.0.0", "svelte": "5.57.2", "typescript": "~5.9.3", "vite": "^7.1.9", "vitest": "^5.0.3", "vue": "3.5.43" };
+const devDependencies = { "@angular/common": "21.2.25", "@angular/compiler": "21.2.25", "@angular/core": "21.2.25", "@angular/platform-browser": "21.2.25", "@stryker-mutator/core": "10.0.0", "@stryker-mutator/vitest-runner": "10.0.0", "@types/jsdom": "27.0.0", "@types/node": "^22.18.0", "@types/react": "19.3.0", "@types/react-dom": "19.3.0", "@vue/compiler-sfc": "3.5.43", "fallow": "3.31.0", "jsdom": "27.4.0", "minimatch": "10.2.6", "oxlint": "1.86.0", "react": "19.3.0", "react-dom": "19.3.0", "remark-frontmatter": "^5.0.0", "svelte": "5.57.2", "typescript": "~5.9.3", "vite": "^7.1.9", "vitest": "^5.0.3", "vue": "3.5.43" };
 const allowScripts = { "esbuild": true, "fsevents": false };
+const overrides = { "typed-rest-client": { "qs": "6.16.0" } };
 const metadata$2 = {
   name,
   version: version$1,
@@ -230,7 +258,8 @@ const metadata$2 = {
   scripts,
   dependencies: dependencies$1,
   devDependencies,
-  allowScripts
+  allowScripts,
+  overrides
 };
 const placeholder = /\{([A-Za-z][A-Za-z0-9]*)\}/g;
 function fill$1(template, params = {}) {
@@ -384,14 +413,14 @@ const heldTokens = /* @__PURE__ */ new Set();
 const positiveInteger = (value2) => Number.isSafeInteger(value2) && value2 > 0;
 const text$n = (value2) => typeof value2 === "string" && value2.length > 0 && value2.length <= 256;
 const errorCode$1 = (error2) => error2.code ?? "";
-let identity$1;
+let identity$2;
 function hostIdentity() {
-  identity$1 ??= (async () => {
+  identity$2 ??= (async () => {
     const pidNamespace = await promises$1.readlink("/proc/self/ns/pid").catch(() => void 0);
     const bootId = (await promises$1.readFile("/proc/sys/kernel/random/boot_id", "utf8").catch(() => void 0))?.trim();
     return { ...text$n(pidNamespace) ? { pidNamespace } : {}, ...text$n(bootId) ? { bootId } : {} };
   })();
-  return identity$1;
+  return identity$2;
 }
 async function processStart(pid) {
   const stat = await promises$1.readFile(`/proc/${pid}/stat`, "utf8").catch(() => void 0);
@@ -834,15 +863,34 @@ function serverInfo(state2) {
     uptimeSeconds: Math.max(0, Math.floor((Date.now() - Date.parse(state2.startedAt)) / 1e3))
   };
 }
+function callDaemon(state2, method, path2, timeoutMs) {
+  return new Promise((resolve2, reject) => {
+    const request = node_http.request({
+      host: "127.0.0.1",
+      port: state2.port,
+      method,
+      path: path2,
+      agent: false,
+      headers: { authorization: `Bearer ${state2.token}` },
+      signal: AbortSignal.timeout(timeoutMs)
+    }, (response) => {
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(chunk));
+      response.on("error", reject);
+      response.on("close", () => reject(new Error("The daemon closed the response early.")));
+      response.on("end", () => resolve2({ status: response.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }));
+    });
+    request.on("error", reject);
+    request.on("close", () => reject(new Error("The daemon closed the connection.")));
+    request.end();
+  });
+}
+const succeeded = (status2) => status2 >= 200 && status2 < 300;
 async function healthy(state2) {
   try {
-    const response = await fetch(`http://127.0.0.1:${state2.port}/api/health`, {
-      headers: { authorization: `Bearer ${state2.token}` },
-      signal: AbortSignal.timeout(1200),
-      redirect: "error"
-    });
-    if (!response.ok) return false;
-    const body = await response.json();
+    const response = await callDaemon(state2, "GET", "/api/health", 1200);
+    if (!succeeded(response.status)) return false;
+    const body = JSON.parse(response.body);
     const health = isRecord$1(body) && isRecord$1(body.data) ? body.data : body;
     return isRecord$1(health) && health.instanceId === state2.instanceId && health.pid === state2.pid;
   } catch {
@@ -950,13 +998,8 @@ class NodeServerController {
       if (!state2 || !await healthy(state2)) return { ...stopped(Boolean(state2)), changed: false, ...options2.dryRun ? { dryRun: true } : {} };
       if (options2.dryRun) return { ...running(state2), dryRun: true, changed: true };
       try {
-        const response = await fetch(`http://127.0.0.1:${state2.port}/api/shutdown`, {
-          method: "POST",
-          headers: { authorization: `Bearer ${state2.token}` },
-          signal: AbortSignal.timeout(2e3),
-          redirect: "error"
-        });
-        if (!response.ok) throw new Error("Shutdown rejected.");
+        const response = await callDaemon(state2, "POST", "/api/shutdown", 2e3);
+        if (!succeeded(response.status)) throw new Error("Shutdown rejected.");
         const deadline = Date.now() + 5e3;
         while (process.platform === "win32" ? processAlive(state2.pid) : await healthy(state2)) {
           if (Date.now() >= deadline) throw new Error("Shutdown timed out.");
@@ -1433,17 +1476,26 @@ const textExtensions = [
   "csv",
   "tsv",
   "sh",
+  "ps1",
+  "psm1",
+  "psd1",
   "py",
   "sql"
 ];
+const textFilenames = ["Dockerfile", "Containerfile"];
 const fileKinds = [...Object.keys(nativeFormats), "text", "attachment"];
 function fileKind(path2) {
-  const basename2 = path2.slice(path2.lastIndexOf("/") + 1);
+  const basename2 = path2.slice(path2.lastIndexOf("/") + 1).toLowerCase();
   const dot = basename2.lastIndexOf(".");
-  const ext = dot < 0 ? "" : basename2.slice(dot + 1).toLowerCase();
+  const ext = dot < 0 ? "" : basename2.slice(dot + 1);
   const native = Object.entries(nativeFormats).find(([, extensions]) => extensions.includes(ext))?.[0];
-  return native ?? (textExtensions.includes(ext) ? "text" : "attachment");
+  const namedText = textFilenames.some((name2) => {
+    const lower = name2.toLowerCase();
+    return basename2 === lower || basename2.startsWith(`${lower}.`) && /^[^.]/.test(basename2.slice(lower.length + 1));
+  });
+  return native ?? (textExtensions.includes(ext) || namedText ? "text" : "attachment");
 }
+const isTextContent = (path2, text2) => fileKind(path2) !== "text" || !text2.includes("\0");
 const isStructured = (path2) => ["markdown", "canvas", "base"].includes(fileKind(path2));
 const isTextLike = (path2) => isStructured(path2) || fileKind(path2) === "text";
 function snapshotWriteRequests(writes) {
@@ -1568,12 +1620,14 @@ const changeSummary = (result) => ({
   ...result.renames ? { renames: result.renames.map(({ from, to, kind: kind2 }) => ({ from, to, kind: kind2 })) } : {}
 });
 const into = (path2, folder) => path2 === folder || path2.startsWith(`${folder}/`);
-const utf8 = (bytes) => {
+const utf8 = (path2, bytes) => {
+  let text2;
   try {
-    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+    text2 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
     return void 0;
   }
+  return isTextContent(path2, text2) ? text2 : void 0;
 };
 class Workspace {
   /** `observer` follows each committed batch of this scope, such as the metadata cache of the same root. */
@@ -1600,9 +1654,10 @@ class Workspace {
   }
   // CLI handlers and external plugins call this through the typed CommandContext workspace.
   // A successful read is Obsidian's file-open: it emits `workspace.file-open` with the scoped path.
-  async read(path2) {
+  async read(path2, options2 = {}) {
     return this.observe("read", [path2], async () => {
       const file = await this.files.read(path2);
+      options2.beforeParse?.(file.bytes.length);
       const result = { path: path2, revision: file.revision, bytes: file.bytes.length, document: this.codec.inspect(path2, file.bytes) };
       await publishHostEvent(this.events, "workspace.file-open", { path: path2 });
       return result;
@@ -1632,11 +1687,11 @@ class Workspace {
   async preview(changes2, requests, previous2) {
     return Promise.all(changes2.map(async (change2) => {
       const request = requests.find((candidate) => candidate.path === change2.path);
-      const after = request && isTextLike(change2.path) ? utf8(request.bytes) : void 0;
+      const after = request && isTextLike(change2.path) ? utf8(change2.path, request.bytes) : void 0;
       if (after === void 0 || change2.operation === "deleted") return { ...change2, diff: null };
       if (change2.operation === "created") return { ...change2, diff: unifiedDiff({ path: change2.path, before: "", after, created: true }) };
       const snapshot = previous2.get(change2.path) ?? await this.files.read(change2.path);
-      const before = snapshot.revision === request.expectedRevision ? utf8(snapshot.bytes) : void 0;
+      const before = snapshot.revision === request.expectedRevision ? utf8(change2.path, snapshot.bytes) : void 0;
       return { ...change2, diff: before === void 0 ? null : unifiedDiff({ path: change2.path, before, after }) };
     }));
   }
@@ -2912,10 +2967,10 @@ function getDefaultExportFromCjs(x) {
 var dist = {};
 var composer = {};
 var directives = {};
-var identity = {};
+var identity$1 = {};
 var hasRequiredIdentity;
 function requireIdentity() {
-  if (hasRequiredIdentity) return identity;
+  if (hasRequiredIdentity) return identity$1;
   hasRequiredIdentity = 1;
   const ALIAS = /* @__PURE__ */ Symbol.for("yaml.alias");
   const DOC = /* @__PURE__ */ Symbol.for("yaml.document");
@@ -2951,23 +3006,23 @@ function requireIdentity() {
     return false;
   }
   const hasAnchor = (node2) => (isScalar(node2) || isCollection(node2)) && !!node2.anchor;
-  identity.ALIAS = ALIAS;
-  identity.DOC = DOC;
-  identity.MAP = MAP;
-  identity.NODE_TYPE = NODE_TYPE;
-  identity.PAIR = PAIR;
-  identity.SCALAR = SCALAR;
-  identity.SEQ = SEQ;
-  identity.hasAnchor = hasAnchor;
-  identity.isAlias = isAlias;
-  identity.isCollection = isCollection;
-  identity.isDocument = isDocument;
-  identity.isMap = isMap;
-  identity.isNode = isNode;
-  identity.isPair = isPair;
-  identity.isScalar = isScalar;
-  identity.isSeq = isSeq;
-  return identity;
+  identity$1.ALIAS = ALIAS;
+  identity$1.DOC = DOC;
+  identity$1.MAP = MAP;
+  identity$1.NODE_TYPE = NODE_TYPE;
+  identity$1.PAIR = PAIR;
+  identity$1.SCALAR = SCALAR;
+  identity$1.SEQ = SEQ;
+  identity$1.hasAnchor = hasAnchor;
+  identity$1.isAlias = isAlias;
+  identity$1.isCollection = isCollection;
+  identity$1.isDocument = isDocument;
+  identity$1.isMap = isMap;
+  identity$1.isNode = isNode;
+  identity$1.isPair = isPair;
+  identity$1.isScalar = isScalar;
+  identity$1.isSeq = isSeq;
+  return identity$1;
 }
 var visit$1 = {};
 var hasRequiredVisit;
@@ -6876,7 +6931,7 @@ function requireResolveBlockMap() {
     if (ctx.atRoot)
       ctx.atRoot = false;
     let offset = bm.offset;
-    let commentEnd = null;
+    let commentEnd2 = null;
     for (const collItem of bm.items) {
       const { start: start2, key, sep, value: value2 } = collItem;
       const keyProps = resolveProps2.resolveProps(start2, {
@@ -6896,7 +6951,7 @@ function requireResolveBlockMap() {
             onError(offset, "BAD_INDENT", startColMsg);
         }
         if (!keyProps.anchor && !keyProps.tag && !sep) {
-          commentEnd = keyProps.end;
+          commentEnd2 = keyProps.end;
           if (keyProps.comment) {
             if (map2.comment)
               map2.comment += "\n" + keyProps.comment;
@@ -6958,9 +7013,9 @@ function requireResolveBlockMap() {
         map2.items.push(pair);
       }
     }
-    if (commentEnd && commentEnd < offset)
-      onError(commentEnd, "IMPOSSIBLE", "Map comment with trailing content");
-    map2.range = [bm.offset, offset, commentEnd ?? offset];
+    if (commentEnd2 && commentEnd2 < offset)
+      onError(commentEnd2, "IMPOSSIBLE", "Map comment with trailing content");
+    map2.range = [bm.offset, offset, commentEnd2 ?? offset];
     return map2;
   }
   resolveBlockMap.resolveBlockMap = resolveBlockMap$1;
@@ -6982,7 +7037,7 @@ function requireResolveBlockSeq() {
     if (ctx.atKey)
       ctx.atKey = false;
     let offset = bs.offset;
-    let commentEnd = null;
+    let commentEnd2 = null;
     for (const { start: start2, value: value2 } of bs.items) {
       const props = resolveProps2.resolveProps(start2, {
         indicator: "seq-item-ind",
@@ -6999,7 +7054,7 @@ function requireResolveBlockSeq() {
           else
             onError(offset, "MISSING_CHAR", "Sequence item without - indicator");
         } else {
-          commentEnd = props.end;
+          commentEnd2 = props.end;
           if (props.comment)
             seq2.comment = props.comment;
           continue;
@@ -7011,7 +7066,7 @@ function requireResolveBlockSeq() {
       offset = node2.range[2];
       seq2.items.push(node2);
     }
-    seq2.range = [bs.offset, offset, commentEnd ?? offset];
+    seq2.range = [bs.offset, offset, commentEnd2 ?? offset];
     return seq2;
   }
   resolveBlockSeq.resolveBlockSeq = resolveBlockSeq$1;
@@ -9217,10 +9272,10 @@ function requireLineCounter() {
   lineCounter.LineCounter = LineCounter;
   return lineCounter;
 }
-var parser$1 = {};
+var parser$2 = {};
 var hasRequiredParser;
 function requireParser() {
-  if (hasRequiredParser) return parser$1;
+  if (hasRequiredParser) return parser$2;
   hasRequiredParser = 1;
   var node_process = require$$0;
   var cst2 = requireCst();
@@ -10088,8 +10143,8 @@ function requireParser() {
       }
     }
   }
-  parser$1.Parser = Parser3;
-  return parser$1;
+  parser$2.Parser = Parser3;
+  return parser$2;
 }
 var publicApi = {};
 var hasRequiredPublicApi;
@@ -11117,15 +11172,15 @@ class NodeFiles {
   }
   async list() {
     const result = [];
-    const walk = async (directory, prefix) => {
+    const walk2 = async (directory, prefix) => {
       for (const entry2 of await promises$1.readdir(directory, { withFileTypes: true })) {
         if (unlisted(entry2.name, prefix + entry2.name)) continue;
         const path2 = prefix + entry2.name;
-        if (entry2.isDirectory()) await walk(path$3.join(directory, entry2.name), path2 + "/");
+        if (entry2.isDirectory()) await walk2(path$3.join(directory, entry2.name), path2 + "/");
         else if (entry2.isFile()) result.push(path2);
       }
     };
-    await walk(this.root, "");
+    await walk2(this.root, "");
     return result.sort();
   }
   /** @internal */
@@ -11193,7 +11248,7 @@ class NodeFiles {
   async folder(path2) {
     const files = [], folders2 = [], special = [];
     let git = false;
-    const walk = async (directory, prefix) => {
+    const walk2 = async (directory, prefix) => {
       for (const entry2 of await promises$1.readdir(directory, { withFileTypes: true })) {
         const reserved2 = reservedPathSegment(entry2.name);
         if (reserved2 === "git") {
@@ -11206,7 +11261,7 @@ class NodeFiles {
         else if (entry2.isDirectory() && entry2.name.toLowerCase() === "node_modules") special.push({ path: relative, kind: "node_modules" });
         else if (entry2.isDirectory()) {
           folders2.push(relative);
-          await walk(absolute, relative + "/");
+          await walk2(absolute, relative + "/");
         } else if (entry2.isFile()) {
           const bytes = await promises$1.readFile(absolute);
           files.push({ path: relative, revision: revisionOf(bytes), bytes: bytes.length });
@@ -11214,7 +11269,7 @@ class NodeFiles {
       }
     };
     try {
-      await walk(await this.resolvePath(path2, true), "");
+      await walk2(await this.resolvePath(path2, true), "");
     } catch (error2) {
       if (missing$1(error2)) return void 0;
       throw error2;
@@ -11320,11 +11375,11 @@ async function stampedFiles(files, directory, stamped = () => true) {
   const checkedAtMs = Date.now();
   const listed = [];
   const scope2 = directory === void 0 ? "" : `${vaultPath(directory)}/`;
-  const walk = (folder, prefix) => {
+  const walk2 = (folder, prefix) => {
     for (const entry2 of fs.readdirSync(folder, { withFileTypes: true })) {
       const path2 = prefix + entry2.name;
       if (unlisted(entry2.name, scope2 + path2)) continue;
-      if (entry2.isDirectory()) walk(path$3.join(folder, entry2.name), `${path2}/`);
+      if (entry2.isDirectory()) walk2(path$3.join(folder, entry2.name), `${path2}/`);
       else if (!entry2.isFile()) continue;
       else if (!stamped(path2)) listed.push({ path: path2 });
       else {
@@ -11335,7 +11390,7 @@ async function stampedFiles(files, directory, stamped = () => true) {
       }
     }
   };
-  walk(directory === void 0 ? files.root : await files.resolvePath(directory, true), "");
+  walk2(directory === void 0 ? files.root : await files.resolvePath(directory, true), "");
   return { checkedAtMs, files: listed.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0) };
 }
 function nodeFileDates(root) {
@@ -11411,19 +11466,19 @@ function replaceOnce(value2, pairs2) {
 }
 function stringScalars(document2) {
   const found = /* @__PURE__ */ new Map();
-  const walk = (node2, key, path2) => {
+  const walk2 = (node2, key, path2) => {
     if (distExports.isMap(node2)) {
       for (const pair of node2.items) {
         const name2 = String(distExports.isScalar(pair.key) ? pair.key.value : pair.key);
-        walk(pair.value, key ? `${key}.${name2}` : name2, [...path2, name2]);
+        walk2(pair.value, key ? `${key}.${name2}` : name2, [...path2, name2]);
       }
-    } else if (distExports.isSeq(node2)) node2.items.forEach((item, index2) => walk(item, key ? `${key}.${index2}` : String(index2), [...path2, index2]));
+    } else if (distExports.isSeq(node2)) node2.items.forEach((item, index2) => walk2(item, key ? `${key}.${index2}` : String(index2), [...path2, index2]));
     else if (distExports.isAlias(node2)) {
       const anchored = node2.resolve(document2);
       if (distExports.isScalar(anchored)) found.get(anchored)?.keys.push(key);
     } else if (distExports.isScalar(node2) && typeof node2.value === "string" && node2.range) found.set(node2, { path: path2, keys: [key] });
   };
-  walk(document2.contents, "", []);
+  walk2(document2.contents, "", []);
   return found;
 }
 function candidates$2(node2, source2, value2, pairs2) {
@@ -11479,6 +11534,11 @@ function textOf$1(bytes) {
   } catch {
     throw forgeError("INVALID_ENCODING", "Structured documents and text files must be valid UTF-8.");
   }
+}
+function textFileOf(path2, bytes) {
+  const text2 = textOf$1(bytes);
+  ensure(isTextContent(path2, text2), "INVALID_ENCODING", "Text files must be UTF-8 without NUL characters; UTF-16 and other binary content stay attachments.");
+  return text2;
 }
 function yamlDocument(text2) {
   const document2 = distExports.parseDocument(text2, { uniqueKeys: true });
@@ -11572,7 +11632,7 @@ class ObsidianDocuments {
     const kind2 = fileKind(path2);
     if (kind2 === "text") {
       try {
-        return { kind: kind2, content: textOf$1(bytes) };
+        return { kind: kind2, content: textFileOf(path2, bytes) };
       } catch {
         return { kind: "attachment", encoding: "base64", content: Buffer.from(bytes).toString("base64") };
       }
@@ -11598,7 +11658,7 @@ class ObsidianDocuments {
     return { kind: kind2, data };
   }
   validate(path2, bytes) {
-    if (fileKind(path2) === "text") textOf$1(bytes);
+    if (fileKind(path2) === "text") textFileOf(path2, bytes);
     else this.inspect(path2, bytes);
   }
   properties(bytes, changes2, remove2 = []) {
@@ -18532,8 +18592,8 @@ const basesPlugin = {
   }
 };
 const workflow = "---\nname: forge-workflow\ndescription: Drive the portable Forge CLI (node bin/forge.js) safely. Discover commands and their JSON Schema contract with schema, select projects, preview with --dry-run, guard writes with --if-match revisions and recover from CONFLICT and other error codes. Use when a workspace has bin/forge.js, when starting any Forge task, or when a Forge command fails.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\nTo bootstrap another project, download a pinned GitHub release rather than copying the source checkout's saved selection. Follow `bin/data/docs/how-to/install.md`: download the trusted release's `install-forge.mjs`, execute it with `--version` and `--workspace`, check its exit status and JSON `ok`, then preview `project create` and verify `project current`. The installer verifies the archive checksum, installs generic defaults and runs setup; it refuses an existing `bin/`. Upgrades preserve configuration, plugins, templates and project selection through a separately reviewed change.\n\nFor self-upgrades, run `update check --json`, review a pinned `update apply --release-version <version> --if-match <revision> --dry-run --json`, then apply with the same version and revision. Upgrades preserve local configuration, project selection, installed plugins, templates and custom webviews. A conflict requires new inspection. Check the next `--version` and `project current`, and restart any running server. See `bin/data/docs/reference/updates.md`.\n\n1. Locate the complete `bin` distribution: `forge.js`, `forge-runtime.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/forge.js config --json` to confirm the projects path, defaults, enabled plugins and their effective `plugins.settings.<plugin-id>` sections, then use `node bin/forge.js help --json` to discover the installed command catalog if needed. For a known task, start with `help <command>` and request `schema <command> --json` for its machine-readable contract. Reserve the complete `schema --json` for discovering the entire API; do not load it again on every task. `schema <command>` returns one command's contract: its JSON Schema 2020-12 `inputSchema`, its `outputSchema` (or `annotations.actions.<action>.outputSchema`) for `data`, the error codes it can report, and `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `scope`); `data.envelope` is the response schema. Prefer read-only commands for discovery and treat `destructiveHint: true` commands as needing a reviewed `--dry-run` first. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/forge.js --root <workspace> schema --json`. The selected workspace always uses its own `bin/config.json`; the same routing rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Keep shared selection fixed while parallel agents use file commands: checking the context does not lock it for the next invocation. Coordinate selection changes first; use separate workspaces when agents need different selections. Only commands that declare `--project` support a per-invocation target. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` (document commands include a unified `diff` per text file) and generator `preview` before applying. Edit only what changes: `edit --section \"A > B\"` or `--block <id>` for one part of a note, `edit --edits <list>` for several replacements in one file. When several files must change together (a move plus edits and property changes), write one plan for `apply <plan.json|->` and review `apply --dry-run`: it commits as one guarded batch or not at all. The plan's JSON Schema is the `contentSchema` of `apply`'s argument in `schema apply`. `apply` reports `idempotentHint: false`: an operation without `ifMatch` applies again on a repeat, so give each operation the `ifMatch` from your reads.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A `CONFLICT` reports `error.details.currentRevision`: reread and reconcile; never blindly retry with the new revision. `NO_MATCH` means `--find` text is absent and `AMBIGUOUS_EDIT` that it matches several lines (`details.lines`); with `--edits`, `details.edit` names the failing entry. `SECTION_NOT_FOUND` lists the note's `details.headings` or `details.blocks`, and `AMBIGUOUS_SECTION` its `details.candidates`: add an ancestor heading or pass a candidate's line as `--section-line`. An `apply` failure adds `details.operation`, the index of the failing operation, and `INVALID_PLAN` lists `details.issues`. Validation failures write nothing. On `ROLLBACK_FAILED`, inspect every reported path and the actual saved contents before doing more work; recovery could not restore every file.\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. On failure follow `error.hint`; only `error.retryable: true` permits an unchanged retry (for example `WORKSPACE_BUSY` or `SERVER_BUSY`); inspect `server status` before repeating `SERVER_STOP_FAILED`. `schema` lists every code at `data.errors`. The envelope's `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`; new parent folders appear as `kind: \"folder\"` records); reads and dry runs return `[]`. Use `--events all` on the original invocation when you need lifecycle records, or `--events none`. History is invocation-local; never rerun a mutation just to obtain more events. Warnings may report failed notification listeners after a successful write; inspect committed events and read back before considering any repeat.\n6. Read back the result and validate documents; after vault changes run `vault check --strict` and fix each error finding by its `hint` until it passes (`VAULT_CHECK_FAILED` lists them in `error.details.findings`). For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory's manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/forge.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a visual workspace overview, the agent may offer to start the read-only admin view. Once startup is authorized, run `node bin/forge.js server start --webview admin --json` and share `data.url` locally; the CLI never prompts or opens a browser. `server status` is read-only discovery, `server start` reuses an existing workspace server, and `server stop` ends it. Start/stop support `--dry-run`; a preview never starts or stops a process. These commands always use workspace scope and preserve project selection. Treat the launch URL as local session access information because its fragment contains a bearer token; retrieve a fresh link after restart. Use `help server`, `schema server --json` and `bin/data/docs/reference/server.md` for the lifecycle contract. The view inspects state and cannot change configuration.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying. Templates and `make document` come from the bundled `templates` core plugin, and the project and code scaffolds from `scaffolds`; when `plugins` lists one as disabled, its commands and generators are unknown, `setup` skips the templates with a warning and `project create`/`project component` fail with `PLUGIN_UNAVAILABLE`.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured folders and default framework in `plugins.settings.ui` (`framework`, `components`, `interactions`, `output`, `stories` and their import/export folders; `config --json` shows the effective values). The `ui` core plugin owns `components`, `interactions`, `make ui` and `make stories`; the `data-sources` core plugin owns `data-sources` and `make data-source`, with its folders in `plugins.settings.data-sources`. Feature folders never live under `paths`, which holds only `projects`. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project's framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor agent definitions, follow the forge-agents skill: definitions are docker-agent YAML in `agents/*.yaml`, `agents validate` checks them, and `agents generate --target claude` (with `--plan`, `--check` or `--revisions-from`) maintains `.claude/agents/`; never hand-edit generated agents.\n\nFor agent skills, `skills list` names the skills of the enabled plugins, `skills show <id>` returns one `SKILL.md`, and `skills install [--target both|claude|agents | --out <directory>]` writes them into the selected project's `.claude/skills` and `.agents/skills`; existing files are refused, so a repeat never overwrites an edited skill.\n\nFor native Claude Code configuration, use the `claude` command instead of hand-written JSON. `claude capabilities` lists the supported hook events, handler types, plugin components and runtime operations. `claude hooks inspect` returns the settings document (`--scope project|local|user|plugin`, default `project`) with its `revision`; `claude hooks check` validates it without running handlers; `hooks add <event> --stdin`, `set`, `remove <event> [--index n]`, `enable`, `disable` and `configure` edit it and need `--if-match <revision>` once the file exists. `claude agents list|inspect|create|update|remove|enable|disable|export` manages `.claude/agents/*.md`. `claude plugins create|inspect|manifest|check|asset|write-asset|remove-asset <directory>` authors a plugin folder without running Claude. `claude plugins list|details|install|update|uninstall|enable|disable|validate|configure|prune|init|tag|test|eval`, `claude marketplaces add|list|remove|update` and `claude runtime version|doctor|install|update` run the installed `claude` executable (`--claude-bin`, `--timeout`) and can change the user's Claude Code installation: preview them with `--dry-run`, keep `--scope project` unless the user asks otherwise, never pass `--scope user` without their consent, and expect `idempotentHint: false`. Hooks and plugins run commands; review them like code.\n\nAdd `--lang de` for German descriptions, hints, warnings and findings; commands, options, ids, codes and JSON keys stay the same, so match codes rather than message text.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values '{\"owner\":\"Team\"}' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n\nFor a self-contained browser prototype, use the `forge-webviews` skill and `project create <id> --type webview`. Build and test inside that independent project; `node bin/forge.js webview inspect --project <id>` reports publication state, `webview publish --dry-run` previews the build-output changes, and `server start --webview <id>` returns the packaged preview URL.\n\nFor on-demand webpage screenshots or illustrated flow documentation, follow `forge-browser`. Discover `schema browser`; screenshot and tutorial dry runs validate without launching a browser. Tutorials execute explicit reviewed JSON plans from JSON, Markdown or Canvas, then write guarded document folders.\n";
-const vault = '---\nname: forge-vault\ndescription: Read, search, link-check, create and edit Obsidian Markdown notes, frontmatter properties, Canvas, Bases and attachments through Forge with revision guards, link-preserving moves and trash deletes. Use when working with notes, wikilinks, backlinks, tags, .canvas or .base files, or any vault file edit in a Forge workspace.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nRun `node bin/forge.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append; see precise edits below for sections, blocks and several replacements. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar; see `formats`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 reads as base64 and cannot be edited.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nPrecise edits change only what you address, in memory, with one guarded write:\n- Section: `edit notes/plan.md --section "Plan > Risks" --append --content "- Staffing" --if-match <revision>`; also `--prepend --content` or `--replace <text>`. The path lists headings outermost first, separated by ` > `; the section runs to the next heading of the same or a higher level, its heading line and the blank lines around its content stay. `SECTION_NOT_FOUND` lists `details.headings`; `AMBIGUOUS_SECTION` lists `details.candidates`: add an ancestor heading, or pass the candidate\'s `line` as `--section-line <n>` (`sectionLine` in a plan), the only way to pick between headings with the same full path. Write a ` > ` inside a heading as ` \\> `.\n- Block: `edit notes/plan.md --block ship --replace "New text" --if-match <revision>` addresses `^ship`; replacing keeps the marker so block links keep working. A list item or task keeps its indentation, marker and checkbox and its nested items: pass only the new text, or start it with a marker (`- [x] Done`) to change the checkbox. `--append`/`--prepend --content` add a separate block (blank lines around it) next to a paragraph or section; next to a list item the content must start with a list marker and becomes sibling items, else `INVALID_INPUT`.\n- Several literal replacements: `edit <file> --edits \'[{"find":"a","replace":"b"},{"find":"x","replace":"y","all":true}]\' --if-match <revision>` (or `--edits @edits.json`, `--edits -`). They apply in order; a failure names `details.edit` and writes nothing.\n- Several files as one unit: write a plan `{"version":1,"operations":[...]}` with `write`, `edit` (`edits`, `append`, or `section`/`block` with `replace`/`append`/`prepend`), `frontmatter` (`set`, `unset`), `move` (`from`, `to`) and `delete` (to `.trash`) operations, each with an optional `ifMatch` from your reads, and run `apply plan.json --dry-run`, then `apply plan.json` (or pipe it to `apply -`). Operations see the effects of earlier ones (edit a note after moving it by its new path); the plan commits as one batch or not at all. A failure keeps its code and adds `details.operation`; `INVALID_PLAN` lists schema `details.issues`. `help apply` shows the plan\'s JSON Schema, and `schema apply` publishes it as the argument\'s `contentSchema` with the result\'s `outputSchema`. Split a plan that writes to a path it also moves or deletes.\n\nFind before you edit: `search "release plan"` returns `data.hits` (`path`, 1-based `line` and `column`, `match`, `snippet`, `revision`) in path, line and column order, plus `total`. Narrow with `--path "notes/**"`, `--kind markdown`, `--tag project`, `--property status=active`, `--in body` (skip frontmatter) or `--skip-code`; add `--context 2` for surrounding lines. Literal matching ignores case unless `--case-sensitive`; `--regex` takes a JavaScript regular expression matched per line. A hit\'s `revision` is the `--if-match` for an `edit` of that file. Pages hold 100 hits: repeat the same command with `--cursor <nextCursor>` until `nextCursor` is absent. `SEARCH_TIMEOUT` means the expression backtracks too much: simplify it or search literally. `list --path "notes/**" --kind markdown` lists files the same way.\n\nCheck the link graph before restructuring: `links back notes/plan.md` lists every file that links to it (`source`, 1-based `line`/`column`, `original`); `links out notes/plan.md` lists its own links with `status` and `target`. `links unresolved --path "notes/**"` reports broken links with `reason` `missing`, or `ambiguous` with `candidates` (use a longer link path that names one candidate). `links orphans` lists notes nothing links to and `links deadends` notes that link nowhere; list deliberate entry notes in `plugins.settings.links.roots`. Every report has `issues`: files whose metadata could not be parsed, whose links are missing from the report, so fix those first.\n\nVerify the vault before you finish: `vault check` returns `data.findings` (`rule`, `severity` `error`/`warning`/`info`, `path`, 1-based `line`/`column` or `null`, `message`, `hint`, and for a missing target `suggestion`, the closest existing file) in path and line order, plus `summary` counts. Rules: `unresolved-link`, `unresolved-embed`, `ambiguous-link`, `unresolved-anchor` (a missing `#Heading` or `#^block`), `invalid-frontmatter`, `invalid-canvas`, `invalid-base`, `property-type-mismatch` (against `.obsidian/types.json`, else the type most notes use), `duplicate-block-id`, `empty-file` and `orphan-attachment`. Narrow with `--path "notes/**"` and `--rule unresolved-link,invalid-frontmatter`. `vault check --strict` fails with `VAULT_CHECK_FAILED` (exit 2) while an `error` finding remains and lists them in `error.details.findings`: fix each by its `hint` and run it again until it passes. Before setting a property, run `vault properties --name <property>` to see its inferred and declared type, so values keep one type; `vault tags --sort count` lists tags with their files (nested tags count for their parents). Rule severities and ignore globs live in `plugins.settings.vault-check`.\n\nMove, rename and delete with the link-aware commands, never by writing a copy and removing the original:\n- Move or rename: `move notes/plan.md specs/plan.md --dry-run` (or `rename notes/plan.md Roadmap --dry-run`; a file keeps its extension) returns `data.revision` and a `diff` for every file whose links change: wikilinks and embeds keep `#Heading`, `#^block` and `|display` text, relative Markdown links are recomputed, frontmatter links and Canvas `file` nodes follow. Review `data.links.unrewritten`, then repeat without `--dry-run` and with `--if-match <revision>`. One batch commits the move and every rewritten file. `DESTINATION_EXISTS` means the target exists: Forge never overwrites it. A folder moves the same way; its `--if-match` is the folder revision the dry run reports.\n- Delete: `delete notes/scratch.md --if-match <revision>` moves the file to `.trash/` (numbered ` 1`, ` 2`… if taken); `--permanent` removes it; a folder needs `--recursive`. `HAS_BACKLINKS` lists the files still linking to it in `details.backlinks` (`source`, 1-based `line`, `original`): rewrite or remove those links first, or move the note instead. Pass `--allow-broken-links` only when broken links are intended. `.obsidian`, `.forge` and, at workspace scope, `bin` are protected in any letter case (`PROTECTED_PATH`). `--permanent` also refuses folders holding symlinks or `node_modules` (`PROTECTED_PATH`): trash them instead. `data.deleted` lists every removed file (`kind: "file"`) and folder (`kind: "folder"`).\n\nMarkdown `read` returns `content` and `properties`; add `--parts body` only when you need the body separately. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nForge removes a lock whose holder provably no longer runs (same host, container and boot; pid gone or reused; or written before the last restart) by itself and returns a warning: then inspect the interrupted changes with `git status` and read-back before continuing. On `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command, and on Linux pidNamespace, bootId and processStart), `path` the lock file and `stale` is `active`, `unknown` or `stale`. Wait and retry while it is `active` (`retryable: true`), also when `details.breaker` shows another writer removing a stale lock; never delete an `active` lock. `unknown` (`retryable: false`) covers another host, container or boot and unreadable locks: do not retry in a loop and never delete the lock blindly; delete the file in `details.path` only after verifying that the recorded pid on the recorded host and container is not a running Forge writer and inspecting its changes, then retry. `stale` (`retryable: false`) means the holder provably no longer runs but Forge could not remove the file: confirm no Forge process uses it, then delete the file in `details.path` and retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n\nFor documents explaining a webpage, UI problem or workflow with screenshots, follow `forge-browser` to capture and inspect evidence. Embed the actual saved PNG relative to the Markdown note, cite the clean source URL and capture metadata, and keep the guarded document-editing loop above.\n';
-const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript projects with Forge scaffolds (project create, project component, make entity, make use-case, make form, make plugin) and prove them with acceptance tests and quality gates. Use when adding domain or application code, forms or Forge plugins, or when running npm run check in a Forge-managed project.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/forge.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`. These code generators belong to the bundled `scaffolds` core plugin and `make document` to `templates`; `plugins` shows whether they are enabled.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills, events and services under the plugin ID and error codes under its UPPER_SNAKE_CASE prefix. Declare each command's metadata (`scope`, `mutating`, described `options` and `args`, `errors`, and `destructive` or `idempotent` where the derived hints are wrong) so `help`, `schema` and the invocation policy describe it; declare `output`, the JSON Schema of `data`, on the command or per action, and `schema` on a string option or argument that holds or names a JSON document; declare settings as a JSON Schema read from `plugins.settings.<id>` via `context.settings`, German text in `strings.de` (descriptions of commands, actions, options, arguments and settings, the manifest name and description, error summaries and hints, and messages read with `context.t`), and shared capabilities through `provides`/`requires` instead of imports. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures; use `onUserEnable(context)` for idempotent one-time setup after enabling (it runs at least once, not exactly once) and `context.events.onLayoutReady`/`onQuit` for work that needs active plugins or invocation-end cleanup. Plugins may emit only `<plugin-id>.*` events; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`) and other plugins' events (such as `claude.*`) fail with `EVENT_OWNERSHIP`. To run the installed Claude Code CLI, require the `claude.lifecycle` service of the `claude` core plugin. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. Each project owns its CI: author GitHub workflows in the project's `src/infrastructure/workflows/<concern>/*.yml`, then run `node bin/forge.js workflows sync --dry-run`, review, and `workflows sync` from the workspace to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints. Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ from their sources.\n8. For changes to The Forge itself, work in its project directory (`src/the-forge` in the source checkout): run `npm ci`, iterate with `npm run check:fast`, update docs and skills, then run `npm run check` and commit the rebuilt workspace executable and packaged assets with the source. `npm run check` also replays every agent evaluation task in `evals/tasks` with the reference driver; when you add an agent-facing command, add a task with reference steps and deterministic checks and validate it with `npm run eval -- --task <id>`. Measure an agent with the opt-in `npm run eval -- --driver claude`. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n\nFor an independent browser prototype, follow `forge-webviews`: `project create <id> --type webview` scaffolds Vue/Nuxt UI with local fixtures and Playwright; `webview publish` maintains built assets and `server start --webview <id>` manages the local preview. Library component generators do not target webview projects.\n";
+const vault = '---\nname: forge-vault\ndescription: Read, search, link-check, create and edit Obsidian Markdown notes, frontmatter properties, Canvas, Bases and attachments through Forge with revision guards, link-preserving moves and trash deletes. Use when working with notes, wikilinks, backlinks, tags, .canvas or .base files, or any vault file edit in a Forge workspace.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nRun `node bin/forge.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nFor parallel work, use `read <path> --project <id>`, `read-many <paths...> --project <id>`, `stat <path> --project <id>` and `apply <plan.json|-> --project <id>` to target each invocation without changing saved selection. Keep the same explicit project for reads, preview and apply, and verify `context.root`. An `ifMatch` hash binds file bytes, not project identity; unknown targets fail without fallback. A plan filename and its operations resolve inside the named project. Writes in different projects still share the workspace writer lock, so an overlapping write may fail with `WORKSPACE_BUSY`; retry while `error.retryable` is true. Other file commands still follow saved selection unless their help declares `--project`.\n\nUse `read-many` for 1–32 explicit paths, at most 8 MiB aggregate raw bytes, returning ordered `data.files` with normal read documents/revisions and `data.bytes`. Any failure rejects the whole bundle; per-file failures identify `details.index` and `details.path`. Reads are sequential, not an atomic snapshot. The cap is not a hard memory bound and JSON/base64 output can be larger; split large reads. No `--parts` option is offered; use single-file `read --parts body` when needed.\n\nUse `stat <path>` to obtain a file\'s raw revision and byte count or a folder\'s revision and descendant counts without returning content or parsing structured documents. This also works when `read` fails on malformed frontmatter. The command hashes whole files and walks folders; it is not a cheap filesystem stat or validation. `stat <path> --project <id>` targets one project without changing selection; later mutations must use the same scope, and only commands whose help declares `--project` accept it. See `bin/data/docs/how-to/inspect-file-metadata.md`.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append; see precise edits below for sections, blocks and several replacements. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar, plus files named `Dockerfile` or `Containerfile` in any case, also with a suffix such as `Dockerfile.release`; see `formats` `textFilenames`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 or content with NUL characters reads as base64 and cannot be edited; edits cannot introduce NUL characters.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nPrecise edits change only what you address, in memory, with one guarded write:\n- Section: `edit notes/plan.md --section "Plan > Risks" --append --content "- Staffing" --if-match <revision>`; also `--prepend --content` or `--replace <text>`. The path lists headings outermost first, separated by ` > `; the section runs to the next heading of the same or a higher level, its heading line and the blank lines around its content stay. `SECTION_NOT_FOUND` lists `details.headings`; `AMBIGUOUS_SECTION` lists `details.candidates`: add an ancestor heading, or pass the candidate\'s `line` as `--section-line <n>` (`sectionLine` in a plan), the only way to pick between headings with the same full path. Write a ` > ` inside a heading as ` \\> `.\n- Block: `edit notes/plan.md --block ship --replace "New text" --if-match <revision>` addresses `^ship`; replacing keeps the marker so block links keep working. A list item or task keeps its indentation, marker and checkbox and its nested items: pass only the new text, or start it with a marker (`- [x] Done`) to change the checkbox. `--append`/`--prepend --content` add a separate block (blank lines around it) next to a paragraph or section; next to a list item the content must start with a list marker and becomes sibling items, else `INVALID_INPUT`.\n- Several literal replacements: `edit <file> --edits \'[{"find":"a","replace":"b"},{"find":"x","replace":"y","all":true}]\' --if-match <revision>` (or `--edits @edits.json`, `--edits -`). They apply in order; a failure names `details.edit` and writes nothing.\n- Several files as one unit: write a plan `{"version":1,"operations":[...]}` with `write`, `edit` (`edits`, `append`, or `section`/`block` with `replace`/`append`/`prepend`), `frontmatter` (`set`, `unset`), `move` (`from`, `to`) and `delete` (to `.trash`) operations, each with an optional `ifMatch` from your reads, and run `apply plan.json --dry-run`, then `apply plan.json` (or pipe it to `apply -`). Operations see the effects of earlier ones (edit a note after moving it by its new path); the plan commits as one batch or not at all. A failure keeps its code and adds `details.operation`; `INVALID_PLAN` lists schema `details.issues`. `help apply` shows the plan\'s JSON Schema, and `schema apply` publishes it as the argument\'s `contentSchema` with the result\'s `outputSchema`. Split a plan that writes to a path it also moves or deletes.\n\nFind before you edit: `search "release plan"` returns `data.hits` (`path`, 1-based `line` and `column`, `match`, `snippet`, `revision`) in path, line and column order, plus `total`. Narrow with `--path "notes/**"`, `--kind markdown`, `--tag project`, `--property status=active`, `--in body` (skip frontmatter) or `--skip-code`; add `--context 2` for surrounding lines. Exclude generated files before they are read with `--exclude "**/{dist,coverage}/**"` (one root-relative glob, brace alternatives allowed); exclusion wins over `--path`. Search does not interpret `.gitignore`, and pagination requires the same exclusion filter. Literal matching ignores case unless `--case-sensitive`; `--regex` takes a JavaScript regular expression matched per line. A hit\'s `revision` is the `--if-match` for an `edit` of that file. Pages hold 100 hits: repeat the same command with `--cursor <nextCursor>` until `nextCursor` is absent. `SEARCH_TIMEOUT` means the expression backtracks too much: simplify it or search literally. `list --path "notes/**" --kind markdown` lists files the same way.\n\nCheck the link graph before restructuring: `links back notes/plan.md` lists every file that links to it (`source`, 1-based `line`/`column`, `original`); `links out notes/plan.md` lists its own links with `status` and `target`. `links unresolved --path "notes/**"` reports broken links with `reason` `missing`, or `ambiguous` with `candidates` (use a longer link path that names one candidate). `links orphans` lists notes nothing links to and `links deadends` notes that link nowhere; list deliberate entry notes in `plugins.settings.links.roots`. Every report has `issues`: files whose metadata could not be parsed, whose links are missing from the report, so fix those first.\n\nVerify the vault before you finish: `vault check` returns `data.findings` (`rule`, `severity` `error`/`warning`/`info`, `path`, 1-based `line`/`column` or `null`, `message`, `hint`, and for a missing target `suggestion`, the closest existing file) in path and line order, plus `summary` counts. Rules: `unresolved-link`, `unresolved-embed`, `ambiguous-link`, `unresolved-anchor` (a missing `#Heading` or `#^block`), `invalid-frontmatter`, `invalid-canvas`, `invalid-base`, `property-type-mismatch` (against `.obsidian/types.json`, else the type most notes use), `duplicate-block-id`, `empty-file` and `orphan-attachment`. Narrow with `--path "notes/**"` and `--rule unresolved-link,invalid-frontmatter`. `vault check --strict` fails with `VAULT_CHECK_FAILED` (exit 2) while an `error` finding remains and lists them in `error.details.findings`: fix each by its `hint` and run it again until it passes. Before setting a property, run `vault properties --name <property>` to see its inferred and declared type, so values keep one type; `vault tags --sort count` lists tags with their files (nested tags count for their parents). Rule severities and ignore globs live in `plugins.settings.vault-check`.\n\nMove, rename and delete with the link-aware commands, never by writing a copy and removing the original:\n- Move or rename: `move notes/plan.md specs/plan.md --dry-run` (or `rename notes/plan.md Roadmap --dry-run`; a file keeps its extension) returns `data.revision` and a `diff` for every file whose links change: wikilinks and embeds keep `#Heading`, `#^block` and `|display` text, relative Markdown links are recomputed, frontmatter links and Canvas `file` nodes follow. Review `data.links.unrewritten`, then repeat without `--dry-run` and with `--if-match <revision>`. One batch commits the move and every rewritten file. `DESTINATION_EXISTS` means the target exists: Forge never overwrites it. A folder moves the same way; its `--if-match` is the folder revision the dry run reports.\n- Delete: `delete notes/scratch.md --if-match <revision>` moves the file to `.trash/` (numbered ` 1`, ` 2`… if taken); `--permanent` removes it; a folder needs `--recursive`. `HAS_BACKLINKS` lists the files still linking to it in `details.backlinks` (`source`, 1-based `line`, `original`): rewrite or remove those links first, or move the note instead. Pass `--allow-broken-links` only when broken links are intended. `.obsidian`, `.forge` and, at workspace scope, `bin` are protected in any letter case (`PROTECTED_PATH`). `--permanent` also refuses folders holding symlinks or `node_modules` (`PROTECTED_PATH`): trash them instead. `data.deleted` lists every removed file (`kind: "file"`) and folder (`kind: "folder"`).\n\nMarkdown `read` returns `content` and `properties`; add `--parts body` only when you need the body separately. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nForge removes a lock whose holder provably no longer runs (same host, container and boot; pid gone or reused; or written before the last restart) by itself and returns a warning: then inspect the interrupted changes with `git status` and read-back before continuing. On `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command, and on Linux pidNamespace, bootId and processStart), `path` the lock file and `stale` is `active`, `unknown` or `stale`. Wait and retry while it is `active` (`retryable: true`), also when `details.breaker` shows another writer removing a stale lock; never delete an `active` lock. `unknown` (`retryable: false`) covers another host, container or boot and unreadable locks: do not retry in a loop and never delete the lock blindly; delete the file in `details.path` only after verifying that the recorded pid on the recorded host and container is not a running Forge writer and inspecting its changes, then retry. `stale` (`retryable: false`) means the holder provably no longer runs but Forge could not remove the file: confirm no Forge process uses it, then delete the file in `details.path` and retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n\nFor documents explaining a webpage, UI problem or workflow with screenshots, follow `forge-browser` to capture and inspect evidence. Embed the actual saved PNG relative to the Markdown note, cite the clean source URL and capture metadata, and keep the guarded document-editing loop above.\n';
+const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript projects with Forge scaffolds (project create, project component, make entity, make use-case, make form, make plugin) and prove them with acceptance tests and quality gates. Use when adding domain or application code, forms or Forge plugins, or when running npm run check in a Forge-managed project.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. When several agents share a workspace, keep selection stable and use `read`, `read-many`, `stat` and `apply` with `--project <id>` for each read/preview/write. Writes in different projects still share the workspace writer lock and may return retryable `WORKSPACE_BUSY`. Bundle up to 32 explicit paths and 8 MiB raw bytes with `read-many`; revisions remain individual reads. Other commands only support an explicit target when their help declares it. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/forge.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`. These code generators belong to the bundled `scaffolds` core plugin and `make document` to `templates`; `plugins` shows whether they are enabled.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills, events and services under the plugin ID and error codes under its UPPER_SNAKE_CASE prefix. Declare each command's metadata (`scope`, `mutating`, described `options` and `args`, `errors`, and `destructive` or `idempotent` where the derived hints are wrong) so `help`, `schema` and the invocation policy describe it; declare `output`, the JSON Schema of `data`, on the command or per action, and `schema` on a string option or argument that holds or names a JSON document; declare settings as a JSON Schema read from `plugins.settings.<id>` via `context.settings`, German text in `strings.de` (descriptions of commands, actions, options, arguments and settings, the manifest name and description, error summaries and hints, and messages read with `context.t`), and shared capabilities through `provides`/`requires` instead of imports. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures; use `onUserEnable(context)` for idempotent one-time setup after enabling (it runs at least once, not exactly once) and `context.events.onLayoutReady`/`onQuit` for work that needs active plugins or invocation-end cleanup. Plugins may emit only `<plugin-id>.*` events; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`) and other plugins' events (such as `claude.*`) fail with `EVENT_OWNERSHIP`. To run the installed Claude Code CLI, require the `claude.lifecycle` service of the `claude` core plugin. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. Each project owns its CI: author GitHub workflows in the project's `src/infrastructure/workflows/<concern>/*.yml`, then run `node bin/forge.js workflows sync --dry-run`, review, and `workflows sync` from the workspace to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints. Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ from their sources.\n8. For changes to The Forge itself, work in its project directory (`src/the-forge` in the source checkout): run `npm ci`, iterate with `npm run check:fast` (including `check:contracts`), update docs and skills, then run `npm run check` and commit the rebuilt workspace executable and packaged assets with the source. `npm run check` also replays every agent evaluation task in `evals/tasks` with the reference driver; when you add an agent-facing command, add or extend an evaluation task with reference steps and deterministic checks, respecting the suite budget in `docs/how-to/evaluate-agents.md`, and validate it with `npm run eval -- --task <id>`. Preserve existing acceptance checks when extending a task. Measure an agent with the opt-in `npm run eval -- --driver claude`. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Use `npm run check:contracts` to diagnose source command/schema, localization, reference-doc and evaluation-budget failures without a built distribution; keep its seven selected suites source-only and the evaluation suite at most 35 tasks. Portable help and artifact behavior still require the full gate after build. Mutation testing, which measures how well unit tests detect injected faults in selected domain code, runs in CI only and is not part of `check`; run the focused `npm run mutate -- --mutate <file>` form from `docs/how-to/develop-and-test.md` locally only to investigate a file's surviving mutants. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n\nFor an independent browser prototype, follow `forge-webviews`: `project create <id> --type webview` scaffolds Vue/Nuxt UI with local fixtures and Playwright; `webview publish` maintains built assets and `server start --webview <id>` manages the local preview. Library component generators do not target webview projects.\n";
 const bundledSkills = [
   { id: "forge-workflow", content: workflow },
   { id: "forge-vault", content: vault },
@@ -18961,12 +19021,14 @@ function clipAround(text2, start2, end2, radius = snippetRadius) {
 const clipLine = (text2) => text2.length <= maxLineText ? text2 : `${text2.slice(0, maxLineText)}…`;
 const batchSize = 32;
 const decoder$5 = new TextDecoder("utf-8", { fatal: true });
-function decode$5(bytes) {
+function decode$5({ path: path2, bytes }) {
+  let text2;
   try {
-    return decoder$5.decode(bytes);
+    text2 = decoder$5.decode(bytes);
   } catch {
     return void 0;
   }
+  return isTextContent(path2, text2) ? text2 : void 0;
 }
 async function readExisting(files, path2) {
   try {
@@ -19001,14 +19063,15 @@ async function searchFiles(sources, query, page) {
   const { context: _context, ...ordering2 } = query;
   const pager = new Pager(page, { command: "search", ...ordering2 }, (hit) => [hit.path, hit.line, hit.column]);
   const inPath = query.path === void 0 ? () => true : pathGlob(query.path);
+  const excluded = query.exclude === void 0 ? () => false : pathGlob(query.exclude, "--exclude");
   const kinds = query.kind ? [query.kind] : searchKinds;
   const listed = await sources.paths();
-  const candidates2 = sources.budget.run(() => listed.filter((path2) => kinds.includes(fileKind(path2)) && inPath(path2)));
+  const candidates2 = sources.budget.run(() => listed.filter((path2) => kinds.includes(fileKind(path2)) && inPath(path2) && !excluded(path2)));
   const filtered2 = query.tag !== void 0 || query.property !== void 0;
   for (let start2 = 0; start2 < candidates2.length; start2 += batchSize) {
     const batch = await Promise.all(candidates2.slice(start2, start2 + batchSize).map((path2) => readExisting(sources.files, path2)));
     const scanned = sources.budget.run(() => batch.flatMap((file) => {
-      const text2 = file && decode$5(file.bytes);
+      const text2 = file && decode$5(file);
       if (!file || text2 === void 0) return [];
       const lines2 = splitLines(text2);
       const hits = matchLines(expression2, lines2, searchedLines(lines2, fileKind(file.path), query.scope));
@@ -19051,7 +19114,7 @@ function vmSearchBudget(milliseconds) {
 const defaultSearchLimit = 100;
 const text$i = { type: "string" };
 const lines = { type: "array", items: text$i };
-const output = {
+const output$1 = {
   type: "object",
   required: ["hits", "total"],
   properties: {
@@ -19077,7 +19140,7 @@ function searchCommand(service) {
   return {
     id: "search",
     description: "Search text files for a literal or regular-expression pattern and return hits with line, column, snippet and revision.",
-    usage: "search <pattern> [--regex] [--case-sensitive] [--in body|frontmatter|all] [--skip-code] [--kind markdown|canvas|base|text] [--path glob] [--tag tag] [--property key[=value]] [--context lines] [--limit count] [--cursor token]",
+    usage: "search <pattern> [--regex] [--case-sensitive] [--in body|frontmatter|all] [--skip-code] [--kind markdown|canvas|base|text] [--path glob] [--exclude glob] [--tag tag] [--property key[=value]] [--context lines] [--limit count] [--cursor token]",
     scope: "project",
     discovery: false,
     mutating: false,
@@ -19089,13 +19152,14 @@ function searchCommand(service) {
       "skip-code": option$1.boolean("Skip fenced and indented code blocks in Markdown."),
       kind: option$1.string("Only files of this text kind.", { enum: searchKinds }),
       path: option$1.string("Only files whose root-relative path matches this glob."),
+      exclude: option$1.string("Skip files whose root-relative path matches this glob; use braces for alternatives."),
       tag: option$1.string("Only notes with this tag or a nested tag below it."),
       property: option$1.string("Only notes whose frontmatter has key (not null), or key=value."),
       context: option$1.string(`Lines of context before and after each hit (0–${maxContextLines}).`, { default: "0" }),
       limit: option$1.string("Maximum hits per page; a truncated page returns nextCursor.", { default: String(defaultSearchLimit) }),
       cursor: option$1.string("Continue after the page that returned this nextCursor, with the same pattern and filters.")
     },
-    output,
+    output: output$1,
     errors: ["INVALID_SEARCH_PATTERN", "SEARCH_TIMEOUT"],
     async run(args, flags, context) {
       arity(args, 1);
@@ -19115,6 +19179,7 @@ function searchCommand(service) {
         context: contextLines,
         ...kind2 === void 0 ? {} : { kind: kind2 },
         ...value$2(flags, "path") === void 0 ? {} : { path: value$2(flags, "path") },
+        ...value$2(flags, "exclude") === void 0 ? {} : { exclude: value$2(flags, "exclude") },
         ...tag === void 0 ? {} : { tag },
         ...filter === void 0 ? {} : { property: filter }
       };
@@ -19133,6 +19198,7 @@ const searchStrings = {
       "Skip fenced and indented code blocks in Markdown.": "Umzäunte und eingerückte Codeblöcke in Markdown überspringen.",
       "Only files of this text kind.": "Nur Dateien dieser Textart.",
       "Only files whose root-relative path matches this glob.": "Nur Dateien, deren Pfad relativ zum Stammverzeichnis diesem Glob entspricht.",
+      "Skip files whose root-relative path matches this glob; use braces for alternatives.": "Dateien überspringen, deren Pfad relativ zum Stammverzeichnis diesem Glob entspricht; geschweifte Klammern für Alternativen verwenden.",
       "Only notes with this tag or a nested tag below it.": "Nur Notizen mit diesem Tag oder einem darunter verschachtelten Tag.",
       "Only notes whose frontmatter has key (not null), or key=value.": "Nur Notizen, deren Frontmatter key (nicht null) oder key=value enthält.",
       "Lines of context before and after each hit (0–50).": "Kontextzeilen vor und nach jedem Treffer (0–50).",
@@ -19394,16 +19460,16 @@ const linksPlugin = {
   })
 };
 const propertyTypes = ["text", "list", "number", "checkbox", "date", "datetime", "object"];
-const declaredAccepts = {
-  text: ["text", "date", "datetime"],
-  multitext: ["list"],
-  tags: ["list", "text"],
-  aliases: ["list", "text"],
-  number: ["number"],
-  checkbox: ["checkbox"],
-  date: ["date"],
-  datetime: ["datetime", "date"]
-};
+const declaredAccepts = /* @__PURE__ */ new Map([
+  ["text", ["text", "date", "datetime"]],
+  ["multitext", ["list"]],
+  ["tags", ["list", "text"]],
+  ["aliases", ["list", "text"]],
+  ["number", ["number"]],
+  ["checkbox", ["checkbox"]],
+  ["date", ["date"]],
+  ["datetime", ["datetime", "date"]]
+]);
 const date$3 = /^\d{4}-\d{2}-\d{2}$/;
 const datetime$1 = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})?$/;
 function inferPropertyType(value2) {
@@ -19416,7 +19482,7 @@ function inferPropertyType(value2) {
   return date$3.test(text2) ? "date" : datetime$1.test(text2) ? "datetime" : "text";
 }
 function acceptsType(declared, actual) {
-  const accepted2 = declaredAccepts[declared];
+  const accepted2 = declaredAccepts.get(declared);
   return accepted2 === void 0 || accepted2.includes(actual);
 }
 function typeRegistry(text2) {
@@ -19589,7 +19655,7 @@ function histogram(name2) {
   const counts2 = new Uint8Array(histogramSize);
   for (let index2 = 0; index2 < name2.length; index2++) {
     const slot2 = name2.charCodeAt(index2) % histogramSize;
-    if (counts2[slot2] < 255) counts2[slot2]++;
+    if (counts2[slot2] < 255) counts2[slot2] = counts2[slot2] + 1;
   }
   return counts2;
 }
@@ -19831,7 +19897,7 @@ async function vaultProperties(sources, scope2, name2) {
   const selected2 = name2 === void 0 ? uses : new Map([...uses].filter(([property]) => property === name2));
   return { properties: propertyInventory(selected2, registry2.types, name2 !== void 0), typesFile: { path: typesFile, status: registry2.status } };
 }
-const englishMessages = {
+const englishMessages$1 = {
   "unresolved-link": "Link {original} does not resolve to a file.",
   "unresolved-link.frontmatter": "Property {at} links {original}, which does not resolve to a file.",
   "unresolved-link.hint": "Create the target note, correct the link path, or remove the link.",
@@ -19869,7 +19935,7 @@ const englishMessages = {
   "skipped.off": "Turned off in plugins.settings.vault-check.rules.",
   "skipped.unavailable": "Requires the bases.validation service of the bases core plugin, which is disabled or unavailable."
 };
-const germanMessages = {
+const germanMessages$1 = {
   "unresolved-link": "Der Link {original} verweist auf keine Datei.",
   "unresolved-link.frontmatter": "Die Eigenschaft {at} verlinkt {original}, das auf keine Datei verweist.",
   "unresolved-link.hint": "Legen Sie die Zielnotiz an, korrigieren Sie den Linkpfad oder entfernen Sie den Link.",
@@ -20175,7 +20241,7 @@ const vaultCheckPlugin = {
       hint: "Fix the findings in error.details.findings (each names its rule, path, line and hint), then run vault check --strict again; vault check without --strict lists every finding."
     }],
     strings: {
-      en: { messages: englishMessages },
+      en: { messages: englishMessages$1 },
       de: {
         commands: { vault: "Den Vault auf defekte Links, ungültige Dateien und uneinheitliche Eigenschaften prüfen und seine Tags und Eigenschaften auflisten." },
         actions: {
@@ -20189,7 +20255,7 @@ const vaultCheckPlugin = {
             hint: "Beheben Sie die Befunde in error.details.findings (jeder nennt Regel, Pfad, Zeile und Hinweis) und führen Sie vault check --strict erneut aus; vault check ohne --strict listet jeden Befund."
           }
         },
-        messages: germanMessages
+        messages: germanMessages$1
       }
     }
   })
@@ -29434,13 +29500,13 @@ const germanAgentMessages = {
 const isDiagnostic = (value2) => typeof value2.severity === "string" && typeof value2.code === "string" && typeof value2.pointer === "string" && typeof value2.message === "string";
 function localizedDiagnostics(value2, language2) {
   if (language2 === "en") return value2;
-  const walk = (item) => {
-    if (Array.isArray(item)) return item.map(walk);
+  const walk2 = (item) => {
+    if (Array.isArray(item)) return item.map(walk2);
     if (!isRecord$1(item)) return item;
-    const entries2 = Object.fromEntries(Object.entries(item).map(([key, entry2]) => [key, walk(entry2)]));
+    const entries2 = Object.fromEntries(Object.entries(item).map(([key, entry2]) => [key, walk2(entry2)]));
     return isDiagnostic(item) ? { ...entries2, message: retranslate(item.message, agentMessages, germanAgentMessages, agentFragments) } : entries2;
   };
-  return walk(value2);
+  return walk2(value2);
 }
 function withLocalizedDiagnostics(command2) {
   return {
@@ -29969,8 +30035,13 @@ function readPlacement(value2) {
   const emptyish = typeof value2 === "string" || Array.isArray(value2) && value2.length === 0;
   return { value: null, invalid: !emptyish };
 }
+function utcMidnight(year, monthIndex, day) {
+  const date2 = /* @__PURE__ */ new Date(0);
+  date2.setUTCFullYear(year, monthIndex, day);
+  return date2.getTime();
+}
 function daysInMonth(year, month) {
-  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return new Date(utcMidnight(year, month, 0)).getUTCDate();
 }
 function readDate(value2) {
   if (value2 === null || value2 === void 0) return absent();
@@ -29989,7 +30060,7 @@ function readSoleDate(raw) {
   if (typeof raw === "string" && raw.trim() === "") return { value: null, invalid: true };
   return readDate(raw);
 }
-const utc$3 = (date2) => Date.UTC(date2.year, date2.month - 1, date2.day);
+const utc$3 = (date2) => utcMidnight(date2.year, date2.month - 1, date2.day);
 function daysBetween(a, b) {
   return Math.round((utc$3(b) - utc$3(a)) / 864e5);
 }
@@ -30142,21 +30213,21 @@ const syncWarnings = {
 };
 const englishSyncWarning = (key, params) => fill$1(syncWarnings[key], params);
 const OPTIONAL_PROPERTIES = [
-  { field: "state", option: "stateProperty", suggested: "status", settingsKey: "stateKey" },
-  { field: "startedDate", option: "startedDateProperty", suggested: "started", settingsKey: "startedDateKey" },
-  { field: "finishedDate", option: "finishedDateProperty", suggested: "finished", settingsKey: "finishedDateKey" },
-  { field: "horizon", option: "horizonProperty", suggested: "horizon", settingsKey: "horizonKey" },
-  { field: "start", option: "startProperty", suggested: "start", settingsKey: "startKey" },
-  { field: "target", option: "targetProperty", suggested: "due", settingsKey: "targetKey" },
-  { field: "risk", option: "riskProperty", suggested: "risk", settingsKey: "riskKey" },
-  { field: "priority", option: "priorityProperty", suggested: "priority", settingsKey: "priorityKey" },
-  { field: "assignee", option: "assigneeProperty", suggested: "assignee", settingsKey: "assigneeKey" },
-  { field: "deliverableState", option: "deliverableStateProperty", suggested: "status", settingsKey: "deliverableStateKey" },
-  { field: "testState", option: "testStateProperty", suggested: "status", settingsKey: "testStateKey" },
-  { field: "dependsOn", option: "dependsOnProperty", suggested: "dependsOn", settingsKey: "dependsOnKey" },
-  { field: "iteration", option: "iterationProperty", suggested: "iteration", settingsKey: "iterationKey" },
-  { field: "iterationGoal", option: "iterationGoalProperty", suggested: "goal", settingsKey: "iterationGoalKey" },
-  { field: "release", option: "releaseProperty", suggested: "release", settingsKey: "releaseKey" }
+  { field: "state", option: "stateProperty", settingsKey: "stateKey" },
+  { field: "startedDate", option: "startedDateProperty", settingsKey: "startedDateKey" },
+  { field: "finishedDate", option: "finishedDateProperty", settingsKey: "finishedDateKey" },
+  { field: "horizon", option: "horizonProperty", settingsKey: "horizonKey" },
+  { field: "start", option: "startProperty", settingsKey: "startKey" },
+  { field: "target", option: "targetProperty", settingsKey: "targetKey" },
+  { field: "risk", option: "riskProperty", settingsKey: "riskKey" },
+  { field: "priority", option: "priorityProperty", settingsKey: "priorityKey" },
+  { field: "assignee", option: "assigneeProperty", settingsKey: "assigneeKey" },
+  { field: "deliverableState", option: "deliverableStateProperty", settingsKey: "deliverableStateKey" },
+  { field: "testState", option: "testStateProperty", settingsKey: "testStateKey" },
+  { field: "dependsOn", option: "dependsOnProperty", settingsKey: "dependsOnKey" },
+  { field: "iteration", option: "iterationProperty", settingsKey: "iterationKey" },
+  { field: "iterationGoal", option: "iterationGoalProperty", settingsKey: "iterationGoalKey" },
+  { field: "release", option: "releaseProperty", settingsKey: "releaseKey" }
 ];
 const DEFAULT_DONE_VALUES = ["Done", "Closed", "Completed", "Removed"];
 const DEFAULT_HORIZON_VALUES = ["Now", "Next", "Later"];
@@ -30507,24 +30578,75 @@ function withBody(text2, body) {
   return trimmed === "" ? head : `${head}${head === "" || head.endsWith("\n") ? "" : "\n"}${trimmed}
 `;
 }
-const FENCE = /(^|\n)(```|~~~)[^\n]*\n[\s\S]*?\n\2[^\n]*(?=\n|$)/g;
-const COMMENT = /%%[\s\S]*?%%/g;
-function outsideCode(text2, transform2) {
-  let result = "", last = 0;
-  for (const match of text2.matchAll(FENCE)) {
-    result += transform2(text2.slice(last, match.index)) + match[0];
-    last = match.index + match[0].length;
-  }
-  return result + transform2(text2.slice(last));
+const OPENING_FENCE = /^[ \t]*(`{3,}(?=[^`]*$)|~{3,})/;
+const CLOSING_FENCE = /^[ \t]*(`{3,}|~{3,})\s*$/;
+function indentation$1(line) {
+  let width = 0;
+  for (const char of /[ \t]*/.exec(line)[0]) width = char === "	" ? (Math.floor(width / 4) + 1) * 4 : width + 1;
+  return width;
 }
-const withoutComments = (body) => outsideCode(body, (part) => part.replace(COMMENT, ""));
-function comments(body) {
-  const found = [];
-  outsideCode(body, (part) => {
-    found.push(...part.match(COMMENT) ?? []);
-    return part;
-  });
-  return found;
+function fenceEnd(body, start2) {
+  const lineAt = (at2) => body.slice(at2, body.indexOf("\n", at2) + 1 || body.length);
+  const first = lineAt(start2), opener = OPENING_FENCE.exec(first)?.[1];
+  if (opener === void 0) return { end: start2, closer: "" };
+  const indent2 = indentation$1(first);
+  let at = start2 + first.length;
+  while (at < body.length) {
+    const line = lineAt(at);
+    if (line.trim() !== "" && indentation$1(line) < indent2 - 3) return { end: at, closer: "" };
+    at += line.length;
+    const closer2 = CLOSING_FENCE.exec(line)?.[1];
+    if (closer2 !== void 0 && closer2[0] === opener[0] && closer2.length >= opener.length && indentation$1(line) <= indent2 + 3) return { end: at, closer: "" };
+  }
+  return { end: at, closer: /^[ \t]*/.exec(first)[0] + opener };
+}
+const BLOCK_START = /\n(?=[ \t]*(?:[\r\n]|[#>|]|`{3}|~{3}|(?:[-*+]|\d+[.)])[ \t\r\n]|([-*_=])(?:[ \t]*\1)*[ \t]*[\r\n]))/g;
+function codeSpanEnd(body, start2) {
+  const run2 = /`+/y;
+  run2.lastIndex = start2;
+  const opener = run2.exec(body)[0], from = start2 + opener.length;
+  BLOCK_START.lastIndex = from;
+  const paragraph = body.slice(from, BLOCK_START.exec(body)?.index);
+  const closer2 = new RegExp(`(?<!\`)${opener}(?!\`)`).exec(paragraph);
+  return closer2 === null ? from : from + closer2.index + opener.length;
+}
+function commentEnd(body, from) {
+  const marker = /\\(?:\\|%%)|%%/g;
+  marker.lastIndex = from;
+  for (let found = marker.exec(body); found !== null; found = marker.exec(body)) if (found[0] === "%%") return marker.lastIndex;
+  return null;
+}
+function commentSpans(body) {
+  const spans = [];
+  let closer2 = "";
+  for (let index2 = 0; index2 < body.length; ) {
+    const fenced = index2 === 0 || body[index2 - 1] === "\n" ? fenceEnd(body, index2) : { end: index2, closer: "" };
+    closer2 = fenced.closer;
+    if (fenced.end > index2) index2 = fenced.end;
+    else if (body[index2] === "\\") index2 += body.startsWith("%%", index2 + 1) ? 3 : 2;
+    else if (body[index2] === "`") index2 = codeSpanEnd(body, index2);
+    else if (body.startsWith("%%", index2)) {
+      const end2 = commentEnd(body, index2 + 2);
+      if (end2 === null) closer2 = "%%";
+      spans.push([index2, end2 ?? body.length]);
+      index2 = end2 ?? body.length;
+    } else index2++;
+  }
+  return { spans, closer: closer2 };
+}
+function withoutComments(body) {
+  let visible = "", cursor = 0;
+  for (const [start2, end2] of commentSpans(body).spans) {
+    visible += body.slice(cursor, start2);
+    cursor = end2;
+  }
+  return visible + body.slice(cursor);
+}
+const comments = (body) => commentSpans(body).spans.map(([start2, end2]) => body.slice(start2, end2));
+function withComments(text2, kept) {
+  const closer2 = kept.length === 0 ? "" : commentSpans(text2).closer;
+  const closed = closer2 === "" ? text2 : `${text2}${text2.endsWith("\n") ? "" : "\n"}${closer2}`;
+  return [closed, ...kept].filter((part) => part.trim() !== "").join("\n\n");
 }
 function nextIterationName(items2) {
   let highest = 0;
@@ -30550,7 +30672,8 @@ function previousIteration(items2) {
     }
     const byTarget2 = daysBetween(best.plannedTarget.value, target);
     const start2 = item.plannedStart.value, bestStart = best.plannedStart.value;
-    const later = byTarget2 !== 0 ? byTarget2 > 0 : start2 === null || bestStart === null ? bestStart === null && start2 !== null : daysBetween(bestStart, start2) !== 0 ? daysBetween(bestStart, start2) > 0 : item.path > best.path;
+    const byStart = start2 === null || bestStart === null ? Number(start2 !== null) - Number(bestStart !== null) : daysBetween(bestStart, start2);
+    const later = byTarget2 !== 0 ? byTarget2 > 0 : byStart !== 0 ? byStart > 0 : item.path > best.path;
     if (later) best = item;
   }
   return best;
@@ -30886,7 +31009,7 @@ function nearestFolderNote(path2, exists2) {
   if (folder !== null && noteOf(folder) === path2) folder = parentOf(folder);
   for (; folder !== null; folder = parentOf(folder)) {
     const candidate = noteOf(folder);
-    if (candidate !== path2 && exists2(candidate)) return candidate;
+    if (exists2(candidate)) return candidate;
   }
   return null;
 }
@@ -31062,7 +31185,7 @@ const compareSiblings = (a, b) => {
 };
 function buildModel(source2, results, settings2, exists2) {
   const store = createItems(source2, results, settings2, exists2);
-  let all2 = store.all;
+  const all2 = store.all;
   const byPath2 = store.byPath;
   for (const item of all2) Object.assign(item, { parent: null, children: [], orphan: false, cycleCut: false, prerequisites: [], brokenPrerequisites: [] });
   const roots = [];
@@ -31097,7 +31220,6 @@ function buildModel(source2, results, settings2, exists2) {
         stack.push(...current.children);
       }
     }
-    all2 = all2.filter((item) => byPath2.has(item.path));
   }
   const sortDeep = (list2) => {
     list2.sort(compareSiblings);
@@ -31723,12 +31845,12 @@ function scopeRows(model2, isMember) {
     for (let up = item.parent; up !== null; up = up.parent) if (!isMarkerType(up.typeName) && !up.outsideFilter) keep.add(up.path);
   }
   const rows = [];
-  const walk = (item, depth2) => {
+  const walk2 = (item, depth2) => {
     const kept = keep.has(item.path);
     if (kept) rows.push({ item, depth: depth2, context: !members2.has(item.path) });
-    for (const child of item.children) walk(child, kept ? depth2 + 1 : depth2);
+    for (const child of item.children) walk2(child, kept ? depth2 + 1 : depth2);
   };
-  for (const root of model2.roots) walk(root, 0);
+  for (const root of model2.roots) walk2(root, 0);
   return rows;
 }
 const verdictOf = (cleared, outstanding) => cleared + outstanding === 0 ? "empty" : outstanding === 0 ? "satisfied" : cleared === 0 ? "not" : "partly";
@@ -32395,7 +32517,7 @@ function pulledNote(context, item, pulls, pathOfRemote2, body) {
     else if (field2 === "tags" && Array.isArray(value2)) {
       const lower = new Set(value2.map((tag) => tag.toLowerCase()));
       note.write.tags = { add: value2, remove: item.tags.filter((tag) => !lower.has(tag.toLowerCase())) };
-    } else if (field2 === "description") note.body = [value2 === null ? "" : String(value2), ...comments(body ?? "")].filter((part) => part.trim() !== "").join("\n\n");
+    } else if (field2 === "description") note.body = withComments(value2 === null ? "" : String(value2), comments(body ?? ""));
     else {
       const key = field2 === "effort" ? context.connection.effortProperty : field2 === "area" ? context.connection.areaProperty : field2.slice(PROPERTY.length);
       if (value2 === null) note.removed.push(key);
@@ -34843,24 +34965,24 @@ function validateUiInteractions(definitions2, interactions) {
   validateInteractionLibrary(interactions);
   const byId2 = new Map(interactions.map((interaction) => [interaction.id, interaction]));
   for (const definition2 of definitions2) {
-    const walk = (node2) => {
+    const walk2 = (node2) => {
       if ("tag" in node2) for (const id2 of node2.interactions ?? []) {
         const interaction = byId2.get(id2);
         ensure(interaction, "UNKNOWN_INTERACTION", `${definition2.id} references missing interaction ${id2}. Inspect the interactions library or import its definition.`);
         validateAttachment(definition2, node2, interaction);
       }
-      if ("children" in node2) for (const child of node2.children ?? []) walk(child);
+      if ("children" in node2) for (const child of node2.children ?? []) walk2(child);
     };
-    walk(definition2.root);
+    walk2(definition2.root);
   }
 }
 function componentInteractionIds(definition2) {
   const ids = /* @__PURE__ */ new Set();
-  const walk = (node2) => {
+  const walk2 = (node2) => {
     if ("tag" in node2) for (const id2 of node2.interactions ?? []) ids.add(id2);
-    if ("children" in node2) for (const child of node2.children ?? []) walk(child);
+    if ("children" in node2) for (const child of node2.children ?? []) walk2(child);
   };
-  walk(definition2.root);
+  walk2(definition2.root);
   return [...ids].sort();
 }
 function checkValue(value2, type2, label2) {
@@ -34878,7 +35000,7 @@ function validateUiLibrary(definitions2, interactions = []) {
     edges.set(definition2.id, references);
     let slots = 0;
     const checkBinding = (value2) => validateUiBindings(definition2, value2);
-    const walk = (node2) => {
+    const walk2 = (node2) => {
       if ("slot" in node2) {
         slots++;
         ensure(slots <= 1, "INVALID_UI", `${definition2.id} may project its default child slot only once.`);
@@ -34905,9 +35027,9 @@ function validateUiLibrary(definitions2, interactions = []) {
         }
         for (const [name2, prop2] of Object.entries(target.props)) ensure(!prop2.required || prop2.default !== void 0 || Object.hasOwn(node2.props ?? {}, name2), "INVALID_UI", `${definition2.id} must supply required prop ${node2.component}.${name2}.`);
       }
-      for (const child of node2.children ?? []) walk(child);
+      for (const child of node2.children ?? []) walk2(child);
     };
-    walk(definition2.root);
+    walk2(definition2.root);
     for (const args of [definition2.storybook?.args, ...(definition2.storybook?.stories ?? []).map((story2) => story2.args)]) {
       for (const [name2, value2] of Object.entries(args ?? {})) {
         ensure(Object.hasOwn(definition2.props, name2), "INVALID_UI", `${definition2.id} story has unknown prop ${name2}.`);
@@ -44737,19 +44859,19 @@ function fields(process2) {
     description: "System.Description"
   };
 }
-function processMapping(process2, overrides = {}) {
+function processMapping(process2, overrides2 = {}) {
   const resolved = fields(process2);
-  for (const [field2, reference] of Object.entries(overrides.fields ?? {})) if (Object.hasOwn(resolved, field2)) resolved[field2] = reference.trim() === "" ? null : reference.trim();
+  for (const [field2, reference] of Object.entries(overrides2.fields ?? {})) if (Object.hasOwn(resolved, field2)) resolved[field2] = reference.trim() === "" ? null : reference.trim();
   return {
-    types: { ...types[process2], ...overrides.types },
-    states: { ...states[process2], ...overrides.states },
+    types: { ...types[process2], ...overrides2.types },
+    states: { ...states[process2], ...overrides2.states },
     fields: resolved,
-    properties: { ...overrides.properties }
+    properties: { ...overrides2.properties }
   };
 }
-function unknownFields(overrides) {
+function unknownFields(overrides2) {
   const known2 = Object.keys(fields("agile"));
-  return Object.keys(overrides.fields ?? {}).filter((field2) => !known2.includes(field2));
+  return Object.keys(overrides2.fields ?? {}).filter((field2) => !known2.includes(field2));
 }
 function markdownToHtml(markdown) {
   const lines2 = markdown.replace(/\r\n?/g, "\n").split("\n");
@@ -44771,15 +44893,23 @@ function markdownToHtml(markdown) {
   };
   for (let index2 = 0; index2 < lines2.length; index2++) {
     const line = lines2[index2];
-    const fence = /^\s*(```|~~~)/.exec(line);
+    const fence = /^[ \t]*(`{3,}(?=[^`]*$)|~{3,})/.exec(line);
     if (fence) {
       flush();
-      const code2 = [];
-      for (index2++; index2 < lines2.length && !lines2[index2].trimStart().startsWith(fence[1]); index2++) code2.push(lines2[index2]);
+      const [indent2] = indentation(line), code2 = [];
+      for (index2++; index2 < lines2.length; index2++) {
+        const next = lines2[index2];
+        if (next.trim() !== "" && indentation(next)[0] < indent2 - 3) {
+          index2--;
+          break;
+        }
+        if (closesFence(next, fence[1], indent2)) break;
+        code2.push(next.slice(indentation(next, indent2)[1]));
+      }
       html2.push(`<pre><code>${escape$1(code2.join("\n"))}</code></pre>`);
       continue;
     }
-    const heading2 = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
+    const heading2 = /^\s{0,3}(#{1,6})\s+(?:#+\s*$)?(.*?)(?:\s+#+)?\s*$/.exec(line);
     const bullet = /^\s*[-*+]\s+(.*)$/.exec(line), numbered = /^\s*\d+[.)]\s+(.*)$/.exec(line), quote = /^\s*>\s?(.*)$/.exec(line);
     if (line.trim() === "") flush();
     else if (heading2) {
@@ -44804,18 +44934,33 @@ function markdownToHtml(markdown) {
   flush();
   return html2.join("");
 }
+function indentation(line, limit = Infinity) {
+  let width = 0, cut = 0;
+  for (; line[cut] === " " || line[cut] === "	"; cut++) {
+    const next = line[cut] === "	" ? (Math.floor(width / 4) + 1) * 4 : width + 1;
+    if (next > limit) break;
+    width = next;
+  }
+  return [width, cut];
+}
+function closesFence(line, opener, indent2) {
+  const run2 = /^[ \t]*(`{3,}|~{3,})\s*$/.exec(line)?.[1];
+  return run2 !== void 0 && run2[0] === opener[0] && run2.length >= opener.length && indentation(line)[0] <= indent2 + 3;
+}
 function escape$1(text2) {
   return text2.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 const safeHref = (href) => /^(https?:|mailto:)/i.test(href);
 function inline(text2) {
-  const codes = [];
-  let result = escape$1(text2).replace(/`([^`]+)`/g, (_, code2) => {
-    codes.push(`<code>${code2}</code>`);
-    return `<c${codes.length - 1}>`;
-  });
-  result = result.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2").replace(/\[\[([^\]]+)\]\]/g, "$1").replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, label2, href) => safeHref(href) ? `<a href="${href}">${label2}</a>` : label2).replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, (_, a, b) => `<strong>${a ?? b}</strong>`).replace(/\*([^*]+)\*|\b_([^_]+)_\b/g, (_, a, b) => `<em>${a ?? b}</em>`);
-  return result.replace(/<c(\d+)>/g, (_, index2) => codes[Number(index2)]);
+  const tokens = [], sources = [];
+  const token = (value2, source2 = value2) => {
+    sources.push(source2);
+    return `<c${tokens.push(value2) - 1}>`;
+  };
+  let result = escape$1(text2).replace(/(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)/g, (span, _run, code2) => token(`<code>${code2}</code>`, span));
+  const target = (href) => href.replace(/<c(\d+)>/g, (_, index2) => sources[Number(index2)]);
+  result = result.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2").replace(/\[\[([^\]]+)\]\]/g, "$1").replace(/\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g, (_, label2, href) => safeHref(target(href)) ? `<a href="${token(target(href))}">${label2}</a>` : label2).replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, (_, a, b) => `<strong>${a ?? b}</strong>`).replace(/\*([^*]+)\*|\b_([^_]+)_\b/g, (_, a, b) => `<em>${a ?? b}</em>`);
+  return result.replace(/<c(\d+)>/g, (_, index2) => tokens[Number(index2)]);
 }
 const field = (reference, value2) => value2 === null ? { op: "remove", path: `/fields/${reference}` } : { op: "add", path: `/fields/${reference}`, value: value2 };
 const AREA_PATH = "System.AreaPath";
@@ -44886,12 +45031,11 @@ function relationsLanded(read2, operations2, result) {
   const within2 = new Set(read2.filter((_relation, index2) => index2 <= reach).map(relationKey));
   const required2 = (relation, index2) => index2 <= reach ? !removed.has(index2) : within2.has(relationKey(relation));
   const expected = tally([...read2.filter(required2).map(relationKey), ...added]);
-  const optional2 = tally(read2.filter((relation, index2) => index2 > reach && !within2.has(relationKey(relation))).map(relationKey));
   const actual = tally(result.map(relationKey));
   if ([...expected].some(([key, count2]) => (actual.get(key) ?? 0) < count2)) return false;
   return [...removed].every((index2) => {
     const key = relationKey(read2[index2]);
-    return (actual.get(key) ?? 0) <= (expected.get(key) ?? 0) + (optional2.get(key) ?? 0);
+    return (actual.get(key) ?? 0) <= (expected.get(key) ?? 0);
   });
 }
 const byId = (a, b) => Number(a) - Number(b) || (a < b ? -1 : a > b ? 1 : 0);
@@ -44991,10 +45135,10 @@ class AzureDevOpsConnector {
     };
   }
   mapping(connection) {
-    const overrides = isRecord$1(connection.settings.mappings) ? connection.settings.mappings : {};
-    const unknown2 = unknownFields(overrides);
+    const overrides2 = isRecord$1(connection.settings.mappings) ? connection.settings.mappings : {};
+    const unknown2 = unknownFields(overrides2);
     if (unknown2.length > 0) throw Object.assign(new Error(`Connection ${connection.id} maps unknown fields: ${unknown2.join(", ")}.`), { code: "CONNECTION_INVALID", details: { connection: connection.id, issues: unknown2.map((name2) => `mappings.fields.${name2}: not a neutral field`) } });
-    return processMapping(setting(connection, "process") ?? "agile", overrides);
+    return processMapping(setting(connection, "process") ?? "agile", overrides2);
   }
   link(connection, id2) {
     return `${organizationOf(connection)}/${encodeURIComponent(setting(connection, "project"))}/_workitems/edit/${id2}`;
@@ -45271,7 +45415,7 @@ const readWebviewAssets = async (root, relative) => {
   if (!info) return null;
   ensureWebview(info.isDirectory() && !info.isSymbolicLink(), "WEBVIEW_INVALID", "dist must be a regular directory.");
   const files = [], names2 = /* @__PURE__ */ new Set();
-  async function walk(parent22, prefix = "") {
+  async function walk2(parent22, prefix = "") {
     const info2 = await promises$1.lstat(parent22);
     ensureWebview(info2.isDirectory() && !info2.isSymbolicLink(), "WEBVIEW_INVALID", `Webview assets require regular directories: ${prefix || relative}`);
     for (const entry2 of await promises$1.readdir(parent22, { withFileTypes: true })) {
@@ -45280,7 +45424,7 @@ const readWebviewAssets = async (root, relative) => {
       ensureWebview(!names2.has(path2.toLowerCase()), "WEBVIEW_INVALID", `Build assets must have unique case-insensitive paths: ${path2}`);
       names2.add(path2.toLowerCase());
       if (entry2.isDirectory()) {
-        await walk(target, `${path2}/`);
+        await walk2(target, `${path2}/`);
         continue;
       }
       ensureWebview(entry2.isFile(), "WEBVIEW_INVALID", `Build assets must contain only regular files: ${path2}`);
@@ -45295,7 +45439,7 @@ const readWebviewAssets = async (root, relative) => {
       }
     }
   }
-  await walk(directory);
+  await walk2(directory);
   return files.sort((left, right) => left.path.localeCompare(right.path));
 };
 const content$4 = "---\nname: forge-webviews\ndescription: Create, customize, test and publish self-contained Vue 3 and Nuxt UI prototypes with Forge project scaffolds, Playwright and the CLI-managed localhost server. Use when a user requests a new webview, a fast interactive prototype, a local dashboard or an iteration on a Forge webview.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder. Building a prototype also needs npm; browser tests need Playwright Chromium.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Establish the prototype's audience, main task, sample content and observable acceptance criteria from the user's request. Make reasonable defaults for a quick prototype; ask only when a missing decision blocks useful work. Keep fixtures clearly identified as sample data. A prototype is editable project code, not evidence of production readiness.\n2. Read workspace/project AGENTS.md. Discover `schema project --json`, `schema webview --json` and `schema server --json` through `node bin/forge.js` as needed. Inspect `project list` and `project current` before changing anything. The configured projects directory may be `src`, `projects` or another contained path. Prefer explicit `--project <id>` routing for publication; avoid changing shared selection while other agents use it.\n3. Preview `node bin/forge.js project create <kebab-name> --type webview --dry-run`, inspect its complete file plan, then create it. This makes an independent Vue 3, Nuxt UI and Vite project with local fixtures and its own package, tests, scripts and Playwright setup. Creation preserves project selection. Use the returned project directory; never assume a sibling project's dependencies or source are available. Do not use `project component` to add library scaffolds to a webview.\n4. Read the generated README, AGENTS.md and package scripts. Customize the ordinary Vue source and local sample model, preserving a usable empty state, realistic long labels and a meaningful primary interaction. Use local assets and relative build URLs; mounted views live at `/views/<id>/`. The server supplies no SPA history fallback or external-CDN access. Keep lifecycle control in the CLI and avoid adding a browser command-execution API.\n5. In that project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installs. Install browser support with `npm run browsers:install`. Iterate with `npm run check:fast`, finish with `npm run check`, and build the static output with `npm run build` when needed. Follow the actual scripts for an existing project. A standalone `npm run dev` preview helps iteration; the shipped webview is served by the Forge server. Dependency installation and project scripts execute trusted project code and are separate from Forge's dry-run guarantee.\n6. Use Playwright against the built view through the real portable CLI. Verify the primary interaction, empty/no-results state, keyboard focus, narrow layout and absence of unexpected browser errors. Preserve meaningful assertions while adapting the starter. Inspect desktop and mobile screenshots, then attach or link the saved image files so the user can see them; a screenshot path in a test log is not a delivered image. Generated browser tests use an isolated temporary workspace and stop the server they started.\n7. From the workspace root, preview `node bin/forge.js webview publish --project <id> --dry-run`, inspect the destination and revisions, then publish with the same explicit project. Use `webview publish --project <id> --check` to verify the packaged output. Before replacing a changed installed view, run `node bin/forge.js webview inspect --project <id> --json` and pass its `data.revision` as `--if-match <revision>` to both preview and publication; reread and reconcile a conflict instead of blindly approving a newer revision. Publication copies already-built assets; it does not install dependencies or run build scripts. Do not hand-edit published assets under `bin/webviews`.\n8. Inspect `server status`, then run `node bin/forge.js server start --webview <id> --json` when the user's request authorizes a local preview. Return `data.url`; the CLI does not open a browser. A running server keeps its mounted catalog, so a newly published view needs a stop/start before discovery. Coordinate a restart when the server is serving other work. Updating an existing mounted view's files needs a browser reload. Keep launch tokens out of commits, shared logs and screenshots. Stop the server when the session no longer needs it and shutdown is within the agreed task.\n9. Default to local sample data without API access. If the task explicitly benefits from real workspace inspection, use only the versioned read-only system API described in `bin/data/docs/reference/server.md`. Consume the launch token from the URL fragment, remove it from the address bar, send it as a bearer header to the same origin, and validate `ok`, `schemaVersion` and availability flags. Show missing/expired access, loading, unavailable data and stale snapshots clearly. Leave configuration changes, filesystem mutations and server shutdown to the CLI.\n10. Report the created project, preview location, checks run, visible screenshots and remaining prototype limitations. For repeat iterations, edit source and fixtures, test, rebuild, review guarded publication and reload. Keep the project self-contained and commit source, lockfile and intended distribution changes together. See `bin/data/docs/how-to/prototype-webviews.md` for the end-to-end workflow and `bin/data/docs/reference/webviews.md` for the publishing contract.\n\nFor on-demand captures and illustrated problem reports or walkthroughs, follow `forge-browser`. Its `browser screenshot` and explicit-plan `browser tutorial` commands complement the project's Playwright regression suite.\n";
@@ -45440,6 +45584,10 @@ function locate(page, locator2) {
   if ("testId" in locator2) return page.getByTestId(locator2.testId);
   return page.locator(locator2.css);
 }
+function reasonFor(code2, accessCheck = false) {
+  if (code2 === "ENOENT" || code2 === "ENOTDIR") return "missing";
+  return accessCheck && process.platform !== "win32" && (code2 === "EACCES" || code2 === "EPERM") ? "not-executable" : "inaccessible";
+}
 function createBrowserRuntime(distributionPath) {
   const packageRoot = path$3.join(path$3.resolve(distributionPath), "browser-runtime/playwright-core");
   const require2 = node_module.createRequire(path$3.join(packageRoot, "package.json"));
@@ -45455,12 +45603,19 @@ function createBrowserRuntime(distributionPath) {
     const api = await playwright();
     const configured = managed ? void 0 : executablePath ?? process.env.FORGE_BROWSER_EXECUTABLE;
     const path2 = configured === void 0 ? api.chromium.executablePath() : path$3.resolve(configured);
-    let available = false;
+    const source2 = configured === void 0 ? "managed" : executablePath === void 0 ? "environment" : "explicit";
+    let reason = "available";
     try {
-      available = (await promises$1.stat(path2)).isFile();
-      await promises$1.access(path2, process.platform === "win32" ? fs.constants.F_OK : fs.constants.X_OK);
-    } catch {
-      available = false;
+      if (!(await promises$1.stat(path2)).isFile()) reason = "not-file";
+    } catch (error2) {
+      reason = reasonFor(error2.code);
+    }
+    if (reason === "available") {
+      try {
+        await promises$1.access(path2, process.platform === "win32" ? fs.constants.F_OK : fs.constants.X_OK);
+      } catch (error2) {
+        reason = reasonFor(error2.code, true);
+      }
     }
     let version2;
     try {
@@ -45468,7 +45623,7 @@ function createBrowserRuntime(distributionPath) {
     } catch {
       throw browserError("BROWSER_UNAVAILABLE", "The packaged browser runtime metadata is missing. Replace the complete Forge distribution.");
     }
-    return { available, executablePath: path2, source: configured === void 0 ? "managed" : executablePath === void 0 ? "environment" : "explicit", version: version2 };
+    return { available: reason === "available", executablePath: path2, source: source2, version: version2, verification: "executable-only", reason };
   }
   async function session(options2) {
     const info = await status2(options2.executablePath);
@@ -45604,1616 +45759,6 @@ function createBrowserRuntime(distributionPath) {
       }
     }
   };
-}
-const content$3 = "---\nname: forge-browser\ndescription: Capture webpage evidence and create illustrated walkthroughs with Forge browser commands, then explain observations in guarded Markdown documents. Use when documenting a UI problem or situation, taking on-demand screenshots, or turning a reviewed flow into a screenshot tutorial from JSON, Markdown or Canvas.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer, the complete Forge bin distribution and Chromium. Run browser status to inspect browser availability; browser install downloads the managed browser.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Identify the question, situation or workflow the document should explain. Read workspace/project AGENTS.md and inspect `project current`; verify `context.root` before writing. Discover `schema browser --json` for exact installed contracts. Use the command's `--project <id>` option when an explicit target avoids changing shared selection. Capture tools are independent of the webview scaffold and work with HTTP(S) pages.\n2. Run `node bin/forge.js browser status`. Use `browser install --dry-run` then `browser install` when the managed Chromium download is needed, or an available browser through `--browser-executable`. Browser installation is separate from project npm dependencies. Inspect/capture tasks do not require an approval ritual: proceed within the user's request. Running a tutorial can operate the target website; confirm that its intended actions fall within the user's authorization before executing a reviewed plan. Do not infer permission to submit purchases, upload files or make unrelated account changes from a request to document a page.\n3. For one image, choose a useful viewport and an explicit PNG destination. Preview `node bin/forge.js browser screenshot <url> --out docs/assets/problem.png --project <id> --dry-run`, then capture with the same options. Add `--full-page` for the complete page and `--wait-for-selector <selector>` when a known visible element indicates readiness. Dry runs do not launch a browser or visit the URL. Each capture uses a fresh browser context; saved browser logins and cookies are not inherited. Do not embed credentials in URLs or author secrets into a tutorial plan. Local launch fragments can carry access information: keep them out of published documents and logs.\n4. Capture creates a new file by default. To replace an existing image, read it through Forge and pass its current revision as `--if-match` to both preview and capture. Reread and reconcile a conflict; never substitute a newer revision blindly. Inspect the returned requested/final URLs, capture time and image dimensions; record the viewport from the request. A successful write proves that an image was saved, not that the expected page finished loading or the UI works correctly.\n5. Open the actual saved image using the agent's image inspection capability. Check whether it shows the intended state rather than a login, error, consent or loading screen. State what is visibly observed and separate hypotheses about the cause. Unexpected access or navigation requires adjusting the plan or documenting the limitation; never invent what the page should have shown. Use Playwright regression tests for assertions about application behavior; screenshots are evidence for the document.\n6. For a multi-step tutorial, translate the user's prose, Markdown or Canvas into an explicit supported flow before execution. Preserve the original brief; a separate plan file is appropriate. JSON sources contain the plan directly. Markdown must have exactly one fenced `forge-tutorial` JSON block; Canvas must have exactly one such block in a text node. The CLI parses that block, not the meaning of arbitrary prose, arrows or node positions. Keep a title, starting URL, clear step titles, observable instructions, supported actions and explicit screenshots. Use semantic locators when supported and avoid fragile selectors that merely happen to match today's layout.\n7. Run `browser validate <source> --out docs/manual` to inspect the normalized plan and destination state. Review every navigation, input and click against the user's intended flow, especially actions that submit data or change site state. Keep credentials and sensitive sample content out of plans and screenshots. When an authorized flow needs a secret input, use a supported `fill` action with `valueFromEnv` naming the environment variable rather than a literal credential; inspect the resulting image because this does not hide page content. Preview `browser tutorial <source> --out docs/manual --dry-run`; it does not visit the site. Execute the same reviewed command when within scope. An existing output folder requires validation's `data.revision` as `--if-match`; the guard covers the generated folder. Browser-side effects are separate from guarded file writes and cannot be rolled back by a document conflict.\n8. Review the generated `index.md`, `screenshots/` and `flow.json` as one document package. Inspect the actual screenshots, check image links and verify that captions explain the observed flow. Keep the input plan as the editable source; rerunning a tutorial replaces its generated output only with the inspected folder revision. Add authored analysis to a separate document or preserve it deliberately before regeneration.\n9. To explain a problem or situation, create or edit an ordinary Markdown note through `write`/`edit` with `--dry-run` and revisions. Use a descriptive relative embed such as `![Save action remains disabled](assets/problem.png)`, a clean source link, the capture's actual UTC timestamp and viewport, the observed result, the expected result when known, and the next useful verification. The returned `markdown` uses the image's scope-relative path; adjust it relative to the note's directory rather than copying it blindly into nested documents. Remove launch fragments from source citations and do not publish private URL parameters or secrets visible in the page.\n10. Read back and validate the document, check its relative links/embeds and resolve new broken links. Return accessible links or attachments for both the document and screenshots: a file path in a tool log is not a delivered picture. Report which states were captured and any unresolved limitations. See `bin/data/docs/how-to/capture-browser-evidence.md` and `bin/data/docs/reference/browser.md`; use `forge-webviews` for prototype implementation and `forge-vault` for guarded document editing.\n";
-const browserSkill = { id: "forge-browser", content: content$3 };
-function reportedUrl(input) {
-  const url2 = new URL(input);
-  url2.hash = "";
-  url2.username = "";
-  url2.password = "";
-  return url2.href;
-}
-function browserUrl(input) {
-  let url2;
-  try {
-    url2 = new URL(input);
-  } catch {
-  }
-  ensure(
-    url2 && ["http:", "https:"].includes(url2.protocol) && !url2.username && !url2.password,
-    "INVALID_ARGUMENT",
-    "Use an absolute HTTP or HTTPS URL without embedded credentials."
-  );
-  return url2.href;
-}
-function screenshotOutput(path2) {
-  vaultPath(path2);
-  ensure(/\.png$/i.test(path2), "INVALID_ARGUMENT", "--out must name a project-relative PNG file.");
-  return path2;
-}
-function browserViewport(width = 1440, height = 900) {
-  ensure(
-    Number.isSafeInteger(width) && width >= 1 && width <= 7680 && Number.isSafeInteger(height) && height >= 1 && height <= 7680,
-    "INVALID_ARGUMENT",
-    "Viewport width and height must be integers from 1 to 7680 pixels."
-  );
-  return { width, height };
-}
-function browserTimeout(timeoutMs = 3e4) {
-  ensure(
-    Number.isSafeInteger(timeoutMs) && timeoutMs >= 1 && timeoutMs <= 12e4,
-    "INVALID_ARGUMENT",
-    "--timeout-ms must be an integer from 1 to 120000."
-  );
-  return timeoutMs;
-}
-function browserExecutable(executablePath) {
-  ensure(
-    executablePath === void 0 || typeof executablePath === "string" && executablePath.trim().length > 0 && !executablePath.includes("\0"),
-    "INVALID_ARGUMENT",
-    "--browser-executable must name a browser executable."
-  );
-  return executablePath;
-}
-function validateScreenshot(request) {
-  ensure(typeof request.fullPage === "boolean", "INVALID_ARGUMENT", "--full-page must be boolean.");
-  ensure(
-    request.waitForSelector === void 0 || typeof request.waitForSelector === "string" && request.waitForSelector.trim().length > 0 && request.waitForSelector.length <= 2048,
-    "INVALID_ARGUMENT",
-    "--wait-for-selector must be a nonempty selector of at most 2048 characters."
-  );
-  browserExecutable(request.executablePath);
-  return { ...request, url: browserUrl(request.url), viewport: browserViewport(request.viewport.width, request.viewport.height), timeoutMs: browserTimeout(request.timeoutMs) };
-}
-function expectedRevision(revision2) {
-  ensure(revision2 === void 0 || /^[a-f0-9]{64}$/.test(revision2), "INVALID_ARGUMENT", "--if-match must be a SHA-256 revision from read or browser validate.");
-  return revision2;
-}
-function imageMarkdown(path2, title2 = "Screenshot") {
-  const destination2 = path2.split("/").map((segment2) => encodeURIComponent(segment2).replaceAll("(", "%28").replaceAll(")", "%29")).join("/");
-  const label2 = title2.replaceAll("\\", "\\\\").replaceAll("[", "\\[").replaceAll("]", "\\]").replaceAll("\n", " ");
-  return `![${label2}](<${destination2}>)`;
-}
-function imageDimensions(image) {
-  const signature = [137, 80, 78, 71, 13, 10, 26, 10];
-  ensureBrowser(
-    image.bytes instanceof Uint8Array && image.bytes.length >= 24 && signature.every((byte, index2) => image.bytes[index2] === byte),
-    "BROWSER_CAPTURE_FAILED",
-    "The browser did not return a PNG screenshot."
-  );
-  const header2 = new DataView(image.bytes.buffer, image.bytes.byteOffset, image.bytes.byteLength);
-  const width = header2.getUint32(16), height = header2.getUint32(20);
-  ensureBrowser(
-    width > 0 && height > 0 && image.width === width && image.height === height && Number.isFinite(Date.parse(image.capturedAt)),
-    "BROWSER_CAPTURE_FAILED",
-    "The browser returned invalid screenshot metadata."
-  );
-  return { width, height };
-}
-class BrowserScreenshot {
-  constructor(runtime) {
-    this.runtime = runtime;
-  }
-  runtime;
-  async run(context, input) {
-    const request = validateScreenshot(input);
-    const path2 = screenshotOutput(input.out), revision2 = expectedRevision(input.ifMatch);
-    await context.workspace.files.commit({ guards: [{ path: path2, ...revision2 === void 0 ? {} : { expectedRevision: revision2 } }] }, true);
-    const target = await context.workspace.files.stat(path2).catch((error2) => {
-      if (error2 instanceof AppError && error2.code === "NOT_FOUND") return null;
-      throw error2;
-    });
-    ensure(target === null || target.kind === "file", "INVALID_PATH", "Screenshot output must name a regular file, not a directory.");
-    const plan = {
-      requestedUrl: reportedUrl(request.url),
-      out: path2,
-      viewport: request.viewport,
-      fullPage: request.fullPage,
-      ...request.waitForSelector === void 0 ? {} : { waitForSelector: request.waitForSelector },
-      timeoutMs: request.timeoutMs
-    };
-    if (context.workspace.dryRun) return { dryRun: true, captured: false, plan, changes: [] };
-    const image = await this.runtime.screenshot(request);
-    const dimensions = imageDimensions(image);
-    const finalUrl = reportedUrl(image.url);
-    const result = await context.workspace.write([{ path: path2, bytes: image.bytes, ...revision2 === void 0 ? {} : { expectedRevision: revision2 } }]);
-    const change2 = result.changes[0];
-    return {
-      ...result,
-      captured: true,
-      path: path2,
-      revision: change2.revision,
-      bytes: change2.bytes,
-      ...dimensions,
-      requestedUrl: plan.requestedUrl,
-      finalUrl,
-      capturedAt: new Date(image.capturedAt).toISOString(),
-      markdown: imageMarkdown(path2)
-    };
-  }
-}
-function valid(condition, message2) {
-  ensureBrowser(condition, "BROWSER_FLOW_INVALID", message2);
-}
-function record$1(value2, keys, location2) {
-  valid(isRecord$1(value2), `${location2} must be an object.`);
-  valid(Object.keys(value2).every((key) => keys.includes(key)), `${location2} contains an unknown field.`);
-  return value2;
-}
-function text$8(value2, location2, allowEmpty = false) {
-  valid(typeof value2 === "string" && value2.length <= 2e4 && (allowEmpty || value2.trim().length > 0), `${location2} must be ${allowEmpty ? "a" : "a nonempty"} string of at most 20000 characters.`);
-  return value2;
-}
-function url(value2) {
-  const input = text$8(value2, "URL");
-  let parsed2;
-  try {
-    parsed2 = new URL(input);
-  } catch {
-    throw browserError("BROWSER_FLOW_INVALID", "Tutorial URLs must be absolute HTTP or HTTPS URLs.");
-  }
-  valid(
-    ["http:", "https:"].includes(parsed2.protocol) && !parsed2.username && !parsed2.password && ![...new URLSearchParams(parsed2.hash.slice(1)).keys()].some((key) => key.toLowerCase() === "token"),
-    "Tutorial URLs must use HTTP or HTTPS without embedded credentials or launch-token fragments; keep secrets outside saved plans."
-  );
-  return parsed2.href;
-}
-function locator(value2) {
-  const item = record$1(value2, ["role", "name", "label", "testId", "css"], "Locator");
-  const kinds = ["role", "label", "testId", "css"].filter((key) => item[key] !== void 0);
-  valid(kinds.length === 1 && (item.name === void 0 || kinds[0] === "role"), "A locator must specify exactly one of role, label, testId or css; only role accepts name.");
-  const kind2 = kinds[0];
-  const result = { [kind2]: text$8(item[kind2], `Locator ${kind2}`), ...item.name === void 0 ? {} : { name: text$8(item.name, "Locator name") } };
-  return result;
-}
-function action(value2) {
-  valid(isRecord$1(value2), "Every action must be an object.");
-  const type2 = value2.type;
-  const fields2 = { goto: ["url"], click: ["locator"], fill: ["locator", "value", "valueFromEnv"], select: ["locator", "value"], check: ["locator", "checked"], press: ["locator", "key"], wait: ["locator", "state"] };
-  valid(typeof type2 === "string" && Object.hasOwn(fields2, type2), "Unknown tutorial action; use goto, click, fill, select, check, press or wait.");
-  record$1(value2, ["type", ...fields2[type2]], `Action ${type2}`);
-  if (type2 === "goto") return { type: type2, url: url(value2.url) };
-  const target = locator(value2.locator);
-  switch (type2) {
-    case "click":
-      return { type: type2, locator: target };
-    case "fill": {
-      valid(value2.value === void 0 !== (value2.valueFromEnv === void 0), "fill requires exactly one of value or valueFromEnv.");
-      if (value2.valueFromEnv !== void 0) {
-        const variable = text$8(value2.valueFromEnv, "Environment variable");
-        valid(/^[A-Za-z_][A-Za-z0-9_]*$/.test(variable), "valueFromEnv must name an environment variable.");
-        return { type: type2, locator: target, valueFromEnv: variable };
-      }
-      return { type: type2, locator: target, value: text$8(value2.value, "Fill value", true) };
-    }
-    case "select":
-      return { type: type2, locator: target, value: text$8(value2.value, "Select value", true) };
-    case "check":
-      valid(typeof value2.checked === "boolean", "check requires checked: true or false.");
-      return { type: type2, locator: target, checked: value2.checked };
-    case "press":
-      return { type: type2, locator: target, key: text$8(value2.key, "Key") };
-    default: {
-      const state2 = value2.state ?? "visible";
-      valid(["visible", "hidden", "attached", "detached"].includes(state2), "wait state must be visible, hidden, attached or detached.");
-      return { type: "wait", locator: target, state: state2 };
-    }
-  }
-}
-function tutorialPlan(value2) {
-  const plan = record$1(value2, ["version", "title", "description", "startUrl", "viewport", "steps"], "Plan");
-  valid(plan.version === 1, "Tutorial plan version must be 1.");
-  const viewport2 = plan.viewport === void 0 ? { width: 1440, height: 900 } : record$1(plan.viewport, ["width", "height"], "Viewport");
-  valid(Number.isSafeInteger(viewport2.width) && Number(viewport2.width) >= 1 && Number(viewport2.width) <= 4096 && Number.isSafeInteger(viewport2.height) && Number(viewport2.height) >= 1 && Number(viewport2.height) <= 4096, "Viewport dimensions must be integers from 1 to 4096.");
-  valid(Array.isArray(plan.steps) && plan.steps.length > 0 && plan.steps.length <= 100, "A tutorial needs 1 to 100 steps.");
-  const ids = /* @__PURE__ */ new Set();
-  let count2 = 0;
-  const steps = plan.steps.map((value22, index2) => {
-    const step = record$1(value22, ["id", "title", "text", "actions", "screenshot", "fullPage"], `Step ${index2 + 1}`);
-    const id2 = text$8(step.id, "Step id");
-    valid(/^[a-z][a-z0-9-]{0,63}$/.test(id2) && !ids.has(id2), "Step ids must be unique lowercase kebab-case names of at most 64 characters.");
-    ids.add(id2);
-    valid(Array.isArray(step.actions) && (count2 += step.actions.length) <= 500, "Steps require an actions array, with at most 500 actions per tutorial.");
-    valid(step.screenshot === void 0 || typeof step.screenshot === "boolean", "screenshot must be boolean.");
-    valid(step.fullPage === void 0 || typeof step.fullPage === "boolean", "fullPage must be boolean.");
-    return {
-      id: id2,
-      title: text$8(step.title, "Step title"),
-      ...step.text === void 0 ? {} : { text: text$8(step.text, "Step text", true) },
-      actions: step.actions.map(action),
-      screenshot: step.screenshot !== false,
-      fullPage: step.fullPage !== false
-    };
-  });
-  return {
-    version: 1,
-    title: text$8(plan.title, "Title"),
-    ...plan.description === void 0 ? {} : { description: text$8(plan.description, "Description", true) },
-    startUrl: url(plan.startUrl),
-    viewport: { width: Number(viewport2.width), height: Number(viewport2.height) },
-    steps
-  };
-}
-function json$1(text2) {
-  try {
-    return JSON.parse(text2);
-  } catch {
-    throw browserError("BROWSER_FLOW_INVALID", "Tutorial source must contain valid JSON.");
-  }
-}
-function blocks(text2) {
-  return [...text2.matchAll(/^ {0,3}(`{3,}|~{3,})forge-tutorial[ \t]*\r?\n([\s\S]*?)^ {0,3}\1[ \t]*\r?$/gm)].map((match) => match[2]);
-}
-function extractTutorial(source2, path2) {
-  valid(source2.length <= 2e6, "Tutorial source exceeds the 2 MB limit.");
-  if (/\.json$/i.test(path2)) return tutorialPlan(json$1(source2));
-  let candidates2;
-  if (/\.canvas$/i.test(path2)) {
-    const canvas = json$1(source2);
-    valid(isRecord$1(canvas) && Array.isArray(canvas.nodes), "Canvas must contain a nodes array.");
-    candidates2 = canvas.nodes.flatMap((node2) => isRecord$1(node2) && node2.type === "text" && typeof node2.text === "string" ? blocks(node2.text) : []);
-  } else {
-    valid(/\.md$/i.test(path2), "Use a JSON plan, Markdown document or Canvas document.");
-    candidates2 = blocks(source2);
-  }
-  valid(candidates2.length === 1, "Markdown or Canvas must contain exactly one fenced forge-tutorial JSON block. Ask the agent to translate the intended flow into a reviewed plan first.");
-  return tutorialPlan(json$1(candidates2[0]));
-}
-async function optionalStat(context, path2) {
-  try {
-    return await context.workspace.files.stat(path2);
-  } catch (error2) {
-    if (error2 instanceof AppError && error2.code === "NOT_FOUND") return null;
-    throw error2;
-  }
-}
-function plannedFiles(plan) {
-  return ["index.md", "flow.json", ...plan.steps.filter((step) => step.screenshot).map((step) => `screenshots/${step.id}.png`)];
-}
-function publicUrl(value2) {
-  const url2 = new URL(value2);
-  url2.hash = "";
-  url2.search = "";
-  url2.username = "";
-  url2.password = "";
-  return url2.href;
-}
-function heading(value2) {
-  return value2.replaceAll("\r", " ").replaceAll("\n", " ").replaceAll("#", "\\#");
-}
-function manual(plan, result) {
-  const lines2 = [
-    `# ${heading(plan.title)}`,
-    "",
-    ...plan.description ? [plan.description, ""] : [],
-    `[Replay plan](<flow.json>) · Viewport: ${plan.viewport.width} × ${plan.viewport.height}`,
-    ""
-  ];
-  for (const [index2, step] of plan.steps.entries()) {
-    lines2.push(`## ${index2 + 1}. ${heading(step.title)}`, "");
-    if (step.text) lines2.push(step.text, "");
-    const image = result.screenshots.find((image2) => image2.stepId === step.id);
-    if (image) lines2.push(
-      imageMarkdown(`screenshots/${step.id}.png`, step.title),
-      "",
-      `Page: <${publicUrl(image.url)}> · Captured: ${image.capturedAt} · ${image.width} × ${image.height}`,
-      ""
-    );
-  }
-  return lines2.join("\n");
-}
-class BrowserTutorial {
-  constructor(runtime) {
-    this.runtime = runtime;
-  }
-  runtime;
-  async inspect(context, source2, out2) {
-    vaultPath(source2);
-    const snapshot = await context.workspace.files.read(source2);
-    let text2;
-    try {
-      text2 = new TextDecoder("utf-8", { fatal: true }).decode(snapshot.bytes);
-    } catch {
-      throw browserError("BROWSER_FLOW_INVALID", "Tutorial source must be valid UTF-8.");
-    }
-    const plan = extractTutorial(text2, source2);
-    let current = null;
-    if (out2 !== void 0) {
-      vaultPath(out2);
-      ensure(source2 === `${out2}/flow.json` || source2 !== out2 && !source2.startsWith(`${out2}/`), "INVALID_ARGUMENT", "Keep source documents outside the output directory, or replay its generated flow.json.");
-      current = await optionalStat(context, out2);
-      for (const path2 of plannedFiles(plan)) {
-        const destination2 = await optionalStat(context, `${out2}/${path2}`);
-        ensure(destination2 === null || destination2.kind === "file", "INVALID_ARGUMENT", `Tutorial output must be a regular file: ${out2}/${path2}`);
-      }
-      ensure(current === null || current.kind === "folder", "INVALID_ARGUMENT", "--out must name a directory.");
-      if (current?.kind === "folder") {
-        ensureBrowser(current.files.includes("index.md") && current.files.includes("flow.json") && current.files.every((path2) => ["index.md", "flow.json"].includes(path2) || /^screenshots\/[a-z][a-z0-9-]{0,63}\.png$/.test(path2)) && current.folders.every((path2) => path2 === "screenshots"), "BROWSER_FLOW_INVALID", "Output contains unrelated files or is not a generated tutorial. Choose a dedicated output directory.");
-      }
-    }
-    return { snapshot, plan, current, report: {
-      source: source2,
-      sourceRevision: snapshot.revision,
-      plan,
-      output: out2 ?? null,
-      revision: current?.revision ?? null,
-      files: plannedFiles(plan)
-    } };
-  }
-  async validate(context, source2, out2) {
-    return (await this.inspect(context, source2, out2)).report;
-  }
-  async run(context, input) {
-    const { source: source2, out: out2 } = input;
-    const timeoutMs = browserTimeout(input.timeoutMs), ifMatch2 = expectedRevision(input.ifMatch);
-    ensure(input.executablePath === void 0 || input.executablePath.trim().length > 0 && !input.executablePath.includes("\0"), "INVALID_ARGUMENT", "--browser-executable must name a browser executable.");
-    const { snapshot, plan, current, report: report2 } = await this.inspect(context, source2, out2);
-    ensure(
-      ifMatch2 === (current?.revision ?? void 0),
-      "CONFLICT",
-      current ? "Validate the existing tutorial and pass its folder revision with --if-match before replacing it." : "The output no longer exists; omit --if-match to create it.",
-      { path: out2, expectedRevision: ifMatch2 ?? null, currentRevision: current?.revision ?? null }
-    );
-    const guards = [{ path: source2, expectedRevision: snapshot.revision }, { path: out2, ...current ? { expectedRevision: current.revision } : {} }];
-    if (context.workspace.dryRun) {
-      await context.workspace.commit({ guards }, { operation: "apply" });
-      return { ...report2, dryRun: true, executed: false, changes: [], browserVersion: null };
-    }
-    const previous2 = /* @__PURE__ */ new Map();
-    if (current?.kind === "folder") for (const path2 of current.files) previous2.set(path2, await context.workspace.files.read(`${out2}/${path2}`));
-    const captured = await this.runtime.flow({ plan, viewport: plan.viewport, timeoutMs, ...input.executablePath ? { executablePath: input.executablePath } : {} });
-    const required2 = new Set(plan.steps.filter((step) => step.screenshot).map((step) => step.id));
-    ensureBrowser(
-      captured.screenshots.length === required2.size && captured.screenshots.every((image) => required2.delete(image.stepId) && image.bytes.length > 0),
-      "BROWSER_FLOW_FAILED",
-      "Browser did not return exactly one screenshot for every requested tutorial step. No output was published."
-    );
-    const encode2 = (value2) => new TextEncoder().encode(value2);
-    const contents = new Map([
-      ["index.md", encode2(manual(plan, captured))],
-      ["flow.json", encode2(`${JSON.stringify(plan, null, 2)}
-`)],
-      ...captured.screenshots.map((image) => [`screenshots/${image.stepId}.png`, image.bytes])
-    ]);
-    const writes = [...contents].map(([path2, bytes]) => ({
-      path: `${out2}/${path2}`,
-      bytes,
-      ...previous2.has(path2) ? { expectedRevision: previous2.get(path2).revision } : {}
-    }));
-    const removes = [...previous2].filter(([path2]) => !contents.has(path2)).map(([, file]) => ({ path: file.path, expectedRevision: file.revision }));
-    const result = await context.workspace.commit({ guards, writes, removes }, { operation: "apply" });
-    return {
-      ...report2,
-      revision: (await context.workspace.files.stat(out2)).revision,
-      dryRun: false,
-      executed: true,
-      changes: result.changes,
-      browserVersion: captured.browserVersion
-    };
-  }
-}
-const text$7 = { type: "string" };
-const integer = { type: "integer", minimum: 1 };
-const changes$1 = { type: "array", items: { type: "object" } };
-const viewport = { type: "object", additionalProperties: false, required: ["width", "height"], properties: { width: integer, height: integer } };
-const browserStatusSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["available", "executablePath", "source", "version"],
-  properties: { available: { type: "boolean" }, executablePath: { oneOf: [text$7, { type: "null" }] }, source: { enum: ["explicit", "environment", "managed"] }, version: text$7 }
-};
-const installSchema = { oneOf: [
-  { type: "object", additionalProperties: false, required: ["dryRun", "executed", "plan"], properties: {
-    dryRun: { const: true },
-    executed: { const: false },
-    plan: { type: "object", additionalProperties: false, required: ["browser", "operation"], properties: { browser: { const: "chromium" }, operation: { const: "install" } } }
-  } },
-  { type: "object", additionalProperties: false, required: ["dryRun", "executed", "status"], properties: {
-    dryRun: { const: false },
-    executed: { const: true },
-    status: browserStatusSchema
-  } }
-] };
-const screenshotSchema = { oneOf: [
-  { type: "object", additionalProperties: false, required: ["dryRun", "captured", "plan", "changes"], properties: {
-    dryRun: { const: true },
-    captured: { const: false },
-    changes: { type: "array", maxItems: 0 },
-    plan: { type: "object", additionalProperties: false, required: ["requestedUrl", "out", "viewport", "fullPage", "timeoutMs"], properties: {
-      requestedUrl: { ...text$7, description: "Requested URL without its fragment." },
-      out: text$7,
-      viewport,
-      fullPage: { type: "boolean" },
-      waitForSelector: text$7,
-      timeoutMs: integer
-    } }
-  } },
-  {
-    type: "object",
-    additionalProperties: false,
-    required: ["dryRun", "captured", "path", "revision", "bytes", "width", "height", "requestedUrl", "finalUrl", "capturedAt", "markdown", "changes"],
-    properties: {
-      dryRun: { const: false },
-      captured: { const: true },
-      path: text$7,
-      revision: text$7,
-      bytes: integer,
-      width: integer,
-      height: integer,
-      requestedUrl: text$7,
-      finalUrl: text$7,
-      capturedAt: { ...text$7, description: "Capture timestamp in UTC ISO 8601 form." },
-      markdown: text$7,
-      changes: changes$1
-    }
-  }
-] };
-const tutorialProperties = {
-  source: text$7,
-  sourceRevision: text$7,
-  plan: { type: "object", description: "Normalized version 1 tutorial flow with explicit steps and browser actions." },
-  output: { oneOf: [text$7, { type: "null" }] },
-  revision: { oneOf: [text$7, { type: "null" }] },
-  files: { type: "array", items: text$7 }
-};
-const tutorialValidationSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["source", "sourceRevision", "plan", "output", "revision", "files"],
-  properties: tutorialProperties
-};
-const tutorialSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["source", "sourceRevision", "plan", "output", "revision", "files", "dryRun", "executed", "changes", "browserVersion"],
-  properties: { ...tutorialProperties, dryRun: { type: "boolean" }, executed: { type: "boolean" }, changes: changes$1, browserVersion: { oneOf: [text$7, { type: "null" }] } }
-};
-const project = option$1.string("Use this project instead of the selected project.");
-const executable = option$1.string("Use this Chromium executable; otherwise use FORGE_BROWSER_EXECUTABLE or the installed managed browser.");
-const timeout = option$1.string("Browser operation timeout in milliseconds, from 1 to 120000.", { default: "30000" });
-const revision$1 = option$1.string("Current output revision from read (screenshot) or browser validate (tutorial); required before replacing existing output.");
-const projectMode = { scope: "project", projectOption: "project", discovery: false };
-function browserCommand(runtime) {
-  const screenshot = new BrowserScreenshot(runtime), tutorial = new BrowserTutorial(runtime);
-  return {
-    id: "browser",
-    description: "Capture webpage screenshots and repeatable illustrated tutorials through the portable CLI.",
-    usage: "browser [status | install | screenshot <url> --out <image.png> | validate <source> | tutorial <source> --out <directory>]",
-    scope: "workspace",
-    discovery: false,
-    mutating: false,
-    defaultAction: "status",
-    unknownAction: "INVALID_ARGUMENT",
-    args: [
-      { name: "action", description: "status (default), install, screenshot, validate or tutorial.", enum: ["status", "install", "screenshot", "validate", "tutorial"] },
-      { name: "source", description: "Absolute HTTP(S) URL for screenshot, or a project-relative flow JSON, Markdown or Canvas source." }
-    ],
-    actions: {
-      status: {
-        description: "Inspect browser availability without launching a browser or accessing the network.",
-        discovery: true,
-        output: browserStatusSchema,
-        options: { "browser-executable": executable }
-      },
-      install: {
-        description: "Download the managed Chromium browser explicitly; a dry run does not start the installer.",
-        discovery: true,
-        mutating: true,
-        destructive: false,
-        idempotent: true,
-        output: installSchema
-      },
-      screenshot: {
-        description: "Save a webpage screenshot as a guarded PNG and return a Markdown image reference.",
-        ...projectMode,
-        mutating: true,
-        destructive: true,
-        idempotent: true,
-        output: screenshotSchema,
-        usage: "browser screenshot <url> --out <image.png> [--width <pixels>] [--height <pixels>] [--full-page] [--wait-for-selector <selector>] [--timeout-ms <milliseconds>] [--browser-executable <path>] [--if-match <revision>] [--project <id>]",
-        options: {
-          project,
-          out: option$1.string("Project-relative PNG output path.", { required: true }),
-          width: option$1.string("Viewport width in pixels, from 1 to 7680.", { default: "1440" }),
-          height: option$1.string("Viewport height in pixels, from 1 to 7680.", { default: "900" }),
-          "full-page": option$1.boolean("Capture the full page instead of only the viewport."),
-          "wait-for-selector": option$1.string("Wait for this selector to become visible before capturing the page."),
-          "timeout-ms": timeout,
-          "browser-executable": executable,
-          "if-match": revision$1
-        }
-      },
-      validate: {
-        description: "Validate a declared tutorial flow without opening a browser and inspect its output revision.",
-        ...projectMode,
-        options: { project, out: option$1.string("Optional project-relative tutorial directory whose current revision should be inspected.") },
-        output: tutorialValidationSchema
-      },
-      tutorial: {
-        description: "Replay a declared flow and atomically save its manual, screenshots and repeatable plan.",
-        ...projectMode,
-        mutating: true,
-        destructive: true,
-        idempotent: true,
-        options: {
-          project,
-          out: option$1.string("Project-relative tutorial directory for index.md, screenshots and flow.json.", { required: true }),
-          "timeout-ms": timeout,
-          "browser-executable": executable,
-          "if-match": revision$1
-        },
-        output: tutorialSchema
-      }
-    },
-    errors: ["INVALID_ARGUMENT", "INVALID_PATH", "UNSAFE_PATH", "CONFLICT", "NOT_FOUND", "BROWSER_UNAVAILABLE", "BROWSER_CAPTURE_FAILED", "BROWSER_INSTALL_FAILED", "BROWSER_FLOW_INVALID", "BROWSER_FLOW_FAILED"],
-    async run(args, flags, context) {
-      const action2 = args[0] ?? "status";
-      ensure(["status", "install", "screenshot", "validate", "tutorial"].includes(action2), "INVALID_ARGUMENT", "Use browser status, install, screenshot, validate or tutorial.");
-      if (action2 === "status") {
-        arity(args, 0, 1);
-        return runtime.status(browserExecutable(value$2(flags, "browser-executable")));
-      }
-      if (action2 === "install") {
-        arity(args, 1);
-        if (context.workspace.dryRun) return { dryRun: true, executed: false, plan: { browser: "chromium", operation: "install" } };
-        return { dryRun: false, executed: true, status: await runtime.install() };
-      }
-      arity(args, 2);
-      if (action2 === "validate") return tutorial.validate(context, args[1], value$2(flags, "out"));
-      const out2 = value$2(flags, "out", true);
-      const timeoutMs = browserTimeout(integer$2(flags, "timeout-ms", 1));
-      const executablePath = browserExecutable(value$2(flags, "browser-executable")), ifMatch2 = expectedRevision(value$2(flags, "if-match"));
-      if (action2 === "tutorial") return tutorial.run(context, { source: args[1], out: out2, timeoutMs, executablePath, ifMatch: ifMatch2 });
-      return screenshot.run(context, {
-        url: args[1],
-        out: out2,
-        viewport: browserViewport(integer$2(flags, "width", 1), integer$2(flags, "height", 1)),
-        fullPage: flags["full-page"] === true,
-        waitForSelector: value$2(flags, "wait-for-selector"),
-        timeoutMs,
-        executablePath,
-        ifMatch: ifMatch2
-      });
-    }
-  };
-}
-const browserStrings = { de: {
-  manifest: { name: "Browser-Werkzeuge", description: "Geschützte Webseiten-Screenshots und wiederholbare bebilderte Anleitungen mit einem verwalteten Browser erstellen." },
-  commands: { browser: "Webseiten-Screenshots und wiederholbare bebilderte Anleitungen über das portable CLI erstellen." },
-  actions: {
-    "browser status": "Die Browser-Verfügbarkeit ohne Browserstart oder Netzwerkzugriff prüfen.",
-    "browser install": "Den verwalteten Chromium-Browser ausdrücklich herunterladen; ein Probelauf startet keine Installation.",
-    "browser screenshot": "Einen Webseiten-Screenshot als geschützte PNG-Datei speichern und eine Markdown-Bildreferenz zurückgeben.",
-    "browser validate": "Einen deklarierten Anleitungsablauf ohne Browser prüfen und die Ausgaberevision anzeigen.",
-    "browser tutorial": "Einen deklarierten Ablauf ausführen und Anleitung, Screenshots und wiederholbaren Plan atomar speichern."
-  },
-  descriptions: {
-    "status (default), install, screenshot, validate or tutorial.": "status (Standard), install, screenshot, validate oder tutorial.",
-    "Absolute HTTP(S) URL for screenshot, or a project-relative flow JSON, Markdown or Canvas source.": "Absolute HTTP(S)-URL für screenshot oder projektrelative JSON-, Markdown- oder Canvas-Ablaufquelle.",
-    "Use this project instead of the selected project.": "Dieses Projekt statt des ausgewählten Projekts verwenden.",
-    "Use this Chromium executable; otherwise use FORGE_BROWSER_EXECUTABLE or the installed managed browser.": "Diese Chromium-Datei verwenden; sonst FORGE_BROWSER_EXECUTABLE oder den installierten verwalteten Browser verwenden.",
-    "Browser operation timeout in milliseconds, from 1 to 120000.": "Zeitlimit für Browser-Vorgänge in Millisekunden von 1 bis 120000.",
-    "Current output revision from read (screenshot) or browser validate (tutorial); required before replacing existing output.": "Aktuelle Ausgaberevision aus read (Screenshot) oder browser validate (Anleitung); zum Ersetzen vorhandener Ausgaben erforderlich.",
-    "Project-relative PNG output path.": "Projektrelativer PNG-Ausgabepfad.",
-    "Viewport width in pixels, from 1 to 7680.": "Ansichtsbreite in Pixeln von 1 bis 7680.",
-    "Viewport height in pixels, from 1 to 7680.": "Ansichtshöhe in Pixeln von 1 bis 7680.",
-    "Capture the full page instead of only the viewport.": "Die vollständige Seite statt nur des sichtbaren Ausschnitts erfassen.",
-    "Wait for this selector to become visible before capturing the page.": "Vor der Aufnahme warten, bis dieser Selektor sichtbar ist.",
-    "Optional project-relative tutorial directory whose current revision should be inspected.": "Optionaler projektrelativer Anleitungsordner, dessen aktuelle Revision geprüft werden soll.",
-    "Project-relative tutorial directory for index.md, screenshots and flow.json.": "Projektrelativer Anleitungsordner für index.md, Screenshots und flow.json."
-  },
-  errors: {
-    BROWSER_UNAVAILABLE: { summary: "Browser-Laufzeit oder ausführbare Datei fehlen.", hint: "Prüfen Sie browser status und führen Sie browser install aus oder übergeben Sie einen installierten Chromium-Browser mit --browser-executable." },
-    BROWSER_CAPTURE_FAILED: { summary: "Die Webseite konnte nicht aufgenommen werden.", hint: "Prüfen Sie URL, Browser-Verfügbarkeit und Bereitschaftsselektor; es wurde kein Screenshot geschrieben." },
-    BROWSER_INSTALL_FAILED: { summary: "Die Installation des verwalteten Browsers ist fehlgeschlagen.", hint: "Prüfen Sie Netzwerkzugriff und Schreibrechte; wiederholen Sie browser install oder verwenden Sie --browser-executable." },
-    BROWSER_FLOW_INVALID: { summary: "Der deklarierte Anleitungsablauf ist ungültig.", hint: "Prüfen Sie browser validate und korrigieren Sie die genannte Quelle, Aktion, Auswahl oder den Ausgabepfad." },
-    BROWSER_FLOW_FAILED: { summary: "Der Anleitungsablauf konnte nicht abgeschlossen werden.", hint: "Prüfen Sie den fehlgeschlagenen Schritt und korrigieren Sie den Ablauf; vorhandene Anleitungen wurden erhalten." }
-  }
-} };
-function browserPlugin(distributionPath) {
-  return {
-    manifest: {
-      id: "browser",
-      name: "Browser",
-      version: "0.1.0",
-      minAppVersion: "0.1.0",
-      core: true,
-      author: "The Forge",
-      description: "Capture guarded webpage screenshots and repeatable illustrated tutorials with a managed browser."
-    },
-    strings: browserStrings,
-    create: () => ({
-      commands: [browserCommand(createBrowserRuntime(distributionPath))],
-      skills: [browserSkill],
-      errors: [
-        { code: "BROWSER_UNAVAILABLE", category: "runtime", summary: "The browser runtime or executable is unavailable.", hint: "Run browser status, then browser install, or pass --browser-executable for an installed Chromium browser." },
-        { code: "BROWSER_CAPTURE_FAILED", category: "runtime", summary: "The webpage could not be captured.", hint: "Check the URL, browser availability and readiness selector; no screenshot was written." },
-        { code: "BROWSER_INSTALL_FAILED", category: "external", summary: "The managed browser installation failed.", hint: "Check network access and disk permissions, then retry browser install or use --browser-executable." },
-        { code: "BROWSER_FLOW_INVALID", category: "input", summary: "The declared tutorial flow is invalid.", hint: "Run browser validate and correct the source, action, locator or output path named in the diagnostic." },
-        { code: "BROWSER_FLOW_FAILED", category: "runtime", summary: "The tutorial flow could not complete.", hint: "Inspect the failing step, repair the declared flow and retry; existing tutorial output was preserved." }
-      ]
-    })
-  };
-}
-function updateError(code2, message2) {
-  return codedError(code2, message2, code2 === "UPDATE_DOWNLOAD_FAILED" ? 1 : 2);
-}
-function requireUpdate(condition, message2) {
-  if (!condition) throw updateError("UPDATE_INVALID", message2);
-}
-function releaseJson(bytes) {
-  try {
-    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
-  } catch {
-    throw updateError("UPDATE_INVALID", "A release package or distribution manifest is not valid UTF-8 JSON.");
-  }
-}
-function releaseVersion(value2) {
-  requireUpdate(/^\d+\.\d+\.\d+$/.test(value2), "Use a stable release version such as 0.1.0.");
-  return value2;
-}
-function compareVersions(left, right) {
-  const a = releaseVersion(left).split(".").map(Number), b = releaseVersion(right).split(".").map(Number);
-  for (let index2 = 0; index2 < 3; index2++) if (a[index2] !== b[index2]) return a[index2] > b[index2] ? 1 : -1;
-  return 0;
-}
-function distributionFiles(value2, policy) {
-  requireUpdate(value2 !== null && typeof value2 === "object" && "schemaVersion" in value2 && value2.schemaVersion === policy.schemaVersion && "files" in value2 && Array.isArray(value2.files), "The distribution manifest is invalid.");
-  const files = value2.files;
-  const owned = new RegExp(policy.ownedAssetPattern);
-  requireUpdate(files.every((path2) => typeof path2 === "string" && owned.test(path2)), "The distribution manifest includes mutable or unowned files.");
-  const paths2 = files;
-  for (const path2 of paths2) vaultPath(path2);
-  requireUpdate(new Set(paths2).size === paths2.length && policy.requiredAssets.every((path2) => paths2.includes(path2)), "The distribution manifest omits required assets or contains duplicates.");
-  return [...paths2].sort();
-}
-class AppUpdate {
-  constructor(source2, policy) {
-    this.source = source2;
-    this.policy = policy;
-  }
-  source;
-  policy;
-  async installed(context) {
-    let pkg;
-    try {
-      pkg = await context.environment.files.read("bin/package.json");
-    } catch {
-      throw updateError("UPDATE_SCOPE_INVALID", "The target workspace has no installed Forge app. Install a release first.");
-    }
-    const data = releaseJson(pkg.bytes);
-    requireUpdate(data !== null && typeof data === "object" && "name" in data && data.name === "forge-bundle" && "version" in data && typeof data.version === "string", "bin/package.json does not identify a Forge distribution.");
-    const version2 = releaseVersion(data.version);
-    const manifest = await context.environment.files.read("bin/data/distribution.json");
-    const owned = distributionFiles(releaseJson(manifest.bytes), this.policy);
-    const stat = await context.environment.files.stat("bin");
-    ensure(stat.kind === "folder", "INVALID_PATH", "bin must be a regular folder.");
-    return { version: version2, revision: stat.revision, owned };
-  }
-  async check(context, target) {
-    const installed = await this.installed(context);
-    const version2 = releaseVersion(target ?? await this.source.latest());
-    return {
-      installedVersion: installed.version,
-      releaseVersion: version2,
-      available: compareVersions(version2, installed.version) > 0,
-      revision: installed.revision,
-      releaseUrl: `https://github.com/Luis85/agent-cli/releases/tag/v${version2}`
-    };
-  }
-  async apply(context, version2, ifMatch2) {
-    const installed = await this.installed(context);
-    ensure(ifMatch2 === installed.revision, "CONFLICT", "The app or workspace settings changed; run update check again.", { currentRevision: installed.revision });
-    requireUpdate(compareVersions(version2, installed.version) >= 0, "Downgrading the installed app is not supported.");
-    const release2 = await this.source.download(releaseVersion(version2));
-    requireUpdate(release2.version === version2, "Downloaded release version differs from the requested version.");
-    const desired = new Map(release2.files.map((file) => [file.path, file]));
-    const manifest = desired.get("data/distribution.json");
-    requireUpdate(manifest, "Downloaded release has no distribution manifest.");
-    const paths2 = distributionFiles(releaseJson(manifest.bytes), this.policy);
-    requireUpdate(paths2.length === desired.size && paths2.every((path2) => desired.has(path2)), "Downloaded release assets disagree with its manifest.");
-    const writes = [], removes = [];
-    const previous2 = /* @__PURE__ */ new Map();
-    for (const path2 of [.../* @__PURE__ */ new Set([...paths2, ...installed.owned])].sort()) {
-      const destination2 = `bin/${path2}`;
-      let current;
-      try {
-        current = await context.environment.files.read(destination2);
-      } catch (error2) {
-        if (!(error2 instanceof AppError && error2.code === "NOT_FOUND")) throw error2;
-      }
-      if (current) previous2.set(destination2, current);
-      const next = desired.get(path2);
-      if (!next && current) removes.push({ path: destination2, expectedRevision: current.revision });
-      else if (next && next.revision !== current?.revision) writes.push({ path: destination2, bytes: next.bytes, ...current ? { expectedRevision: current.revision } : {} });
-    }
-    const result = await context.environment.commit({ guards: [{ path: "bin", expectedRevision: installed.revision }], writes, removes }, { operation: "apply", previous: previous2 });
-    return {
-      installedVersion: installed.version,
-      releaseVersion: version2,
-      checksum: release2.checksum,
-      changed: writes.length + removes.length > 0,
-      dryRun: result.dryRun,
-      changes: result.changes,
-      revision: result.dryRun ? installed.revision : (await context.environment.files.stat("bin")).revision,
-      restartRequired: !result.dryRun && writes.length + removes.length > 0
-    };
-  }
-}
-const execute = node_util.promisify(childProcess.execFile);
-const runTool = async (file, args, options2) => {
-  const { stdout } = await execute(file, args, { ...options2, encoding: "utf8" });
-  return { stdout };
-};
-const base = "https://github.com/Luis85/agent-cli/releases";
-const curl = ["--fail", "--location", "--silent", "--show-error", "--proto", "=https", "--max-time", "180", "--max-filesize", "67108864"];
-function githubReleases(policy, run2 = runTool) {
-  return {
-    async latest() {
-      try {
-        const { stdout } = await run2("curl", [...curl, `${base}/latest`, "--output", node_os.devNull, "--write-out", "%{url_effective}"], { timeout: 19e4 });
-        const version2 = /^https:\/\/github\.com\/Luis85\/agent-cli\/releases\/tag\/v(\d+\.\d+\.\d+)$/.exec(stdout)?.[1];
-        requireUpdate(version2, "GitHub did not return a stable Forge release.");
-        return releaseVersion(version2);
-      } catch (error2) {
-        if (error2 instanceof AppError) throw error2;
-        throw updateError("UPDATE_DOWNLOAD_FAILED", "Could not check GitHub Releases. Check network access and curl, then retry.");
-      }
-    },
-    async download(version2) {
-      releaseVersion(version2);
-      const staging = await promises$1.mkdtemp(path$3.join(node_os.tmpdir(), "forge-update-"));
-      try {
-        const name2 = `forge-${version2}.tar.gz`, archive = path$3.join(staging, name2);
-        for (const filename of [name2, `${name2}.sha256`]) await run2("curl", [...curl, `${base}/download/v${version2}/${filename}`, "--output", path$3.join(staging, filename)], { timeout: 19e4 });
-        const bytes = await promises$1.readFile(archive), checksum = node_crypto.createHash("sha256").update(bytes).digest("hex");
-        requireUpdate((await promises$1.readFile(`${archive}.sha256`, "utf8")).trim() === `${checksum}  ${name2}`, "Release checksum verification failed; no app files were changed.");
-        const { stdout: listing } = await run2("tar", ["-tzf", name2], { cwd: staging, maxBuffer: 8 * 1024 * 1024 });
-        requireUpdate(listing.trim().split(/\r?\n/).every((path2) => path2.startsWith("bin/") && !path2.includes("\\") && !path2.includes(":") && !path2.split("/").some((part) => part === "." || part === "..")), "Release archive contains an unsafe path.");
-        const { stdout: detailed } = await run2("tar", ["-tvzf", name2], { cwd: staging, maxBuffer: 8 * 1024 * 1024 });
-        requireUpdate(detailed.trim().split(/\r?\n/).every((line) => ["-", "d"].includes(line[0])), "Release archive contains a link or special file.");
-        await run2("tar", ["-xzf", name2, "--no-same-owner", "--no-same-permissions"], { cwd: staging });
-        const root = path$3.join(staging, "bin");
-        const pkg = JSON.parse(await promises$1.readFile(path$3.join(root, "package.json"), "utf8"));
-        requireUpdate(pkg !== null && typeof pkg === "object" && "name" in pkg && pkg.name === "forge-bundle" && "version" in pkg && pkg.version === version2, "Release package version differs from the requested version.");
-        const { stdout } = await run2(process.execPath, [path$3.join(root, "forge.js"), "--version"], { timeout: 3e4 });
-        requireUpdate(JSON.parse(stdout).data?.version === version2, "The downloaded app cannot execute on this Node version.");
-        const paths2 = distributionFiles(JSON.parse(await promises$1.readFile(path$3.join(root, "data/distribution.json"), "utf8")), policy);
-        const files = [];
-        for (const path2 of paths2) {
-          const entry2 = await promises$1.lstat(path$3.join(root, path2));
-          requireUpdate(entry2.isFile() && !entry2.isSymbolicLink(), "A release asset is not a regular file.");
-          const bytes2 = await promises$1.readFile(path$3.join(root, path2));
-          files.push({ path: path2, bytes: bytes2, revision: node_crypto.createHash("sha256").update(bytes2).digest("hex") });
-        }
-        return { version: version2, checksum, files };
-      } catch (error2) {
-        if (error2 instanceof AppError) throw error2;
-        throw updateError("UPDATE_DOWNLOAD_FAILED", "Could not download or unpack the release. Check network access, curl, tar and available disk space; existing app files were preserved.");
-      } finally {
-        await promises$1.rm(staging, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
-      }
-    }
-  };
-}
-const updateCheckSchema = {
-  type: "object",
-  required: ["installedVersion", "releaseVersion", "available", "revision", "releaseUrl"],
-  additionalProperties: false,
-  properties: { installedVersion: { type: "string" }, releaseVersion: { type: "string" }, available: { type: "boolean" }, revision: { type: "string" }, releaseUrl: { type: "string" } }
-};
-const updateApplySchema = {
-  type: "object",
-  required: ["installedVersion", "releaseVersion", "checksum", "changed", "dryRun", "changes", "revision", "restartRequired"],
-  additionalProperties: false,
-  properties: {
-    installedVersion: { type: "string" },
-    releaseVersion: { type: "string" },
-    checksum: { type: "string" },
-    changed: { type: "boolean" },
-    dryRun: { type: "boolean" },
-    changes: { type: "array", items: { type: "object" } },
-    revision: { type: "string" },
-    restartRequired: { type: "boolean" }
-  }
-};
-function updateCommand(updater) {
-  return {
-    id: "update",
-    description: "Check GitHub Releases and upgrade this workspace app while preserving local settings.",
-    usage: "update [check [--release-version <version>] | apply --release-version <version> --if-match <revision>]",
-    scope: "workspace",
-    discovery: true,
-    mutating: false,
-    defaultAction: "check",
-    unknownAction: "INVALID_ARGUMENT",
-    args: [{ name: "action", description: "check (default) or apply.", enum: ["check", "apply"] }],
-    actions: {
-      check: {
-        description: "Inspect the installed revision and latest stable GitHub release without changing the app.",
-        output: updateCheckSchema,
-        options: { "release-version": option$1.string("Check this pinned stable release instead of resolving latest.") }
-      },
-      apply: {
-        description: "Download, verify and apply a pinned release as one guarded batch; preserve mutable workspace data.",
-        mutating: true,
-        destructive: true,
-        idempotent: true,
-        output: updateApplySchema,
-        options: {
-          "release-version": option$1.string("Stable GitHub release version to install, such as 0.1.0.", { required: true }),
-          "if-match": option$1.string("Installed bin folder revision returned by update check; required before upgrading.", { required: true })
-        }
-      }
-    },
-    errors: ["INVALID_ARGUMENT", "INVALID_PATH", "NOT_FOUND", "CONFLICT", "UNSAFE_PATH", "DESTINATION_EXISTS", "UPDATE_INVALID", "UPDATE_DOWNLOAD_FAILED", "UPDATE_SCOPE_INVALID"],
-    async run(args, flags, context) {
-      arity(args, 0, 1);
-      const action2 = args[0] ?? "check";
-      ensure(action2 === "check" || action2 === "apply", "INVALID_ARGUMENT", "Use update check or update apply.");
-      if (action2 === "check") return updater.check(context, value$2(flags, "release-version"));
-      const version2 = releaseVersion(value$2(flags, "release-version", true));
-      const revision2 = value$2(flags, "if-match", true);
-      ensure(/^[a-f0-9]{64}$/.test(revision2), "INVALID_ARGUMENT", "--if-match must be the SHA-256 folder revision from update check.");
-      return updater.apply(context, version2, revision2);
-    }
-  };
-}
-const updatesStrings = { de: {
-  manifest: { name: "App-Aktualisierungen", description: "Das portable Programm aus GitHub Releases mit Revisionsschutz aktualisieren und Arbeitsbereichsdaten erhalten." },
-  commands: { update: "GitHub Releases prüfen und das Programm dieses Arbeitsbereichs aktualisieren; lokale Einstellungen bleiben erhalten." },
-  actions: {
-    "update check": "Installierte Revision und neueste stabile GitHub-Version ohne Änderungen am Programm prüfen.",
-    "update apply": "Eine feste Version herunterladen, prüfen und als geschützten Stapel anwenden; veränderbare Arbeitsbereichsdaten erhalten."
-  },
-  descriptions: {
-    "check (default) or apply.": "check (Standard) oder apply.",
-    "Check this pinned stable release instead of resolving latest.": "Diese feste stabile Version statt der neuesten Version prüfen.",
-    "Stable GitHub release version to install, such as 0.1.0.": "Zu installierende stabile GitHub-Version, etwa 0.1.0.",
-    "Installed bin folder revision returned by update check; required before upgrading.": "Installierte bin-Ordnerrevision aus update check; vor der Aktualisierung erforderlich."
-  },
-  errors: {
-    UPDATE_DOWNLOAD_FAILED: { summary: "Die GitHub-Version konnte nicht abgerufen werden.", hint: "Netzwerkzugriff, curl, tar und Speicherplatz prüfen; anschließend erneut versuchen." },
-    UPDATE_INVALID: { summary: "Die Version oder das Archiv ist ungültig.", hint: "Stabile Version, Prüfsumme und Verteilungsmanifest prüfen; das bestehende Programm bleibt erhalten." },
-    UPDATE_SCOPE_INVALID: { summary: "Der Zielarbeitsbereich hat keine installierte Forge-Verteilung.", hint: "Zuerst eine Version installieren oder --root auf den richtigen Arbeitsbereich setzen." }
-  }
-} };
-function updatesPlugin(policy) {
-  return {
-    manifest: {
-      id: "updates",
-      name: "App updates",
-      version: "0.1.0",
-      minAppVersion: "0.1.0",
-      core: true,
-      author: "The Forge",
-      description: "Upgrade the portable app from GitHub Releases with revision guards while preserving workspace data."
-    },
-    strings: updatesStrings,
-    create: () => ({
-      commands: [updateCommand(new AppUpdate(githubReleases(policy), policy))],
-      errors: [
-        { code: "UPDATE_DOWNLOAD_FAILED", category: "external", summary: "The GitHub release could not be fetched.", hint: "Check network access, curl, tar and disk space, then retry." },
-        { code: "UPDATE_INVALID", category: "input", summary: "The release version or archive is invalid.", hint: "Inspect the stable release version, checksum and distribution manifest; the existing app was preserved." },
-        { code: "UPDATE_SCOPE_INVALID", category: "input", summary: "The target workspace has no installed Forge distribution.", hint: "Install a release first or use --root to select the correct workspace." }
-      ]
-    })
-  };
-}
-const schemaVersion = 1;
-const requiredAssets = ["forge.js", "forge-runtime.js", "forge-server.cjs", "package.json", "config/default.json", "data/distribution.json", "webviews/admin/index.html", "webviews/admin/manifest.json", "webviews/admin/THIRD-PARTY-NOTICES.md", "browser-runtime/playwright-core/index.js", "browser-runtime/playwright-core/package.json", "browser-runtime/playwright-core/browsers.json", "browser-runtime/playwright-core/lib/coreBundle.js"];
-const ownedAssetPattern = "^(?:forge(?:-runtime)?\\.js|forge-server\\.cjs|package\\.json|config/default\\.json|skills/.+|webviews/admin/.+|browser-runtime/playwright-core/.+|data/(?:LICENSE|README\\.md|THIRD-PARTY-NOTICES\\.md|distribution\\.json|(?:docs|types|licenses)/.+))$";
-const distributionPolicy = {
-  schemaVersion,
-  requiredAssets,
-  ownedAssetPattern
-};
-function nodeLockFiles(root, warn) {
-  return async (path2, command2) => {
-    const target = await (await NodeFiles.at(root)).resolvePath(path2);
-    await promises$1.mkdir(path$3.dirname(target), { recursive: true });
-    const token = await acquireLock(target, () => ({ command: command2 }), path2, (lock) => warn(recoveredLockMessage(lock)));
-    return async () => await releaseLock(target, token) === "released";
-  };
-}
-const retryable = /* @__PURE__ */ new Set([429, 503]);
-function retryAfter(value2, now = Date.now()) {
-  if (value2 === null || value2.trim() === "") return null;
-  const seconds = Number(value2.trim());
-  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1e3);
-  const date2 = Date.parse(value2);
-  return Number.isNaN(date2) ? null : Math.max(0, date2 - now);
-}
-class FetchHttpClient {
-  fetch;
-  sleep;
-  retries;
-  timeoutMs;
-  maxDelayMs;
-  constructor(options2 = {}) {
-    this.fetch = options2.fetch ?? ((url2, init) => globalThis.fetch(url2, init));
-    this.sleep = options2.sleep ?? ((milliseconds) => new Promise((resolve2) => {
-      setTimeout(resolve2, milliseconds);
-    }));
-    this.retries = options2.retries ?? 3;
-    this.timeoutMs = options2.timeoutMs ?? 3e4;
-    this.maxDelayMs = options2.maxDelayMs ?? 6e4;
-  }
-  async request(request) {
-    const retries = request.retry ?? request.method === "GET" ? this.retries : 0;
-    for (let attempt = 0; ; attempt++) {
-      const response = await this.attempt(request);
-      if (!retryable.has(response.status) || attempt >= retries) return response;
-      const asked = retryAfter(response.headers["retry-after"] ?? null);
-      await this.sleep(Math.min(asked ?? 1e3 * 2 ** attempt, this.maxDelayMs));
-    }
-  }
-  async attempt(request) {
-    const timeout2 = request.timeoutMs ?? this.timeoutMs;
-    let response;
-    try {
-      response = await this.fetch(request.url, {
-        method: request.method,
-        ...request.headers ? { headers: { ...request.headers } } : {},
-        ...request.body === void 0 ? {} : { body: request.body },
-        signal: AbortSignal.timeout(timeout2),
-        redirect: "manual"
-      });
-    } catch (error2) {
-      const reason = error2 instanceof Error && (error2.name === "TimeoutError" || error2.name === "AbortError") ? `timed out after ${timeout2} ms` : "could not connect";
-      throw new Error(`${request.method} ${request.url} ${reason}.`);
-    }
-    const headers = {};
-    response.headers.forEach((value2, name2) => {
-      headers[name2.toLowerCase()] = value2;
-    });
-    return { status: response.status, headers, body: await response.text() };
-  }
-}
-const relativePath$1 = string$3().min(1).transform((value2) => value2.replace(/\/+$/, "")).refine((value2) => {
-  try {
-    vaultPath(value2);
-    return true;
-  } catch {
-    return false;
-  }
-}, "Must be a contained workspace-relative path.");
-const pluginIds = array(string$3().regex(/^[a-z][a-z0-9-]*$/)).refine((ids) => new Set(ids).size === ids.length, "Duplicate plugin IDs.").default([]);
-const configSchema = strictObject({
-  schemaVersion: literal$1(1).default(1),
-  paths: strictObject({
-    projects: relativePath$1.refine((value2) => value2.toLowerCase() !== "bin" && !value2.toLowerCase().startsWith("bin/"), "Projects must be outside the fixed bin directory.").default("projects")
-  }).prefault({}),
-  settings: strictObject({ language: _enum(["en", "de"]).default("en"), json: boolean().default(false), dryRun: boolean().default(false), events: _enum(eventOutputLevels).default("changes") }).prefault({}),
-  // Plugin sections are validated against the schemas that registered plugins declare once they load.
-  plugins: strictObject({
-    enabled: pluginIds,
-    disabled: pluginIds,
-    settings: record$2(string$3().regex(/^[a-z][a-z0-9-]*$/, "Use a plugin id."), unknown()).default({})
-  }).prefault({})
-});
-async function loadConfig(options2) {
-  const root = options2.root !== void 0 ? path$3.resolve(options2.cwd, options2.root) : path$3.resolve(path$3.dirname(options2.defaultPath), "..");
-  const path2 = path$3.resolve(root, "bin/config.json");
-  let content2;
-  let exists2 = true;
-  try {
-    content2 = JSON.parse(await promises$1.readFile(path2, "utf8"));
-  } catch (error2) {
-    if (error2.code === "ENOENT") {
-      content2 = {};
-      exists2 = false;
-    } else throw forgeError("INVALID_CONFIG", `Cannot read configuration ${path2}: ${errorMessage(error2)}`);
-  }
-  const parsed2 = configSchema.safeParse(content2);
-  if (!parsed2.success) throw forgeError("INVALID_CONFIG", parsed2.error.issues.map((issue2) => `${issue2.path.join(".") || "config"}: ${issue2.message}`).join("; "));
-  const config2 = parsed2.data;
-  return { path: exists2 ? path2 : null, root, config: config2 };
-}
-const ownedAsset = new RegExp(distributionPolicy.ownedAssetPattern);
-async function readSetupArtifacts(bundleDir) {
-  const root = await promises$1.lstat(bundleDir);
-  ensure(root.isDirectory() && !root.isSymbolicLink(), "INVALID_SETUP", "The bin folder must be a regular directory.");
-  const readAsset2 = async (path2) => {
-    vaultPath(path2);
-    ensure(ownedAsset.test(path2), "INVALID_SETUP", `Not a distribution asset: ${path2}`);
-    const segments2 = path2.split("/");
-    let current = bundleDir;
-    for (const [index2, segment2] of segments2.entries()) {
-      current = path$3.join(current, segment2);
-      const entry2 = await promises$1.lstat(current).catch((error2) => {
-        if (error2.code !== "ENOENT" && error2.code !== "ENOTDIR") throw error2;
-        throw forgeError("INVALID_SETUP", `The distribution is incomplete: bin/${path2} is missing. Copy the complete bin folder of a release, or rebuild it, then run setup again.`, { path: `bin/${path2}` });
-      });
-      ensure(!entry2.isSymbolicLink() && (index2 === segments2.length - 1 ? entry2.isFile() : entry2.isDirectory()), "INVALID_SETUP", `Distribution paths must contain only regular files and directories: ${path2}`);
-    }
-    return promises$1.readFile(current);
-  };
-  let manifest;
-  try {
-    manifest = JSON.parse(new TextDecoder().decode(await readAsset2("data/distribution.json")));
-  } catch (error2) {
-    if (!(error2 instanceof SyntaxError)) throw error2;
-    throw forgeError("INVALID_SETUP", "bin/data/distribution.json is not valid JSON. Copy the complete bin folder of a release, or rebuild it.", { path: "bin/data/distribution.json" });
-  }
-  ensure(typeof manifest === "object" && manifest !== null && "schemaVersion" in manifest && manifest.schemaVersion === distributionPolicy.schemaVersion && "files" in manifest && Array.isArray(manifest.files), "INVALID_SETUP", "The distribution manifest is invalid. Rebuild or download the complete bin folder.");
-  const files = manifest.files;
-  ensure(files.every((path2) => typeof path2 === "string") && new Set(files).size === files.length, "INVALID_SETUP", "The distribution manifest must contain unique paths.");
-  ensure(distributionPolicy.requiredAssets.every((path2) => files.includes(path2)), "INVALID_SETUP", "The distribution manifest is incomplete.");
-  const artifacts = [];
-  for (const path2 of files) artifacts.push({ path: path2, bytes: await readAsset2(path2) });
-  return artifacts;
-}
-const snapshotFormat = 2;
-const racyWindowMs = 2e3;
-const aliasesKey = (aliases) => JSON.stringify([...aliases]);
-const outcomeKey = (path2, revision2) => `${fileKind(path2)}:${revision2}`;
-function unchangedFile(stored, current, checkedAtMs) {
-  return stored !== void 0 && current !== void 0 && stored.stamp !== null && stored.stamp === current.stamp && current.changedMs < checkedAtMs - racyWindowMs;
-}
-const text$6 = (value2) => typeof value2 === "string";
-function storedLinks(value2) {
-  return isRecord$1(value2) && Array.isArray(value2.paths) && value2.paths.every(text$6) && text$6(value2.aliases) && isRecord$1(value2.sources) && Object.values(value2.sources).every(Array.isArray);
-}
-function snapshotFile$1(value2) {
-  return isRecord$1(value2) && (value2.stamp === null || text$6(value2.stamp)) && text$6(value2.revision);
-}
-function storedOutcome(value2) {
-  if (!isRecord$1(value2)) return false;
-  if (isRecord$1(value2.metadata)) return Array.isArray(value2.positions) && Object.keys(value2).length === 2;
-  return isRecord$1(value2.issue) && text$6(value2.issue.code) && text$6(value2.issue.message) && Object.keys(value2).length === 1;
-}
-function readSnapshot(value2, key) {
-  if (!isRecord$1(value2) || value2.format !== snapshotFormat || value2.key !== key) return null;
-  if (typeof value2.checkedAtMs !== "number" || !Number.isFinite(value2.checkedAtMs)) return null;
-  if (!isRecord$1(value2.files) || !Object.values(value2.files).every(snapshotFile$1)) return null;
-  if (!isRecord$1(value2.outcomes) || !Object.values(value2.outcomes).every(storedOutcome)) return null;
-  if (value2.links !== null && !storedLinks(value2.links)) return null;
-  return value2;
-}
-const positioned = ["links", "embeds", "referenceLinks", "tags", "headings", "sections", "listItems"];
-function encodeOutcome(outcome) {
-  if (!("metadata" in outcome)) return outcome;
-  const positions2 = [];
-  const index2 = ({ start: start2, end: end2 }) => positions2.push(start2.line, start2.col, start2.offset, end2.line, end2.col, end2.offset) / 6 - 1;
-  const source2 = outcome.metadata, metadata2 = { ...source2 };
-  for (const key of positioned) {
-    const items2 = source2[key];
-    if (items2) metadata2[key] = items2.map((item) => ({ ...item, position: index2(item.position) }));
-  }
-  if (source2.blocks) metadata2.blocks = Object.fromEntries(Object.entries(source2.blocks).map(([id2, block]) => [id2, { ...block, position: index2(block.position) }]));
-  if (source2.frontmatterPosition) metadata2.frontmatterPosition = index2(source2.frontmatterPosition);
-  return { metadata: metadata2, positions: positions2 };
-}
-function decodeOutcome(stored) {
-  if (!("metadata" in stored)) return stored;
-  const { metadata: metadata2, positions: positions2 } = stored;
-  if (!Array.isArray(positions2) || positions2.length % 6 !== 0) return void 0;
-  const count2 = positions2.length / 6;
-  const position2 = (value2) => {
-    if (typeof value2 !== "number" || !Number.isInteger(value2) || value2 < 0 || value2 >= count2) return void 0;
-    const at = value2 * 6;
-    return { start: { line: positions2[at], col: positions2[at + 1], offset: positions2[at + 2] }, end: { line: positions2[at + 3], col: positions2[at + 4], offset: positions2[at + 5] } };
-  };
-  const decode2 = (item) => {
-    const value2 = position2(item.position);
-    if (value2 === void 0) return false;
-    item.position = value2;
-    return true;
-  };
-  for (const key of positioned) {
-    const items2 = metadata2[key];
-    if (items2 !== void 0 && !(Array.isArray(items2) && items2.every(decode2))) return void 0;
-  }
-  const blocks2 = metadata2.blocks;
-  if (blocks2 !== void 0 && !Object.values(blocks2).every(decode2)) return void 0;
-  if (metadata2.frontmatterPosition !== void 0) {
-    const value2 = position2(metadata2.frontmatterPosition);
-    if (value2 === void 0) return void 0;
-    metadata2.frontmatterPosition = value2;
-  }
-  return { metadata: metadata2 };
-}
-function encodeResolution(resolution, index2) {
-  if (resolution.status === "external") return null;
-  if (resolution.status === "resolved") return resolution.via === "path" ? index2(resolution.path) : -1 - index2(resolution.path);
-  if (resolution.reason === "missing") return ["missing", resolution.linkpath];
-  return [resolution.via, resolution.linkpath, ...resolution.candidates.map(index2)];
-}
-function decodeResolution(stored, paths2) {
-  const path2 = (value2) => typeof value2 === "number" && Number.isInteger(value2) && value2 >= 0 && value2 < paths2.length ? paths2[value2] : void 0;
-  if (stored === null) return { status: "external" };
-  if (typeof stored === "number") {
-    const resolved = path2(stored < 0 ? -1 - stored : stored);
-    return resolved === void 0 ? void 0 : { status: "resolved", path: resolved, via: stored < 0 ? "alias" : "path" };
-  }
-  if (!Array.isArray(stored) || typeof stored[1] !== "string") return void 0;
-  const [reason, linkpath, ...indexes2] = stored;
-  if (reason === "missing") return stored.length === 2 ? { status: "unresolved", linkpath, reason } : void 0;
-  if (reason !== "path" && reason !== "alias") return void 0;
-  const candidates2 = indexes2.map(path2);
-  return candidates2.length > 1 && candidates2.every((item) => item !== void 0) ? { status: "unresolved", linkpath, reason: "ambiguous", via: reason, candidates: candidates2 } : void 0;
-}
-class ParseResults {
-  constructor(options2) {
-    this.options = options2;
-  }
-  options;
-  previous;
-  /** The previous snapshot once `previous` settled; undefined before. */
-  loaded;
-  records = /* @__PURE__ */ new Map();
-  /** Stored outcomes decoded so far, by outcome key; undefined for one that could not be decoded. */
-  decoded = /* @__PURE__ */ new Map();
-  checkedAtMs = 0;
-  changed = false;
-  /** The scope's files with stamps from the store for those `stamped` accepts, or the repository listing without stamps. */
-  async listing(list2, stamped) {
-    if (this.options === void 0) return { checkedAtMs: null, files: (await list2()).map((path2) => ({ path: path2 })) };
-    const listing = await this.options.store.listing(stamped);
-    this.checkedAtMs = listing.checkedAtMs;
-    return listing;
-  }
-  /** The previous snapshot, loaded once; null without a store or when it is missing, unreadable or for another key. */
-  stored() {
-    const options2 = this.options;
-    this.previous ??= (options2 === void 0 ? Promise.resolve(null) : options2.store.load().then((value2) => readSnapshot(value2, options2.key), () => null)).then((snapshot) => {
-      this.loaded = snapshot;
-      return snapshot;
-    });
-    return this.previous;
-  }
-  /**
-   * The stored outcome of a file whose stamp is unchanged since the previous snapshot, recorded as current. Answers
-   * from the loaded snapshot without waiting, so call it once `stored()` has settled; before that it reuses nothing.
-   */
-  unchanged(path2, stamp) {
-    const previous2 = this.loaded;
-    const stored = previous2 && Object.hasOwn(previous2.files, path2) ? previous2.files[path2] : void 0;
-    if (!previous2 || !unchangedFile(stored, stamp, previous2.checkedAtMs)) return void 0;
-    const outcome = this.outcome(previous2, outcomeKey(path2, stored.revision));
-    if (outcome !== void 0) this.records.set(path2, { stamp: stamp.stamp, revision: stored.revision });
-    return outcome;
-  }
-  /** The stored outcome for content of `revision` at `path`, or undefined when it must be parsed. */
-  async reusable(path2, revision2) {
-    const previous2 = await this.stored();
-    return previous2 ? this.outcome(previous2, outcomeKey(path2, revision2)) : void 0;
-  }
-  /**
-   * Records that the index holds `revision` for `path`, read after `stamp` was taken (null: no stamp). The snapshot
-   * becomes outdated when the record differs from the stored one, or when storing it would let the next load trust
-   * the stamp. A file that stays inside the racy window, such as one with a future timestamp, is read again on every
-   * load but does not rewrite an otherwise unchanged snapshot.
-   */
-  read(path2, revision2, stamp) {
-    if (this.options === void 0) return;
-    const record2 = { stamp: stamp?.stamp ?? null, revision: revision2 };
-    this.records.set(path2, record2);
-    const before = this.loaded && Object.hasOwn(this.loaded.files, path2) ? this.loaded.files[path2] : void 0;
-    const same2 = before !== void 0 && before.stamp === record2.stamp && before.revision === revision2;
-    const undecodable = this.decoded.has(outcomeKey(path2, revision2)) && this.decoded.get(outcomeKey(path2, revision2)) === void 0;
-    if (!same2 || undecodable || stamp !== null && stamp.changedMs < this.checkedAtMs - racyWindowMs) this.changed = true;
-  }
-  /** The recorded revision of an indexed path, if any. */
-  revision(path2) {
-    return this.records.get(path2)?.revision;
-  }
-  forget(path2) {
-    if (this.records.delete(path2)) this.changed = true;
-  }
-  /** The vault's paths or aliases changed, so the stored link resolutions no longer match. */
-  outdated() {
-    this.changed = true;
-  }
-  /**
-   * After the files are indexed: the stored resolutions of each source whose content is unchanged since the stored
-   * snapshot, provided the index has the stored vault paths (in order) and aliases. Otherwise the snapshot is
-   * outdated and nothing is reused.
-   */
-  async links(paths2, aliases) {
-    const previous2 = await this.stored(), links2 = previous2?.links;
-    if (!previous2 || !links2 || links2.aliases !== aliases || links2.paths.length !== paths2.length || links2.paths.some((path2, position2) => path2 !== paths2[position2])) {
-      this.changed = true;
-      return () => void 0;
-    }
-    return (source2) => Object.hasOwn(links2.sources, source2) && Object.hasOwn(previous2.files, source2) && previous2.files[source2].revision === this.revision(source2) ? links2.sources[source2] : void 0;
-  }
-  /** After a build: a missing previous snapshot or a file that left the vault makes the snapshot outdated. */
-  async built() {
-    const previous2 = await this.stored();
-    if (previous2 === null || Object.keys(previous2.files).some((path2) => !this.records.has(path2))) this.changed = true;
-  }
-  /**
-   * Stores the index's current outcomes and `links` unless nothing may or needs to be written: no store, a dry run,
-   * or nothing that differs from the previous snapshot. A failed save throws and leaves the state outdated.
-   */
-  async persist(outcomeOf, links2) {
-    if (this.options === void 0 || !this.options.save || !this.changed) return;
-    await this.options.store.save(this.next(this.options.key, outcomeOf, links2()));
-    this.changed = false;
-  }
-  next(key, outcomeOf, links2) {
-    const files = [], outcomes = /* @__PURE__ */ new Map();
-    for (const [path2, record2] of this.records) {
-      const outcome = outcomeOf(path2);
-      if (outcome === void 0) continue;
-      files.push([path2, record2]);
-      const stored = outcomeKey(path2, record2.revision);
-      if (!outcomes.has(stored)) outcomes.set(stored, encodeOutcome(outcome));
-    }
-    return { format: snapshotFormat, key, checkedAtMs: this.checkedAtMs, files: Object.fromEntries(files), outcomes: Object.fromEntries(outcomes), links: links2 };
-  }
-  /** A stored outcome, decoded once per key: files with the same content share it. */
-  outcome(previous2, key) {
-    if (!Object.hasOwn(previous2.outcomes, key)) return void 0;
-    if (!this.decoded.has(key)) this.decoded.set(key, decodeOutcome(previous2.outcomes[key]));
-    return this.decoded.get(key);
-  }
-}
-const pendingFileReads = 16;
-const workspaceDistribution = "bin";
-function vaultMember(path2, workspaceRoot) {
-  const segments2 = path2.split("/");
-  return !segments2.some((part) => part.startsWith(".")) && !(workspaceRoot && segments2.length > 1 && segments2[0].toLowerCase() === workspaceDistribution);
-}
-const missing = (error2) => error2 instanceof AppError && error2.code === "NOT_FOUND";
-const counts = () => /* @__PURE__ */ Object.create(null);
-const vaultOrder = (paths2) => [...paths2].sort();
-async function eachConcurrently(items2, limit, work) {
-  let next = 0;
-  await Promise.all(Array.from({ length: Math.min(limit, items2.length) }, async () => {
-    while (next < items2.length) await work(items2[next++]);
-  }));
-}
-function orderedReferences(cache) {
-  const body = [
-    ...(cache.links ?? []).map((reference) => ({ kind: "link", reference })),
-    ...(cache.embeds ?? []).map((reference) => ({ kind: "embed", reference }))
-  ].sort((a, b) => a.reference.position.start.offset - b.reference.position.start.offset);
-  return [
-    ...body,
-    ...(cache.frontmatterLinks ?? []).map((reference) => ({ kind: "frontmatter", reference })),
-    ...(cache.canvasLinks ?? []).map((reference) => ({ kind: "canvas", reference }))
-  ];
-}
-class VaultMetadata {
-  constructor(repository, parser2, options2 = {}) {
-    this.repository = repository;
-    this.parser = parser2;
-    const workspaceRoot = options2.workspaceRoot ?? false;
-    this.workspaceRoot = workspaceRoot;
-    this.revisionOf = options2.revisionOf;
-    this.member = (path2) => vaultMember(path2, workspaceRoot);
-    this.results = new ParseResults(options2.snapshots);
-  }
-  repository;
-  parser;
-  resolvedLinks = /* @__PURE__ */ Object.create(null);
-  unresolvedLinks = /* @__PURE__ */ Object.create(null);
-  paths = [];
-  caches = /* @__PURE__ */ new Map();
-  problems = /* @__PURE__ */ new Map();
-  outgoing = /* @__PURE__ */ new Map();
-  incoming = /* @__PURE__ */ new Map();
-  /** The link index over `paths` and `aliasMap`, built on first use after each reindex. */
-  builtIndex;
-  aliasMap = /* @__PURE__ */ new Map();
-  /** `aliasesKey` of `aliasMap`. */
-  aliases = aliasesKey(/* @__PURE__ */ new Map());
-  loading;
-  pending = Promise.resolve();
-  member;
-  workspaceRoot;
-  results;
-  revisionOf;
-  load() {
-    this.loading ??= this.build();
-    return this.loading.then(() => this);
-  }
-  async vaultFiles() {
-    if (this.loading) return (await this.load()).files();
-    return (await this.repository.list()).filter(this.member);
-  }
-  async parseFile(file) {
-    if (!this.member(file.path) || !this.parser.indexes(file.path)) return null;
-    const revision2 = this.revisionOf?.(file.bytes);
-    if (revision2 !== void 0 && this.loading) {
-      await this.load();
-      if (this.results.revision(file.path) === revision2) return this.caches.get(file.path) ?? null;
-    }
-    const outcome = (revision2 === void 0 ? void 0 : await this.results.reusable(file.path, revision2)) ?? this.outcome(file.path, file.bytes);
-    return "metadata" in outcome ? outcome.metadata : null;
-  }
-  /**
-   * Stores the parse results of a loaded index when anything was read or changed since the stored snapshot; does
-   * nothing without a store, during a dry run, before the first load or after a failed load (the command reports
-   * that failure). A failed save throws and stores nothing.
-   */
-  async persist() {
-    if (!this.loading) return;
-    try {
-      await this.loading;
-    } catch {
-      return;
-    }
-    await this.pending;
-    await this.results.persist((path2) => {
-      const metadata2 = this.caches.get(path2), issue2 = this.problems.get(path2);
-      return metadata2 ? { metadata: metadata2 } : issue2 ? { issue: { code: issue2.code, message: issue2.message } } : void 0;
-    }, () => this.storedLinks());
-  }
-  /** Every source's resolutions by the place of each reference among its ordered references (externals included). */
-  storedLinks() {
-    const positions2 = new Map(this.paths.map((path2, position2) => [path2, position2]));
-    const sources = this.sources().map((source2) => {
-      const references = this.outgoing.get(source2) ?? [];
-      let next = 0;
-      return [source2, orderedReferences(this.caches.get(source2)).map((item) => references[next]?.reference === item.reference ? encodeResolution(references[next++].resolution, (path2) => positions2.get(path2)) : null)];
-    });
-    return { paths: [...this.paths], aliases: this.aliases, sources: Object.fromEntries(sources) };
-  }
-  parseContent(path2, bytes) {
-    return this.parser.indexes(path2) ? this.parser.parse(path2, bytes) : null;
-  }
-  async fork(repository) {
-    const fork = new VaultMetadata(repository, this.parser, { workspaceRoot: this.workspaceRoot, ...this.revisionOf ? { revisionOf: this.revisionOf } : {} });
-    if (!this.loading) return fork;
-    await this.load();
-    await this.pending;
-    fork.paths = [...this.paths];
-    for (const [path2, cache] of this.caches) fork.caches.set(path2, cache);
-    for (const [path2, issue2] of this.problems) fork.problems.set(path2, issue2);
-    for (const [path2, references] of this.outgoing) fork.outgoing.set(path2, references);
-    for (const [path2, sources] of this.incoming) fork.incoming.set(path2, new Set(sources));
-    Object.assign(fork.resolvedLinks, this.resolvedLinks);
-    Object.assign(fork.unresolvedLinks, this.unresolvedLinks);
-    fork.builtIndex = this.builtIndex;
-    fork.aliasMap = this.aliasMap;
-    fork.aliases = this.aliases;
-    fork.loading = Promise.resolve();
-    return fork;
-  }
-  update(changes2) {
-    if (!this.loading) return Promise.resolve(null);
-    const result = this.pending.then(() => this.loading).then(() => this.apply(changes2));
-    this.pending = result.catch(() => void 0);
-    return result;
-  }
-  invalidate(paths2) {
-    return this.update(paths2.map((path2) => ({ path: path2, operation: "updated" })));
-  }
-  files() {
-    return this.paths;
-  }
-  getFileCache(path2) {
-    return this.caches.get(path2) ?? null;
-  }
-  issues() {
-    return vaultOrder(this.problems.keys()).map((path2) => this.problems.get(path2));
-  }
-  references(sourcePath) {
-    return this.outgoing.get(sourcePath) ?? [];
-  }
-  getFirstLinkpathDest(linkpath, sourcePath) {
-    const result = resolveLinkpath(this.index, linkpath, sourcePath);
-    return result.status === "resolved" ? result.path : null;
-  }
-  getClosestLinkpathDest(linkpath, sourcePath) {
-    return closestDestination(resolveLinkpath(this.index, linkpath, sourcePath), sourcePath);
-  }
-  fileToLinktext(path2, sourcePath, omitMdExtension = true) {
-    return fileToLinktext(this.index, path2, sourcePath, omitMdExtension);
-  }
-  backlinks(path2) {
-    return vaultOrder(this.incoming.get(path2) ?? []).filter((source2) => source2 !== path2).flatMap((source2) => this.references(source2).filter((item) => item.resolution.status === "resolved" && item.resolution.path === path2).map((item) => ({ ...item, source: source2 })));
-  }
-  /**
-   * Lists the vault, then takes each indexed file's parse result from the stored snapshot when its stamp is
-   * unchanged, else reads it and reuses a stored result of the same content revision or parses it.
-   */
-  async build() {
-    const listing = await this.results.listing(() => this.repository.list(), (path2) => this.member(path2) && this.parser.indexes(path2));
-    const stamps = /* @__PURE__ */ new Map();
-    for (const file of listing.files) if ("stamp" in file) stamps.set(file.path, file);
-    this.paths = listing.files.map((file) => file.path).filter(this.member);
-    await this.results.stored();
-    const changed = this.paths.filter((path2) => {
-      if (!this.parser.indexes(path2)) return false;
-      const unchanged = this.results.unchanged(path2, stamps.get(path2));
-      if (unchanged !== void 0) this.adopt(path2, unchanged);
-      return unchanged === void 0;
-    });
-    await eachConcurrently(changed, pendingFileReads, async (path2) => {
-      const stamp = stamps.get(path2);
-      const file = await this.repository.read(path2);
-      this.adopt(path2, await this.results.reusable(path2, file.revision) ?? this.outcome(path2, file.bytes));
-      this.results.read(path2, file.revision, stamp ?? null);
-    });
-    await this.results.built();
-    this.reindex();
-    const stored = await this.results.links(this.paths, this.aliases);
-    for (const source2 of this.sources()) this.resolve(source2, stored(source2));
-  }
-  outcome(path2, bytes) {
-    try {
-      return { metadata: this.parser.parse(path2, bytes) };
-    } catch (error2) {
-      return { issue: { code: error2 instanceof AppError ? error2.code : "INVALID_FILE", message: errorMessage(error2) } };
-    }
-  }
-  adopt(path2, outcome) {
-    if ("metadata" in outcome) {
-      this.caches.set(path2, outcome.metadata);
-      this.problems.delete(path2);
-    } else {
-      this.caches.delete(path2);
-      this.problems.set(path2, { path: path2, ...outcome.issue });
-    }
-  }
-  async apply(changes2) {
-    const touched = /* @__PURE__ */ new Set(), removed = /* @__PURE__ */ new Set();
-    for (const change2 of changes2) {
-      if (change2.operation === "renamed") {
-        removed.add(change2.oldPath);
-        touched.add(change2.path);
-      } else if (change2.operation === "deleted") removed.add(change2.path);
-      else touched.add(change2.path);
-    }
-    for (const path2 of touched) removed.delete(path2);
-    const before = new Set(this.paths), aliasesBefore = new Map([...touched, ...removed].map((path2) => [path2, this.aliasKey(path2)]));
-    const contents = /* @__PURE__ */ new Map();
-    await eachConcurrently([...touched].filter(this.member), pendingFileReads, async (path2) => {
-      try {
-        contents.set(path2, await this.repository.read(path2));
-      } catch (error2) {
-        if (!missing(error2)) throw error2;
-        removed.add(path2);
-      }
-    });
-    const changed = [], deleted = [];
-    const prevCaches = /* @__PURE__ */ Object.create(null);
-    for (const path2 of removed) {
-      if (!before.has(path2)) continue;
-      prevCaches[path2] = this.caches.get(path2) ?? null;
-      this.caches.delete(path2);
-      this.problems.delete(path2);
-      this.forget(path2);
-      this.results.forget(path2);
-      deleted.push(path2);
-    }
-    for (const [path2, file] of contents) {
-      if (!this.parser.indexes(path2)) continue;
-      this.adopt(path2, this.outcome(path2, file.bytes));
-      this.results.read(path2, file.revision, null);
-      changed.push(path2);
-    }
-    const paths2 = vaultOrder(/* @__PURE__ */ new Set([...this.paths.filter((path2) => !removed.has(path2)), ...contents.keys()]));
-    const pathsChanged = paths2.length !== this.paths.length || paths2.some((path2, position2) => path2 !== this.paths[position2]);
-    const aliasesChanged = [...aliasesBefore].some(([path2, key]) => key !== this.aliasKey(path2));
-    this.paths = paths2;
-    for (const path2 of changed) if (!this.caches.has(path2)) this.forget(path2);
-    let resolved;
-    if (pathsChanged || aliasesChanged) {
-      this.results.outdated();
-      this.reindex();
-      const previous2 = new Map(this.sources().map((source2) => [source2, this.resolutionKey(source2)]));
-      for (const source2 of this.sources()) this.resolve(source2);
-      resolved = this.sources().filter((source2) => contents.has(source2) || previous2.get(source2) !== this.resolutionKey(source2));
-    } else {
-      resolved = vaultOrder(changed.filter((path2) => this.caches.has(path2)));
-      for (const source2 of resolved) this.resolve(source2);
-    }
-    this.reorder();
-    return { changed: vaultOrder(changed), deleted: vaultOrder(deleted), resolved, prevCaches };
-  }
-  aliasKey(path2) {
-    return JSON.stringify(this.caches.get(path2)?.aliases ?? []);
-  }
-  resolutionKey(source2) {
-    const references = this.outgoing.get(source2);
-    return references && JSON.stringify(references.map((item) => item.resolution));
-  }
-  sources() {
-    return this.paths.filter((path2) => this.caches.has(path2));
-  }
-  /** Takes the current paths and aliases for the link index, which is built when a link is first resolved. */
-  reindex() {
-    this.aliasMap = new Map(this.sources().flatMap((path2) => {
-      const names2 = this.caches.get(path2).aliases;
-      return names2?.length ? [[path2, names2]] : [];
-    }));
-    this.aliases = aliasesKey(this.aliasMap);
-    this.builtIndex = void 0;
-  }
-  // Paths are replaced, never mutated, and change only together with a reindex, so the lazy index stays current.
-  get index() {
-    this.builtIndex ??= linkIndex(this.paths, this.aliasMap);
-    return this.builtIndex;
-  }
-  /**
-   * Re-resolves one parsed source and replaces its link counts and backlink entries. `stored` resolutions, one per
-   * ordered reference, come from a snapshot of the same paths, aliases and content; a malformed one is recomputed.
-   */
-  resolve(source2, stored) {
-    this.unlink(source2);
-    const ordered2 = orderedReferences(this.caches.get(source2)), known2 = stored?.length === ordered2.length ? stored : void 0;
-    const references = [];
-    for (const [place, item] of ordered2.entries()) {
-      const syntax2 = item.reference.syntax, relative = syntax2 !== "wikilink" && syntax2 !== "canvas";
-      const resolution = (known2 && decodeResolution(known2[place], this.paths)) ?? resolveLinkpath(this.index, item.reference.link, source2, { relative, aliases: true });
-      if (resolution.status !== "external") references.push({ ...item, resolution });
-    }
-    const resolved = counts(), unresolved = counts();
-    for (const { resolution } of references) {
-      if (resolution.status === "resolved") {
-        resolved[resolution.path] = (resolved[resolution.path] ?? 0) + 1;
-        const sources = this.incoming.get(resolution.path) ?? /* @__PURE__ */ new Set();
-        this.incoming.set(resolution.path, sources.add(source2));
-      } else if (resolution.status === "unresolved") unresolved[resolution.linkpath] = (unresolved[resolution.linkpath] ?? 0) + 1;
-    }
-    this.outgoing.set(source2, references);
-    this.resolvedLinks[source2] = resolved;
-    this.unresolvedLinks[source2] = unresolved;
-  }
-  unlink(source2) {
-    for (const item of this.outgoing.get(source2) ?? []) {
-      if (item.resolution.status === "resolved") this.incoming.get(item.resolution.path)?.delete(source2);
-    }
-  }
-  /** Removes a source's outgoing references and link counts. */
-  forget(source2) {
-    this.unlink(source2);
-    this.outgoing.delete(source2);
-    delete this.resolvedLinks[source2];
-    delete this.unresolvedLinks[source2];
-  }
-  /** Keeps the link maps' key order equal to a fresh build after sources were added. */
-  reorder() {
-    for (const maps of [this.resolvedLinks, this.unresolvedLinks]) {
-      const entries2 = this.sources().map((source2) => [source2, maps[source2]]);
-      for (const [source2, value2] of entries2) {
-        delete maps[source2];
-        maps[source2] = value2;
-      }
-    }
-  }
-}
-const record = (cache) => JSON.parse(JSON.stringify(cache));
-function metadataChanges({ renames, changes: changes2 }) {
-  return [
-    ...renames.map(({ from, to }) => ({ path: to, oldPath: from, operation: "renamed" })),
-    ...changes2.map(({ path: path2, operation: operation2 }) => ({ path: path2, operation: operation2 }))
-  ];
-}
-class MetadataCacheEvents {
-  constructor(events2, index2) {
-    this.events = events2;
-    this.index = index2;
-  }
-  events;
-  index;
-  async committed({ renames, changes: changes2 }) {
-    const update = await this.index.update(metadataChanges({ renames, changes: changes2 }));
-    if (!update) return;
-    const cache = await this.index.load();
-    const written = new Set(changes2.map((change2) => change2.path)), indexed2 = new Set(cache.files());
-    const movedOnly = new Set(renames.filter((rename2) => !written.has(rename2.to)).map((rename2) => rename2.to));
-    const movedAway = new Set(renames.filter((rename2) => indexed2.has(rename2.to)).map((rename2) => rename2.from));
-    for (const path2 of update.changed) {
-      if (movedOnly.has(path2)) continue;
-      const metadata2 = cache.getFileCache(path2);
-      if (metadata2) await publishHostEvent(this.events, "metadataCache.changed", { path: path2, cache: record(metadata2) });
-    }
-    for (const path2 of update.deleted) {
-      if (movedAway.has(path2)) continue;
-      const previous2 = update.prevCaches[path2] ?? null;
-      await publishHostEvent(this.events, "metadataCache.deleted", { path: path2, prevCache: previous2 && record(previous2) });
-    }
-    for (const path2 of update.resolved) await publishHostEvent(this.events, "metadataCache.resolve", { path: path2 });
-    await publishHostEvent(this.events, "metadataCache.resolved", {});
-  }
 }
 function bail(error2) {
   if (error2) {
@@ -51000,7 +49545,7 @@ function factorySpaceMinMax(effects, ok, nok, type2, min, max) {
     return size >= min ? ok(code2) : nok(code2);
   }
 }
-const content$2 = {
+const content$3 = {
   tokenize: initializeContent
 };
 function initializeContent(effects) {
@@ -52423,7 +50968,7 @@ function subcontent(events2, eventIndex) {
   }
   return gaps;
 }
-const content$1 = {
+const content$2 = {
   resolve: resolveContent,
   tokenize: tokenizeContent
 };
@@ -53384,7 +51929,7 @@ function tokenizeHtmlText(effects, ok, nok) {
   function commentOpenInside(code2) {
     if (code2 === 45) {
       effects.consume(code2);
-      return commentEnd;
+      return commentEnd2;
     }
     return nok(code2);
   }
@@ -53406,11 +51951,11 @@ function tokenizeHtmlText(effects, ok, nok) {
   function commentClose(code2) {
     if (code2 === 45) {
       effects.consume(code2);
-      return commentEnd;
+      return commentEnd2;
     }
     return comment(code2);
   }
-  function commentEnd(code2) {
+  function commentEnd2(code2) {
     return code2 === 62 ? end2(code2) : code2 === 45 ? commentClose(code2) : comment(code2);
   }
   function cdataOpenInside(code2) {
@@ -54199,7 +52744,7 @@ function initializeFlow(effects) {
     blankLine$1,
     atBlankEnding,
     // Try to parse initial flow (essentially, only code).
-    effects.attempt(this.parser.constructs.flowInitial, afterConstruct, factorySpace(effects, effects.attempt(this.parser.constructs.flow, afterConstruct, effects.attempt(content$1, afterConstruct)), "linePrefix"))
+    effects.attempt(this.parser.constructs.flowInitial, afterConstruct, factorySpace(effects, effects.attempt(this.parser.constructs.flow, afterConstruct, effects.attempt(content$2, afterConstruct)), "linePrefix"))
   );
   return initial;
   function atBlankEnding(code2) {
@@ -54229,7 +52774,7 @@ const resolver = {
   resolveAll: createResolver()
 };
 const string$1 = initializeFactory("string");
-const text$5 = initializeFactory("text");
+const text$8 = initializeFactory("text");
 function initializeFactory(field2) {
   return {
     resolveAll: createResolver(field2 === "text" ? resolveAllLineSuffixes : void 0),
@@ -54403,7 +52948,7 @@ const string = {
   [38]: characterReference,
   [92]: characterEscape
 };
-const text$4 = {
+const text$7 = {
   [-5]: lineEnding,
   [-4]: lineEnding,
   [-3]: lineEnding,
@@ -54436,7 +52981,7 @@ const defaultConstructs = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.d
   flowInitial,
   insideSpan,
   string,
-  text: text$4
+  text: text$7
 }, Symbol.toStringTag, { value: "Module" }));
 function createTokenizer(parser2, initialize, from) {
   let point2 = {
@@ -54763,13 +53308,13 @@ function parse(options2) {
   );
   const parser2 = {
     constructs: constructs2,
-    content: create2(content$2),
+    content: create2(content$3),
     defined: [],
     document: create2(document$1),
     flow: create2(flow$1),
     lazy: {},
     string: create2(string$1),
-    text: create2(text$5)
+    text: create2(text$8)
   };
   return parser2;
   function create2(initial) {
@@ -55659,6 +54204,1684 @@ function remarkParse(options2) {
       extensions: self.data("micromarkExtensions") || [],
       mdastExtensions: self.data("fromMarkdownExtensions") || []
     });
+  }
+}
+const parser$1 = unified().use(remarkParse);
+function walk(node2, visit2) {
+  visit2(node2);
+  if ("children" in node2) for (const child of node2.children) walk(child, visit2);
+}
+function blankObsidianComments(source2) {
+  if (!source2.includes("%%")) return source2;
+  const code2 = [];
+  walk(parser$1.parse(source2), (node2) => {
+    if ((node2.type === "code" || node2.type === "inlineCode") && node2.position) code2.push([node2.position.start.offset ?? 0, node2.position.end.offset ?? 0]);
+  });
+  const marker = (from) => {
+    for (let at = source2.indexOf("%%", from); at !== -1; at = source2.indexOf("%%", at + 2)) {
+      let backslashes = 0;
+      while (source2[at - backslashes - 1] === "\\") backslashes++;
+      if (backslashes % 2 === 0) return at;
+    }
+    return -1;
+  };
+  let visible = "", cursor = 0;
+  for (let open2 = marker(0); open2 !== -1; open2 = marker(cursor)) {
+    const span = code2.find(([start2, end2]) => open2 >= start2 && open2 < end2);
+    if (span) {
+      visible += source2.slice(cursor, span[1]);
+      cursor = span[1];
+      continue;
+    }
+    const close = marker(open2 + 2), stop = close === -1 ? source2.length : close + 2;
+    visible += source2.slice(cursor, open2) + source2.slice(open2, stop).replace(/[^\r\n]/g, " ");
+    cursor = stop;
+  }
+  return visible + source2.slice(cursor);
+}
+const tutorialBlocks = (source2) => {
+  const blocks = [];
+  walk(parser$1.parse(blankObsidianComments(source2)), (node2) => {
+    if (node2.type === "code" && node2.lang === "forge-tutorial" && !node2.meta) blocks.push(node2.value);
+  });
+  return blocks;
+};
+const content$1 = "---\nname: forge-browser\ndescription: Capture webpage evidence and create illustrated walkthroughs with Forge browser commands, then explain observations in guarded Markdown documents. Use when documenting a UI problem or situation, taking on-demand screenshots, or turning a reviewed flow into a screenshot tutorial from JSON, Markdown or Canvas.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer, the complete Forge bin distribution and Chromium. Run browser status to inspect browser availability; browser install downloads the managed browser.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Identify the question, situation or workflow the document should explain. Read workspace/project AGENTS.md and inspect `project current`; verify `context.root` before writing. Discover `schema browser --json` for exact installed contracts. Use the command's `--project <id>` option when an explicit target avoids changing shared selection. Capture tools are independent of the webview scaffold and work with HTTP(S) pages.\n2. Run `node bin/forge.js browser status`. Its `verification: \"executable-only\"` checks the selected file without launching it; even `available: true` does not establish Chromium compatibility or working operating-system dependencies. `version` is the packaged Playwright version. Inspect `reason` and `nextStep` when unavailable; an explicit path takes precedence over `FORGE_BROWSER_EXECUTABLE`, then managed Chromium. Use `browser status --browser-executable /path/to/chromium` to inspect a known system installation. Use `browser install --dry-run` then `browser install` when the managed Chromium download is needed, or an available browser through `--browser-executable`. Browser installation is separate from project npm dependencies. Inspect/capture tasks do not require an approval ritual: proceed within the user's request. Running a tutorial can operate the target website; confirm that its intended actions fall within the user's authorization before executing a reviewed plan. Do not infer permission to submit purchases, upload files or make unrelated account changes from a request to document a page.\n3. For one image, choose a useful viewport and an explicit PNG destination. Preview `node bin/forge.js browser screenshot <url> --out docs/assets/problem.png --project <id> --dry-run`, then capture with the same options. Add `--full-page` for the complete page and `--wait-for-selector <selector>` when a known visible element indicates readiness. Dry runs do not launch a browser or visit the URL. Each capture uses a fresh browser context; saved browser logins and cookies are not inherited. Do not embed credentials in URLs or author secrets into a tutorial plan. Local launch fragments can carry access information: keep them out of published documents and logs.\n4. Capture creates a new file by default. To replace an existing image, read it through Forge and pass its current revision as `--if-match` to both preview and capture. Reread and reconcile a conflict; never substitute a newer revision blindly. Inspect the returned requested/final URLs, capture time and image dimensions; record the viewport from the request. A successful write proves that an image was saved, not that the expected page finished loading or the UI works correctly.\n5. Open the actual saved image using the agent's image inspection capability. Check whether it shows the intended state rather than a login, error, consent or loading screen. State what is visibly observed and separate hypotheses about the cause. Unexpected access or navigation requires adjusting the plan or documenting the limitation; never invent what the page should have shown. Use Playwright regression tests for assertions about application behavior; screenshots are evidence for the document.\n6. For a multi-step tutorial, translate the user's prose, Markdown or Canvas into an explicit supported flow before execution. Preserve the original brief; a separate plan file is appropriate. JSON sources contain the plan directly. Markdown must have exactly one fenced `forge-tutorial` JSON block; Canvas must have exactly one such block in a text node. The CLI parses that block, not the meaning of arbitrary prose, arrows or node positions. Keep a title, starting URL, clear step titles, observable instructions, supported actions and explicit screenshots. Use semantic locators when supported and avoid fragile selectors that merely happen to match today's layout.\n7. Run `browser validate <source> --out docs/manual` to inspect the normalized plan and destination state. Review every navigation, input and click against the user's intended flow, especially actions that submit data or change site state. Keep credentials and sensitive sample content out of plans and screenshots. When an authorized flow needs a secret input, use a supported `fill` action with `valueFromEnv` naming the environment variable rather than a literal credential; inspect the resulting image because this does not hide page content. Preview `browser tutorial <source> --out docs/manual --dry-run`; it does not visit the site. Execute the same reviewed command when within scope. An existing output folder requires validation's `data.revision` as `--if-match`; the guard covers the generated folder. Browser-side effects are separate from guarded file writes and cannot be rolled back by a document conflict.\n8. Review the generated `index.md`, `screenshots/` and `flow.json` as one document package. Inspect the actual screenshots, check image links and verify that captions explain the observed flow. Keep the input plan as the editable source; rerunning a tutorial replaces its generated output only with the inspected folder revision. Add authored analysis to a separate document or preserve it deliberately before regeneration.\n9. To explain a problem or situation, create or edit an ordinary Markdown note through `write`/`edit` with `--dry-run` and revisions. Use a descriptive relative embed such as `![Save action remains disabled](assets/problem.png)`, a clean source link, the capture's actual UTC timestamp and viewport, the observed result, the expected result when known, and the next useful verification. The returned `markdown` uses the image's scope-relative path; adjust it relative to the note's directory rather than copying it blindly into nested documents. Remove launch fragments from source citations and do not publish private URL parameters or secrets visible in the page.\n10. Read back and validate the document, check its relative links/embeds and resolve new broken links. Return accessible links or attachments for both the document and screenshots: a file path in a tool log is not a delivered picture. Report which states were captured and any unresolved limitations. See `bin/data/docs/how-to/capture-browser-evidence.md` and `bin/data/docs/reference/browser.md`; use `forge-webviews` for prototype implementation and `forge-vault` for guarded document editing.\n";
+const browserSkill = { id: "forge-browser", content: content$1 };
+function reportedUrl(input) {
+  const url2 = new URL(input);
+  url2.hash = "";
+  url2.username = "";
+  url2.password = "";
+  return url2.href;
+}
+function browserUrl(input) {
+  let url2;
+  try {
+    url2 = new URL(input);
+  } catch {
+  }
+  ensure(
+    url2 && ["http:", "https:"].includes(url2.protocol) && !url2.username && !url2.password,
+    "INVALID_ARGUMENT",
+    "Use an absolute HTTP or HTTPS URL without embedded credentials."
+  );
+  return url2.href;
+}
+function screenshotOutput(path2) {
+  vaultPath(path2);
+  ensure(/\.png$/i.test(path2), "INVALID_ARGUMENT", "--out must name a project-relative PNG file.");
+  return path2;
+}
+function browserViewport(width = 1440, height = 900) {
+  ensure(
+    Number.isSafeInteger(width) && width >= 1 && width <= 7680 && Number.isSafeInteger(height) && height >= 1 && height <= 7680,
+    "INVALID_ARGUMENT",
+    "Viewport width and height must be integers from 1 to 7680 pixels."
+  );
+  return { width, height };
+}
+function browserTimeout(timeoutMs = 3e4) {
+  ensure(
+    Number.isSafeInteger(timeoutMs) && timeoutMs >= 1 && timeoutMs <= 12e4,
+    "INVALID_ARGUMENT",
+    "--timeout-ms must be an integer from 1 to 120000."
+  );
+  return timeoutMs;
+}
+function browserExecutable(executablePath) {
+  ensure(
+    executablePath === void 0 || typeof executablePath === "string" && executablePath.trim().length > 0 && !executablePath.includes("\0"),
+    "INVALID_ARGUMENT",
+    "--browser-executable must name a browser executable."
+  );
+  return executablePath;
+}
+function validateScreenshot(request) {
+  ensure(typeof request.fullPage === "boolean", "INVALID_ARGUMENT", "--full-page must be boolean.");
+  ensure(
+    request.waitForSelector === void 0 || typeof request.waitForSelector === "string" && request.waitForSelector.trim().length > 0 && request.waitForSelector.length <= 2048,
+    "INVALID_ARGUMENT",
+    "--wait-for-selector must be a nonempty selector of at most 2048 characters."
+  );
+  browserExecutable(request.executablePath);
+  return { ...request, url: browserUrl(request.url), viewport: browserViewport(request.viewport.width, request.viewport.height), timeoutMs: browserTimeout(request.timeoutMs) };
+}
+function expectedRevision(revision2) {
+  ensure(revision2 === void 0 || /^[a-f0-9]{64}$/.test(revision2), "INVALID_ARGUMENT", "--if-match must be a SHA-256 revision from read or browser validate.");
+  return revision2;
+}
+function imageMarkdown(path2, title2 = "Screenshot") {
+  const destination2 = path2.split("/").map((segment2) => encodeURIComponent(segment2).replaceAll("(", "%28").replaceAll(")", "%29")).join("/");
+  const label2 = title2.replaceAll("\\", "\\\\").replaceAll("[", "\\[").replaceAll("]", "\\]").replaceAll("\n", " ");
+  return `![${label2}](<${destination2}>)`;
+}
+function imageDimensions(image) {
+  const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+  ensureBrowser(
+    image.bytes instanceof Uint8Array && image.bytes.length >= 24 && signature.every((byte, index2) => image.bytes[index2] === byte),
+    "BROWSER_CAPTURE_FAILED",
+    "The browser did not return a PNG screenshot."
+  );
+  const header2 = new DataView(image.bytes.buffer, image.bytes.byteOffset, image.bytes.byteLength);
+  const width = header2.getUint32(16), height = header2.getUint32(20);
+  ensureBrowser(
+    width > 0 && height > 0 && image.width === width && image.height === height && Number.isFinite(Date.parse(image.capturedAt)),
+    "BROWSER_CAPTURE_FAILED",
+    "The browser returned invalid screenshot metadata."
+  );
+  return { width, height };
+}
+class BrowserScreenshot {
+  constructor(runtime) {
+    this.runtime = runtime;
+  }
+  runtime;
+  async run(context, input) {
+    const request = validateScreenshot(input);
+    const path2 = screenshotOutput(input.out), revision2 = expectedRevision(input.ifMatch);
+    await context.workspace.files.commit({ guards: [{ path: path2, ...revision2 === void 0 ? {} : { expectedRevision: revision2 } }] }, true);
+    const target = await context.workspace.files.stat(path2).catch((error2) => {
+      if (error2 instanceof AppError && error2.code === "NOT_FOUND") return null;
+      throw error2;
+    });
+    ensure(target === null || target.kind === "file", "INVALID_PATH", "Screenshot output must name a regular file, not a directory.");
+    const plan = {
+      requestedUrl: reportedUrl(request.url),
+      out: path2,
+      viewport: request.viewport,
+      fullPage: request.fullPage,
+      ...request.waitForSelector === void 0 ? {} : { waitForSelector: request.waitForSelector },
+      timeoutMs: request.timeoutMs
+    };
+    if (context.workspace.dryRun) return { dryRun: true, captured: false, plan, changes: [] };
+    const image = await this.runtime.screenshot(request);
+    const dimensions = imageDimensions(image);
+    const finalUrl = reportedUrl(image.url);
+    const result = await context.workspace.write([{ path: path2, bytes: image.bytes, ...revision2 === void 0 ? {} : { expectedRevision: revision2 } }]);
+    const change2 = result.changes[0];
+    return {
+      ...result,
+      captured: true,
+      path: path2,
+      revision: change2.revision,
+      bytes: change2.bytes,
+      ...dimensions,
+      requestedUrl: plan.requestedUrl,
+      finalUrl,
+      capturedAt: new Date(image.capturedAt).toISOString(),
+      markdown: imageMarkdown(path2)
+    };
+  }
+}
+function valid(condition, message2) {
+  ensureBrowser(condition, "BROWSER_FLOW_INVALID", message2);
+}
+function record$1(value2, keys, location2) {
+  valid(isRecord$1(value2), `${location2} must be an object.`);
+  valid(Object.keys(value2).every((key) => keys.includes(key)), `${location2} contains an unknown field.`);
+  return value2;
+}
+function text$6(value2, location2, allowEmpty = false) {
+  valid(typeof value2 === "string" && value2.length <= 2e4 && (allowEmpty || value2.trim().length > 0), `${location2} must be ${allowEmpty ? "a" : "a nonempty"} string of at most 20000 characters.`);
+  return value2;
+}
+function url(value2) {
+  const input = text$6(value2, "URL");
+  let parsed2;
+  try {
+    parsed2 = new URL(input);
+  } catch {
+    throw browserError("BROWSER_FLOW_INVALID", "Tutorial URLs must be absolute HTTP or HTTPS URLs.");
+  }
+  valid(
+    ["http:", "https:"].includes(parsed2.protocol) && !parsed2.username && !parsed2.password && ![...new URLSearchParams(parsed2.hash.slice(1)).keys()].some((key) => key.toLowerCase() === "token"),
+    "Tutorial URLs must use HTTP or HTTPS without embedded credentials or launch-token fragments; keep secrets outside saved plans."
+  );
+  return parsed2.href;
+}
+function locator(value2) {
+  const item = record$1(value2, ["role", "name", "label", "testId", "css"], "Locator");
+  const kinds = ["role", "label", "testId", "css"].filter((key) => item[key] !== void 0);
+  valid(kinds.length === 1 && (item.name === void 0 || kinds[0] === "role"), "A locator must specify exactly one of role, label, testId or css; only role accepts name.");
+  const kind2 = kinds[0];
+  const result = { [kind2]: text$6(item[kind2], `Locator ${kind2}`), ...item.name === void 0 ? {} : { name: text$6(item.name, "Locator name") } };
+  return result;
+}
+function action(value2) {
+  valid(isRecord$1(value2), "Every action must be an object.");
+  const type2 = value2.type;
+  const fields2 = { goto: ["url"], click: ["locator"], fill: ["locator", "value", "valueFromEnv"], select: ["locator", "value"], check: ["locator", "checked"], press: ["locator", "key"], wait: ["locator", "state"] };
+  valid(typeof type2 === "string" && Object.hasOwn(fields2, type2), "Unknown tutorial action; use goto, click, fill, select, check, press or wait.");
+  record$1(value2, ["type", ...fields2[type2]], `Action ${type2}`);
+  if (type2 === "goto") return { type: type2, url: url(value2.url) };
+  const target = locator(value2.locator);
+  switch (type2) {
+    case "click":
+      return { type: type2, locator: target };
+    case "fill": {
+      valid(value2.value === void 0 !== (value2.valueFromEnv === void 0), "fill requires exactly one of value or valueFromEnv.");
+      if (value2.valueFromEnv !== void 0) {
+        const variable = text$6(value2.valueFromEnv, "Environment variable");
+        valid(/^[A-Za-z_][A-Za-z0-9_]*$/.test(variable), "valueFromEnv must name an environment variable.");
+        return { type: type2, locator: target, valueFromEnv: variable };
+      }
+      return { type: type2, locator: target, value: text$6(value2.value, "Fill value", true) };
+    }
+    case "select":
+      return { type: type2, locator: target, value: text$6(value2.value, "Select value", true) };
+    case "check":
+      valid(typeof value2.checked === "boolean", "check requires checked: true or false.");
+      return { type: type2, locator: target, checked: value2.checked };
+    case "press":
+      return { type: type2, locator: target, key: text$6(value2.key, "Key") };
+    default: {
+      const state2 = value2.state ?? "visible";
+      valid(["visible", "hidden", "attached", "detached"].includes(state2), "wait state must be visible, hidden, attached or detached.");
+      return { type: "wait", locator: target, state: state2 };
+    }
+  }
+}
+function tutorialPlan(value2) {
+  const plan = record$1(value2, ["version", "title", "description", "startUrl", "viewport", "steps"], "Plan");
+  valid(plan.version === 1, "Tutorial plan version must be 1.");
+  const viewport2 = plan.viewport === void 0 ? { width: 1440, height: 900 } : record$1(plan.viewport, ["width", "height"], "Viewport");
+  valid(Number.isSafeInteger(viewport2.width) && Number(viewport2.width) >= 1 && Number(viewport2.width) <= 4096 && Number.isSafeInteger(viewport2.height) && Number(viewport2.height) >= 1 && Number(viewport2.height) <= 4096, "Viewport dimensions must be integers from 1 to 4096.");
+  valid(Array.isArray(plan.steps) && plan.steps.length > 0 && plan.steps.length <= 100, "A tutorial needs 1 to 100 steps.");
+  const ids = /* @__PURE__ */ new Set();
+  let count2 = 0;
+  const steps = plan.steps.map((value22, index2) => {
+    const step = record$1(value22, ["id", "title", "text", "actions", "screenshot", "fullPage"], `Step ${index2 + 1}`);
+    const id2 = text$6(step.id, "Step id");
+    valid(/^[a-z][a-z0-9-]{0,63}$/.test(id2) && !ids.has(id2), "Step ids must be unique lowercase kebab-case names of at most 64 characters.");
+    ids.add(id2);
+    valid(Array.isArray(step.actions) && (count2 += step.actions.length) <= 500, "Steps require an actions array, with at most 500 actions per tutorial.");
+    valid(step.screenshot === void 0 || typeof step.screenshot === "boolean", "screenshot must be boolean.");
+    valid(step.fullPage === void 0 || typeof step.fullPage === "boolean", "fullPage must be boolean.");
+    return {
+      id: id2,
+      title: text$6(step.title, "Step title"),
+      ...step.text === void 0 ? {} : { text: text$6(step.text, "Step text", true) },
+      actions: step.actions.map(action),
+      screenshot: step.screenshot !== false,
+      fullPage: step.fullPage !== false
+    };
+  });
+  return {
+    version: 1,
+    title: text$6(plan.title, "Title"),
+    ...plan.description === void 0 ? {} : { description: text$6(plan.description, "Description", true) },
+    startUrl: url(plan.startUrl),
+    viewport: { width: Number(viewport2.width), height: Number(viewport2.height) },
+    steps
+  };
+}
+function json$1(text2) {
+  try {
+    return JSON.parse(text2);
+  } catch {
+    throw browserError("BROWSER_FLOW_INVALID", "Tutorial source must contain valid JSON.");
+  }
+}
+function extractTutorial(source2, path2, blocks) {
+  valid(source2.length <= 2e6, "Tutorial source exceeds the 2 MB limit.");
+  if (/\.json$/i.test(path2)) return tutorialPlan(json$1(source2));
+  let candidates2;
+  if (/\.canvas$/i.test(path2)) {
+    const canvas = json$1(source2);
+    valid(isRecord$1(canvas) && Array.isArray(canvas.nodes), "Canvas must contain a nodes array.");
+    candidates2 = canvas.nodes.flatMap((node2) => isRecord$1(node2) && node2.type === "text" && typeof node2.text === "string" ? blocks(node2.text) : []);
+  } else {
+    valid(/\.md$/i.test(path2), "Use a JSON plan, Markdown document or Canvas document.");
+    candidates2 = blocks(source2);
+  }
+  valid(candidates2.length === 1, "Markdown or Canvas must contain exactly one fenced forge-tutorial JSON block. Ask the agent to translate the intended flow into a reviewed plan first.");
+  return tutorialPlan(json$1(candidates2[0]));
+}
+async function optionalStat(context, path2) {
+  try {
+    return await context.workspace.files.stat(path2);
+  } catch (error2) {
+    if (error2 instanceof AppError && error2.code === "NOT_FOUND") return null;
+    throw error2;
+  }
+}
+function plannedFiles(plan) {
+  return ["index.md", "flow.json", ...plan.steps.filter((step) => step.screenshot).map((step) => `screenshots/${step.id}.png`)];
+}
+function publicUrl(value2) {
+  const url2 = new URL(value2);
+  url2.hash = "";
+  url2.search = "";
+  url2.username = "";
+  url2.password = "";
+  return url2.href;
+}
+function heading(value2) {
+  return value2.replaceAll("\r", " ").replaceAll("\n", " ").replaceAll("#", "\\#");
+}
+function manual(plan, result) {
+  const lines2 = [
+    `# ${heading(plan.title)}`,
+    "",
+    ...plan.description ? [plan.description, ""] : [],
+    `[Replay plan](<flow.json>) · Viewport: ${plan.viewport.width} × ${plan.viewport.height}`,
+    ""
+  ];
+  for (const [index2, step] of plan.steps.entries()) {
+    lines2.push(`## ${index2 + 1}. ${heading(step.title)}`, "");
+    if (step.text) lines2.push(step.text, "");
+    const image = result.screenshots.find((image2) => image2.stepId === step.id);
+    if (image) lines2.push(
+      imageMarkdown(`screenshots/${step.id}.png`, step.title),
+      "",
+      `Page: <${publicUrl(image.url)}> · Captured: ${image.capturedAt} · ${image.width} × ${image.height}`,
+      ""
+    );
+  }
+  return lines2.join("\n");
+}
+class BrowserTutorial {
+  constructor(runtime, blocks) {
+    this.runtime = runtime;
+    this.blocks = blocks;
+  }
+  runtime;
+  blocks;
+  async inspect(context, source2, out2) {
+    vaultPath(source2);
+    const snapshot = await context.workspace.files.read(source2);
+    let text2;
+    try {
+      text2 = new TextDecoder("utf-8", { fatal: true }).decode(snapshot.bytes);
+    } catch {
+      throw browserError("BROWSER_FLOW_INVALID", "Tutorial source must be valid UTF-8.");
+    }
+    const plan = extractTutorial(text2, source2, this.blocks);
+    let current = null;
+    if (out2 !== void 0) {
+      vaultPath(out2);
+      ensure(source2 === `${out2}/flow.json` || source2 !== out2 && !source2.startsWith(`${out2}/`), "INVALID_ARGUMENT", "Keep source documents outside the output directory, or replay its generated flow.json.");
+      current = await optionalStat(context, out2);
+      for (const path2 of plannedFiles(plan)) {
+        const destination2 = await optionalStat(context, `${out2}/${path2}`);
+        ensure(destination2 === null || destination2.kind === "file", "INVALID_ARGUMENT", `Tutorial output must be a regular file: ${out2}/${path2}`);
+      }
+      ensure(current === null || current.kind === "folder", "INVALID_ARGUMENT", "--out must name a directory.");
+      if (current?.kind === "folder") {
+        ensureBrowser(current.files.includes("index.md") && current.files.includes("flow.json") && current.files.every((path2) => ["index.md", "flow.json"].includes(path2) || /^screenshots\/[a-z][a-z0-9-]{0,63}\.png$/.test(path2)) && current.folders.every((path2) => path2 === "screenshots"), "BROWSER_FLOW_INVALID", "Output contains unrelated files or is not a generated tutorial. Choose a dedicated output directory.");
+      }
+    }
+    return { snapshot, plan, current, report: {
+      source: source2,
+      sourceRevision: snapshot.revision,
+      plan,
+      output: out2 ?? null,
+      revision: current?.revision ?? null,
+      files: plannedFiles(plan)
+    } };
+  }
+  async validate(context, source2, out2) {
+    return (await this.inspect(context, source2, out2)).report;
+  }
+  async run(context, input) {
+    const { source: source2, out: out2 } = input;
+    const timeoutMs = browserTimeout(input.timeoutMs), ifMatch2 = expectedRevision(input.ifMatch);
+    ensure(input.executablePath === void 0 || input.executablePath.trim().length > 0 && !input.executablePath.includes("\0"), "INVALID_ARGUMENT", "--browser-executable must name a browser executable.");
+    const { snapshot, plan, current, report: report2 } = await this.inspect(context, source2, out2);
+    ensure(
+      ifMatch2 === (current?.revision ?? void 0),
+      "CONFLICT",
+      current ? "Validate the existing tutorial and pass its folder revision with --if-match before replacing it." : "The output no longer exists; omit --if-match to create it.",
+      { path: out2, expectedRevision: ifMatch2 ?? null, currentRevision: current?.revision ?? null }
+    );
+    const guards = [{ path: source2, expectedRevision: snapshot.revision }, { path: out2, ...current ? { expectedRevision: current.revision } : {} }];
+    if (context.workspace.dryRun) {
+      await context.workspace.commit({ guards }, { operation: "apply" });
+      return { ...report2, dryRun: true, executed: false, changes: [], browserVersion: null };
+    }
+    const previous2 = /* @__PURE__ */ new Map();
+    if (current?.kind === "folder") for (const path2 of current.files) previous2.set(path2, await context.workspace.files.read(`${out2}/${path2}`));
+    const captured = await this.runtime.flow({ plan, viewport: plan.viewport, timeoutMs, ...input.executablePath ? { executablePath: input.executablePath } : {} });
+    const required2 = new Set(plan.steps.filter((step) => step.screenshot).map((step) => step.id));
+    ensureBrowser(
+      captured.screenshots.length === required2.size && captured.screenshots.every((image) => required2.delete(image.stepId) && image.bytes.length > 0),
+      "BROWSER_FLOW_FAILED",
+      "Browser did not return exactly one screenshot for every requested tutorial step. No output was published."
+    );
+    const encode2 = (value2) => new TextEncoder().encode(value2);
+    const contents = new Map([
+      ["index.md", encode2(manual(plan, captured))],
+      ["flow.json", encode2(`${JSON.stringify(plan, null, 2)}
+`)],
+      ...captured.screenshots.map((image) => [`screenshots/${image.stepId}.png`, image.bytes])
+    ]);
+    const writes = [...contents].map(([path2, bytes]) => ({
+      path: `${out2}/${path2}`,
+      bytes,
+      ...previous2.has(path2) ? { expectedRevision: previous2.get(path2).revision } : {}
+    }));
+    const removes = [...previous2].filter(([path2]) => !contents.has(path2)).map(([, file]) => ({ path: file.path, expectedRevision: file.revision }));
+    const result = await context.workspace.commit({ guards, writes, removes }, { operation: "apply" });
+    return {
+      ...report2,
+      revision: (await context.workspace.files.stat(out2)).revision,
+      dryRun: false,
+      executed: true,
+      changes: result.changes,
+      browserVersion: captured.browserVersion
+    };
+  }
+}
+function browserStatusView(status2, t) {
+  if (status2.reason === "available") return { ...status2, nextStep: null };
+  const selection2 = t(`status.source.${status2.source}`);
+  const check2 = status2.reason === "not-executable" || status2.reason === "inaccessible" ? `${t(`status.reason.${status2.reason}`)} ` : "";
+  return { ...status2, nextStep: check2 + selection2 };
+}
+const text$5 = { type: "string" };
+const integer = { type: "integer", minimum: 1 };
+const changes$1 = { type: "array", items: { type: "object" } };
+const viewport = { type: "object", additionalProperties: false, required: ["width", "height"], properties: { width: integer, height: integer } };
+const browserStatusSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["available", "executablePath", "source", "version", "verification", "reason", "nextStep"],
+  properties: {
+    available: { type: "boolean", description: "The selected path is a regular file accessible for execution (existence only on Windows); browser launch is unverified." },
+    executablePath: { oneOf: [text$5, { type: "null" }] },
+    source: { enum: ["explicit", "environment", "managed"] },
+    version: { ...text$5, description: "Packaged Playwright runtime version, not the Chromium executable version." },
+    verification: { const: "executable-only", description: "Filesystem checks only; no browser launch, compatibility or operating-system dependency check." },
+    reason: { enum: ["available", "missing", "not-file", "not-executable", "inaccessible"] },
+    nextStep: { oneOf: [text$5, { type: "null" }], description: "Recovery guidance when unavailable; null when the filesystem check passed." }
+  }
+};
+const installSchema = { oneOf: [
+  { type: "object", additionalProperties: false, required: ["dryRun", "executed", "plan"], properties: {
+    dryRun: { const: true },
+    executed: { const: false },
+    plan: { type: "object", additionalProperties: false, required: ["browser", "operation"], properties: { browser: { const: "chromium" }, operation: { const: "install" } } }
+  } },
+  { type: "object", additionalProperties: false, required: ["dryRun", "executed", "status"], properties: {
+    dryRun: { const: false },
+    executed: { const: true },
+    status: browserStatusSchema
+  } }
+] };
+const screenshotSchema = { oneOf: [
+  { type: "object", additionalProperties: false, required: ["dryRun", "captured", "plan", "changes"], properties: {
+    dryRun: { const: true },
+    captured: { const: false },
+    changes: { type: "array", maxItems: 0 },
+    plan: { type: "object", additionalProperties: false, required: ["requestedUrl", "out", "viewport", "fullPage", "timeoutMs"], properties: {
+      requestedUrl: { ...text$5, description: "Requested URL without its fragment." },
+      out: text$5,
+      viewport,
+      fullPage: { type: "boolean" },
+      waitForSelector: text$5,
+      timeoutMs: integer
+    } }
+  } },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["dryRun", "captured", "path", "revision", "bytes", "width", "height", "requestedUrl", "finalUrl", "capturedAt", "markdown", "changes"],
+    properties: {
+      dryRun: { const: false },
+      captured: { const: true },
+      path: text$5,
+      revision: text$5,
+      bytes: integer,
+      width: integer,
+      height: integer,
+      requestedUrl: text$5,
+      finalUrl: text$5,
+      capturedAt: { ...text$5, description: "Capture timestamp in UTC ISO 8601 form." },
+      markdown: text$5,
+      changes: changes$1
+    }
+  }
+] };
+const tutorialProperties = {
+  source: text$5,
+  sourceRevision: text$5,
+  plan: { type: "object", description: "Normalized version 1 tutorial flow with explicit steps and browser actions." },
+  output: { oneOf: [text$5, { type: "null" }] },
+  revision: { oneOf: [text$5, { type: "null" }] },
+  files: { type: "array", items: text$5 }
+};
+const tutorialValidationSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["source", "sourceRevision", "plan", "output", "revision", "files"],
+  properties: tutorialProperties
+};
+const tutorialSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["source", "sourceRevision", "plan", "output", "revision", "files", "dryRun", "executed", "changes", "browserVersion"],
+  properties: { ...tutorialProperties, dryRun: { type: "boolean" }, executed: { type: "boolean" }, changes: changes$1, browserVersion: { oneOf: [text$5, { type: "null" }] } }
+};
+const project = option$1.string("Use this project instead of the selected project.");
+const executable = option$1.string("Use this Chromium executable; otherwise use FORGE_BROWSER_EXECUTABLE or the installed managed browser.");
+const timeout = option$1.string("Browser operation timeout in milliseconds, from 1 to 120000.", { default: "30000" });
+const revision$1 = option$1.string("Current output revision from read (screenshot) or browser validate (tutorial); required before replacing existing output.");
+const projectMode = { scope: "project", projectOption: "project", discovery: false };
+function browserCommand(runtime, blocks) {
+  const screenshot = new BrowserScreenshot(runtime), tutorial = new BrowserTutorial(runtime, blocks);
+  return {
+    id: "browser",
+    description: "Capture webpage screenshots and repeatable illustrated tutorials through the portable CLI.",
+    usage: "browser [status | install | screenshot <url> --out <image.png> | validate <source> | tutorial <source> --out <directory>]",
+    scope: "workspace",
+    discovery: false,
+    mutating: false,
+    defaultAction: "status",
+    unknownAction: "INVALID_ARGUMENT",
+    args: [
+      { name: "action", description: "status (default), install, screenshot, validate or tutorial.", enum: ["status", "install", "screenshot", "validate", "tutorial"] },
+      { name: "source", description: "Absolute HTTP(S) URL for screenshot, or a project-relative flow JSON, Markdown or Canvas source." }
+    ],
+    actions: {
+      status: {
+        description: "Inspect executable-file availability without launching a browser or verifying browser compatibility.",
+        discovery: true,
+        output: browserStatusSchema,
+        options: { "browser-executable": executable }
+      },
+      install: {
+        description: "Download the managed Chromium browser explicitly; a dry run does not start the installer.",
+        discovery: true,
+        mutating: true,
+        destructive: false,
+        idempotent: true,
+        output: installSchema
+      },
+      screenshot: {
+        description: "Save a webpage screenshot as a guarded PNG and return a Markdown image reference.",
+        ...projectMode,
+        mutating: true,
+        destructive: true,
+        idempotent: true,
+        output: screenshotSchema,
+        usage: "browser screenshot <url> --out <image.png> [--width <pixels>] [--height <pixels>] [--full-page] [--wait-for-selector <selector>] [--timeout-ms <milliseconds>] [--browser-executable <path>] [--if-match <revision>] [--project <id>]",
+        options: {
+          project,
+          out: option$1.string("Project-relative PNG output path.", { required: true }),
+          width: option$1.string("Viewport width in pixels, from 1 to 7680.", { default: "1440" }),
+          height: option$1.string("Viewport height in pixels, from 1 to 7680.", { default: "900" }),
+          "full-page": option$1.boolean("Capture the full page instead of only the viewport."),
+          "wait-for-selector": option$1.string("Wait for this selector to become visible before capturing the page."),
+          "timeout-ms": timeout,
+          "browser-executable": executable,
+          "if-match": revision$1
+        }
+      },
+      validate: {
+        description: "Validate a declared tutorial flow without opening a browser and inspect its output revision.",
+        ...projectMode,
+        options: { project, out: option$1.string("Optional project-relative tutorial directory whose current revision should be inspected.") },
+        output: tutorialValidationSchema
+      },
+      tutorial: {
+        description: "Replay a declared flow and atomically save its manual, screenshots and repeatable plan.",
+        ...projectMode,
+        mutating: true,
+        destructive: true,
+        idempotent: true,
+        options: {
+          project,
+          out: option$1.string("Project-relative tutorial directory for index.md, screenshots and flow.json.", { required: true }),
+          "timeout-ms": timeout,
+          "browser-executable": executable,
+          "if-match": revision$1
+        },
+        output: tutorialSchema
+      }
+    },
+    errors: ["INVALID_ARGUMENT", "INVALID_PATH", "UNSAFE_PATH", "CONFLICT", "NOT_FOUND", "BROWSER_UNAVAILABLE", "BROWSER_CAPTURE_FAILED", "BROWSER_INSTALL_FAILED", "BROWSER_FLOW_INVALID", "BROWSER_FLOW_FAILED"],
+    async run(args, flags, context) {
+      const action2 = args[0] ?? "status";
+      ensure(["status", "install", "screenshot", "validate", "tutorial"].includes(action2), "INVALID_ARGUMENT", "Use browser status, install, screenshot, validate or tutorial.");
+      if (action2 === "status") {
+        arity(args, 0, 1);
+        return browserStatusView(await runtime.status(browserExecutable(value$2(flags, "browser-executable"))), context.t);
+      }
+      if (action2 === "install") {
+        arity(args, 1);
+        if (context.workspace.dryRun) return { dryRun: true, executed: false, plan: { browser: "chromium", operation: "install" } };
+        return { dryRun: false, executed: true, status: browserStatusView(await runtime.install(), context.t) };
+      }
+      arity(args, 2);
+      if (action2 === "validate") return tutorial.validate(context, args[1], value$2(flags, "out"));
+      const out2 = value$2(flags, "out", true);
+      const timeoutMs = browserTimeout(integer$2(flags, "timeout-ms", 1));
+      const executablePath = browserExecutable(value$2(flags, "browser-executable")), ifMatch2 = expectedRevision(value$2(flags, "if-match"));
+      if (action2 === "tutorial") return tutorial.run(context, { source: args[1], out: out2, timeoutMs, executablePath, ifMatch: ifMatch2 });
+      return screenshot.run(context, {
+        url: args[1],
+        out: out2,
+        viewport: browserViewport(integer$2(flags, "width", 1), integer$2(flags, "height", 1)),
+        fullPage: flags["full-page"] === true,
+        waitForSelector: value$2(flags, "wait-for-selector"),
+        timeoutMs,
+        executablePath,
+        ifMatch: ifMatch2
+      });
+    }
+  };
+}
+const englishMessages = {
+  "status.source.managed": "Run browser install or pass --browser-executable for an installed Chromium.",
+  "status.source.environment": "Update FORGE_BROWSER_EXECUTABLE or pass --browser-executable for an installed Chromium.",
+  "status.source.explicit": "Pass --browser-executable with the path to an installed Chromium.",
+  "status.reason.not-executable": "Check execution permissions on the selected file.",
+  "status.reason.inaccessible": "Check access to the selected path and its parent directories."
+};
+const germanMessages = {
+  "status.source.managed": "Führen Sie browser install aus oder übergeben Sie mit --browser-executable einen installierten Chromium-Browser.",
+  "status.source.environment": "Passen Sie FORGE_BROWSER_EXECUTABLE an oder übergeben Sie mit --browser-executable einen installierten Chromium-Browser.",
+  "status.source.explicit": "Übergeben Sie mit --browser-executable den Pfad zu einem installierten Chromium-Browser.",
+  "status.reason.not-executable": "Prüfen Sie die Ausführungsrechte der ausgewählten Datei.",
+  "status.reason.inaccessible": "Prüfen Sie den Zugriff auf den ausgewählten Pfad und seine übergeordneten Ordner."
+};
+const browserStrings = { en: { messages: englishMessages }, de: {
+  messages: germanMessages,
+  manifest: { name: "Browser-Werkzeuge", description: "Geschützte Webseiten-Screenshots und wiederholbare bebilderte Anleitungen mit einem verwalteten Browser erstellen." },
+  commands: { browser: "Webseiten-Screenshots und wiederholbare bebilderte Anleitungen über das portable CLI erstellen." },
+  actions: {
+    "browser status": "Die Verfügbarkeit der ausführbaren Datei ohne Browserstart oder Prüfung der Browser-Kompatibilität prüfen.",
+    "browser install": "Den verwalteten Chromium-Browser ausdrücklich herunterladen; ein Probelauf startet keine Installation.",
+    "browser screenshot": "Einen Webseiten-Screenshot als geschützte PNG-Datei speichern und eine Markdown-Bildreferenz zurückgeben.",
+    "browser validate": "Einen deklarierten Anleitungsablauf ohne Browser prüfen und die Ausgaberevision anzeigen.",
+    "browser tutorial": "Einen deklarierten Ablauf ausführen und Anleitung, Screenshots und wiederholbaren Plan atomar speichern."
+  },
+  descriptions: {
+    "status (default), install, screenshot, validate or tutorial.": "status (Standard), install, screenshot, validate oder tutorial.",
+    "Absolute HTTP(S) URL for screenshot, or a project-relative flow JSON, Markdown or Canvas source.": "Absolute HTTP(S)-URL für screenshot oder projektrelative JSON-, Markdown- oder Canvas-Ablaufquelle.",
+    "Use this project instead of the selected project.": "Dieses Projekt statt des ausgewählten Projekts verwenden.",
+    "Use this Chromium executable; otherwise use FORGE_BROWSER_EXECUTABLE or the installed managed browser.": "Diese Chromium-Datei verwenden; sonst FORGE_BROWSER_EXECUTABLE oder den installierten verwalteten Browser verwenden.",
+    "Browser operation timeout in milliseconds, from 1 to 120000.": "Zeitlimit für Browser-Vorgänge in Millisekunden von 1 bis 120000.",
+    "Current output revision from read (screenshot) or browser validate (tutorial); required before replacing existing output.": "Aktuelle Ausgaberevision aus read (Screenshot) oder browser validate (Anleitung); zum Ersetzen vorhandener Ausgaben erforderlich.",
+    "Project-relative PNG output path.": "Projektrelativer PNG-Ausgabepfad.",
+    "Viewport width in pixels, from 1 to 7680.": "Ansichtsbreite in Pixeln von 1 bis 7680.",
+    "Viewport height in pixels, from 1 to 7680.": "Ansichtshöhe in Pixeln von 1 bis 7680.",
+    "Capture the full page instead of only the viewport.": "Die vollständige Seite statt nur des sichtbaren Ausschnitts erfassen.",
+    "Wait for this selector to become visible before capturing the page.": "Vor der Aufnahme warten, bis dieser Selektor sichtbar ist.",
+    "Optional project-relative tutorial directory whose current revision should be inspected.": "Optionaler projektrelativer Anleitungsordner, dessen aktuelle Revision geprüft werden soll.",
+    "Project-relative tutorial directory for index.md, screenshots and flow.json.": "Projektrelativer Anleitungsordner für index.md, Screenshots und flow.json."
+  },
+  errors: {
+    BROWSER_UNAVAILABLE: { summary: "Browser-Laufzeit oder ausführbare Datei fehlen.", hint: "Prüfen Sie browser status und führen Sie browser install aus oder übergeben Sie einen installierten Chromium-Browser mit --browser-executable." },
+    BROWSER_CAPTURE_FAILED: { summary: "Die Webseite konnte nicht aufgenommen werden.", hint: "Prüfen Sie URL, Browser-Verfügbarkeit und Bereitschaftsselektor; es wurde kein Screenshot geschrieben." },
+    BROWSER_INSTALL_FAILED: { summary: "Die Installation des verwalteten Browsers ist fehlgeschlagen.", hint: "Prüfen Sie Netzwerkzugriff und Schreibrechte; wiederholen Sie browser install oder verwenden Sie --browser-executable." },
+    BROWSER_FLOW_INVALID: { summary: "Der deklarierte Anleitungsablauf ist ungültig.", hint: "Prüfen Sie browser validate und korrigieren Sie die genannte Quelle, Aktion, Auswahl oder den Ausgabepfad." },
+    BROWSER_FLOW_FAILED: { summary: "Der Anleitungsablauf konnte nicht abgeschlossen werden.", hint: "Prüfen Sie den fehlgeschlagenen Schritt und korrigieren Sie den Ablauf; vorhandene Anleitungen wurden erhalten." }
+  }
+} };
+function browserPlugin(distributionPath) {
+  return {
+    manifest: {
+      id: "browser",
+      name: "Browser",
+      version: "0.1.0",
+      minAppVersion: "0.1.0",
+      core: true,
+      author: "The Forge",
+      description: "Capture guarded webpage screenshots and repeatable illustrated tutorials with a managed browser."
+    },
+    strings: browserStrings,
+    create: () => ({
+      commands: [browserCommand(createBrowserRuntime(distributionPath), tutorialBlocks)],
+      skills: [browserSkill],
+      errors: [
+        { code: "BROWSER_UNAVAILABLE", category: "runtime", summary: "The browser runtime or executable is unavailable.", hint: "Run browser status, then browser install, or pass --browser-executable for an installed Chromium browser." },
+        { code: "BROWSER_CAPTURE_FAILED", category: "runtime", summary: "The webpage could not be captured.", hint: "Check the URL, browser availability and readiness selector; no screenshot was written." },
+        { code: "BROWSER_INSTALL_FAILED", category: "external", summary: "The managed browser installation failed.", hint: "Check network access and disk permissions, then retry browser install or use --browser-executable." },
+        { code: "BROWSER_FLOW_INVALID", category: "input", summary: "The declared tutorial flow is invalid.", hint: "Run browser validate and correct the source, action, locator or output path named in the diagnostic." },
+        { code: "BROWSER_FLOW_FAILED", category: "runtime", summary: "The tutorial flow could not complete.", hint: "Inspect the failing step, repair the declared flow and retry; existing tutorial output was preserved." }
+      ]
+    })
+  };
+}
+function updateError(code2, message2) {
+  return codedError(code2, message2, code2 === "UPDATE_DOWNLOAD_FAILED" ? 1 : 2);
+}
+function requireUpdate(condition, message2) {
+  if (!condition) throw updateError("UPDATE_INVALID", message2);
+}
+function releaseJson(bytes) {
+  try {
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch {
+    throw updateError("UPDATE_INVALID", "A release package or distribution manifest is not valid UTF-8 JSON.");
+  }
+}
+function releaseVersion(value2) {
+  requireUpdate(/^\d+\.\d+\.\d+$/.test(value2), "Use a stable release version such as 0.1.0.");
+  return value2;
+}
+function compareVersions(left, right) {
+  const a = releaseVersion(left).split(".").map(Number), b = releaseVersion(right).split(".").map(Number);
+  for (let index2 = 0; index2 < 3; index2++) if (a[index2] !== b[index2]) return a[index2] > b[index2] ? 1 : -1;
+  return 0;
+}
+function distributionFiles(value2, policy) {
+  requireUpdate(value2 !== null && typeof value2 === "object" && "schemaVersion" in value2 && value2.schemaVersion === policy.schemaVersion && "files" in value2 && Array.isArray(value2.files), "The distribution manifest is invalid.");
+  const files = value2.files;
+  const owned = new RegExp(policy.ownedAssetPattern);
+  requireUpdate(files.every((path2) => typeof path2 === "string" && owned.test(path2)), "The distribution manifest includes mutable or unowned files.");
+  const paths2 = files;
+  for (const path2 of paths2) vaultPath(path2);
+  requireUpdate(new Set(paths2).size === paths2.length && policy.requiredAssets.every((path2) => paths2.includes(path2)), "The distribution manifest omits required assets or contains duplicates.");
+  return [...paths2].sort();
+}
+class AppUpdate {
+  constructor(source2, policy) {
+    this.source = source2;
+    this.policy = policy;
+  }
+  source;
+  policy;
+  async installed(context) {
+    let pkg;
+    try {
+      pkg = await context.environment.files.read("bin/package.json");
+    } catch {
+      throw updateError("UPDATE_SCOPE_INVALID", "The target workspace has no installed Forge app. Install a release first.");
+    }
+    const data = releaseJson(pkg.bytes);
+    requireUpdate(data !== null && typeof data === "object" && "name" in data && data.name === "forge-bundle" && "version" in data && typeof data.version === "string", "bin/package.json does not identify a Forge distribution.");
+    const version2 = releaseVersion(data.version);
+    const manifest = await context.environment.files.read("bin/data/distribution.json");
+    const owned = distributionFiles(releaseJson(manifest.bytes), this.policy);
+    const stat = await context.environment.files.stat("bin");
+    ensure(stat.kind === "folder", "INVALID_PATH", "bin must be a regular folder.");
+    return { version: version2, revision: stat.revision, owned };
+  }
+  async check(context, target) {
+    const installed = await this.installed(context);
+    const version2 = releaseVersion(target ?? await this.source.latest());
+    return {
+      installedVersion: installed.version,
+      releaseVersion: version2,
+      available: compareVersions(version2, installed.version) > 0,
+      revision: installed.revision,
+      releaseUrl: `https://github.com/Luis85/agent-cli/releases/tag/v${version2}`
+    };
+  }
+  async apply(context, version2, ifMatch2) {
+    const installed = await this.installed(context);
+    ensure(ifMatch2 === installed.revision, "CONFLICT", "The app or workspace settings changed; run update check again.", { currentRevision: installed.revision });
+    requireUpdate(compareVersions(version2, installed.version) >= 0, "Downgrading the installed app is not supported.");
+    const release2 = await this.source.download(releaseVersion(version2));
+    requireUpdate(release2.version === version2, "Downloaded release version differs from the requested version.");
+    const desired = new Map(release2.files.map((file) => [file.path, file]));
+    const manifest = desired.get("data/distribution.json");
+    requireUpdate(manifest, "Downloaded release has no distribution manifest.");
+    const paths2 = distributionFiles(releaseJson(manifest.bytes), this.policy);
+    requireUpdate(paths2.length === desired.size && paths2.every((path2) => desired.has(path2)), "Downloaded release assets disagree with its manifest.");
+    const writes = [], removes = [];
+    const previous2 = /* @__PURE__ */ new Map();
+    for (const path2 of [.../* @__PURE__ */ new Set([...paths2, ...installed.owned])].sort()) {
+      const destination2 = `bin/${path2}`;
+      let current;
+      try {
+        current = await context.environment.files.read(destination2);
+      } catch (error2) {
+        if (!(error2 instanceof AppError && error2.code === "NOT_FOUND")) throw error2;
+      }
+      if (current) previous2.set(destination2, current);
+      const next = desired.get(path2);
+      if (!next && current) removes.push({ path: destination2, expectedRevision: current.revision });
+      else if (next && next.revision !== current?.revision) writes.push({ path: destination2, bytes: next.bytes, ...current ? { expectedRevision: current.revision } : {} });
+    }
+    const result = await context.environment.commit({ guards: [{ path: "bin", expectedRevision: installed.revision }], writes, removes }, { operation: "apply", previous: previous2 });
+    return {
+      installedVersion: installed.version,
+      releaseVersion: version2,
+      checksum: release2.checksum,
+      changed: writes.length + removes.length > 0,
+      dryRun: result.dryRun,
+      changes: result.changes,
+      revision: result.dryRun ? installed.revision : (await context.environment.files.stat("bin")).revision,
+      restartRequired: !result.dryRun && writes.length + removes.length > 0
+    };
+  }
+}
+const execute = node_util.promisify(childProcess.execFile);
+const runTool = async (file, args, options2) => {
+  const { stdout } = await execute(file, args, { ...options2, encoding: "utf8" });
+  return { stdout };
+};
+const base = "https://github.com/Luis85/agent-cli/releases";
+const curl = ["--fail", "--location", "--silent", "--show-error", "--proto", "=https", "--max-time", "180", "--max-filesize", "67108864"];
+function githubReleases(policy, run2 = runTool) {
+  return {
+    async latest() {
+      try {
+        const { stdout } = await run2("curl", [...curl, `${base}/latest`, "--output", node_os.devNull, "--write-out", "%{url_effective}"], { timeout: 19e4 });
+        const version2 = /^https:\/\/github\.com\/Luis85\/agent-cli\/releases\/tag\/v(\d+\.\d+\.\d+)$/.exec(stdout)?.[1];
+        requireUpdate(version2, "GitHub did not return a stable Forge release.");
+        return releaseVersion(version2);
+      } catch (error2) {
+        if (error2 instanceof AppError) throw error2;
+        throw updateError("UPDATE_DOWNLOAD_FAILED", "Could not check GitHub Releases. Check network access and curl, then retry.");
+      }
+    },
+    async download(version2) {
+      releaseVersion(version2);
+      const staging = await promises$1.mkdtemp(path$3.join(node_os.tmpdir(), "forge-update-"));
+      try {
+        const name2 = `forge-${version2}.tar.gz`, archive = path$3.join(staging, name2);
+        for (const filename of [name2, `${name2}.sha256`]) await run2("curl", [...curl, `${base}/download/v${version2}/${filename}`, "--output", path$3.join(staging, filename)], { timeout: 19e4 });
+        const bytes = await promises$1.readFile(archive), checksum = node_crypto.createHash("sha256").update(bytes).digest("hex");
+        requireUpdate((await promises$1.readFile(`${archive}.sha256`, "utf8")).trim() === `${checksum}  ${name2}`, "Release checksum verification failed; no app files were changed.");
+        const { stdout: listing } = await run2("tar", ["-tzf", name2], { cwd: staging, maxBuffer: 8 * 1024 * 1024 });
+        requireUpdate(listing.trim().split(/\r?\n/).every((path2) => path2.startsWith("bin/") && !path2.includes("\\") && !path2.includes(":") && !path2.split("/").some((part) => part === "." || part === "..")), "Release archive contains an unsafe path.");
+        const { stdout: detailed } = await run2("tar", ["-tvzf", name2], { cwd: staging, maxBuffer: 8 * 1024 * 1024 });
+        requireUpdate(detailed.trim().split(/\r?\n/).every((line) => ["-", "d"].includes(line[0])), "Release archive contains a link or special file.");
+        await run2("tar", ["-xzf", name2, "--no-same-owner", "--no-same-permissions"], { cwd: staging });
+        const root = path$3.join(staging, "bin");
+        const pkg = JSON.parse(await promises$1.readFile(path$3.join(root, "package.json"), "utf8"));
+        requireUpdate(pkg !== null && typeof pkg === "object" && "name" in pkg && pkg.name === "forge-bundle" && "version" in pkg && pkg.version === version2, "Release package version differs from the requested version.");
+        const { stdout } = await run2(process.execPath, [path$3.join(root, "forge.js"), "--version"], { timeout: 3e4 });
+        requireUpdate(JSON.parse(stdout).data?.version === version2, "The downloaded app cannot execute on this Node version.");
+        const paths2 = distributionFiles(JSON.parse(await promises$1.readFile(path$3.join(root, "data/distribution.json"), "utf8")), policy);
+        const files = [];
+        for (const path2 of paths2) {
+          const entry2 = await promises$1.lstat(path$3.join(root, path2));
+          requireUpdate(entry2.isFile() && !entry2.isSymbolicLink(), "A release asset is not a regular file.");
+          const bytes2 = await promises$1.readFile(path$3.join(root, path2));
+          files.push({ path: path2, bytes: bytes2, revision: node_crypto.createHash("sha256").update(bytes2).digest("hex") });
+        }
+        return { version: version2, checksum, files };
+      } catch (error2) {
+        if (error2 instanceof AppError) throw error2;
+        throw updateError("UPDATE_DOWNLOAD_FAILED", "Could not download or unpack the release. Check network access, curl, tar and available disk space; existing app files were preserved.");
+      } finally {
+        await promises$1.rm(staging, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+      }
+    }
+  };
+}
+const updateCheckSchema = {
+  type: "object",
+  required: ["installedVersion", "releaseVersion", "available", "revision", "releaseUrl"],
+  additionalProperties: false,
+  properties: { installedVersion: { type: "string" }, releaseVersion: { type: "string" }, available: { type: "boolean" }, revision: { type: "string" }, releaseUrl: { type: "string" } }
+};
+const updateApplySchema = {
+  type: "object",
+  required: ["installedVersion", "releaseVersion", "checksum", "changed", "dryRun", "changes", "revision", "restartRequired"],
+  additionalProperties: false,
+  properties: {
+    installedVersion: { type: "string" },
+    releaseVersion: { type: "string" },
+    checksum: { type: "string" },
+    changed: { type: "boolean" },
+    dryRun: { type: "boolean" },
+    changes: { type: "array", items: { type: "object" } },
+    revision: { type: "string" },
+    restartRequired: { type: "boolean" }
+  }
+};
+function updateCommand(updater) {
+  return {
+    id: "update",
+    description: "Check GitHub Releases and upgrade this workspace app while preserving local settings.",
+    usage: "update [check [--release-version <version>] | apply --release-version <version> --if-match <revision>]",
+    scope: "workspace",
+    discovery: true,
+    mutating: false,
+    defaultAction: "check",
+    unknownAction: "INVALID_ARGUMENT",
+    args: [{ name: "action", description: "check (default) or apply.", enum: ["check", "apply"] }],
+    actions: {
+      check: {
+        description: "Inspect the installed revision and latest stable GitHub release without changing the app.",
+        output: updateCheckSchema,
+        options: { "release-version": option$1.string("Check this pinned stable release instead of resolving latest.") }
+      },
+      apply: {
+        description: "Download, verify and apply a pinned release as one guarded batch; preserve mutable workspace data.",
+        mutating: true,
+        destructive: true,
+        idempotent: true,
+        output: updateApplySchema,
+        options: {
+          "release-version": option$1.string("Stable GitHub release version to install, such as 0.1.0.", { required: true }),
+          "if-match": option$1.string("Installed bin folder revision returned by update check; required before upgrading.", { required: true })
+        }
+      }
+    },
+    errors: ["INVALID_ARGUMENT", "INVALID_PATH", "NOT_FOUND", "CONFLICT", "UNSAFE_PATH", "DESTINATION_EXISTS", "UPDATE_INVALID", "UPDATE_DOWNLOAD_FAILED", "UPDATE_SCOPE_INVALID"],
+    async run(args, flags, context) {
+      arity(args, 0, 1);
+      const action2 = args[0] ?? "check";
+      ensure(action2 === "check" || action2 === "apply", "INVALID_ARGUMENT", "Use update check or update apply.");
+      if (action2 === "check") return updater.check(context, value$2(flags, "release-version"));
+      const version2 = releaseVersion(value$2(flags, "release-version", true));
+      const revision2 = value$2(flags, "if-match", true);
+      ensure(/^[a-f0-9]{64}$/.test(revision2), "INVALID_ARGUMENT", "--if-match must be the SHA-256 folder revision from update check.");
+      return updater.apply(context, version2, revision2);
+    }
+  };
+}
+const updatesStrings = { de: {
+  manifest: { name: "App-Aktualisierungen", description: "Das portable Programm aus GitHub Releases mit Revisionsschutz aktualisieren und Arbeitsbereichsdaten erhalten." },
+  commands: { update: "GitHub Releases prüfen und das Programm dieses Arbeitsbereichs aktualisieren; lokale Einstellungen bleiben erhalten." },
+  actions: {
+    "update check": "Installierte Revision und neueste stabile GitHub-Version ohne Änderungen am Programm prüfen.",
+    "update apply": "Eine feste Version herunterladen, prüfen und als geschützten Stapel anwenden; veränderbare Arbeitsbereichsdaten erhalten."
+  },
+  descriptions: {
+    "check (default) or apply.": "check (Standard) oder apply.",
+    "Check this pinned stable release instead of resolving latest.": "Diese feste stabile Version statt der neuesten Version prüfen.",
+    "Stable GitHub release version to install, such as 0.1.0.": "Zu installierende stabile GitHub-Version, etwa 0.1.0.",
+    "Installed bin folder revision returned by update check; required before upgrading.": "Installierte bin-Ordnerrevision aus update check; vor der Aktualisierung erforderlich."
+  },
+  errors: {
+    UPDATE_DOWNLOAD_FAILED: { summary: "Die GitHub-Version konnte nicht abgerufen werden.", hint: "Netzwerkzugriff, curl, tar und Speicherplatz prüfen; anschließend erneut versuchen." },
+    UPDATE_INVALID: { summary: "Die Version oder das Archiv ist ungültig.", hint: "Stabile Version, Prüfsumme und Verteilungsmanifest prüfen; das bestehende Programm bleibt erhalten." },
+    UPDATE_SCOPE_INVALID: { summary: "Der Zielarbeitsbereich hat keine installierte Forge-Verteilung.", hint: "Zuerst eine Version installieren oder --root auf den richtigen Arbeitsbereich setzen." }
+  }
+} };
+function updatesPlugin(policy) {
+  return {
+    manifest: {
+      id: "updates",
+      name: "App updates",
+      version: "0.1.0",
+      minAppVersion: "0.1.0",
+      core: true,
+      author: "The Forge",
+      description: "Upgrade the portable app from GitHub Releases with revision guards while preserving workspace data."
+    },
+    strings: updatesStrings,
+    create: () => ({
+      commands: [updateCommand(new AppUpdate(githubReleases(policy), policy))],
+      errors: [
+        { code: "UPDATE_DOWNLOAD_FAILED", category: "external", summary: "The GitHub release could not be fetched.", hint: "Check network access, curl, tar and disk space, then retry." },
+        { code: "UPDATE_INVALID", category: "input", summary: "The release version or archive is invalid.", hint: "Inspect the stable release version, checksum and distribution manifest; the existing app was preserved." },
+        { code: "UPDATE_SCOPE_INVALID", category: "input", summary: "The target workspace has no installed Forge distribution.", hint: "Install a release first or use --root to select the correct workspace." }
+      ]
+    })
+  };
+}
+const schemaVersion = 1;
+const requiredAssets = ["forge.js", "forge-runtime.js", "forge-server.cjs", "package.json", "config/default.json", "data/distribution.json", "webviews/admin/index.html", "webviews/admin/manifest.json", "webviews/admin/THIRD-PARTY-NOTICES.md", "browser-runtime/playwright-core/index.js", "browser-runtime/playwright-core/package.json", "browser-runtime/playwright-core/browsers.json", "browser-runtime/playwright-core/lib/coreBundle.js"];
+const ownedAssetPattern = "^(?:forge(?:-runtime)?\\.js|forge-server\\.cjs|package\\.json|config/default\\.json|skills/.+|webviews/admin/.+|browser-runtime/playwright-core/.+|data/(?:LICENSE|README\\.md|THIRD-PARTY-NOTICES\\.md|distribution\\.json|(?:docs|types|licenses)/.+))$";
+const distributionPolicy = {
+  schemaVersion,
+  requiredAssets,
+  ownedAssetPattern
+};
+function nodeLockFiles(root, warn) {
+  return async (path2, command2) => {
+    const target = await (await NodeFiles.at(root)).resolvePath(path2);
+    await promises$1.mkdir(path$3.dirname(target), { recursive: true });
+    const token = await acquireLock(target, () => ({ command: command2 }), path2, (lock) => warn(recoveredLockMessage(lock)));
+    return async () => await releaseLock(target, token) === "released";
+  };
+}
+const retryable = /* @__PURE__ */ new Set([429, 503]);
+function retryAfter(value2, now = Date.now()) {
+  if (value2 === null || value2.trim() === "") return null;
+  const seconds = Number(value2.trim());
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1e3);
+  const date2 = Date.parse(value2);
+  return Number.isNaN(date2) ? null : Math.max(0, date2 - now);
+}
+class FetchHttpClient {
+  fetch;
+  sleep;
+  retries;
+  timeoutMs;
+  maxDelayMs;
+  constructor(options2 = {}) {
+    this.fetch = options2.fetch ?? ((url2, init) => globalThis.fetch(url2, init));
+    this.sleep = options2.sleep ?? ((milliseconds) => new Promise((resolve2) => {
+      setTimeout(resolve2, milliseconds);
+    }));
+    this.retries = options2.retries ?? 3;
+    this.timeoutMs = options2.timeoutMs ?? 3e4;
+    this.maxDelayMs = options2.maxDelayMs ?? 6e4;
+  }
+  async request(request) {
+    const retries = request.retry ?? request.method === "GET" ? this.retries : 0;
+    for (let attempt = 0; ; attempt++) {
+      const response = await this.attempt(request);
+      if (!retryable.has(response.status) || attempt >= retries) return response;
+      const asked = retryAfter(response.headers["retry-after"] ?? null);
+      await this.sleep(Math.min(asked ?? 1e3 * 2 ** attempt, this.maxDelayMs));
+    }
+  }
+  async attempt(request) {
+    const timeout2 = request.timeoutMs ?? this.timeoutMs;
+    let response;
+    try {
+      response = await this.fetch(request.url, {
+        method: request.method,
+        ...request.headers ? { headers: { ...request.headers } } : {},
+        ...request.body === void 0 ? {} : { body: request.body },
+        signal: AbortSignal.timeout(timeout2),
+        redirect: "manual"
+      });
+    } catch (error2) {
+      const reason = error2 instanceof Error && (error2.name === "TimeoutError" || error2.name === "AbortError") ? `timed out after ${timeout2} ms` : "could not connect";
+      throw new Error(`${request.method} ${request.url} ${reason}.`);
+    }
+    const headers = {};
+    response.headers.forEach((value2, name2) => {
+      headers[name2.toLowerCase()] = value2;
+    });
+    return { status: response.status, headers, body: await response.text() };
+  }
+}
+const relativePath$1 = string$3().min(1).transform((value2) => value2.replace(/\/+$/, "")).refine((value2) => {
+  try {
+    vaultPath(value2);
+    return true;
+  } catch {
+    return false;
+  }
+}, "Must be a contained workspace-relative path.");
+const pluginIds = array(string$3().regex(/^[a-z][a-z0-9-]*$/)).refine((ids) => new Set(ids).size === ids.length, "Duplicate plugin IDs.").default([]);
+const configSchema = strictObject({
+  schemaVersion: literal$1(1).default(1),
+  paths: strictObject({
+    projects: relativePath$1.refine((value2) => value2.toLowerCase() !== "bin" && !value2.toLowerCase().startsWith("bin/"), "Projects must be outside the fixed bin directory.").default("projects")
+  }).prefault({}),
+  settings: strictObject({ language: _enum(["en", "de"]).default("en"), json: boolean().default(false), dryRun: boolean().default(false), events: _enum(eventOutputLevels).default("changes") }).prefault({}),
+  // Plugin sections are validated against the schemas that registered plugins declare once they load.
+  plugins: strictObject({
+    enabled: pluginIds,
+    disabled: pluginIds,
+    settings: record$2(string$3().regex(/^[a-z][a-z0-9-]*$/, "Use a plugin id."), unknown()).default({})
+  }).prefault({})
+});
+async function loadConfig(options2) {
+  const root = options2.root !== void 0 ? path$3.resolve(options2.cwd, options2.root) : path$3.resolve(path$3.dirname(options2.defaultPath), "..");
+  const path2 = path$3.resolve(root, "bin/config.json");
+  let content2;
+  let exists2 = true;
+  try {
+    content2 = JSON.parse(await promises$1.readFile(path2, "utf8"));
+  } catch (error2) {
+    if (error2.code === "ENOENT") {
+      content2 = {};
+      exists2 = false;
+    } else throw forgeError("INVALID_CONFIG", `Cannot read configuration ${path2}: ${errorMessage(error2)}`);
+  }
+  const parsed2 = configSchema.safeParse(content2);
+  if (!parsed2.success) throw forgeError("INVALID_CONFIG", parsed2.error.issues.map((issue2) => `${issue2.path.join(".") || "config"}: ${issue2.message}`).join("; "));
+  const config2 = parsed2.data;
+  return { path: exists2 ? path2 : null, root, config: config2 };
+}
+const ownedAsset = new RegExp(distributionPolicy.ownedAssetPattern);
+async function readSetupArtifacts(bundleDir) {
+  const root = await promises$1.lstat(bundleDir);
+  ensure(root.isDirectory() && !root.isSymbolicLink(), "INVALID_SETUP", "The bin folder must be a regular directory.");
+  const readAsset2 = async (path2) => {
+    vaultPath(path2);
+    ensure(ownedAsset.test(path2), "INVALID_SETUP", `Not a distribution asset: ${path2}`);
+    const segments2 = path2.split("/");
+    let current = bundleDir;
+    for (const [index2, segment2] of segments2.entries()) {
+      current = path$3.join(current, segment2);
+      const entry2 = await promises$1.lstat(current).catch((error2) => {
+        if (error2.code !== "ENOENT" && error2.code !== "ENOTDIR") throw error2;
+        throw forgeError("INVALID_SETUP", `The distribution is incomplete: bin/${path2} is missing. Copy the complete bin folder of a release, or rebuild it, then run setup again.`, { path: `bin/${path2}` });
+      });
+      ensure(!entry2.isSymbolicLink() && (index2 === segments2.length - 1 ? entry2.isFile() : entry2.isDirectory()), "INVALID_SETUP", `Distribution paths must contain only regular files and directories: ${path2}`);
+    }
+    return promises$1.readFile(current);
+  };
+  let manifest;
+  try {
+    manifest = JSON.parse(new TextDecoder().decode(await readAsset2("data/distribution.json")));
+  } catch (error2) {
+    if (!(error2 instanceof SyntaxError)) throw error2;
+    throw forgeError("INVALID_SETUP", "bin/data/distribution.json is not valid JSON. Copy the complete bin folder of a release, or rebuild it.", { path: "bin/data/distribution.json" });
+  }
+  ensure(typeof manifest === "object" && manifest !== null && "schemaVersion" in manifest && manifest.schemaVersion === distributionPolicy.schemaVersion && "files" in manifest && Array.isArray(manifest.files), "INVALID_SETUP", "The distribution manifest is invalid. Rebuild or download the complete bin folder.");
+  const files = manifest.files;
+  ensure(files.every((path2) => typeof path2 === "string") && new Set(files).size === files.length, "INVALID_SETUP", "The distribution manifest must contain unique paths.");
+  ensure(distributionPolicy.requiredAssets.every((path2) => files.includes(path2)), "INVALID_SETUP", "The distribution manifest is incomplete.");
+  const artifacts = [];
+  for (const path2 of files) artifacts.push({ path: path2, bytes: await readAsset2(path2) });
+  return artifacts;
+}
+const snapshotFormat = 2;
+const racyWindowMs = 2e3;
+const aliasesKey = (aliases) => JSON.stringify([...aliases]);
+const outcomeKey = (path2, revision2) => `${fileKind(path2)}:${revision2}`;
+function unchangedFile(stored, current, checkedAtMs) {
+  return stored !== void 0 && current !== void 0 && stored.stamp !== null && stored.stamp === current.stamp && current.changedMs < checkedAtMs - racyWindowMs;
+}
+const text$4 = (value2) => typeof value2 === "string";
+function storedLinks(value2) {
+  return isRecord$1(value2) && Array.isArray(value2.paths) && value2.paths.every(text$4) && text$4(value2.aliases) && isRecord$1(value2.sources) && Object.values(value2.sources).every(Array.isArray);
+}
+function snapshotFile$1(value2) {
+  return isRecord$1(value2) && (value2.stamp === null || text$4(value2.stamp)) && text$4(value2.revision);
+}
+function storedOutcome(value2) {
+  if (!isRecord$1(value2)) return false;
+  if (isRecord$1(value2.metadata)) return Array.isArray(value2.positions) && Object.keys(value2).length === 2;
+  return isRecord$1(value2.issue) && text$4(value2.issue.code) && text$4(value2.issue.message) && Object.keys(value2).length === 1;
+}
+function readSnapshot(value2, key) {
+  if (!isRecord$1(value2) || value2.format !== snapshotFormat || value2.key !== key) return null;
+  if (typeof value2.checkedAtMs !== "number" || !Number.isFinite(value2.checkedAtMs)) return null;
+  if (!isRecord$1(value2.files) || !Object.values(value2.files).every(snapshotFile$1)) return null;
+  if (!isRecord$1(value2.outcomes) || !Object.values(value2.outcomes).every(storedOutcome)) return null;
+  if (value2.links !== null && !storedLinks(value2.links)) return null;
+  return value2;
+}
+const positioned = ["links", "embeds", "referenceLinks", "tags", "headings", "sections", "listItems"];
+function encodeOutcome(outcome) {
+  if (!("metadata" in outcome)) return outcome;
+  const positions2 = [];
+  const index2 = ({ start: start2, end: end2 }) => positions2.push(start2.line, start2.col, start2.offset, end2.line, end2.col, end2.offset) / 6 - 1;
+  const source2 = outcome.metadata, metadata2 = { ...source2 };
+  for (const key of positioned) {
+    const items2 = source2[key];
+    if (items2) metadata2[key] = items2.map((item) => ({ ...item, position: index2(item.position) }));
+  }
+  if (source2.blocks) metadata2.blocks = Object.fromEntries(Object.entries(source2.blocks).map(([id2, block]) => [id2, { ...block, position: index2(block.position) }]));
+  if (source2.frontmatterPosition) metadata2.frontmatterPosition = index2(source2.frontmatterPosition);
+  return { metadata: metadata2, positions: positions2 };
+}
+function decodeOutcome(stored) {
+  if (!("metadata" in stored)) return stored;
+  const { metadata: metadata2, positions: positions2 } = stored;
+  if (!Array.isArray(positions2) || positions2.length % 6 !== 0) return void 0;
+  const count2 = positions2.length / 6;
+  const position2 = (value2) => {
+    if (typeof value2 !== "number" || !Number.isInteger(value2) || value2 < 0 || value2 >= count2) return void 0;
+    const at = value2 * 6;
+    return { start: { line: positions2[at], col: positions2[at + 1], offset: positions2[at + 2] }, end: { line: positions2[at + 3], col: positions2[at + 4], offset: positions2[at + 5] } };
+  };
+  const decode2 = (item) => {
+    const value2 = position2(item.position);
+    if (value2 === void 0) return false;
+    item.position = value2;
+    return true;
+  };
+  for (const key of positioned) {
+    const items2 = metadata2[key];
+    if (items2 !== void 0 && !(Array.isArray(items2) && items2.every(decode2))) return void 0;
+  }
+  const blocks = metadata2.blocks;
+  if (blocks !== void 0 && !Object.values(blocks).every(decode2)) return void 0;
+  if (metadata2.frontmatterPosition !== void 0) {
+    const value2 = position2(metadata2.frontmatterPosition);
+    if (value2 === void 0) return void 0;
+    metadata2.frontmatterPosition = value2;
+  }
+  return { metadata: metadata2 };
+}
+function encodeResolution(resolution, index2) {
+  if (resolution.status === "external") return null;
+  if (resolution.status === "resolved") return resolution.via === "path" ? index2(resolution.path) : -1 - index2(resolution.path);
+  if (resolution.reason === "missing") return ["missing", resolution.linkpath];
+  return [resolution.via, resolution.linkpath, ...resolution.candidates.map(index2)];
+}
+function decodeResolution(stored, paths2) {
+  const path2 = (value2) => typeof value2 === "number" && Number.isInteger(value2) && value2 >= 0 && value2 < paths2.length ? paths2[value2] : void 0;
+  if (stored === null) return { status: "external" };
+  if (typeof stored === "number") {
+    const resolved = path2(stored < 0 ? -1 - stored : stored);
+    return resolved === void 0 ? void 0 : { status: "resolved", path: resolved, via: stored < 0 ? "alias" : "path" };
+  }
+  if (!Array.isArray(stored) || typeof stored[1] !== "string") return void 0;
+  const [reason, linkpath, ...indexes2] = stored;
+  if (reason === "missing") return stored.length === 2 ? { status: "unresolved", linkpath, reason } : void 0;
+  if (reason !== "path" && reason !== "alias") return void 0;
+  const candidates2 = indexes2.map(path2);
+  return candidates2.length > 1 && candidates2.every((item) => item !== void 0) ? { status: "unresolved", linkpath, reason: "ambiguous", via: reason, candidates: candidates2 } : void 0;
+}
+class ParseResults {
+  constructor(options2) {
+    this.options = options2;
+  }
+  options;
+  previous;
+  /** The previous snapshot once `previous` settled; undefined before. */
+  loaded;
+  records = /* @__PURE__ */ new Map();
+  /** Stored outcomes decoded so far, by outcome key; undefined for one that could not be decoded. */
+  decoded = /* @__PURE__ */ new Map();
+  checkedAtMs = 0;
+  changed = false;
+  /** The scope's files with stamps from the store for those `stamped` accepts, or the repository listing without stamps. */
+  async listing(list2, stamped) {
+    if (this.options === void 0) return { checkedAtMs: null, files: (await list2()).map((path2) => ({ path: path2 })) };
+    const listing = await this.options.store.listing(stamped);
+    this.checkedAtMs = listing.checkedAtMs;
+    return listing;
+  }
+  /** The previous snapshot, loaded once; null without a store or when it is missing, unreadable or for another key. */
+  stored() {
+    const options2 = this.options;
+    this.previous ??= (options2 === void 0 ? Promise.resolve(null) : options2.store.load().then((value2) => readSnapshot(value2, options2.key), () => null)).then((snapshot) => {
+      this.loaded = snapshot;
+      return snapshot;
+    });
+    return this.previous;
+  }
+  /**
+   * The stored outcome of a file whose stamp is unchanged since the previous snapshot, recorded as current. Answers
+   * from the loaded snapshot without waiting, so call it once `stored()` has settled; before that it reuses nothing.
+   */
+  unchanged(path2, stamp) {
+    const previous2 = this.loaded;
+    const stored = previous2 && Object.hasOwn(previous2.files, path2) ? previous2.files[path2] : void 0;
+    if (!previous2 || !unchangedFile(stored, stamp, previous2.checkedAtMs)) return void 0;
+    const outcome = this.outcome(previous2, outcomeKey(path2, stored.revision));
+    if (outcome !== void 0) this.records.set(path2, { stamp: stamp.stamp, revision: stored.revision });
+    return outcome;
+  }
+  /** The stored outcome for content of `revision` at `path`, or undefined when it must be parsed. */
+  async reusable(path2, revision2) {
+    const previous2 = await this.stored();
+    return previous2 ? this.outcome(previous2, outcomeKey(path2, revision2)) : void 0;
+  }
+  /**
+   * Records that the index holds `revision` for `path`, read after `stamp` was taken (null: no stamp). The snapshot
+   * becomes outdated when the record differs from the stored one, or when storing it would let the next load trust
+   * the stamp. A file that stays inside the racy window, such as one with a future timestamp, is read again on every
+   * load but does not rewrite an otherwise unchanged snapshot.
+   */
+  read(path2, revision2, stamp) {
+    if (this.options === void 0) return;
+    const record2 = { stamp: stamp?.stamp ?? null, revision: revision2 };
+    this.records.set(path2, record2);
+    const before = this.loaded && Object.hasOwn(this.loaded.files, path2) ? this.loaded.files[path2] : void 0;
+    const same2 = before !== void 0 && before.stamp === record2.stamp && before.revision === revision2;
+    const undecodable = this.decoded.has(outcomeKey(path2, revision2)) && this.decoded.get(outcomeKey(path2, revision2)) === void 0;
+    if (!same2 || undecodable || stamp !== null && stamp.changedMs < this.checkedAtMs - racyWindowMs) this.changed = true;
+  }
+  /** The recorded revision of an indexed path, if any. */
+  revision(path2) {
+    return this.records.get(path2)?.revision;
+  }
+  forget(path2) {
+    if (this.records.delete(path2)) this.changed = true;
+  }
+  /** The vault's paths or aliases changed, so the stored link resolutions no longer match. */
+  outdated() {
+    this.changed = true;
+  }
+  /**
+   * After the files are indexed: the stored resolutions of each source whose content is unchanged since the stored
+   * snapshot, provided the index has the stored vault paths (in order) and aliases. Otherwise the snapshot is
+   * outdated and nothing is reused.
+   */
+  async links(paths2, aliases) {
+    const previous2 = await this.stored(), links2 = previous2?.links;
+    if (!previous2 || !links2 || links2.aliases !== aliases || links2.paths.length !== paths2.length || links2.paths.some((path2, position2) => path2 !== paths2[position2])) {
+      this.changed = true;
+      return () => void 0;
+    }
+    return (source2) => Object.hasOwn(links2.sources, source2) && Object.hasOwn(previous2.files, source2) && previous2.files[source2].revision === this.revision(source2) ? links2.sources[source2] : void 0;
+  }
+  /** After a build: a missing previous snapshot or a file that left the vault makes the snapshot outdated. */
+  async built() {
+    const previous2 = await this.stored();
+    if (previous2 === null || Object.keys(previous2.files).some((path2) => !this.records.has(path2))) this.changed = true;
+  }
+  /**
+   * Stores the index's current outcomes and `links` unless nothing may or needs to be written: no store, a dry run,
+   * or nothing that differs from the previous snapshot. A failed save throws and leaves the state outdated.
+   */
+  async persist(outcomeOf, links2) {
+    if (this.options === void 0 || !this.options.save || !this.changed) return;
+    await this.options.store.save(this.next(this.options.key, outcomeOf, links2()));
+    this.changed = false;
+  }
+  next(key, outcomeOf, links2) {
+    const files = [], outcomes = /* @__PURE__ */ new Map();
+    for (const [path2, record2] of this.records) {
+      const outcome = outcomeOf(path2);
+      if (outcome === void 0) continue;
+      files.push([path2, record2]);
+      const stored = outcomeKey(path2, record2.revision);
+      if (!outcomes.has(stored)) outcomes.set(stored, encodeOutcome(outcome));
+    }
+    return { format: snapshotFormat, key, checkedAtMs: this.checkedAtMs, files: Object.fromEntries(files), outcomes: Object.fromEntries(outcomes), links: links2 };
+  }
+  /** A stored outcome, decoded once per key: files with the same content share it. */
+  outcome(previous2, key) {
+    if (!Object.hasOwn(previous2.outcomes, key)) return void 0;
+    if (!this.decoded.has(key)) this.decoded.set(key, decodeOutcome(previous2.outcomes[key]));
+    return this.decoded.get(key);
+  }
+}
+const pendingFileReads = 16;
+const workspaceDistribution = "bin";
+function vaultMember(path2, workspaceRoot) {
+  const segments2 = path2.split("/");
+  return !segments2.some((part) => part.startsWith(".")) && !(workspaceRoot && segments2.length > 1 && segments2[0].toLowerCase() === workspaceDistribution);
+}
+const missing = (error2) => error2 instanceof AppError && error2.code === "NOT_FOUND";
+const counts = () => /* @__PURE__ */ Object.create(null);
+const vaultOrder = (paths2) => [...paths2].sort();
+async function eachConcurrently(items2, limit, work) {
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items2.length) }, async () => {
+    while (next < items2.length) await work(items2[next++]);
+  }));
+}
+function orderedReferences(cache) {
+  const body = [
+    ...(cache.links ?? []).map((reference) => ({ kind: "link", reference })),
+    ...(cache.embeds ?? []).map((reference) => ({ kind: "embed", reference }))
+  ].sort((a, b) => a.reference.position.start.offset - b.reference.position.start.offset);
+  return [
+    ...body,
+    ...(cache.frontmatterLinks ?? []).map((reference) => ({ kind: "frontmatter", reference })),
+    ...(cache.canvasLinks ?? []).map((reference) => ({ kind: "canvas", reference }))
+  ];
+}
+class VaultMetadata {
+  constructor(repository, parser2, options2 = {}) {
+    this.repository = repository;
+    this.parser = parser2;
+    const workspaceRoot = options2.workspaceRoot ?? false;
+    this.workspaceRoot = workspaceRoot;
+    this.revisionOf = options2.revisionOf;
+    this.member = (path2) => vaultMember(path2, workspaceRoot);
+    this.results = new ParseResults(options2.snapshots);
+  }
+  repository;
+  parser;
+  resolvedLinks = /* @__PURE__ */ Object.create(null);
+  unresolvedLinks = /* @__PURE__ */ Object.create(null);
+  paths = [];
+  caches = /* @__PURE__ */ new Map();
+  problems = /* @__PURE__ */ new Map();
+  outgoing = /* @__PURE__ */ new Map();
+  incoming = /* @__PURE__ */ new Map();
+  /** The link index over `paths` and `aliasMap`, built on first use after each reindex. */
+  builtIndex;
+  aliasMap = /* @__PURE__ */ new Map();
+  /** `aliasesKey` of `aliasMap`. */
+  aliases = aliasesKey(/* @__PURE__ */ new Map());
+  loading;
+  pending = Promise.resolve();
+  member;
+  workspaceRoot;
+  results;
+  revisionOf;
+  load() {
+    this.loading ??= this.build();
+    return this.loading.then(() => this);
+  }
+  async vaultFiles() {
+    if (this.loading) return (await this.load()).files();
+    return (await this.repository.list()).filter(this.member);
+  }
+  async parseFile(file) {
+    if (!this.member(file.path) || !this.parser.indexes(file.path)) return null;
+    const revision2 = this.revisionOf?.(file.bytes);
+    if (revision2 !== void 0 && this.loading) {
+      await this.load();
+      if (this.results.revision(file.path) === revision2) return this.caches.get(file.path) ?? null;
+    }
+    const outcome = (revision2 === void 0 ? void 0 : await this.results.reusable(file.path, revision2)) ?? this.outcome(file.path, file.bytes);
+    return "metadata" in outcome ? outcome.metadata : null;
+  }
+  /**
+   * Stores the parse results of a loaded index when anything was read or changed since the stored snapshot; does
+   * nothing without a store, during a dry run, before the first load or after a failed load (the command reports
+   * that failure). A failed save throws and stores nothing.
+   */
+  async persist() {
+    if (!this.loading) return;
+    try {
+      await this.loading;
+    } catch {
+      return;
+    }
+    await this.pending;
+    await this.results.persist((path2) => {
+      const metadata2 = this.caches.get(path2), issue2 = this.problems.get(path2);
+      return metadata2 ? { metadata: metadata2 } : issue2 ? { issue: { code: issue2.code, message: issue2.message } } : void 0;
+    }, () => this.storedLinks());
+  }
+  /** Every source's resolutions by the place of each reference among its ordered references (externals included). */
+  storedLinks() {
+    const positions2 = new Map(this.paths.map((path2, position2) => [path2, position2]));
+    const sources = this.sources().map((source2) => {
+      const references = this.outgoing.get(source2) ?? [];
+      let next = 0;
+      return [source2, orderedReferences(this.caches.get(source2)).map((item) => references[next]?.reference === item.reference ? encodeResolution(references[next++].resolution, (path2) => positions2.get(path2)) : null)];
+    });
+    return { paths: [...this.paths], aliases: this.aliases, sources: Object.fromEntries(sources) };
+  }
+  parseContent(path2, bytes) {
+    return this.parser.indexes(path2) ? this.parser.parse(path2, bytes) : null;
+  }
+  async fork(repository) {
+    const fork = new VaultMetadata(repository, this.parser, { workspaceRoot: this.workspaceRoot, ...this.revisionOf ? { revisionOf: this.revisionOf } : {} });
+    if (!this.loading) return fork;
+    await this.load();
+    await this.pending;
+    fork.paths = [...this.paths];
+    for (const [path2, cache] of this.caches) fork.caches.set(path2, cache);
+    for (const [path2, issue2] of this.problems) fork.problems.set(path2, issue2);
+    for (const [path2, references] of this.outgoing) fork.outgoing.set(path2, references);
+    for (const [path2, sources] of this.incoming) fork.incoming.set(path2, new Set(sources));
+    Object.assign(fork.resolvedLinks, this.resolvedLinks);
+    Object.assign(fork.unresolvedLinks, this.unresolvedLinks);
+    fork.builtIndex = this.builtIndex;
+    fork.aliasMap = this.aliasMap;
+    fork.aliases = this.aliases;
+    fork.loading = Promise.resolve();
+    return fork;
+  }
+  update(changes2) {
+    if (!this.loading) return Promise.resolve(null);
+    const result = this.pending.then(() => this.loading).then(() => this.apply(changes2));
+    this.pending = result.catch(() => void 0);
+    return result;
+  }
+  invalidate(paths2) {
+    return this.update(paths2.map((path2) => ({ path: path2, operation: "updated" })));
+  }
+  files() {
+    return this.paths;
+  }
+  getFileCache(path2) {
+    return this.caches.get(path2) ?? null;
+  }
+  issues() {
+    return vaultOrder(this.problems.keys()).map((path2) => this.problems.get(path2));
+  }
+  references(sourcePath) {
+    return this.outgoing.get(sourcePath) ?? [];
+  }
+  getFirstLinkpathDest(linkpath, sourcePath) {
+    const result = resolveLinkpath(this.index, linkpath, sourcePath);
+    return result.status === "resolved" ? result.path : null;
+  }
+  getClosestLinkpathDest(linkpath, sourcePath) {
+    return closestDestination(resolveLinkpath(this.index, linkpath, sourcePath), sourcePath);
+  }
+  fileToLinktext(path2, sourcePath, omitMdExtension = true) {
+    return fileToLinktext(this.index, path2, sourcePath, omitMdExtension);
+  }
+  backlinks(path2) {
+    return vaultOrder(this.incoming.get(path2) ?? []).filter((source2) => source2 !== path2).flatMap((source2) => this.references(source2).filter((item) => item.resolution.status === "resolved" && item.resolution.path === path2).map((item) => ({ ...item, source: source2 })));
+  }
+  /**
+   * Lists the vault, then takes each indexed file's parse result from the stored snapshot when its stamp is
+   * unchanged, else reads it and reuses a stored result of the same content revision or parses it.
+   */
+  async build() {
+    const listing = await this.results.listing(() => this.repository.list(), (path2) => this.member(path2) && this.parser.indexes(path2));
+    const stamps = /* @__PURE__ */ new Map();
+    for (const file of listing.files) if ("stamp" in file) stamps.set(file.path, file);
+    this.paths = listing.files.map((file) => file.path).filter(this.member);
+    await this.results.stored();
+    const changed = this.paths.filter((path2) => {
+      if (!this.parser.indexes(path2)) return false;
+      const unchanged = this.results.unchanged(path2, stamps.get(path2));
+      if (unchanged !== void 0) this.adopt(path2, unchanged);
+      return unchanged === void 0;
+    });
+    await eachConcurrently(changed, pendingFileReads, async (path2) => {
+      const stamp = stamps.get(path2);
+      const file = await this.repository.read(path2);
+      this.adopt(path2, await this.results.reusable(path2, file.revision) ?? this.outcome(path2, file.bytes));
+      this.results.read(path2, file.revision, stamp ?? null);
+    });
+    await this.results.built();
+    this.reindex();
+    const stored = await this.results.links(this.paths, this.aliases);
+    for (const source2 of this.sources()) this.resolve(source2, stored(source2));
+  }
+  outcome(path2, bytes) {
+    try {
+      return { metadata: this.parser.parse(path2, bytes) };
+    } catch (error2) {
+      return { issue: { code: error2 instanceof AppError ? error2.code : "INVALID_FILE", message: errorMessage(error2) } };
+    }
+  }
+  adopt(path2, outcome) {
+    if ("metadata" in outcome) {
+      this.caches.set(path2, outcome.metadata);
+      this.problems.delete(path2);
+    } else {
+      this.caches.delete(path2);
+      this.problems.set(path2, { path: path2, ...outcome.issue });
+    }
+  }
+  async apply(changes2) {
+    const touched = /* @__PURE__ */ new Set(), removed = /* @__PURE__ */ new Set();
+    for (const change2 of changes2) {
+      if (change2.operation === "renamed") {
+        removed.add(change2.oldPath);
+        touched.add(change2.path);
+      } else if (change2.operation === "deleted") removed.add(change2.path);
+      else touched.add(change2.path);
+    }
+    for (const path2 of touched) removed.delete(path2);
+    const before = new Set(this.paths), aliasesBefore = new Map([...touched, ...removed].map((path2) => [path2, this.aliasKey(path2)]));
+    const contents = /* @__PURE__ */ new Map();
+    await eachConcurrently([...touched].filter(this.member), pendingFileReads, async (path2) => {
+      try {
+        contents.set(path2, await this.repository.read(path2));
+      } catch (error2) {
+        if (!missing(error2)) throw error2;
+        removed.add(path2);
+      }
+    });
+    const changed = [], deleted = [];
+    const prevCaches = /* @__PURE__ */ Object.create(null);
+    for (const path2 of removed) {
+      if (!before.has(path2)) continue;
+      prevCaches[path2] = this.caches.get(path2) ?? null;
+      this.caches.delete(path2);
+      this.problems.delete(path2);
+      this.forget(path2);
+      this.results.forget(path2);
+      deleted.push(path2);
+    }
+    for (const [path2, file] of contents) {
+      if (!this.parser.indexes(path2)) continue;
+      this.adopt(path2, this.outcome(path2, file.bytes));
+      this.results.read(path2, file.revision, null);
+      changed.push(path2);
+    }
+    const paths2 = vaultOrder(/* @__PURE__ */ new Set([...this.paths.filter((path2) => !removed.has(path2)), ...contents.keys()]));
+    const pathsChanged = paths2.length !== this.paths.length || paths2.some((path2, position2) => path2 !== this.paths[position2]);
+    const aliasesChanged = [...aliasesBefore].some(([path2, key]) => key !== this.aliasKey(path2));
+    this.paths = paths2;
+    for (const path2 of changed) if (!this.caches.has(path2)) this.forget(path2);
+    let resolved;
+    if (pathsChanged || aliasesChanged) {
+      this.results.outdated();
+      this.reindex();
+      const previous2 = new Map(this.sources().map((source2) => [source2, this.resolutionKey(source2)]));
+      for (const source2 of this.sources()) this.resolve(source2);
+      resolved = this.sources().filter((source2) => contents.has(source2) || previous2.get(source2) !== this.resolutionKey(source2));
+    } else {
+      resolved = vaultOrder(changed.filter((path2) => this.caches.has(path2)));
+      for (const source2 of resolved) this.resolve(source2);
+    }
+    this.reorder();
+    return { changed: vaultOrder(changed), deleted: vaultOrder(deleted), resolved, prevCaches };
+  }
+  aliasKey(path2) {
+    return JSON.stringify(this.caches.get(path2)?.aliases ?? []);
+  }
+  resolutionKey(source2) {
+    const references = this.outgoing.get(source2);
+    return references && JSON.stringify(references.map((item) => item.resolution));
+  }
+  sources() {
+    return this.paths.filter((path2) => this.caches.has(path2));
+  }
+  /** Takes the current paths and aliases for the link index, which is built when a link is first resolved. */
+  reindex() {
+    this.aliasMap = new Map(this.sources().flatMap((path2) => {
+      const names2 = this.caches.get(path2).aliases;
+      return names2?.length ? [[path2, names2]] : [];
+    }));
+    this.aliases = aliasesKey(this.aliasMap);
+    this.builtIndex = void 0;
+  }
+  // Paths are replaced, never mutated, and change only together with a reindex, so the lazy index stays current.
+  get index() {
+    this.builtIndex ??= linkIndex(this.paths, this.aliasMap);
+    return this.builtIndex;
+  }
+  /**
+   * Re-resolves one parsed source and replaces its link counts and backlink entries. `stored` resolutions, one per
+   * ordered reference, come from a snapshot of the same paths, aliases and content; a malformed one is recomputed.
+   */
+  resolve(source2, stored) {
+    this.unlink(source2);
+    const ordered2 = orderedReferences(this.caches.get(source2)), known2 = stored?.length === ordered2.length ? stored : void 0;
+    const references = [];
+    for (const [place, item] of ordered2.entries()) {
+      const syntax2 = item.reference.syntax, relative = syntax2 !== "wikilink" && syntax2 !== "canvas";
+      const resolution = (known2 && decodeResolution(known2[place], this.paths)) ?? resolveLinkpath(this.index, item.reference.link, source2, { relative, aliases: true });
+      if (resolution.status !== "external") references.push({ ...item, resolution });
+    }
+    const resolved = counts(), unresolved = counts();
+    for (const { resolution } of references) {
+      if (resolution.status === "resolved") {
+        resolved[resolution.path] = (resolved[resolution.path] ?? 0) + 1;
+        const sources = this.incoming.get(resolution.path) ?? /* @__PURE__ */ new Set();
+        this.incoming.set(resolution.path, sources.add(source2));
+      } else if (resolution.status === "unresolved") unresolved[resolution.linkpath] = (unresolved[resolution.linkpath] ?? 0) + 1;
+    }
+    this.outgoing.set(source2, references);
+    this.resolvedLinks[source2] = resolved;
+    this.unresolvedLinks[source2] = unresolved;
+  }
+  unlink(source2) {
+    for (const item of this.outgoing.get(source2) ?? []) {
+      if (item.resolution.status === "resolved") this.incoming.get(item.resolution.path)?.delete(source2);
+    }
+  }
+  /** Removes a source's outgoing references and link counts. */
+  forget(source2) {
+    this.unlink(source2);
+    this.outgoing.delete(source2);
+    delete this.resolvedLinks[source2];
+    delete this.unresolvedLinks[source2];
+  }
+  /** Keeps the link maps' key order equal to a fresh build after sources were added. */
+  reorder() {
+    for (const maps of [this.resolvedLinks, this.unresolvedLinks]) {
+      const entries2 = this.sources().map((source2) => [source2, maps[source2]]);
+      for (const [source2, value2] of entries2) {
+        delete maps[source2];
+        maps[source2] = value2;
+      }
+    }
+  }
+}
+const record = (cache) => JSON.parse(JSON.stringify(cache));
+function metadataChanges({ renames, changes: changes2 }) {
+  return [
+    ...renames.map(({ from, to }) => ({ path: to, oldPath: from, operation: "renamed" })),
+    ...changes2.map(({ path: path2, operation: operation2 }) => ({ path: path2, operation: operation2 }))
+  ];
+}
+class MetadataCacheEvents {
+  constructor(events2, index2) {
+    this.events = events2;
+    this.index = index2;
+  }
+  events;
+  index;
+  async committed({ renames, changes: changes2 }) {
+    const update = await this.index.update(metadataChanges({ renames, changes: changes2 }));
+    if (!update) return;
+    const cache = await this.index.load();
+    const written = new Set(changes2.map((change2) => change2.path)), indexed2 = new Set(cache.files());
+    const movedOnly = new Set(renames.filter((rename2) => !written.has(rename2.to)).map((rename2) => rename2.to));
+    const movedAway = new Set(renames.filter((rename2) => indexed2.has(rename2.to)).map((rename2) => rename2.from));
+    for (const path2 of update.changed) {
+      if (movedOnly.has(path2)) continue;
+      const metadata2 = cache.getFileCache(path2);
+      if (metadata2) await publishHostEvent(this.events, "metadataCache.changed", { path: path2, cache: record(metadata2) });
+    }
+    for (const path2 of update.deleted) {
+      if (movedAway.has(path2)) continue;
+      const previous2 = update.prevCaches[path2] ?? null;
+      await publishHostEvent(this.events, "metadataCache.deleted", { path: path2, prevCache: previous2 && record(previous2) });
+    }
+    for (const path2 of update.resolved) await publishHostEvent(this.events, "metadataCache.resolve", { path: path2 });
+    await publishHostEvent(this.events, "metadataCache.resolved", {});
   }
 }
 const UNDEFINED_CODE_POINTS = /* @__PURE__ */ new Set([
@@ -63569,7 +63792,7 @@ function markdownReferences(value2, tree, inlineTags) {
     }
     node2.children?.forEach(collect);
   };
-  const walk = (node2) => {
+  const walk2 = (node2) => {
     if (["code", "inlineCode", "definition"].includes(node2.type)) return;
     if (node2.type === "html" && node2.value) {
       html2(node2, parseFragment(node2.value, { sourceCodeLocationInfo: true }));
@@ -63582,10 +63805,10 @@ function markdownReferences(value2, tree, inlineTags) {
       const target = targets2.get(node2.identifier);
       if (target) add(target, node2.type === "imageReference", "reference", { ...found(), reference: node2.label ?? node2.identifier });
     }
-    node2.children?.forEach(walk);
+    node2.children?.forEach(walk2);
   };
   collect(tree);
-  walk(tree);
+  walk2(tree);
   return { references, tags: tags2, definitions: definitions2 };
 }
 function stringReferences(value2) {
@@ -63603,7 +63826,7 @@ function sectionType(node2, source2) {
   return node2.type;
 }
 function markdownStructure(text2, tree, lines2) {
-  const sections2 = [], headings = [], blocks2 = [], listItems2 = [];
+  const sections2 = [], headings = [], blocks = [], listItems2 = [];
   const lastLineId = (span) => blockId.exec(text2.slice(Math.max(span.start, lines2.lineStart(lines2.line(span.end))), span.end))?.[1];
   for (const node2 of tree.children ?? []) {
     const span = { start: start(node2), end: end(node2) }, source2 = text2.slice(span.start, span.end);
@@ -63617,10 +63840,10 @@ function markdownStructure(text2, tree, lines2) {
       const previous2 = sections2.at(-1);
       if (id2 && previous2 && source2.trim() === `^${id2}`) {
         previous2.id = id2;
-        blocks2.push({ id: id2, start: previous2.start, end: previous2.end });
+        blocks.push({ id: id2, start: previous2.start, end: previous2.end });
       } else if (id2) {
         section2.id = id2;
-        blocks2.push({ id: id2, ...span });
+        blocks.push({ id: id2, ...span });
       }
     }
     sections2.push(section2);
@@ -63633,7 +63856,7 @@ function markdownStructure(text2, tree, lines2) {
       const marker = task.exec(text2.slice(span.start, lines2.lineEnd(lines2.line(span.start))))?.[1];
       const id2 = content2.length ? lastLineId(span) : void 0;
       listItems2.push({ parentLine, listLine, ...span, ...marker === void 0 ? {} : { task: marker }, ...id2 ? { id: id2 } : {} });
-      if (id2) blocks2.push({ id: id2, ...span });
+      if (id2) blocks.push({ id: id2, ...span });
       for (const child of item.children ?? []) if (child.type === "list") items2(child, lines2.line(span.start));
     }
   };
@@ -63642,7 +63865,7 @@ function markdownStructure(text2, tree, lines2) {
     else if (node2.type !== "code") node2.children?.forEach(visit2);
   };
   visit2(tree);
-  return { sections: sections2, headings, blocks: blocks2, listItems: listItems2 };
+  return { sections: sections2, headings, blocks, listItems: listItems2 };
 }
 const nonEmpty = (key, value2) => value2.length ? { [key]: value2 } : {};
 function frontmatterLinks(properties2) {
@@ -63690,8 +63913,8 @@ function markdownMetadata(content2, properties2, body) {
     ...id2 ? { id: id2 } : {},
     ...at(span)
   }));
-  const blocks2 = {};
-  for (const { id: id2, ...span } of structure.blocks) blocks2[id2.toLowerCase()] ??= { id: id2, ...at(span) };
+  const blocks = {};
+  for (const { id: id2, ...span } of structure.blocks) blocks[id2.toLowerCase()] ??= { id: id2, ...at(span) };
   const aliases = frontmatterAliases(properties2);
   return {
     ...nonEmpty("links", found.references.filter((item) => !item.embed).map(link2)),
@@ -63700,7 +63923,7 @@ function markdownMetadata(content2, properties2, body) {
     ...nonEmpty("referenceLinks", found.definitions.map(({ id: id2, link: link22, original, ...span }) => ({ id: id2, link: link22, original, ...at(span) }))),
     ...nonEmpty("tags", found.tags.map(({ tag, ...span }) => ({ tag, ...at(span) }))),
     ...nonEmpty("headings", structure.headings.map(({ heading: heading2, level, ...span }) => ({ heading: heading2, level, ...at(span) }))),
-    ...Object.keys(blocks2).length ? { blocks: blocks2 } : {},
+    ...Object.keys(blocks).length ? { blocks } : {},
     ...nonEmpty("sections", sections2),
     ...nonEmpty("listItems", listItems2),
     ...result,
@@ -63863,12 +64086,11 @@ function destinationAt(text2, from) {
 }
 function markdownDestination(original) {
   if (!original.endsWith(")")) return void 0;
-  for (let open2 = original.lastIndexOf("]("); open2 >= 0; open2 = original.lastIndexOf("](", open2 - 1)) {
+  for (let open2 = original.indexOf("]("); open2 >= 0; open2 = original.indexOf("](", open2 + 1)) {
     const found = destinationAt(original, open2 + 2);
     if (!found) continue;
     const rest = original.slice(found.end + (found.angle ? 1 : 0), -1);
     if (/^\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\((?:[^()\\]|\\.)*\))?\s*$/.test(rest)) return found;
-    if (open2 === 0) break;
   }
   return void 0;
 }
@@ -67747,6 +67969,22 @@ function parseArguments(tokens, options2, allowUnknown = false) {
   }
   return { args: command2.args, flags };
 }
+function invocationPolicy(command2, args, flags) {
+  const mode = commandMode(command2, args);
+  const help = flags.help === true;
+  const requestedProject = mode.projectOption === void 0 ? void 0 : value$2(flags, mode.projectOption);
+  return {
+    scope: help || mode.discovery || mode.scope === "workspace" ? "workspace" : "project",
+    activatePlugins: !help && !mode.discovery,
+    ...requestedProject === void 0 ? {} : { requestedProject }
+  };
+}
+const projectOptionErrors = ["INVALID_PROJECT_NAME", "PROJECT_NOT_FOUND", "INVALID_PROJECT"];
+function declaredErrors(command2) {
+  const own2 = command2.errors ?? [];
+  const routed = command2.projectOption !== void 0 || Object.values(command2.actions ?? {}).some((action2) => action2.projectOption !== void 0);
+  return routed ? [.../* @__PURE__ */ new Set([...own2, ...projectOptionErrors])] : [...own2];
+}
 const generatorCatalog = (registry2) => [...registry2.generators.values()].map(({ id: id2, description: description2 }) => ({ id: id2, description: description2 }));
 const makeErrors = ["UNKNOWN_GENERATOR", "INVALID_NAME", "CONFLICT", "GENERATION_DRIFT", "INVALID_GENERATION_PLAN", "INVALID_GENERATION_REVISIONS", "PROJECT_REQUIRED"];
 const out = { out: option$1.string("Output directory; each generator documents its default.") };
@@ -67824,7 +68062,9 @@ const germanServerDescriptions = {
   "Installed webview id to include in the launch URL, such as admin.": "ID einer installierten Webview für die Start-URL, zum Beispiel admin."
 };
 const germanCommands = {
+  "read-many": "Bis zu 32 Dateien nacheinander mit Revisionen und einer Gesamtgrenze von 8 MiB Rohdaten lesen.",
   ...germanServerCommands,
+  stat: "Die Revision einer Datei oder eines Ordners mit Größe oder Anzahl der enthaltenen Einträge ohne Inhalt prüfen.",
   help: "Befehle und ihre Verwendung ohne interaktive Abfragen entdecken.",
   schema: "Maschinenlesbarer Vertrag: JSON-Schema-2020-12-Eingabe- und -Ausgabeschemas, Annotationen und Fehlercodes aller Befehle oder eines Befehls.",
   config: "Die geprüfte wirksame Konfiguration und ihren Quellpfad anzeigen.",
@@ -67863,7 +68103,7 @@ const germanActions = {
 const germanGuidance = {
   attachments: "Dateien verlustfrei als Bytes lesen, kopieren, ersetzen und einbetten; keine integrierte Konvertierung, Darstellung oder PDF-Inhaltsbearbeitung.",
   otherFiles: "Uninterpretierte Bytes; Plugins können weitere Verarbeitung bereitstellen.",
-  textFiles: "UTF-8 lesen, wörtlich bearbeiten, ergänzen und vollständig ersetzen, mit Unified-Diffs im Probelauf; ungültiges UTF-8 wird als Base64-Anhang gelesen.",
+  textFiles: "textFilenames gelten ohne Beachtung der Groß- und Kleinschreibung, auch mit Punkt-Suffixen, die mit einem anderen Zeichen als einem Punkt beginnen; native Erweiterungen haben Vorrang. UTF-8 lesen, wörtlich bearbeiten, ergänzen und vollständig ersetzen, mit Unified-Diffs im Probelauf; ungültiges UTF-8 und Inhalte mit NUL-Zeichen werden als Base64-Anhang gelesen.",
   delivery: "Geordnet, abgewartet und mit separaten Snapshots je Behandler; Fehler werden zu Warnungen. Obsidian-artige vault.*-Ereignisse folgen jedem erfolgreichen Schreibvorgang (zuerst neue Ordner, übergeordnete vor untergeordneten, dann Dateien in Stapelreihenfolge); Probeläufe senden stattdessen workspace.quick-preview. Nach den vault.*-Ereignissen eines Stapels folgen metadataCache.changed, metadataCache.deleted, metadataCache.resolve und ein metadataCache.resolved, sobald der Metadaten-Cache in diesem Aufruf geladen wurde. operation.*-, command.*- und plugin.*-Ereignisse sind Lebenszyklusphasen des Hosts, die claude.*-Ereignisse des claude-Kern-Plugins Phasen jedes Claude-Aufrufs; workspace.*-Ereignisse entsprechen Obsidians Workspace (file-open, quick-preview, layout-ready, quit, project-change). Host-Namensräume gehören dem Host: Plugins beobachten sie, senden aber nur eigene Ereignisse. onAny beobachtet alle Ereignisse; replay liest den begrenzten Verlauf dieses Aufrufs. Keine dauerhafte Wiederholung. Die Antwort enthält standardmäßig nur vault.*-Ereignisse; --events none|changes|all oder settings.events wählt die Ausgabe, ohne Zustellung oder replay zu ändern.",
   eventChanges: "Nur erfolgreich geschriebene vault.*-Ereignisse: vault.create, vault.modify, vault.delete und vault.rename für Dateien und Ordner.",
   setup: {
@@ -67923,6 +68163,7 @@ const germanDescriptions = {
   "With sync: fail with WORKFLOW_DRIFT instead of writing when generated workflows differ.": "Mit sync: mit WORKFLOW_DRIFT fehlschlagen, statt zu schreiben, wenn generierte Workflows abweichen.",
   "list (default) or sync.": "list (Standard) oder sync.",
   // File commands.
+  "Use this project instead of the selected project.": "Dieses Projekt statt des ausgewählten Projekts verwenden.",
   "Only files of this kind.": "Nur Dateien dieser Art.",
   "Only files whose root-relative path matches this glob (*, **, ?, [abc], {a,b}).": "Nur Dateien, deren Pfad relativ zum Stammverzeichnis diesem Glob entspricht (*, **, ?, [abc], {a,b}).",
   "Maximum number of files; a truncated page returns nextCursor.": "Höchstzahl der Dateien; eine gekürzte Seite liefert nextCursor.",
@@ -68056,7 +68297,7 @@ const germanErrors = {
   INVALID_INPUT: { summary: "Die Eingabeoptionen sind ungültig oder widersprüchlich.", hint: "Verwenden Sie genau eine Eingabequelle und die in der Meldung genannte Optionskombination." },
   INPUT_REQUIRED: { summary: "--stdin wurde ohne weitergeleitete Eingabe angegeben.", hint: "Leiten Sie den Inhalt an den Befehl weiter oder verwenden Sie --content oder --from." },
   INVALID_JSON: { summary: "Die Eingabe ist kein gültiges JSON.", hint: "Übergeben Sie einen gültigen JSON-Wert und maskieren Sie ihn für Ihre Shell." },
-  INVALID_ENCODING: { summary: "Der Inhalt ist in der erforderlichen Kodierung ungültig.", hint: "Verwenden Sie gültiges UTF-8. Binärinhalte schreiben Sie mit write oder create über --stdin, --from oder --encoding base64; edit und strukturierte Befehle akzeptieren nur UTF-8-Text." },
+  INVALID_ENCODING: { summary: "Der Inhalt ist in der erforderlichen Kodierung ungültig.", hint: "Verwenden Sie gültiges UTF-8, in Textdateien ohne NUL-Zeichen. Binärinhalte schreiben Sie mit write oder create über --stdin, --from oder --encoding base64; edit und strukturierte Befehle akzeptieren nur UTF-8-Text." },
   INVALID_LANGUAGE: { summary: "Die Sprache wird nicht unterstützt.", hint: "Verwenden Sie --lang en oder --lang de." },
   INVALID_NAME: { summary: "Der Name entspricht nicht der erforderlichen Namensregel.", hint: "Verwenden Sie das in der Meldung beschriebene Format, zum Beispiel PascalCase." },
   INVALID_KEY: { summary: "Der Eigenschaftsschlüssel ist reserviert oder unsicher.", hint: "Verwenden Sie einen anderen Eigenschaftsschlüssel." },
@@ -68454,7 +68695,7 @@ const commandEntry = {
     options,
     args: { type: "array", items: argumentSchema },
     annotations,
-    errors: { ...texts, description: "Codes the command reports itself, besides commonErrors." },
+    errors: { ...texts, description: "Codes the command reports itself, besides commonErrors; a command with a project option also lists the codes of naming a project." },
     inputSchema: schemaDocument,
     outputSchema: schemaDocument
   }
@@ -68477,7 +68718,7 @@ const schemaOutput = {
     envelope: schemaDocument,
     eventOutput: { type: "object" },
     commands: { type: "array", items: commandEntry },
-    commonErrors: { ...texts, description: "Input and runtime codes any command can report." },
+    commonErrors: { ...texts, description: "Input, routing and runtime codes any command can report." },
     generators: { type: "array", items: { type: "object", required: ["id", "description"], properties: { id: text$2, description: text$2 } } },
     skills: texts,
     errors: { type: "array", items: errorEntry }
@@ -68496,13 +68737,14 @@ const commonErrors = [
   "INVALID_CONFIG",
   "INVALID_PATH",
   "UNSAFE_PATH",
+  "INVALID_PROJECT_CONTEXT",
   "STALE_PROJECT_CONTEXT",
   "WORKSPACE_BUSY",
   "INVALID_RESULT",
   "OPERATION_FAILED"
 ];
 function describe$1(command2, includeOutput = true) {
-  const { id: id2, description: description2, usage, options: options2, args, output: output2, errors: errors2 } = command2;
+  const { id: id2, description: description2, usage, options: options2, args, output: output2 } = command2;
   const annotations2 = commandAnnotations(command2);
   if (!includeOutput && annotations2.actions) {
     annotations2.actions = Object.fromEntries(Object.entries(annotations2.actions).map(([id22, action2]) => {
@@ -68517,7 +68759,7 @@ function describe$1(command2, includeOutput = true) {
     options: options2 ?? {},
     args: args ?? [],
     annotations: annotations2,
-    errors: errors2 ?? [],
+    errors: declaredErrors(command2),
     ...includeOutput && output2 ? { outputSchema: outputDocument(id2, output2) } : {}
   };
 }
@@ -68560,13 +68802,13 @@ function catalogCommands(registry2) {
       const contract = (command22) => ({ ...describe$1(command22), inputSchema: commandInputSchema(command22) });
       if (args[0] === void 0) return { ...catalog(), commands: [...registry2.commands.values()].map(contract), commonErrors, errors: errors2 };
       const command2 = registry2.resolveCommand(args[0]);
-      const codes = /* @__PURE__ */ new Set([...commonErrors, ...command2.errors ?? []]);
+      const codes = /* @__PURE__ */ new Set([...commonErrors, ...declaredErrors(command2)]);
       const { generators: _generators, skills: _skills, ...head } = catalog();
       return { ...head, commands: [contract(command2)], commonErrors, errors: errors2.filter((entry2) => codes.has(entry2.code)) };
     } },
     { id: "formats", description: "Native Obsidian formats and supported operations.", usage: "formats", ...discovery$1, run(args) {
       arity(args, 0);
-      return { nativeFormats, structured: ["md", "canvas", "base"], text: textExtensions, textFiles: "UTF-8 read, literal edit, append and full replacement with unified dry-run diffs; files that are not valid UTF-8 read as base64 attachments.", attachments: "Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.", otherFiles: "Opaque bytes; plugins can provide additional processing." };
+      return { nativeFormats, structured: ["md", "canvas", "base"], text: textExtensions, textFilenames, textFiles: "textFilenames match case-insensitively, including dot suffixes that start with a non-dot character; native extensions take precedence. UTF-8 read, literal edit, append and full replacement with unified dry-run diffs; files that are not valid UTF-8 or contain NUL characters read as base64 attachments.", attachments: "Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.", otherFiles: "Opaque bytes; plugins can provide additional processing." };
     } }
   ];
 }
@@ -68719,6 +68961,171 @@ function workflowsCommands(services2) {
     }
   }];
 }
+const text$1 = { type: "string" };
+const path$1 = { type: "string", description: "Path relative to context.root, with / separators." };
+const revision = { type: "string", pattern: "^[0-9a-f]{64}$", description: "SHA-256 of the file bytes; pass it as --if-match." };
+const kind = (...kinds) => kinds.length === 1 ? { type: "string", const: kinds[0] } : { type: "string", enum: kinds };
+const attachmentKinds = fileKinds.filter((name2) => !["markdown", "canvas", "base", "text"].includes(name2));
+const readOutput = {
+  type: "object",
+  required: ["path", "revision", "bytes", "document"],
+  properties: {
+    path: path$1,
+    revision,
+    bytes: { type: "integer", minimum: 0 },
+    document: { oneOf: [
+      {
+        title: "markdown",
+        type: "object",
+        required: ["kind", "content", "properties"],
+        properties: { kind: kind("markdown"), content: text$1, properties: { type: "object", description: "Parsed YAML frontmatter." }, body: { type: "string", description: "Text after the frontmatter, with --parts body." } }
+      },
+      { title: "canvas or base", type: "object", required: ["kind", "data"], properties: { kind: kind("canvas", "base"), data: { type: "object" } } },
+      { title: "text", type: "object", required: ["kind", "content"], properties: { kind: kind("text"), content: text$1 } },
+      {
+        title: "bytes",
+        type: "object",
+        required: ["kind", "encoding", "content"],
+        description: "Attachments, and text-extension files that are not valid UTF-8 or contain NUL characters, as base64.",
+        properties: { kind: kind(...attachmentKinds), encoding: kind("base64"), content: text$1 }
+      }
+    ] }
+  }
+};
+const listOutput = {
+  type: "object",
+  required: ["files"],
+  properties: {
+    files: { type: "array", items: { type: "object", required: ["path", "kind"], properties: { path: path$1, kind: kind(...fileKinds) } } },
+    nextCursor: { type: "string", description: "Present when the page was truncated; pass it as --cursor." }
+  }
+};
+const validateOutput = {
+  type: "object",
+  required: ["path", "valid", "kind", "validation"],
+  properties: { path: path$1, valid: { type: "boolean", const: true }, kind: kind(...fileKinds), validation: kind("structure", "utf8", "opaque-bytes") }
+};
+const change = {
+  type: "object",
+  required: ["path", "revision", "operation", "bytes"],
+  properties: {
+    path: path$1,
+    revision,
+    operation: kind("created", "updated", "deleted"),
+    bytes: { type: "integer", minimum: 0 },
+    diff: { oneOf: [{ type: "string" }, { type: "null" }], description: "Dry runs only: a unified diff of the change, or null for binary content." }
+  }
+};
+const changes = { type: "array", items: change };
+const dryRun = { type: "boolean", description: "True when --dry-run planned the changes without writing them." };
+const editOutput = { type: "object", required: ["dryRun", "changes"], properties: { dryRun, changes } };
+const count = { type: "integer", minimum: 0 };
+const rename = {
+  type: "object",
+  required: ["from", "to", "kind"],
+  properties: { from: path$1, to: path$1, kind: kind("file", "folder"), revision, bytes: count }
+};
+const operationSummary = {
+  type: "object",
+  required: ["index", "op", "path"],
+  description: "What one operation did in the planned state: write adds operation, frontmatter adds changed, move adds to, kind and links, delete adds kind, trashPath (null when the plan created everything it deleted, so nothing reaches .trash) and brokenLinks.",
+  properties: {
+    index: { type: "integer", minimum: 0, description: "Position of the operation in the plan." },
+    op: kind("write", "edit", "frontmatter", "move", "delete"),
+    path: { type: "string", description: "The operation path, or the source of a move." },
+    operation: kind("created", "updated"),
+    changed: { type: "boolean" },
+    to: path$1,
+    kind: kind("file", "folder"),
+    links: { type: "object", required: ["updated", "files", "unrewritten"], properties: { updated: count, files: count, unrewritten: { type: "array", description: "Links the move could not rewrite." } } },
+    trashPath: { oneOf: [path$1, { type: "null" }] },
+    brokenLinks: { type: "array", description: "Links into the deleted file that allowBrokenLinks left broken." }
+  }
+};
+const applyOutput = {
+  type: "object",
+  required: ["dryRun", "operations", "renames", "changes", "folders"],
+  properties: {
+    dryRun,
+    operations: { type: "array", items: operationSummary },
+    renames: { type: "array", items: rename, description: "Moves, including deletions into .trash, in commit order." },
+    changes,
+    folders: { type: "array", items: path$1, description: "Folders the batch created." }
+  }
+};
+const readManyOutput = {
+  type: "object",
+  required: ["files", "bytes"],
+  additionalProperties: false,
+  properties: {
+    files: {
+      type: "array",
+      minItems: 1,
+      maxItems: 32,
+      items: readOutput,
+      description: "Default read results in requested order. Each revision describes that file when it was read; this is not an atomic snapshot."
+    },
+    bytes: {
+      type: "integer",
+      minimum: 0,
+      maximum: 8 * 1024 * 1024,
+      description: "Sum of raw file byte counts, before JSON or base64 encoding."
+    }
+  }
+};
+const maxFiles = 32, maxBytes = 8 * 1024 * 1024;
+function atPath(error2, index2, path2) {
+  const failure2 = error2 instanceof AppError ? error2 : forgeError("OPERATION_FAILED", errorMessage(error2));
+  return locatedError(failure2, `read-many path at index ${index2}: `, { index: index2, path: path2 });
+}
+async function readFile(context, path2, beforeParse) {
+  const result = await context.workspace.read(path2, { beforeParse });
+  if (!isRecord$1(result.document) || result.document.kind !== "markdown") return result;
+  const { body: _body, ...document2 } = result.document;
+  return { ...result, document: document2 };
+}
+function readManyCommand() {
+  return {
+    id: "read-many",
+    description: "Read up to 32 files sequentially with revisions and an 8 MiB aggregate raw-byte limit.",
+    usage: "read-many <paths...> [--project id]",
+    scope: "project",
+    projectOption: "project",
+    discovery: false,
+    mutating: false,
+    args: [{ name: "paths", description: "Vault path relative to the command scope.", required: true, variadic: true }],
+    options: { project: option$1.string("Use this project instead of the selected project.") },
+    output: readManyOutput,
+    errors: ["NOT_FOUND", "INVALID_FRONTMATTER", "INVALID_YAML", "INVALID_CANVAS", "INVALID_BASE", "INVALID_ENCODING"],
+    async run(args, _flags, context) {
+      arity(args, 1, maxFiles);
+      const paths2 = /* @__PURE__ */ new Set();
+      for (const [index2, input] of args.entries()) {
+        try {
+          const path2 = vaultPath(input);
+          ensure(!paths2.has(path2), "INVALID_ARGUMENT", "Each read-many path must be unique.", { duplicateOf: args.indexOf(path2) });
+          paths2.add(path2);
+        } catch (error2) {
+          throw atPath(error2, index2, input);
+        }
+      }
+      const files = [];
+      let bytes = 0;
+      const budget = (size) => {
+        bytes += size;
+        ensure(bytes <= maxBytes, "INVALID_ARGUMENT", "read-many exceeds the 8 MiB aggregate raw-byte limit.", { maxBytes, bytes });
+      };
+      for (const [index2, path2] of [...paths2].entries()) {
+        try {
+          files.push(await readFile(context, path2, budget));
+        } catch (error2) {
+          throw atPath(error2, index2, path2);
+        }
+      }
+      return { files, bytes };
+    }
+  };
+}
 function encodeText(text2) {
   return new TextEncoder().encode(text2);
 }
@@ -68815,8 +69222,8 @@ const literalEditsSchema = {
     }
   }
 };
-const text$1 = (description2) => ({ type: "string", description: description2 });
-const path$1 = (description2 = "Path relative to the command scope.") => ({ type: "string", minLength: 1, description: description2 });
+const text = (description2) => ({ type: "string", description: description2 });
+const path = (description2 = "Path relative to the command scope.") => ({ type: "string", minLength: 1, description: description2 });
 const ifMatch$2 = { type: "string", minLength: 1, description: "Revision the file (or folder) had before the plan ran, from read; a file keeps it across earlier moves in the plan." };
 const operation = (op, title2, required2, properties2) => ({
   title: title2,
@@ -68831,18 +69238,18 @@ const modeText = {
   prepend: "Lines to add before the content; next to a list item block, sibling list items."
 };
 const targets = {
-  section: path$1('Heading path such as "Plan > Risks"; segments are separated by " > ", and " \\> " is a " > " inside a heading.'),
-  block: path$1("Block id, with or without the leading ^.")
+  section: path('Heading path such as "Plan > Risks"; segments are separated by " > ", and " \\> " is a " > " inside a heading.'),
+  block: path("Block id, with or without the leading ^.")
 };
 const sectionLine = { type: "integer", minimum: 1, description: "The 1-based line of the heading, from AMBIGUOUS_SECTION details.candidates; picks one of several headings the path matches." };
 const editBranches = [
-  operation("edit", "edit: literal replacements", ["path", "edits"], { path: path$1(), edits: literalEditsSchema }),
-  operation("edit", "edit: append to the file", ["path", "append"], { path: path$1(), append: text$1("Text appended to the end of the file.") }),
+  operation("edit", "edit: literal replacements", ["path", "edits"], { path: path(), edits: literalEditsSchema }),
+  operation("edit", "edit: append to the file", ["path", "append"], { path: path(), append: text("Text appended to the end of the file.") }),
   ...["section", "block"].flatMap((target) => rangeEditModes.map((mode) => operation("edit", `edit: ${mode} in a ${target}`, ["path", target, mode], {
-    path: path$1("Markdown note."),
+    path: path("Markdown note."),
     [target]: targets[target],
     ...target === "section" ? { sectionLine } : {},
-    [mode]: text$1(modeText[mode])
+    [mode]: text(modeText[mode])
   })))
 ];
 const applyPlanSchema = {
@@ -68860,23 +69267,23 @@ const applyPlanSchema = {
       items: {
         oneOf: [
           operation("write", "write: create or replace a file", ["path", "content"], {
-            path: path$1(),
-            content: text$1("File content."),
+            path: path(),
+            content: text("File content."),
             encoding: { type: "string", enum: ["utf8", "base64"], default: "utf8", description: "base64 writes binary content." }
           }),
           ...editBranches,
           operation("frontmatter", "frontmatter: set and unset properties", ["path"], {
-            path: path$1("Markdown note."),
+            path: path("Markdown note."),
             set: { type: "object", description: "Properties to set; null stores YAML null." },
             unset: { type: "array", items: { type: "string", minLength: 1 }, description: "Property names to remove." }
           }),
           operation("move", "move: move or rename and rewrite links", ["from", "to"], {
-            from: path$1("File or folder to move."),
-            to: path$1("New path; it must not exist."),
+            from: path("File or folder to move."),
+            to: path("New path; it must not exist."),
             updateLinks: { type: "boolean", default: true, description: "Rewrite links to the moved files." }
           }),
           operation("delete", "delete: move to .trash", ["path"], {
-            path: path$1("File or folder to move to .trash."),
+            path: path("File or folder to move to .trash."),
             recursive: { type: "boolean", default: false, description: "Required to delete a folder." },
             allowBrokenLinks: { type: "boolean", default: false, description: "Delete even while other files link to it." }
           })
@@ -69052,7 +69459,10 @@ function ensureEditable(path2, request) {
 function editBytes(path2, bytes, request, metadata2) {
   ensureEditable(path2, request);
   const text2 = decodeText(bytes);
-  return new TextEncoder().encode(applyTextEdit(text2, request, () => metadata2.parseContent(path2, bytes)));
+  ensure(isTextContent(path2, text2), "INVALID_ENCODING", "Text file edits require UTF-8 without NUL characters; use write for UTF-16 or binary content.");
+  const edited = applyTextEdit(text2, request, () => metadata2.parseContent(path2, bytes));
+  ensure(isTextContent(path2, edited), "INVALID_ENCODING", "Text file edits cannot introduce NUL characters; use write for binary content.");
+  return new TextEncoder().encode(edited);
 }
 const notFound = (error2) => error2 instanceof AppError && error2.code === "NOT_FOUND";
 const inside = (path2, folder) => path2.startsWith(`${folder}/`);
@@ -69361,98 +69771,6 @@ class PlanRunner {
     }
   }
 }
-const text = { type: "string" };
-const path = { type: "string", description: "Path relative to context.root, with / separators." };
-const revision = { type: "string", pattern: "^[0-9a-f]{64}$", description: "SHA-256 of the file bytes; pass it as --if-match." };
-const kind = (...kinds) => kinds.length === 1 ? { type: "string", const: kinds[0] } : { type: "string", enum: kinds };
-const attachmentKinds = fileKinds.filter((name2) => !["markdown", "canvas", "base", "text"].includes(name2));
-const readOutput = {
-  type: "object",
-  required: ["path", "revision", "bytes", "document"],
-  properties: {
-    path,
-    revision,
-    bytes: { type: "integer", minimum: 0 },
-    document: { oneOf: [
-      {
-        title: "markdown",
-        type: "object",
-        required: ["kind", "content", "properties"],
-        properties: { kind: kind("markdown"), content: text, properties: { type: "object", description: "Parsed YAML frontmatter." }, body: { type: "string", description: "Text after the frontmatter, with --parts body." } }
-      },
-      { title: "canvas or base", type: "object", required: ["kind", "data"], properties: { kind: kind("canvas", "base"), data: { type: "object" } } },
-      { title: "text", type: "object", required: ["kind", "content"], properties: { kind: kind("text"), content: text } },
-      {
-        title: "bytes",
-        type: "object",
-        required: ["kind", "encoding", "content"],
-        description: "Attachments, and text-extension files that are not valid UTF-8, as base64.",
-        properties: { kind: kind(...attachmentKinds), encoding: kind("base64"), content: text }
-      }
-    ] }
-  }
-};
-const listOutput = {
-  type: "object",
-  required: ["files"],
-  properties: {
-    files: { type: "array", items: { type: "object", required: ["path", "kind"], properties: { path, kind: kind(...fileKinds) } } },
-    nextCursor: { type: "string", description: "Present when the page was truncated; pass it as --cursor." }
-  }
-};
-const validateOutput = {
-  type: "object",
-  required: ["path", "valid", "kind", "validation"],
-  properties: { path, valid: { type: "boolean", const: true }, kind: kind(...fileKinds), validation: kind("structure", "utf8", "opaque-bytes") }
-};
-const change = {
-  type: "object",
-  required: ["path", "revision", "operation", "bytes"],
-  properties: {
-    path,
-    revision,
-    operation: kind("created", "updated", "deleted"),
-    bytes: { type: "integer", minimum: 0 },
-    diff: { oneOf: [{ type: "string" }, { type: "null" }], description: "Dry runs only: a unified diff of the change, or null for binary content." }
-  }
-};
-const changes = { type: "array", items: change };
-const dryRun = { type: "boolean", description: "True when --dry-run planned the changes without writing them." };
-const editOutput = { type: "object", required: ["dryRun", "changes"], properties: { dryRun, changes } };
-const count = { type: "integer", minimum: 0 };
-const rename = {
-  type: "object",
-  required: ["from", "to", "kind"],
-  properties: { from: path, to: path, kind: kind("file", "folder"), revision, bytes: count }
-};
-const operationSummary = {
-  type: "object",
-  required: ["index", "op", "path"],
-  description: "What one operation did in the planned state: write adds operation, frontmatter adds changed, move adds to, kind and links, delete adds kind, trashPath (null when the plan created everything it deleted, so nothing reaches .trash) and brokenLinks.",
-  properties: {
-    index: { type: "integer", minimum: 0, description: "Position of the operation in the plan." },
-    op: kind("write", "edit", "frontmatter", "move", "delete"),
-    path: { type: "string", description: "The operation path, or the source of a move." },
-    operation: kind("created", "updated"),
-    changed: { type: "boolean" },
-    to: path,
-    kind: kind("file", "folder"),
-    links: { type: "object", required: ["updated", "files", "unrewritten"], properties: { updated: count, files: count, unrewritten: { type: "array", description: "Links the move could not rewrite." } } },
-    trashPath: { oneOf: [path, { type: "null" }] },
-    brokenLinks: { type: "array", description: "Links into the deleted file that allowBrokenLinks left broken." }
-  }
-};
-const applyOutput = {
-  type: "object",
-  required: ["dryRun", "operations", "renames", "changes", "folders"],
-  properties: {
-    dryRun,
-    operations: { type: "array", items: operationSummary },
-    renames: { type: "array", items: rename, description: "Moves, including deletions into .trash, in commit order." },
-    changes,
-    folders: { type: "array", items: path, description: "Folders the batch created." }
-  }
-};
 async function jsonInput(source2, context) {
   if (source2 === "-") return parseJson(decodeText(await context.input()));
   if (source2.startsWith("@")) return parseJson(decodeText((await context.workspace.files.read(source2.slice(1))).bytes));
@@ -69525,10 +69843,11 @@ function applyCommand() {
   return {
     id: "apply",
     description: "Run a JSON plan of writes, edits, frontmatter changes, moves and deletions as one guarded batch.",
-    usage: "apply <plan.json|->",
+    usage: "apply <plan.json|-> [--project id]",
     // Destructive: write, edit and delete replace or remove content. Not idempotent: an operation without ifMatch,
     // such as an append, applies again on a repeat; only a plan whose every operation carries ifMatch fails instead.
     scope: "project",
+    projectOption: "project",
     discovery: false,
     mutating: true,
     destructive: true,
@@ -69536,6 +69855,7 @@ function applyCommand() {
     errors: applyErrors,
     output: applyOutput,
     args: [{ name: "plan", description: "Plan file in the command scope, or - to read the plan from standard input.", required: true, schema: applyPlanSchema }],
+    options: { project: option$1.string("Use this project instead of the selected project.") },
     async run(args, _flags, context) {
       arity(args, 1);
       const plan = parsePlan(await jsonInput(args[0] === "-" ? "-" : `@${args[0]}`, context));
@@ -69604,11 +69924,12 @@ function documentCommands() {
     {
       id: "read",
       description: "Read a document, UTF-8 text or base64 attachment with its SHA-256 revision.",
-      usage: "read <path> [--parts body]",
+      usage: "read <path> [--parts body] [--project id]",
       ...reading,
+      projectOption: "project",
       args: [pathArgument()],
       errors: ["NOT_FOUND", "INVALID_FRONTMATTER"],
-      options: { parts: option$1.string("Comma-separated optional parts of a Markdown read.", { enum: readParts, list: true }) },
+      options: { parts: option$1.string("Comma-separated optional parts of a Markdown read.", { enum: readParts, list: true }), project: option$1.string("Use this project instead of the selected project.") },
       output: readOutput,
       async run(args, flags, { workspace: workspace2 }) {
         arity(args, 1);
@@ -69697,6 +70018,52 @@ function documentCommands() {
     applyCommand()
   ];
 }
+const identity = {
+  path: { type: "string", description: "Path relative to context.root, with / separators." },
+  revision: { type: "string", pattern: "^[0-9a-f]{64}$", description: "Existing repository file or folder revision, suitable for revision guards in the same scope." }
+};
+const statOutput = {
+  oneOf: [
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["path", "kind", "revision", "bytes"],
+      properties: { ...identity, kind: { type: "string", const: "file" }, bytes: { type: "integer", minimum: 0, description: "Raw file byte count, without parsing or validating its document format." } }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["path", "kind", "revision", "fileCount", "folderCount"],
+      properties: {
+        ...identity,
+        kind: { type: "string", const: "folder" },
+        fileCount: { type: "integer", minimum: 0, description: "Regular descendant files included by repository stat; excludes Git, internal entries, symlinks and node_modules contents." },
+        folderCount: { type: "integer", minimum: 0, description: "Descendant folders, including empty ones, excluding this folder, Git, internal entries, symlinks and node_modules." }
+      }
+    }
+  ]
+};
+function statCommand() {
+  return {
+    id: "stat",
+    description: "Inspect a file or folder revision with size or descendant counts, without returning content.",
+    usage: "stat <path> [--project id]",
+    scope: "project",
+    projectOption: "project",
+    discovery: false,
+    mutating: false,
+    args: [{ name: "path", description: "Vault path relative to the command scope.", required: true }],
+    options: { project: option$1.string("Use this project instead of the selected project.") },
+    errors: ["NOT_FOUND"],
+    output: statOutput,
+    async run(args, _flags, { workspace: workspace2 }) {
+      arity(args, 1);
+      const entry2 = await workspace2.files.stat(args[0]);
+      const identity2 = { path: entry2.path, kind: entry2.kind, revision: entry2.revision };
+      return entry2.kind === "file" ? { ...identity2, bytes: entry2.bytes } : { ...identity2, fileCount: entry2.files.length, folderCount: entry2.folders.length };
+    }
+  };
+}
 const ifMatch = option$1.string("SHA-256 revision of the source file (from read); required unless --dry-run.");
 const linkOptions = { "if-match": ifMatch, "no-update-links": option$1.boolean("Move without rewriting links to the moved files.") };
 const vaultWrite = { scope: "project", discovery: false, mutating: true, idempotent: true };
@@ -69757,20 +70124,12 @@ function commands(registry2, services2) {
     ...serverCommands(services2.server),
     ...catalogCommands(registry2),
     ...documentCommands(),
+    readManyCommand(),
+    statCommand(),
     ...vaultCommands(),
     generationCommand(registry2),
     ...extensionCommands(registry2, services2)
   ];
-}
-function invocationPolicy(command2, args, flags) {
-  const mode = commandMode(command2, args);
-  const help = flags.help === true;
-  const requestedProject = mode.projectOption === void 0 ? void 0 : value$2(flags, mode.projectOption);
-  return {
-    scope: help || mode.discovery || mode.scope === "workspace" ? "workspace" : "project",
-    activatePlugins: !help && !mode.discovery,
-    ...requestedProject === void 0 ? {} : { requestedProject }
-  };
 }
 const corePlugins = [
   templatesPlugin,
@@ -69946,17 +70305,14 @@ async function run() {
     await quitInvocation(events2);
     await registry2.dispose(events2);
   }
+  let response;
   try {
-    process.stdout.write(JSON.stringify({ ...result, ...activeContext ? { context: activeContext } : {}, events: selectEventOutput(events2.history, eventLevel), warnings: events2.warningRecords.map((warning2) => localizer.warning(warning2)) }, null, compact ? void 0 : 2) + "\n");
+    response = JSON.stringify({ ...result, ...activeContext ? { context: activeContext } : {}, events: selectEventOutput(events2.history, eventLevel), warnings: events2.warningRecords.map((warning2) => localizer.warning(warning2)) }, null, compact ? void 0 : 2) + "\n";
   } catch {
     process.exitCode = 1;
-    process.stdout.write(JSON.stringify({ ok: false, error: localizer.error(forgeError("INVALID_RESULT", "Command returned non-serializable data. Inspect committed events before retrying.")), ...activeContext ? { context: activeContext } : {}, events: selectEventOutput(events2.history, eventLevel), warnings: events2.warningRecords.map((warning2) => localizer.warning(warning2)) }) + "\n");
+    response = JSON.stringify({ ok: false, error: localizer.error(forgeError("INVALID_RESULT", "Command returned non-serializable data. Inspect committed events before retrying.")), ...activeContext ? { context: activeContext } : {}, events: selectEventOutput(events2.history, eventLevel), warnings: events2.warningRecords.map((warning2) => localizer.warning(warning2)) }) + "\n";
   }
+  output(response);
 }
-process.stdout.on("error", (error2) => {
-  if (error2.code !== "EPIPE" && error2.code !== "EOF") throw error2;
-  process.exit(process.exitCode ?? 0);
-});
-process.stderr.on("error", () => {
-});
+const output = standardOutput();
 void run();

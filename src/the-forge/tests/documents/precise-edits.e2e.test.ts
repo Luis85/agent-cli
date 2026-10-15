@@ -48,6 +48,16 @@ describe('precise edits through the portable CLI', () => {
     expect(german.body.error).toMatchObject({ code: 'SECTION_NOT_FOUND', message: 'Keine Überschrift passt zum --section-Pfad, oder kein Block hat die --block-ID.' });
   });
 
+  it('refuses literal edits that would put NUL characters into a text file', async () => {
+    const { cli, revision, text } = await vault('nul');
+    expect((await cli(['write', 'notes/list.txt', '--content', 'one\ntwo\n'])).body.ok).toBe(true);
+    const nul = await cli(['edit', 'notes/list.txt', '--edits', '-', '--if-match', await revision('notes/list.txt')], JSON.stringify([{ find: 'two', replace: 'tw\u0000o' }]));
+    expect(nul.status).toBe(2);
+    expect(nul.body.error.code).toBe('INVALID_ENCODING');
+    expect(await text('notes/list.txt')).toBe('one\ntwo\n');
+    expect((await cli(['read', 'notes/list.txt'])).body.data.document).toEqual({ kind: 'text', content: 'one\ntwo\n' });
+  });
+
   it('applies a mixed plan from a file or standard input in one guarded batch', async () => {
     const { root, cli, revision, text } = await vault('apply');
     const plan = { version: 1, operations: [
@@ -90,7 +100,7 @@ describe('precise edits through the portable CLI', () => {
 
   it('publishes the plan schema with the apply command', async () => {
     const help = await fixture.cli(['help', 'apply']);
-    expect(help.body.data).toMatchObject({ id: 'apply', usage: 'apply <plan.json|->', annotations: { mutating: true, scope: 'project' } });
+    expect(help.body.data).toMatchObject({ id: 'apply', usage: 'apply <plan.json|-> [--project id]', annotations: { mutating: true, scope: 'project' } });
     expect(help.body.data.args[0].schema).toMatchObject({ $schema: 'https://json-schema.org/draft/2020-12/schema', title: 'Forge apply plan', required: ['version', 'operations'] });
     const schema = (await fixture.cli(['schema'])).body.data;
     const edit = schema.commands.find((command: { id: string }) => command.id === 'edit');

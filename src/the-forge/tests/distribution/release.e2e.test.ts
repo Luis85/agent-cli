@@ -104,7 +104,7 @@ describe('release distribution', () => {
     // Plugins type dry-run write previews with the shipped SDK.
     const sdk = await readFile(join(project, 'bin/data/types/sdk.d.ts'), 'utf8');
     // Trusted plugins type the claude.lifecycle service without importing the claude plugin.
-    for (const name of ['PlannedChange', 'WriteOptions', 'WriteRequest', 'FileChange', 'ClaudeLifecycleClient', 'ClaudeLifecycleRequest', 'ClaudeLifecycleResult', 'ClaudeLifecyclePlan', 'ClaudeOutput']) expect(sdk).toMatch(new RegExp(`\\b${name}\\b`));
+    for (const name of ['PlannedChange', 'ReadOptions', 'WriteOptions', 'WriteRequest', 'FileChange', 'ClaudeLifecycleClient', 'ClaudeLifecycleRequest', 'ClaudeLifecycleResult', 'ClaudeLifecyclePlan', 'ClaudeOutput']) expect(sdk).toMatch(new RegExp(`\\b${name}\\b`));
     const listed = entries(root, archive);
     expect(listed.every(path => path.startsWith('bin/'))).toBe(true);
     expect(listed).toContain('bin/browser-runtime/playwright-core/index.js');

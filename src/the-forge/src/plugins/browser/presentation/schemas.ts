@@ -5,8 +5,15 @@ const integer: JsonSchema = { type: 'integer', minimum: 1 };
 const changes: JsonSchema = { type: 'array', items: { type: 'object' } };
 const viewport: JsonSchema = { type: 'object', additionalProperties: false, required: ['width', 'height'], properties: { width: integer, height: integer } };
 export const browserStatusSchema: JsonSchema = {
-  type: 'object', additionalProperties: false, required: ['available', 'executablePath', 'source', 'version'],
-  properties: { available: { type: 'boolean' }, executablePath: { oneOf: [text, { type: 'null' }] }, source: { enum: ['explicit', 'environment', 'managed'] }, version: text },
+  type: 'object', additionalProperties: false, required: ['available', 'executablePath', 'source', 'version', 'verification', 'reason', 'nextStep'],
+  properties: {
+    available: { type: 'boolean', description: 'The selected path is a regular file accessible for execution (existence only on Windows); browser launch is unverified.' },
+    executablePath: { oneOf: [text, { type: 'null' }] }, source: { enum: ['explicit', 'environment', 'managed'] },
+    version: { ...text, description: 'Packaged Playwright runtime version, not the Chromium executable version.' },
+    verification: { const: 'executable-only', description: 'Filesystem checks only; no browser launch, compatibility or operating-system dependency check.' },
+    reason: { enum: ['available', 'missing', 'not-file', 'not-executable', 'inaccessible'] },
+    nextStep: { oneOf: [text, { type: 'null' }], description: 'Recovery guidance when unavailable; null when the filesystem check passed.' },
+  },
 };
 export const installSchema: JsonSchema = { oneOf: [
   { type: 'object', additionalProperties: false, required: ['dryRun', 'executed', 'plan'], properties: {

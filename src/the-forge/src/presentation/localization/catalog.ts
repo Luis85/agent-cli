@@ -1,7 +1,9 @@
 import { germanServerActions, germanServerCommands } from '../server/messages.ts';
 
 export const germanCommands = {
+  'read-many': 'Bis zu 32 Dateien nacheinander mit Revisionen und einer Gesamtgrenze von 8 MiB Rohdaten lesen.',
   ...germanServerCommands,
+  stat: 'Die Revision einer Datei oder eines Ordners mit Größe oder Anzahl der enthaltenen Einträge ohne Inhalt prüfen.',
   help: 'Befehle und ihre Verwendung ohne interaktive Abfragen entdecken.',
   schema: 'Maschinenlesbarer Vertrag: JSON-Schema-2020-12-Eingabe- und -Ausgabeschemas, Annotationen und Fehlercodes aller Befehle oder eines Befehls.',
   config: 'Die geprüfte wirksame Konfiguration und ihren Quellpfad anzeigen.',
@@ -43,7 +45,7 @@ export const germanActions: Record<string, string> = {
 export const germanGuidance = {
   attachments: 'Dateien verlustfrei als Bytes lesen, kopieren, ersetzen und einbetten; keine integrierte Konvertierung, Darstellung oder PDF-Inhaltsbearbeitung.',
   otherFiles: 'Uninterpretierte Bytes; Plugins können weitere Verarbeitung bereitstellen.',
-  textFiles: 'UTF-8 lesen, wörtlich bearbeiten, ergänzen und vollständig ersetzen, mit Unified-Diffs im Probelauf; ungültiges UTF-8 wird als Base64-Anhang gelesen.',
+  textFiles: 'textFilenames gelten ohne Beachtung der Groß- und Kleinschreibung, auch mit Punkt-Suffixen, die mit einem anderen Zeichen als einem Punkt beginnen; native Erweiterungen haben Vorrang. UTF-8 lesen, wörtlich bearbeiten, ergänzen und vollständig ersetzen, mit Unified-Diffs im Probelauf; ungültiges UTF-8 und Inhalte mit NUL-Zeichen werden als Base64-Anhang gelesen.',
   delivery: 'Geordnet, abgewartet und mit separaten Snapshots je Behandler; Fehler werden zu Warnungen. Obsidian-artige vault.*-Ereignisse folgen jedem erfolgreichen Schreibvorgang (zuerst neue Ordner, übergeordnete vor untergeordneten, dann Dateien in Stapelreihenfolge); Probeläufe senden stattdessen workspace.quick-preview. Nach den vault.*-Ereignissen eines Stapels folgen metadataCache.changed, metadataCache.deleted, metadataCache.resolve und ein metadataCache.resolved, sobald der Metadaten-Cache in diesem Aufruf geladen wurde. operation.*-, command.*- und plugin.*-Ereignisse sind Lebenszyklusphasen des Hosts, die claude.*-Ereignisse des claude-Kern-Plugins Phasen jedes Claude-Aufrufs; workspace.*-Ereignisse entsprechen Obsidians Workspace (file-open, quick-preview, layout-ready, quit, project-change). Host-Namensräume gehören dem Host: Plugins beobachten sie, senden aber nur eigene Ereignisse. onAny beobachtet alle Ereignisse; replay liest den begrenzten Verlauf dieses Aufrufs. Keine dauerhafte Wiederholung. Die Antwort enthält standardmäßig nur vault.*-Ereignisse; --events none|changes|all oder settings.events wählt die Ausgabe, ohne Zustellung oder replay zu ändern.',
   eventChanges: 'Nur erfolgreich geschriebene vault.*-Ereignisse: vault.create, vault.modify, vault.delete und vault.rename für Dateien und Ordner.',
   setup: {

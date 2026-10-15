@@ -69,6 +69,7 @@ describe('workflows command family', () => {
     expect(body.error).toBeUndefined();
     expect(body.data.workflows.map((entry: { target: string }) => entry.target)).toEqual(expect.arrayContaining([
       '.github/workflows/forge-showcase--check.yml', '.github/workflows/the-forge--check.yml', '.github/workflows/the-forge--guard--workflows.yml',
+      '.github/workflows/the-forge--mutation.yml',
     ]));
     expect(result.status).toBe(0);
   });

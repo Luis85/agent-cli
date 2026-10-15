@@ -19,6 +19,8 @@ export interface SearchQuery {
   skipCode: boolean;
   kind?: SearchKind;
   path?: string;
+  /** Root-relative glob excluded before any candidate file is read. */
+  exclude?: string;
   tag?: string;
   property?: PropertyFilter;
   /** Lines of context before and after each hit. */

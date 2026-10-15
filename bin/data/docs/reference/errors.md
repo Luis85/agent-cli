@@ -88,7 +88,7 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 | `INVALID_INPUT` | 2 | input | no | The input options are invalid or contradictory. | Use exactly one input source and the option combination named in the message. |
 | `INPUT_REQUIRED` | 2 | input | no | `--stdin` was requested without piped input. | Pipe the content into the command, or use `--content` or `--from` instead. |
 | `INVALID_JSON` | 2 | input | no | The input is not valid JSON. | Pass a valid JSON value; quote it for your shell. |
-| `INVALID_ENCODING` | 2 | input | no | The content is not valid in the required encoding. | Use valid UTF-8 text. For binary content use `write` or `create` with `--stdin`, `--from` or `--encoding base64`; `edit` and structured commands accept only UTF-8 text. |
+| `INVALID_ENCODING` | 2 | input | no | The content is not valid in the required encoding. | Use valid UTF-8 text without NUL characters in text files. For binary content use `write` or `create` with `--stdin`, `--from` or `--encoding base64`; `edit` and structured commands accept only UTF-8 text. |
 | `INVALID_LANGUAGE` | 2 | input | no | The language is not supported. | Use `--lang` en or `--lang` de. |
 | `INVALID_NAME` | 2 | input | no | The name does not follow the required naming rule. | Use the name format described in the message, for example PascalCase. |
 | `INVALID_KEY` | 2 | input | no | The property key is reserved or unsafe. | Use a different property key. |

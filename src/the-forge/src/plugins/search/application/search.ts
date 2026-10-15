@@ -1,6 +1,6 @@
 import type { CachedMetadata } from '../../../domain/metadata/cache.ts';
 import type { FileRepository } from '../../../application/workspace/ports.ts';
-import { fileKind, type FileSnapshot } from '../../../domain/documents/file.ts';
+import { fileKind, isTextContent, type FileSnapshot } from '../../../domain/documents/file.ts';
 import { pathGlob } from '../../../domain/documents/path-glob.ts';
 import { AppError } from '../../../domain/shared/errors.ts';
 import { Pager, type PageRequest } from '../../../domain/shared/paging.ts';
@@ -36,9 +36,12 @@ interface PendingHit { path: string; line: number; column: number; match: string
 const batchSize = 32;
 const decoder = new TextDecoder('utf-8', { fatal: true });
 
-function decode(bytes: Uint8Array): string | undefined {
-  try { return decoder.decode(bytes); }
+/** The searchable text of a file: undefined for invalid UTF-8 and for text files with NUL characters, which read as attachments. */
+function decode({ path, bytes }: FileSnapshot): string | undefined {
+  let text: string;
+  try { text = decoder.decode(bytes); }
   catch { return undefined; }
+  return isTextContent(path, text) ? text : undefined;
 }
 async function readExisting(files: FileRepository, path: string): Promise<FileSnapshot | undefined> {
   try { return await files.read(path); }
@@ -68,8 +71,8 @@ function completed({ lines, revision, ...hit }: PendingHit, context: number): Se
 
 /**
  * Searches the scope's vault text files (Markdown, Canvas, Bases and UTF-8 text) in path order and returns one page
- * of hits ordered by path, line and column. Attachments, paths outside the vault rule and files that are not valid
- * UTF-8 are skipped. Each candidate file is read once and matched first; tag, property and code filters then parse
+ * of hits ordered by path, line and column. Attachments, paths outside the vault rule, files that are not valid
+ * UTF-8 and text files containing NUL characters (which read as attachments) are skipped. Each candidate file is read once and matched first; tag, property and code filters then parse
  * only files with hits, never the whole vault, and snippets are built only for the returned page. Read-only: it
  * uses repository reads only, which publish no events.
  */
@@ -78,15 +81,16 @@ export async function searchFiles(sources: SearchSources, query: SearchQuery, pa
   const { context: _context, ...ordering } = query;
   const pager = new Pager<PendingHit>(page, { command: 'search', ...ordering }, hit => [hit.path, hit.line, hit.column]);
   const inPath = query.path === undefined ? () => true : pathGlob(query.path);
+  const excluded = query.exclude === undefined ? () => false : pathGlob(query.exclude, '--exclude');
   const kinds: readonly string[] = query.kind ? [query.kind] : searchKinds;
   const listed = await sources.paths();
   // Path filtering spends the same budget as matching, so no part of a search runs unbounded.
-  const candidates = sources.budget.run(() => listed.filter(path => kinds.includes(fileKind(path)) && inPath(path)));
+  const candidates = sources.budget.run(() => listed.filter(path => kinds.includes(fileKind(path)) && inPath(path) && !excluded(path)));
   const filtered = query.tag !== undefined || query.property !== undefined;
   for (let start = 0; start < candidates.length; start += batchSize) {
     const batch = await Promise.all(candidates.slice(start, start + batchSize).map(path => readExisting(sources.files, path)));
     const scanned = sources.budget.run(() => batch.flatMap(file => {
-      const text = file && decode(file.bytes);
+      const text = file && decode(file);
       if (!file || text === undefined) return [];
       const lines = splitLines(text);
       const hits = matchLines(expression, lines, searchedLines(lines, fileKind(file.path) as SearchKind, query.scope));

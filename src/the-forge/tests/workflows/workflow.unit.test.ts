@@ -1,49 +1,116 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ensureDistinctTargets, generatedWorkflowPath, isGeneratedWorkflow, projectRelative, scopedPattern, scopedTriggerPaths, workflowSource,
+  ensureDistinctTargets, generatedHeader, generatedWorkflowPath, isGeneratedWorkflow, projectRelative, scopedPattern, scopedTriggerPaths, workflowSource,
 } from '../../src/domain/workflows/workflow.ts';
 import { yamlWorkflowRenderer } from '../../src/infrastructure/workflows/renderer.ts';
 
 const encode = (text: string) => new TextEncoder().encode(text);
-const source = workflowSource('demo', 'src/demo', 'src/demo/src/infrastructure/workflows/check/check.yml')!;
-const render = (text: string, from = source) => new TextDecoder().decode(yamlWorkflowRenderer.render(encode(text), from));
+/** The `check` workflow of project `demo`, built inside each test so mutants of the domain functions are seen. */
+const checkSource = () => workflowSource('demo', 'src/demo', 'src/demo/src/infrastructure/workflows/check/check.yml')!;
+const render = (text: string, from = checkSource()) => new TextDecoder().decode(yamlWorkflowRenderer.render(encode(text), from));
+
+const authored = (relative: string) => `src/demo/src/infrastructure/workflows/${relative}`;
+const invalidWorkflow = (message: string) => expect.objectContaining({ code: 'INVALID_WORKFLOW', message });
 
 describe('workflow sources and generated entrypoints', () => {
-  it('discovers only direct YAML files in a project concern folder', () => {
-    expect(source).toEqual({ project: 'demo', projectDirectory: 'src/demo', concern: 'check', source: 'src/demo/src/infrastructure/workflows/check/check.yml', target: '.github/workflows/demo--check.yml' });
-    expect(workflowSource('demo', 'src/demo', 'src/demo/src/infrastructure/workflows/guard/workflows.yaml')?.target).toBe('.github/workflows/demo--guard--workflows.yml');
-    for (const path of ['src/demo/src/infrastructure/workflows/check.yml', 'src/demo/src/infrastructure/workflows/check/nested/check.yml',
-      'src/demo/src/infrastructure/workflows/check/notes.md', 'src/other/src/infrastructure/workflows/check/check.yml']) {
-      expect(workflowSource('demo', 'src/demo', path), path).toBeUndefined();
-    }
-    expect(() => workflowSource('demo', 'src/demo', 'src/demo/src/infrastructure/workflows/Check/check.yml')).toThrow(expect.objectContaining({ code: 'INVALID_WORKFLOW' }));
+  it('discovers a YAML file in a project concern folder with its generated entrypoint', () => {
+    expect(checkSource()).toStrictEqual({ project: 'demo', projectDirectory: 'src/demo', concern: 'check', source: authored('check/check.yml'), target: '.github/workflows/demo--check.yml' });
+  });
+
+  it.each([
+    ['guard/workflows.yaml', '.github/workflows/demo--guard--workflows.yml'],
+    ['check/check.YML', '.github/workflows/demo--check.yml'],
+    ['check/check.yaml', '.github/workflows/demo--check.yml'],
+    ['check/nightly.yml', '.github/workflows/demo--check--nightly.yml'],
+    ['r1.x_y-z/0.a_b-c.yml', '.github/workflows/demo--r1.x_y-z--0.a_b-c.yml'],
+    ['check/check.yml.yml', '.github/workflows/demo--check--check.yml.yml'],
+  ])('names the entrypoint of %s %s', (relative, target) => {
+    expect(workflowSource('demo', 'src/demo', authored(relative))?.target).toBe(target);
+  });
+
+  it.each([
+    authored('check.yml'), authored('check/nested/check.yml'), authored('check/notes.md'), authored('check/check.yml.bak'), authored('check/.yml'),
+    authored('check/checkyml'), authored('check/nested.yml/check.yml'), 'src/other/src/infrastructure/workflows/check/check.yml',
+    'src/demx/src/infrastructure/workflows/check/check.yml', 'src/demo/src/infrastructure/check/check.yml',
+    'src/demo/check/check.yml', `docs/${authored('check/check.yml')}`,
+  ])('ignores %s, which is not a direct YAML file of a project concern folder', path => {
+    expect(workflowSource('demo', 'src/demo', path)).toBeUndefined();
+  });
+
+  it.each(['Check/check.yml', 'check/Check.yml', '-check/check.yml', 'check/_check.yml', 'che ck/check.yml', 'check/check!.yml', 'check!/check.yml'])(
+    'rejects %s, whose concern or file name is not lowercase kebab-case', relative => {
+      expect(() => workflowSource('demo', 'src/demo', authored(relative)))
+        .toThrow(invalidWorkflow(`Workflow concern and file names must be lowercase kebab-case: ${authored(relative)}.`));
+    });
+
+  it('names entrypoints after the project and concern, adding the file stem when it differs from the concern', () => {
     expect(generatedWorkflowPath('demo', 'release', 'publish')).toBe('.github/workflows/demo--release--publish.yml');
+    expect(generatedWorkflowPath('demo', 'release', 'release')).toBe('.github/workflows/demo--release.yml');
   });
 
-  it('rejects two sources that generate the same entrypoint', () => {
-    const yml = workflowSource('demo', 'src/demo', 'src/demo/src/infrastructure/workflows/check/check.yml')!;
-    const yaml = workflowSource('demo', 'src/demo', 'src/demo/src/infrastructure/workflows/check/check.yaml')!;
-    expect(() => ensureDistinctTargets([yml, yaml])).toThrow(expect.objectContaining({ code: 'INVALID_WORKFLOW' }));
-    expect(() => ensureDistinctTargets([yml])).not.toThrow();
+  it('recognizes generated workflows by their first line', () => {
+    expect(generatedHeader('src/demo/a.yml')).toBe('# Generated by forge workflows sync from src/demo/a.yml.\n# Do not edit this file; change the source and run: node bin/forge.js workflows sync\n');
+    expect(isGeneratedWorkflow(generatedHeader('src/demo/a.yml'))).toBe(true);
+    expect(isGeneratedWorkflow('name: x\n# Generated by forge workflows sync from src/demo/a.yml.\n')).toBe(false);
+    expect(isGeneratedWorkflow('# Generated by hand\n')).toBe(false);
   });
 
-  it('scopes path filters to the project, anchors workspace patterns and keeps negation', () => {
-    expect(scopedPattern('docs/**', 'src/demo')).toBe('src/demo/docs/**');
-    expect(scopedPattern('!docs/**', 'src/demo')).toBe('!src/demo/docs/**');
-    expect(scopedPattern('/**', 'src/demo')).toBe('**');
-    expect(scopedPattern('/bin/forge.js', 'src/demo')).toBe('bin/forge.js');
-    const target = '.github/workflows/demo--check.yml';
-    expect(scopedTriggerPaths({}, 'src/demo', target)).toEqual(['src/demo/**', target]);
-    expect(scopedTriggerPaths({ paths: ['src/**', '/bin/**'] }, 'src/demo', target)).toEqual(['src/demo/src/**', 'bin/**', target]);
-    expect(scopedTriggerPaths({ pathsIgnore: ['docs/**', '!docs/keep.md'] }, 'src/demo', target)).toEqual(['src/demo/**', '!src/demo/docs/**', 'src/demo/docs/keep.md', target]);
+  it('rejects two sources that generate the same entrypoint and names both', () => {
+    const yml = workflowSource('demo', 'src/demo', authored('check/check.yml'))!;
+    const yaml = workflowSource('demo', 'src/demo', authored('check/check.yaml'))!;
+    const other = workflowSource('demo', 'src/demo', authored('check/other.yml'))!;
+    expect(() => ensureDistinctTargets([yml, other, yaml]))
+      .toThrow(invalidWorkflow(`Workflow sources ${yml.source} and ${yaml.source} both generate ${yml.target}; rename one.`));
+    expect(() => ensureDistinctTargets([yml, other])).not.toThrow();
   });
 
-  it('resolves authored working directories inside the workspace', () => {
-    expect(projectRelative('.', 'src/demo')).toBe('src/demo');
-    expect(projectRelative('ui/app', 'src/demo')).toBe('src/demo/ui/app');
-    expect(projectRelative('../..', 'src/demo')).toBe('.');
-    expect(projectRelative('/tools', 'src/demo')).toBe('tools');
-    expect(() => projectRelative('../../..', 'src/demo')).toThrow(expect.objectContaining({ code: 'INVALID_WORKFLOW' }));
+  it('rejects a generated entrypoint outside the workspace', () => {
+    const escaping = workflowSource('..', 'src/demo', authored('check/check.yml'))!;
+    expect(escaping.target).toBe('.github/workflows/..--check.yml');
+    expect(() => ensureDistinctTargets([{ ...escaping, target: '../outside.yml' }])).toThrow(expect.objectContaining({ code: 'INVALID_PATH' }));
+  });
+
+  it.each([
+    ['docs/**', 'src/demo/docs/**'],
+    ['!docs/**', '!src/demo/docs/**'],
+    ['/**', '**'],
+    ['/', '**'],
+    ['!/', '!**'],
+    ['/bin/forge.js', 'bin/forge.js'],
+    ['!/bin/**', '!bin/**'],
+  ])('scopes the path filter %s to %s', (pattern, scoped) => {
+    expect(scopedPattern(pattern, 'src/demo')).toBe(scoped);
+  });
+
+  it.each(['', '!'])('rejects the empty path filter %j', pattern => {
+    expect(() => scopedPattern(pattern, 'src/demo')).toThrow(invalidWorkflow('Workflow path filters must not be empty.'));
+  });
+
+  it.each([
+    [{}, ['src/demo/**', '.github/workflows/demo--check.yml']],
+    [{ paths: [] }, ['.github/workflows/demo--check.yml']],
+    [{ paths: ['src/**', '/bin/**'] }, ['src/demo/src/**', 'bin/**', '.github/workflows/demo--check.yml']],
+    [{ paths: ['a/**', 'a/**', '/.github/workflows/demo--check.yml'] }, ['src/demo/a/**', '.github/workflows/demo--check.yml']],
+    [{ pathsIgnore: ['docs/**', '!docs/keep.md'] }, ['src/demo/**', '!src/demo/docs/**', 'src/demo/docs/keep.md', '.github/workflows/demo--check.yml']],
+    [{ paths: ['src/**'], pathsIgnore: ['docs/**'] }, ['src/demo/src/**', '.github/workflows/demo--check.yml']],
+  ])('scopes the trigger filters %j to %j', (filters, paths) => {
+    expect(scopedTriggerPaths(filters, 'src/demo', '.github/workflows/demo--check.yml')).toStrictEqual(paths);
+  });
+
+  it.each([
+    ['.', 'src/demo'],
+    ['', 'src/demo'],
+    ['ui/app', 'src/demo/ui/app'],
+    ['./ui//app/', 'src/demo/ui/app'],
+    ['ui/../tools', 'src/demo/tools'],
+    ['../..', '.'],
+    ['/tools', 'tools'],
+    ['/', '.'],
+    ['/tools/../..', null],
+    ['../../..', null],
+  ])('resolves the authored working directory %j to %j', (path, resolved) => {
+    if (resolved !== null) expect(projectRelative(path, 'src/demo')).toBe(resolved);
+    else expect(() => projectRelative(path, 'src/demo')).toThrow(invalidWorkflow(`Workflow path leaves the workspace: ${path}.`));
   });
 });
 
@@ -157,6 +224,6 @@ describe('YAML workflow rendering', () => {
   });
 
   it('rejects bytes that are not UTF-8', () => {
-    expect(() => yamlWorkflowRenderer.render(new Uint8Array([0xff, 0xfe]), source)).toThrow(expect.objectContaining({ code: 'INVALID_WORKFLOW' }));
+    expect(() => yamlWorkflowRenderer.render(new Uint8Array([0xff, 0xfe]), checkSource())).toThrow(expect.objectContaining({ code: 'INVALID_WORKFLOW' }));
   });
 });

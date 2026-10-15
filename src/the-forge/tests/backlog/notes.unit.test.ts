@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
 import {
-  baseFileContent, basePath, iterationNoteName, newItemFrontmatter, nextItemId, nextIterationDates, nextIterationName, noteText, previousIteration, releaseFrontmatter, sanitizeTitle, uniqueNotePath,
+  baseFileContent, basePath, comments, iterationNoteName, newItemFrontmatter, nextItemId, nextIterationDates, nextIterationName, noteBody, noteText, previousIteration, releaseFrontmatter,
+  sanitizeTitle, uniqueNotePath, withBody, withComments, withoutComments,
 } from '../../src/plugins/backlog/domain/notes.ts';
 import { resolveReleaseSettings, resolveSettings } from '../../src/plugins/backlog/domain/settings-resolve.ts';
 import {
@@ -16,6 +17,7 @@ describe('note names', () => {
     expect(sanitizeTitle('a\t\nb')).toBe('a b');
     expect(sanitizeTitle('///')).toBe('Untitled');
     expect(sanitizeTitle('')).toBe('Untitled');
+    expect(sanitizeTitle('Plan --  ')).toBe('Plan');
   });
 
   it('numbers collisions and spells paths the vault way', () => {
@@ -25,37 +27,86 @@ describe('note names', () => {
     expect(uniqueNotePath('docs//req/', 'Plan', () => false)).toBe('docs/req/Plan.md');
     expect(basePath(' ', () => false)).toEqual({ folder: 'docs', path: 'docs/Product Backlog.base' });
     expect(basePath('work/', path => path === 'work/Product Backlog.base')).toEqual({ folder: 'work', path: 'work/Product Backlog 1.base' });
+    expect(basePath('work', path => path !== 'work/Product Backlog 2.base')).toEqual({ folder: 'work', path: 'work/Product Backlog 2.base' });
   });
 
   it('takes the next pbl-id over numeric ids and numeric strings only', () => {
     expect(nextItemId([])).toBe(1);
     expect(nextItemId([{ 'pbl-id': 7 }, { 'pbl-id': '12' }, { 'pbl-id': '13x' }, { 'pbl-id': 2.9 }, undefined, { other: 99 }, { 'pbl-id': [40] }])).toBe(13);
+    expect(nextItemId([{ 'pbl-id': 20 }, { 'pbl-id': '12' }])).toBe(21);
+  });
+
+  it.each([
+    ['the largest safe integer', Number.MAX_SAFE_INTEGER],
+    ['beyond the safe range', 2 ** 53],
+    ['an unsafe numeric string', '9007199254740993'],
+  ])('ignores unsafe ids: %s', (_, id) => {
+    expect(nextItemId([{ 'pbl-id': id }, { 'pbl-id': 4 }])).toBe(5);
   });
 });
 
 describe('new note frontmatter', () => {
-  const settings = resolveSettings({ iterationProperty: 'note.iteration', releaseProperty: 'note.release', iterationGoalProperty: 'note.goal', horizonProperty: 'note.horizon', startProperty: 'note.start', targetProperty: 'note.due' });
+  const settings = () => resolveSettings({ iterationProperty: 'note.iteration', releaseProperty: 'note.release', iterationGoalProperty: 'note.goal', horizonProperty: 'note.horizon', startProperty: 'note.start', targetProperty: 'note.due' });
   it('writes the plugin\'s key order and only frontmatter', () => {
-    const frontmatter = newItemFrontmatter(settings, {
+    const frontmatter = newItemFrontmatter(settings(), {
       id: 4, typeName: 'PBI', order: 7.03125, parentLink: '[[Route sharing]]', iterationLink: '[[1 - Iteration]]', releaseLink: '[[1.0]]', iterationGoal: 'ignored on purpose',
       axis: { horizon: 'Now', start: '2026-10-01', target: '2026-10-14' },
     });
     expect(Object.keys(frontmatter)).toEqual(['pbl-id', 'type', 'parent', 'order', 'goal', 'iteration', 'release', 'horizon', 'start', 'due']);
     expect(noteText(stringify(frontmatter))).toBe('---\npbl-id: 4\ntype: PBI\nparent: "[[Route sharing]]"\norder: 7.03125\ngoal: ignored on purpose\niteration: "[[1 - Iteration]]"\nrelease: "[[1.0]]"\nhorizon: Now\nstart: 2026-10-01\ndue: 2026-10-14\n---\n');
     expect(Object.keys(newItemFrontmatter(resolveSettings({ inferFolderHierarchy: true }), { id: 1, typeName: 'Epic', order: 1000, parentLink: null }))).toEqual(['pbl-id', 'type', 'parent', 'order']);
-    expect(Object.keys(newItemFrontmatter(settings, { id: 1, typeName: 'Epic', order: 1000, parentLink: null }))).toEqual(['pbl-id', 'type', 'order']);
+    expect(Object.keys(newItemFrontmatter(settings(), { id: 1, typeName: 'Epic', order: 1000, parentLink: null }))).toEqual(['pbl-id', 'type', 'order']);
     // A release is never seeded with an iteration, release or planning axis.
-    expect(newItemFrontmatter(settings, { id: 2, typeName: 'Release', order: 5, parentLink: null, iterationLink: '[[x]]', axis: { start: '2026-01-01' } })).toEqual({ 'pbl-id': 2, type: 'Release', order: 5 });
+    expect(newItemFrontmatter(settings(), { id: 2, typeName: 'Release', order: 5, parentLink: null, iterationLink: '[[x]]', axis: { start: '2026-01-01' } })).toEqual({ 'pbl-id': 2, type: 'Release', order: 5 });
+  });
+
+  it('writes an empty parent for a folder-hierarchy root and no key for an unbound axis', () => {
+    expect(newItemFrontmatter(resolveSettings({ inferFolderHierarchy: true }), { id: 1, typeName: 'Epic', order: 1000, parentLink: null })).toStrictEqual({ 'pbl-id': 1, type: 'Epic', parent: '', order: 1000 });
+    const unbound = newItemFrontmatter(resolveSettings({ startProperty: 'note.start' }), { id: 2, typeName: 'PBI', order: 1, parentLink: null, axis: { horizon: 'Now', start: '2026-10-01' } });
+    expect(unbound).toStrictEqual({ 'pbl-id': 2, type: 'PBI', order: 1, start: '2026-10-01' });
   });
 
   it('writes releases with only the bound and stated keys', () => {
     const release = resolveReleaseSettings({ versionProperty: 'note.version', targetDateProperty: 'note.target-date', releaseStatusProperty: 'note.status' });
     expect(releaseFrontmatter(release, 9, { version: '1.2.0', targetDate: '2026-12-01', status: ' ', description: 'not bound' })).toEqual({ 'pbl-id': 9, type: 'Release', version: '1.2.0', 'target-date': '2026-12-01' });
+    expect(releaseFrontmatter(release, 3, {})).toStrictEqual({ 'pbl-id': 3, type: 'Release' });
   });
 
   it('scaffolds the plugin\'s base file', () => {
     expect(baseFileContent('docs')).toBe('filters:\n  and:\n    - "file.inFolder(\\"docs\\")"\n    - file.ext == "md"\nviews:\n  - type: product-backlog\n    name: Backlog\n    homeFolder: "docs"\n');
     expect(baseFileContent('a"b')).toContain('- "file.inFolder(\\"a\\\\\\"b\\")"');
+    const backslash = baseFileContent('a\\b');
+    expect(backslash).toContain(String.raw`- "file.inFolder(\"a\\\\b\")"`);
+    expect(backslash).toContain(String.raw`homeFolder: "a\\b"`);
+  });
+});
+
+describe('note bodies after the frontmatter', () => {
+  it.each([
+    ['blank lines after the frontmatter', '---\na: 1\n---\n\n\nbody\n\nmore', 'body\n\nmore'],
+    ['an empty frontmatter', '---\n---\n\n\na\n\nb', 'a\n\nb'],
+    ['a byte order mark', '\uFEFF---\na: 1\n---\nbody', 'body'],
+    ['CRLF line endings', '---\r\na: 1\r\n---\r\n\r\nbody', 'body'],
+    ['delimiters with trailing spaces', '---  \na: 1\n--- \t\nbody', 'body'],
+    ['a frontmatter closed at the end of the file', '---\na: 1\n---', ''],
+    ['dashes inside a value do not close', '---\na: x---\nb: 2\n---\nbody', 'body'],
+    ['no frontmatter', 'Intro\n---\nx\n---\nbody', 'Intro\n---\nx\n---\nbody'],
+    ['an opening line with text after the dashes', '---x\na: 1\n---\nbody', '---x\na: 1\n---\nbody'],
+    ['an unterminated frontmatter', '---\na: 1\nbody', '---\na: 1\nbody'],
+    ['leading blank lines without frontmatter', '\n\nbody', 'body'],
+  ])('reads the body: %s', (_, text, body) => {
+    expect(noteBody(text)).toBe(body);
+  });
+
+  it.each([
+    ['a note without frontmatter', 'old', 'new', 'new\n'],
+    ['line endings normalized', 'old', ' a\r\nb\rc ', 'a\nb\nc\n'],
+    ['a frontmatter closed at the end of the file', '---\na: 1\n---', 'body', '---\na: 1\n---\nbody\n'],
+    ['a frontmatter ending in a newline', '---\na: 1\n---\nold', 'body', '---\na: 1\n---\nbody\n'],
+    ['a blank body keeps only the frontmatter', '---\na: 1\n---\nold', ' \n ', '---\na: 1\n---\n'],
+    ['a blank body without frontmatter', 'old', '', ''],
+  ])('replaces the body: %s', (_, text, body, result) => {
+    expect(withBody(text, body)).toBe(result);
   });
 });
 
@@ -73,7 +124,220 @@ describe('iterations', () => {
     expect(nextIterationDates(previousIteration(items), { year: 2026, month: 1, day: 1 }, 14)).toEqual({ start: '2026-09-29', target: '2026-10-12' });
     expect(nextIterationDates(null, { year: 2026, month: 2, day: 20 }, 14)).toEqual({ start: '2026-02-20', target: '2026-03-05' });
   });
+
+  it.each([
+    ['only a leading number counts', ['Sprint 7', 'Sprint7'], '1 - Iteration'],
+    ['multi-digit numbers', [' 12 - Iteration'], '13 - Iteration'],
+    ['titles without a number are skipped', ['Kickoff', '4 - Iteration'], '5 - Iteration'],
+    ['the highest number, not the last', ['2 - Iteration', '1 - Iteration'], '3 - Iteration'],
+  ])('names the next iteration: %s', (_, titles, name) => {
+    expect(nextIterationName(titles.map(title => iteration(title, null, null)))).toBe(name);
+  });
+
+  it('adds no goal suffix for a blank goal', () => {
+    expect(iterationNoteName('3 - Iteration', '   ')).toBe('3 - Iteration');
+  });
+
+  it.each([
+    // Each winner is named 'a' when a rule must beat the path order, and 'b' when the path decides.
+    ['the latest target', [iteration('a', [2026, 9, 1], [2026, 9, 28]), iteration('b', [2026, 9, 10], [2026, 9, 14])], 'a'],
+    ['then the latest start', [iteration('a', [2026, 9, 5], [2026, 9, 14]), iteration('b', [2026, 9, 1], [2026, 9, 14])], 'a'],
+    ['a dated start before a missing one', [iteration('a', [2026, 9, 1], [2026, 9, 14]), iteration('b', null, [2026, 9, 14])], 'a'],
+    ['then the greater path without starts', [iteration('b', null, [2026, 9, 14]), iteration('a', null, [2026, 9, 14])], 'b'],
+    ['then the greater path with equal starts', [iteration('b', [2026, 9, 1], [2026, 9, 14]), iteration('a', [2026, 9, 1], [2026, 9, 14])], 'b'],
+    ['skipping undated iterations and other types', [iteration('b', null, [2026, 9, 14]), iteration('z', null, null), { ...iteration('y', null, [2026, 12, 1]), typeName: 'Task' }], 'b'],
+  ])('picks the previous iteration by %s in any order', (_, items, title) => {
+    expect(previousIteration(items)?.title).toBe(title);
+    expect(previousIteration([...items].reverse())?.title).toBe(title);
+  });
 });
+
+describe('Obsidian comments around code', () => {
+  // [case, body, body without comments, comments found]
+  it.each([
+    ['an empty body', '', '', []],
+    ['an inline comment', 'a %%x%% b %%y%%', 'a  b ', ['%%x%%', '%%y%%']],
+    ['a multi-line comment', 'a\n%%\nb\n%%\nc', 'a\n\nc', ['%%\nb\n%%']],
+    ['a comment inside a backtick fence', '```\n%%k%%\n```\nafter %%c%%', '```\n%%k%%\n```\nafter ', ['%%c%%']],
+    ['a comment inside a tilde fence', 'x\n~~~\n%%k%%\n~~~\n', 'x\n~~~\n%%k%%\n~~~\n', []],
+    ['an empty block before a comment', '```\n```\n%%secret%%\n```js\ncode\n```\n', '```\n```\n\n```js\ncode\n```\n', ['%%secret%%']],
+    ['an empty block before code holding %%', '```\n```\n%%secret%%\n```js\ncode %%x%%\n```\n', '```\n```\n\n```js\ncode %%x%%\n```\n', ['%%secret%%']],
+    ['a fence indented by two spaces', '  ```\n%%keep%%\n  ```\n', '  ```\n%%keep%%\n  ```\n', []],
+    ['a fence indented by three spaces', '   ~~~\n%%k%%\n~~~\n%%c%%', '   ~~~\n%%k%%\n~~~\n', ['%%c%%']],
+    ['a four-space fence ends at an unindented line', '    ```\n%%x%%\n', '    ```\n\n', ['%%x%%']],
+    ['a fence ended by a dedent opens no code span', '    ```\na %%c%% ```', '    ```\na  ```', ['%%c%%']],
+    ['a tab-indented fence ends at an unindented line', '\t~~~\n%%x%%\n', '\t~~~\n\n', ['%%x%%']],
+    ['a tab-indented fence in a list item', '- step\n\t```\n\tprintf("%%d", x); y %% z\n\t```\n%%c%%', '- step\n\t```\n\tprintf("%%d", x); y %% z\n\t```\n', ['%%c%%']],
+    ['a four-space fence in a numbered item', '1. step\n    ~~~\n    %%k%%\n    ~~~\n%%c%%', '1. step\n    ~~~\n    %%k%%\n    ~~~\n', ['%%c%%']],
+    ['a line within three columns of the opener stays code', '\t```\n %%k%%\n\t```\n%%c%%', '\t```\n %%k%%\n\t```\n', ['%%c%%']],
+    ['a blank line stays in an indented fence', '\t```\n\n\t%%k%%\n\t```\n%%c%%', '\t```\n\n\t%%k%%\n\t```\n', ['%%c%%']],
+    ['a tab after spaces reaches the next tab stop', '  \t```\n %%k%%\n  \t```\n%%c%%', '  \t```\n %%k%%\n  \t```\n', ['%%c%%']],
+    ['a line leaving the list item may open a fence', '\t```\n%%c%%\n```\n%%k%%\n```', '\t```\n\n```\n%%k%%\n```', ['%%c%%']],
+    ['one or two tildes are not a fence', '~\n%%x%%\n~~\n%%y%%', '~\n\n~~\n', ['%%x%%', '%%y%%']],
+    ['the other fence character does not close', '```\n~~~\n%%k%%\n```\n%%c%%', '```\n~~~\n%%k%%\n```\n', ['%%c%%']],
+    ['backticks do not close a tilde fence', '~~~\n```\n%%k%%\n~~~\n%%c%%', '~~~\n```\n%%k%%\n~~~\n', ['%%c%%']],
+    ['a shorter run does not close', '````\n```\n%%k%%\n````\n%%c%%', '````\n```\n%%k%%\n````\n', ['%%c%%']],
+    ['a longer run closes', '```\n%%k%%\n`````\n%%c%%', '```\n%%k%%\n`````\n', ['%%c%%']],
+    ['a line ending in a fence run does not close', '```\nx ```\n%%k%%\n```\n%%c%%', '```\nx ```\n%%k%%\n```\n', ['%%c%%']],
+    ['a line with an info string does not close','```\n```js\n%%k%%\n```\n%%c%%', '```\n```js\n%%k%%\n```\n', ['%%c%%']],
+    ['a closer with trailing spaces closes', '```\n%%k%%\n```  \n%%c%%', '```\n%%k%%\n```  \n', ['%%c%%']],
+    ['a closer indented by three spaces closes', '```\n%%k%%\n   ```\n%%c%%', '```\n%%k%%\n   ```\n', ['%%c%%']],
+    ['a closer indented by four spaces is code', '```\n    ```\n%%k%%\n```\n%%c%%', '```\n    ```\n%%k%%\n```\n', ['%%c%%']],
+    ['a closer three columns past an indented opener closes', '\t```\n\t   ```\n%%c%%', '\t```\n\t   ```\n', ['%%c%%']],
+    ['a closer four columns past an indented opener is code', '\t```\n\t    ```\n %%k%%\n\t```\n%%c%%', '\t```\n\t    ```\n %%k%%\n\t```\n', ['%%c%%']],
+    ['a closer less indented than its opener closes', '\t```\n %%k%%\n ```\n%%c%%', '\t```\n %%k%%\n ```\n', ['%%c%%']],
+    ['an unclosed fence runs to the end', 'a %%c%%\n```\n%%k%%', 'a \n```\n%%k%%', ['%%c%%']],
+    ['a backtick info string cannot hold a backtick', '```a`b\n%%c%%\n```\n%%k%%', '```a`b\n\n```\n%%k%%', ['%%c%%']],
+    ['a tilde info string may hold backticks', '~~~ a`b\n%%k%%\n~~~\n%%c%%', '~~~ a`b\n%%k%%\n~~~\n', ['%%c%%']],
+    ['CRLF line endings', '```\r\n%%k%%\r\n```\r\n%%c%%', '```\r\n%%k%%\r\n```\r\n', ['%%c%%']],
+    ['backticks inside a line are not a fence', 'Use ``` and %%c%%\n%%d%%', 'Use ``` and \n', ['%%c%%', '%%d%%']],
+  ])('keeps fenced code: %s', (_, body, without, found) => {
+    expect(withoutComments(body)).toBe(without);
+    expect(comments(body)).toEqual(found);
+  });
+
+  it.each([
+    ['a comment inside inline code', 'use `%%x%%` here', 'use `%%x%%` here', []],
+    ['an opener shown as code before a comment', 'Type `%%` to open. Later %%secret%% end', 'Type `%%` to open. Later  end', ['%%secret%%']],
+    ['a double-backtick span holding a backtick', 'a ``x`%%y%%`` %%c%%', 'a ``x`%%y%%`` ', ['%%c%%']],
+    ['a span closes only at a run of equal length', 'a ``x` %%c%%', 'a ``x` ', ['%%c%%']],
+    ['an unmatched backtick protects nothing', 'it`s %%c%%', 'it`s ', ['%%c%%']],
+    ['a span continuing on the next line', 'a `b\n%%k%%` c', 'a `b\n%%k%%` c', []],
+    ['a blank line ends a span', 'a `b\n\n%%c%%\n\nd `e', 'a `b\n\n\n\nd `e', ['%%c%%']],
+    ['a whitespace-only line ends a span', 'a `b\n \t\n%%c%% `', 'a `b\n \t\n `', ['%%c%%']],
+    ['a comment opened first wins over code', '%%a `b%% c`', ' c`', ['%%a `b%%']],
+    ['an escaped backtick opens no span', 'a \\`b %%c%% `', 'a \\`b  `', ['%%c%%']],
+  ])('keeps inline code: %s', (_, body, without, found) => {
+    expect(withoutComments(body)).toBe(without);
+    expect(comments(body)).toEqual(found);
+  });
+
+  it.each([
+    ['a list item', 'Run `npm\n- %%private plan%%\n- next `\n', 'Run `npm\n- \n- next `\n', ['%%private plan%%']],
+    ['a star item', 'a `b\n* %%c%% `', 'a `b\n*  `', ['%%c%%']],
+    ['a plus item', 'a `b\n+\t%%c%% `', 'a `b\n+\t `', ['%%c%%']],
+    ['an indented item', 'a `b\n  - %%c%% `', 'a `b\n  -  `', ['%%c%%']],
+    ['an empty item', 'a `b\n-\n%%c%% `', 'a `b\n-\n `', ['%%c%%']],
+    ['an empty item before CRLF', 'a `b\r\n-\r\n%%c%% `', 'a `b\r\n-\r\n `', ['%%c%%']],
+    ['a numbered item', 'a `b\n12. %%c%% `', 'a `b\n12.  `', ['%%c%%']],
+    ['a parenthesis-numbered item', 'a `b\n3) %%c%% `', 'a `b\n3)  `', ['%%c%%']],
+    ['a heading', 'para `x\n# heading %%secret%% `\n', 'para `x\n# heading  `\n', ['%%secret%%']],
+    ['a quote', 'para `x\n> quote %%secret%% `\n', 'para `x\n> quote  `\n', ['%%secret%%']],
+    ['a table row', 'a `b\n| %%c%% `', 'a `b\n|  `', ['%%c%%']],
+    ['a backtick fence', 'para `x\n```\ncode\n```\n%%c%% `', 'para `x\n```\ncode\n```\n `', ['%%c%%']],
+    ['a tilde fence', 'para `x\n  ~~~\n%%k%%\n~~~\n%%c%% `', 'para `x\n  ~~~\n%%k%%\n~~~\n `', ['%%c%%']],
+    ['a thematic break', 'a `b\n***\n%%c%% `', 'a `b\n***\n `', ['%%c%%']],
+    ['a spaced thematic break', 'a `b\n_ _ _ \n%%c%% `', 'a `b\n_ _ _ \n `', ['%%c%%']],
+    ['an equals underline', 'a `b\n===\n%%c%% `', 'a `b\n===\n `', ['%%c%%']],
+    ['a single underline character', 'a `b\n=\n%%c%% `', 'a `b\n=\n `', ['%%c%%']],
+    ['a dash underline before CRLF', 'a `b\r\n--\r\n%%c%% `', 'a `b\r\n--\r\n `', ['%%c%%']],
+    ['a CRLF blank line', 'a `b\r\n\r\n%%c%% `', 'a `b\r\n\r\n `', ['%%c%%']],
+  ])('ends a code span at a block start: %s', (_, body, without, found) => {
+    expect(withoutComments(body)).toBe(without);
+    expect(comments(body)).toEqual(found);
+  });
+
+  it.each([
+    ['a dash glued to text', 'a `b\n-c %%k%% `'],
+    ['a number without a marker', 'a `b\n12 %%k%% `'],
+    ['a number glued to text', 'a `b\n1.x %%k%% `'],
+    ['an underline character before text', 'a `b\n==x %%k%% `'],
+    ['mixed rule characters', 'a `b\n-*\n%%k%% `'],
+    ['a closing run starting a line', 'a `b %%k%%\n` c'],
+    ['a tilde starting a line', 'a `b\n~ %%k%% `'],
+    ['an indented paragraph line', 'a `b\n    %%k%% `'],
+  ])('continues a code span on a paragraph line: %s', (_, body) => {
+    expect(withoutComments(body)).toBe(body);
+    expect(comments(body)).toEqual([]);
+  });
+});
+
+describe('Obsidian comments', () => {
+  it.each([
+    ['an unclosed comment hides the rest', 'visible\n%% secret till end\n', 'visible\n', ['%% secret till end\n']],
+    ['a block comment around a fence', '%%\n```\nsecret\n```\n%%\nvisible\n', '\nvisible\n', ['%%\n```\nsecret\n```\n%%']],
+    ['an inline comment spanning a fence', 'a %% hidden\n```\nsecret\n``` \nstill %% b\n', 'a  b\n', ['%% hidden\n```\nsecret\n``` \nstill %%']],
+    ['a comment holding blank lines and Markdown', 'a\n%%\n# H\n\n- `x\n%%\nb', 'a\n\nb', ['%%\n# H\n\n- `x\n%%']],
+    ['an unclosed comment after code', '```\n%%k%%\n```\nend %% private\n```\nx\n```\n', '```\n%%k%%\n```\nend ', ['%% private\n```\nx\n```\n']],
+    ['single percent signs', '50% done %', '50% done %', []],
+    ['three percent signs', 'a %%%b%%', 'a ', ['%%%b%%']],
+    ['an escaped marker', 'Use \\%% as literal, then %%secret%% here', 'Use \\%% as literal, then  here', ['%%secret%%']],
+    ['two backslashes escape each other', 'a \\\\%%x%% b', 'a \\\\ b', ['%%x%%']],
+    ['three backslashes escape the marker', 'a \\\\\\%%x %%y%%', 'a \\\\\\%%x ', ['%%y%%']],
+    ['an escaped marker does not close a comment', '%%a \\%% b%% c', ' c', ['%%a \\%% b%%']],
+    ['an escaped character in a comment', '%%a\\b%% c', ' c', ['%%a\\b%%']],
+    ['an escaped backslash in a comment', '%%a\\\\%% b%% c', ' b', ['%%a\\\\%%', '%% c']],
+    ['an escaped marker then a percent sign', 'a \\%%% b %%c%%', 'a \\%%% b ', ['%%c%%']],
+    ['an escaped marker then a percent sign in a comment', '%%a \\%%% b', '', ['%%a \\%%% b']],
+    ['a backslash before a line break', 'a\\\n```\n%%k%%\n```\n%%c%%', 'a\\\n```\n%%k%%\n```\n', ['%%c%%']],
+    ['a backslash ending the body', 'a %%b%% \\', 'a  \\', ['%%b%%']],
+  ])('hides what Obsidian hides: %s', (_, body, without, found) => {
+    expect(withoutComments(body)).toBe(without);
+    expect(comments(body)).toEqual(found);
+  });
+
+  it('finds exactly the comments it removes, for any body', () => {
+    const parts = ['%%', '%%', '`', '``', '```', '~~~', '\n', '\n\n', '\r\n', '\\', 'a', ' ', '\t', '    ', '- ', '# ', '> ', '---', '1. '];
+    let seed = 7;
+    const next = (limit: number) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % limit; };
+    for (let run = 0; run < 600; run++) {
+      const body = Array.from({ length: 4 + next(24) }, () => parts[next(parts.length)]!).join('');
+      const found = comments(body);
+      expect(interleaves(body, withoutComments(body), found), JSON.stringify(body)).toBe(true);
+      for (const comment of found) expect(comment.startsWith('%%') && ((comment.length >= 4 && comment.endsWith('%%')) || body.endsWith(comment)), JSON.stringify(body)).toBe(true);
+      expect(withoutComments(withComments(body, ['%%secret%%', '%%open'])), JSON.stringify(body)).not.toMatch(/secret|open/);
+    }
+  });
+});
+
+describe('comments kept after a replaced body', () => {
+  // [case, new text, what closes it before the kept comments]
+  it.each([
+    ['prose', 'Plan the stops.', ''],
+    ['a one-character last line', 'Plan\nA', ''],
+    ['a closed fence', '```\ncode\n```', ''],
+    ['an unclosed backtick fence', 'Run:\n```sh\nnpm test', '\n```'],
+    ['an unclosed fence ending in a line break', 'Run:\n```\nnpm test\n', '```'],
+    ['an unclosed tilde fence', '~~~\ncode', '\n~~~'],
+    ['an unclosed longer fence', '`````md\n```\ncode\n```', '\n`````'],
+    ['an unclosed fence opened on the last line', 'Then:\n~~~~', '\n~~~~'],
+    ['an unclosed fence indented in a list item', '- step\n\t```\n\tcode', '\n\t```'],
+    ['an unclosed fence indented by spaces', '1. step\n    ```\n    code', '\n    ```'],
+    ['an unclosed fence indented by three spaces', '   ```\ncode', '\n   ```'],
+    ['an unclosed comment', 'Plan %% the hidden rest', '\n%%'],
+    ['an unclosed inline code span', 'Use `npm', ''],
+    ['an escaped marker', 'Use \\%% literally', ''],
+  ])('keeps the comments private after %s', (_, text, closing) => {
+    const old = 'old %%secret one%% body\n\n%%secret\n\ntwo';
+    const kept = comments(old);
+    const body = withComments(text, kept);
+    expect(body).toBe(`${text}${closing}\n\n%%secret one%%\n\n%%secret\n\ntwo`);
+    expect(withoutComments(body)).not.toContain('secret');
+    expect(comments(body).slice(-kept.length)).toEqual(kept);
+  });
+
+  it('leaves the text as it is when no comment is kept, and drops blank parts', () => {
+    expect(withComments('Run:\n```\nnpm test', [])).toBe('Run:\n```\nnpm test');
+    expect(withComments('', ['%%a%%'])).toBe('%%a%%');
+    expect(withComments(' \n', ['%%a%%', '%%b%%'])).toBe('%%a%%\n\n%%b%%');
+    expect(withComments('Text', [])).toBe('Text');
+  });
+});
+
+/** Whether `body` is `visible` with each of `found`, in order, inserted somewhere. */
+function interleaves(body: string, visible: string, found: string[]): boolean {
+  const failed = new Set<string>();
+  const from = (at: number, shown: number, next: number): boolean => {
+    if (at === body.length) return shown === visible.length && next === found.length;
+    const key = `${at}:${shown}:${next}`;
+    if (failed.has(key)) return false;
+    const comment = found[next];
+    const ok = (comment !== undefined && body.startsWith(comment, at) && from(at + comment.length, shown, next + 1)) || (body[at] === visible[shown] && from(at + 1, shown + 1, next));
+    if (!ok) failed.add(key);
+    return ok;
+  };
+  return from(0, 0, 0);
+}
 
 describe('type vocabulary', () => {
   it('matches types case-insensitively and writes canonical spelling', () => {

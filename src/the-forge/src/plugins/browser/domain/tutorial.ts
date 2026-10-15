@@ -96,11 +96,10 @@ export function tutorialPlan(value: unknown): TutorialPlan {
 function json(text: string): unknown {
   try { return JSON.parse(text); } catch { throw browserError('BROWSER_FLOW_INVALID', 'Tutorial source must contain valid JSON.'); }
 }
-function blocks(text: string): string[] {
-  return [...text.matchAll(/^ {0,3}(`{3,}|~{3,})forge-tutorial[ \t]*\r?\n([\s\S]*?)^ {0,3}\1[ \t]*\r?$/gm)].map(match => match[2]!);
-}
+/** Extract executable fenced blocks with a Markdown parser supplied by composition. */
+export type TutorialBlocks = (source: string) => string[];
 /** Markdown and Canvas remain human-authored; exactly one explicit executable plan is required. */
-export function extractTutorial(source: string, path: string): TutorialPlan {
+export function extractTutorial(source: string, path: string, blocks: TutorialBlocks): TutorialPlan {
   valid(source.length <= 2_000_000, 'Tutorial source exceeds the 2 MB limit.');
   if (/\.json$/i.test(path)) return tutorialPlan(json(source));
   let candidates: string[];

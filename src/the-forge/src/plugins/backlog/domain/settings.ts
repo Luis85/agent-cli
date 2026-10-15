@@ -41,25 +41,25 @@ export type OptionalField = 'state' | 'startedDate' | 'finishedDate' | 'horizon'
   | 'assignee' | 'deliverableState' | 'testState' | 'dependsOn' | 'iteration' | 'iterationGoal' | 'release';
 type OptionalKey = 'stateKey' | 'startedDateKey' | 'finishedDateKey' | 'horizonKey' | 'startKey' | 'targetKey' | 'riskKey'
   | 'priorityKey' | 'assigneeKey' | 'deliverableStateKey' | 'testStateKey' | 'dependsOnKey' | 'iterationKey' | 'iterationGoalKey' | 'releaseKey';
-interface OptionalProperty { field: OptionalField; option: string; suggested: string; settingsKey: OptionalKey }
+interface OptionalProperty { field: OptionalField; option: string; settingsKey: OptionalKey }
 
-/** backlog-view's `PROPERTY_TABLE`: each optional property's view option, suggested key and settings field. */
+/** backlog-view's `PROPERTY_TABLE`: each optional property's view option and settings field. */
 export const OPTIONAL_PROPERTIES: readonly OptionalProperty[] = [
-  { field: 'state', option: 'stateProperty', suggested: 'status', settingsKey: 'stateKey' },
-  { field: 'startedDate', option: 'startedDateProperty', suggested: 'started', settingsKey: 'startedDateKey' },
-  { field: 'finishedDate', option: 'finishedDateProperty', suggested: 'finished', settingsKey: 'finishedDateKey' },
-  { field: 'horizon', option: 'horizonProperty', suggested: 'horizon', settingsKey: 'horizonKey' },
-  { field: 'start', option: 'startProperty', suggested: 'start', settingsKey: 'startKey' },
-  { field: 'target', option: 'targetProperty', suggested: 'due', settingsKey: 'targetKey' },
-  { field: 'risk', option: 'riskProperty', suggested: 'risk', settingsKey: 'riskKey' },
-  { field: 'priority', option: 'priorityProperty', suggested: 'priority', settingsKey: 'priorityKey' },
-  { field: 'assignee', option: 'assigneeProperty', suggested: 'assignee', settingsKey: 'assigneeKey' },
-  { field: 'deliverableState', option: 'deliverableStateProperty', suggested: 'status', settingsKey: 'deliverableStateKey' },
-  { field: 'testState', option: 'testStateProperty', suggested: 'status', settingsKey: 'testStateKey' },
-  { field: 'dependsOn', option: 'dependsOnProperty', suggested: 'dependsOn', settingsKey: 'dependsOnKey' },
-  { field: 'iteration', option: 'iterationProperty', suggested: 'iteration', settingsKey: 'iterationKey' },
-  { field: 'iterationGoal', option: 'iterationGoalProperty', suggested: 'goal', settingsKey: 'iterationGoalKey' },
-  { field: 'release', option: 'releaseProperty', suggested: 'release', settingsKey: 'releaseKey' },
+  { field: 'state', option: 'stateProperty', settingsKey: 'stateKey' },
+  { field: 'startedDate', option: 'startedDateProperty', settingsKey: 'startedDateKey' },
+  { field: 'finishedDate', option: 'finishedDateProperty', settingsKey: 'finishedDateKey' },
+  { field: 'horizon', option: 'horizonProperty', settingsKey: 'horizonKey' },
+  { field: 'start', option: 'startProperty', settingsKey: 'startKey' },
+  { field: 'target', option: 'targetProperty', settingsKey: 'targetKey' },
+  { field: 'risk', option: 'riskProperty', settingsKey: 'riskKey' },
+  { field: 'priority', option: 'priorityProperty', settingsKey: 'priorityKey' },
+  { field: 'assignee', option: 'assigneeProperty', settingsKey: 'assigneeKey' },
+  { field: 'deliverableState', option: 'deliverableStateProperty', settingsKey: 'deliverableStateKey' },
+  { field: 'testState', option: 'testStateProperty', settingsKey: 'testStateKey' },
+  { field: 'dependsOn', option: 'dependsOnProperty', settingsKey: 'dependsOnKey' },
+  { field: 'iteration', option: 'iterationProperty', settingsKey: 'iterationKey' },
+  { field: 'iterationGoal', option: 'iterationGoalProperty', settingsKey: 'iterationGoalKey' },
+  { field: 'release', option: 'releaseProperty', settingsKey: 'releaseKey' },
 ];
 
 const DEFAULT_DONE_VALUES = ['Done', 'Closed', 'Completed', 'Removed'];

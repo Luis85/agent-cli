@@ -1,6 +1,6 @@
 import metadata from '../../../package.json';
 import { errorCatalog, errorCodes } from '../../domain/shared/error-catalog.ts';
-import { nativeFormats, textExtensions } from '../../domain/documents/file.ts';
+import { nativeFormats, textExtensions, textFilenames } from '../../domain/documents/file.ts';
 import { eventOutputLevels } from '../../application/plugins/event-output.ts';
 import { hostEventNamespaces } from '../../application/plugins/host-events.ts';
 import { commandAnnotations, commandInputSchema, outputDocument } from '../../application/plugins/command-metadata.ts';
@@ -8,6 +8,7 @@ import { jsonSchemaDialect } from '../../domain/schema/json-schema.ts';
 import { arity } from '../../application/plugins/command-input.ts';
 import type { Command, Registry } from '../../application/plugins/registry.ts';
 import { globalOptionMetadata } from './arguments.ts';
+import { declaredErrors } from './invocation-policy.ts';
 import type { WorkflowServices } from './services.ts';
 import { generatorCatalog } from '../generation/commands.ts';
 import { pluginCatalog } from './plugin-catalog.ts';
@@ -17,15 +18,18 @@ import { schemaOutput } from './catalog-output.ts';
 
 const discovery = { scope: 'workspace', discovery: true, mutating: false } as const;
 const commandArgument = [{ name: 'command', description: 'A command id from the catalog.' }];
-/** Input, routing and runtime codes any command can report besides its declared `errors`. */
+/**
+ * Input, routing and runtime codes any command can report besides its declared `errors`; a project-scoped command
+ * reads the saved project selection, which fails with INVALID_PROJECT_CONTEXT or STALE_PROJECT_CONTEXT.
+ */
 export const commonErrors = [
   'UNKNOWN_COMMAND', 'UNKNOWN_OPTION', 'MISSING_ARGUMENT', 'INVALID_ARGUMENT', 'INVALID_OPTION_VALUE', 'DUPLICATE_OPTION', 'INVALID_LANGUAGE', 'INVALID_CONFIG',
-  'INVALID_PATH', 'UNSAFE_PATH', 'STALE_PROJECT_CONTEXT', 'WORKSPACE_BUSY', 'INVALID_RESULT', 'OPERATION_FAILED',
+  'INVALID_PATH', 'UNSAFE_PATH', 'INVALID_PROJECT_CONTEXT', 'STALE_PROJECT_CONTEXT', 'WORKSPACE_BUSY', 'INVALID_RESULT', 'OPERATION_FAILED',
 ];
 
 /** One command as help and schema describe it, generated from its metadata. */
 function describe(command: Command, includeOutput = true) {
-  const { id, description, usage, options, args, output, errors } = command;
+  const { id, description, usage, options, args, output } = command;
   const annotations = commandAnnotations(command);
   if (!includeOutput && annotations.actions) {
     annotations.actions = Object.fromEntries(Object.entries(annotations.actions).map(([id, action]) => {
@@ -35,7 +39,7 @@ function describe(command: Command, includeOutput = true) {
   }
   return {
     id, description, usage, options: options ?? {}, args: args ?? [], annotations,
-    errors: errors ?? [], ...(includeOutput && output ? { outputSchema: outputDocument(id, output) } : {}),
+    errors: declaredErrors(command), ...(includeOutput && output ? { outputSchema: outputDocument(id, output) } : {}),
   };
 }
 
@@ -74,12 +78,12 @@ export function catalogCommands(registry: Registry): Command[] {
       if (args[0] === undefined) return { ...catalog(), commands: [...registry.commands.values()].map(contract), commonErrors, errors };
       // One command's contract keeps the document shape with only the codes that command can report.
       const command = registry.resolveCommand(args[0]);
-      const codes = new Set([...commonErrors, ...command.errors ?? []]);
+      const codes = new Set([...commonErrors, ...declaredErrors(command)]);
       const { generators: _generators, skills: _skills, ...head } = catalog();
       return { ...head, commands: [contract(command)], commonErrors, errors: errors.filter(entry => codes.has(entry.code)) };
     } },
     { id: 'formats', description: 'Native Obsidian formats and supported operations.', usage: 'formats', ...discovery, run(args) {
-      arity(args, 0); return { nativeFormats, structured: ['md', 'canvas', 'base'], text: textExtensions, textFiles: 'UTF-8 read, literal edit, append and full replacement with unified dry-run diffs; files that are not valid UTF-8 read as base64 attachments.', attachments: 'Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.', otherFiles: 'Opaque bytes; plugins can provide additional processing.' };
+      arity(args, 0); return { nativeFormats, structured: ['md', 'canvas', 'base'], text: textExtensions, textFilenames, textFiles: 'textFilenames match case-insensitively, including dot suffixes that start with a non-dot character; native extensions take precedence. UTF-8 read, literal edit, append and full replacement with unified dry-run diffs; files that are not valid UTF-8 or contain NUL characters read as base64 attachments.', attachments: 'Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.', otherFiles: 'Opaque bytes; plugins can provide additional processing.' };
     } },
   ];
 }

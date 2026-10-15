@@ -22,7 +22,12 @@ describe('ordered multi-edits', () => {
     expect(error).toMatchObject({ code: 'AMBIGUOUS_EDIT', details: { edit: 1, matches: 2, lines: [1, 1] } });
     expect(error.message).toMatch(/^Edit 1: /);
     expect(failed('abc', [{ find: 'a', replace: 'x' }, { find: 'a', replace: 'y' }])).toMatchObject({ code: 'NO_MATCH', details: { edit: 1, find: 'a' } });
-    expect(failed('abc', [])).toMatchObject({ code: 'INVALID_INPUT' });
+    expect(failed('abc', [])).toMatchObject({ code: 'INVALID_INPUT', message: 'Pass at least one edit.' });
+  });
+
+  it('rejects an empty find text for every occurrence and explains a missing one', () => {
+    expect(failed('ab', [{ find: '', replace: 'x', all: true }])).toMatchObject({ code: 'INVALID_INPUT', message: 'Edit 0: find must not be empty.', details: { edit: 0 } });
+    expect(failed('ab', [{ find: 'z', replace: 'x', all: true }]).message).toBe('Edit 0: The find text does not occur in the file. Read it again and copy the exact current text.');
   });
 });
 
@@ -54,6 +59,17 @@ describe('literal find/replace outcomes', () => {
     const text = Array.from({ length: 30 }, () => 'item').join('\n');
     const error = failure(text, 'item');
     expect(error.details).toEqual({ matches: 30, lines: Array.from({ length: reportedMatchLines }, (_, index) => index + 1) });
+  });
+
+  it('counts a line feed at the very start of the text', () => {
+    expect(failure('\nab ab', 'ab')).toMatchObject({ details: { matches: 2, lines: [2, 2] } });
+  });
+
+  it('explains each failure', () => {
+    const message = (text: string, find: string) => (failure(text, find) as unknown as Error).message;
+    expect(message('text', '')).toBe('--find must not be empty.');
+    expect(message('text', 'z')).toBe('The find text does not occur in the file. Read it again and copy the exact current text.');
+    expect(message('a a', 'a')).toBe('The find text matches 2 times, including overlapping matches; it must match exactly once.');
   });
 
   it('rejects an empty find text as invalid input', () => {

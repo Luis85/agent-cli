@@ -18,15 +18,20 @@ export function markdownToHtml(markdown: string): string {
   const flush = () => { flushParagraph(); flushList(); };
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index]!;
-    const fence = /^\s*(```|~~~)/.exec(line);
+    const fence = /^[ \t]*(`{3,}(?=[^`]*$)|~{3,})/.exec(line);
     if (fence) {
       flush();
-      const code: string[] = [];
-      for (index++; index < lines.length && !lines[index]!.trimStart().startsWith(fence[1]!); index++) code.push(lines[index]!);
+      const [indent] = indentation(line), code: string[] = [];
+      for (index++; index < lines.length; index++) {
+        const next = lines[index]!;
+        if (next.trim() !== '' && indentation(next)[0] < indent - 3) { index--; break; }
+        if (closesFence(next, fence[1]!, indent)) break;
+        code.push(next.slice(indentation(next, indent)[1]));
+      }
       html.push(`<pre><code>${escape(code.join('\n'))}</code></pre>`);
       continue;
     }
-    const heading = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
+    const heading = /^\s{0,3}(#{1,6})\s+(?:#+\s*$)?(.*?)(?:\s+#+)?\s*$/.exec(line);
     const bullet = /^\s*[-*+]\s+(.*)$/.exec(line), numbered = /^\s*\d+[.)]\s+(.*)$/.exec(line), quote = /^\s*>\s?(.*)$/.exec(line);
     if (line.trim() === '') flush();
     else if (heading) { flush(); html.push(`<h${heading[1]!.length}>${inline(heading[2]!)}</h${heading[1]!.length}>`); }
@@ -42,20 +47,49 @@ export function markdownToHtml(markdown: string): string {
   return html.join('');
 }
 
+/**
+ * A line's indentation as `[columns, characters]`, a tab reaching the next multiple of four columns; it stops before a
+ * space or tab that would pass `limit` columns.
+ */
+function indentation(line: string, limit = Infinity): [number, number] {
+  let width = 0, cut = 0;
+  for (; line[cut] === ' ' || line[cut] === '\t'; cut++) {
+    const next = line[cut] === '\t' ? (Math.floor(width / 4) + 1) * 4 : width + 1;
+    if (next > limit) break;
+    width = next;
+  }
+  return [width, cut];
+}
+
+/**
+ * A closing fence: a run of the opener's character at least as long as the opener, then only whitespace, indented at
+ * most three columns past the opener's `indent`. Fences inside list items are indented, by tabs or spaces.
+ */
+function closesFence(line: string, opener: string, indent: number): boolean {
+  const run = /^[ \t]*(`{3,}|~{3,})\s*$/.exec(line)?.[1];
+  return run !== undefined && run[0] === opener[0] && run.length >= opener.length && indentation(line)[0] <= indent + 3;
+}
+
 function escape(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 const safeHref = (href: string) => /^(https?:|mailto:)/i.test(href);
 
-/** Inline markup over escaped text; code spans are protected from further formatting by `<cN>` tokens, which escaped text cannot contain. */
+/**
+ * Inline markup over escaped text. Code spans (a backtick run closed by a run of the same length) and link targets are
+ * protected from further formatting by `<cN>` tokens, which escaped text cannot contain. A link target may hold one
+ * level of balanced parentheses; a code span inside it is put back as the escaped text it was.
+ */
 function inline(text: string): string {
-  const codes: string[] = [];
-  let result = escape(text).replace(/`([^`]+)`/g, (_, code: string) => { codes.push(`<code>${code}</code>`); return `<c${codes.length - 1}>`; });
+  const tokens: string[] = [], sources: string[] = [];
+  const token = (value: string, source = value) => { sources.push(source); return `<c${tokens.push(value) - 1}>`; };
+  let result = escape(text).replace(/(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)/g, (span: string, _run: string, code: string) => token(`<code>${code}</code>`, span));
+  const target = (href: string) => href.replace(/<c(\d+)>/g, (_, index: string) => sources[Number(index)]!);
   result = result
     .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2').replace(/\[\[([^\]]+)\]\]/g, '$1')
-    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, label: string, href: string) => (safeHref(href) ? `<a href="${href}">${label}</a>` : label))
+    .replace(/\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g, (_, label: string, href: string) => (safeHref(target(href)) ? `<a href="${token(target(href))}">${label}</a>` : label))
     .replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, (_, a?: string, b?: string) => `<strong>${a ?? b}</strong>`)
     .replace(/\*([^*]+)\*|\b_([^_]+)_\b/g, (_, a?: string, b?: string) => `<em>${a ?? b}</em>`);
-  return result.replace(/<c(\d+)>/g, (_, index: string) => codes[Number(index)]!);
+  return result.replace(/<c(\d+)>/g, (_, index: string) => tokens[Number(index)]!);
 }

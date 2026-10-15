@@ -30,7 +30,7 @@ const output: JsonSchema = {
 export function searchCommand(service: (context: CommandContext) => (query: SearchQuery, page: PageRequest) => Promise<SearchResult>): Command {
   return {
     id: 'search', description: 'Search text files for a literal or regular-expression pattern and return hits with line, column, snippet and revision.',
-    usage: 'search <pattern> [--regex] [--case-sensitive] [--in body|frontmatter|all] [--skip-code] [--kind markdown|canvas|base|text] [--path glob] [--tag tag] [--property key[=value]] [--context lines] [--limit count] [--cursor token]',
+    usage: 'search <pattern> [--regex] [--case-sensitive] [--in body|frontmatter|all] [--skip-code] [--kind markdown|canvas|base|text] [--path glob] [--exclude glob] [--tag tag] [--property key[=value]] [--context lines] [--limit count] [--cursor token]',
     scope: 'project', discovery: false, mutating: false,
     args: [{ name: 'pattern', description: 'Literal text, or a JavaScript regular expression with --regex. Use -- before a pattern that starts with -.', required: true }],
     options: {
@@ -40,6 +40,7 @@ export function searchCommand(service: (context: CommandContext) => (query: Sear
       'skip-code': option.boolean('Skip fenced and indented code blocks in Markdown.'),
       kind: option.string('Only files of this text kind.', { enum: searchKinds }),
       path: option.string('Only files whose root-relative path matches this glob.'),
+      exclude: option.string('Skip files whose root-relative path matches this glob; use braces for alternatives.'),
       tag: option.string('Only notes with this tag or a nested tag below it.'),
       property: option.string('Only notes whose frontmatter has key (not null), or key=value.'),
       context: option.string(`Lines of context before and after each hit (0–${maxContextLines}).`, { default: '0' }),
@@ -62,6 +63,7 @@ export function searchCommand(service: (context: CommandContext) => (query: Sear
         scope: scope as SearchScope, skipCode: flags['skip-code'] === true, context: contextLines,
         ...(kind === undefined ? {} : { kind: kind as SearchKind }),
         ...(value(flags, 'path') === undefined ? {} : { path: value(flags, 'path') }),
+        ...(value(flags, 'exclude') === undefined ? {} : { exclude: value(flags, 'exclude') }),
         ...(tag === undefined ? {} : { tag }),
         ...(filter === undefined ? {} : { property: filter }),
       };

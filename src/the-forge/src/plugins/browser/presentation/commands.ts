@@ -1,11 +1,13 @@
-import type { Command } from '../../../application/plugins/registry.ts';
+import type { Command, PluginContext } from '../../../application/plugins/registry.ts';
 import { ensure } from '../../../domain/shared/errors.ts';
 import { option } from '../../../application/plugins/command-metadata.ts';
 import { arity, integer, value } from '../../../application/plugins/command-input.ts';
+import type { TutorialBlocks } from '../domain/tutorial.ts';
 import type { BrowserRuntime } from '../application/runtime.ts';
 import { BrowserScreenshot } from '../application/screenshot.ts';
 import { BrowserTutorial } from '../application/tutorial.ts';
 import { browserExecutable, browserTimeout, browserViewport, expectedRevision } from '../application/requests.ts';
+import { browserStatusView } from './status.ts';
 import { browserStatusSchema, installSchema, screenshotSchema, tutorialSchema, tutorialValidationSchema } from './schemas.ts';
 
 const project = option.string('Use this project instead of the selected project.');
@@ -14,8 +16,8 @@ const timeout = option.string('Browser operation timeout in milliseconds, from 1
 const revision = option.string('Current output revision from read (screenshot) or browser validate (tutorial); required before replacing existing output.');
 const projectMode = { scope: 'project', projectOption: 'project', discovery: false } as const;
 
-export function browserCommand(runtime: BrowserRuntime): Command {
-  const screenshot = new BrowserScreenshot(runtime), tutorial = new BrowserTutorial(runtime);
+export function browserCommand(runtime: BrowserRuntime, blocks: TutorialBlocks): Command<PluginContext> {
+  const screenshot = new BrowserScreenshot(runtime), tutorial = new BrowserTutorial(runtime, blocks);
   return {
     id: 'browser', description: 'Capture webpage screenshots and repeatable illustrated tutorials through the portable CLI.',
     usage: 'browser [status | install | screenshot <url> --out <image.png> | validate <source> | tutorial <source> --out <directory>]',
@@ -23,7 +25,7 @@ export function browserCommand(runtime: BrowserRuntime): Command {
     args: [{ name: 'action', description: 'status (default), install, screenshot, validate or tutorial.', enum: ['status', 'install', 'screenshot', 'validate', 'tutorial'] },
       { name: 'source', description: 'Absolute HTTP(S) URL for screenshot, or a project-relative flow JSON, Markdown or Canvas source.' }],
     actions: {
-      status: { description: 'Inspect browser availability without launching a browser or accessing the network.', discovery: true, output: browserStatusSchema,
+      status: { description: 'Inspect executable-file availability without launching a browser or verifying browser compatibility.', discovery: true, output: browserStatusSchema,
         options: { 'browser-executable': executable } },
       install: { description: 'Download the managed Chromium browser explicitly; a dry run does not start the installer.', discovery: true,
         mutating: true, destructive: false, idempotent: true, output: installSchema },
@@ -51,11 +53,11 @@ export function browserCommand(runtime: BrowserRuntime): Command {
     async run(args, flags, context) {
       const action = args[0] ?? 'status';
       ensure(['status', 'install', 'screenshot', 'validate', 'tutorial'].includes(action), 'INVALID_ARGUMENT', 'Use browser status, install, screenshot, validate or tutorial.');
-      if (action === 'status') { arity(args, 0, 1); return runtime.status(browserExecutable(value(flags, 'browser-executable'))); }
+      if (action === 'status') { arity(args, 0, 1); return browserStatusView(await runtime.status(browserExecutable(value(flags, 'browser-executable'))), context.t); }
       if (action === 'install') {
         arity(args, 1);
         if (context.workspace.dryRun) return { dryRun: true, executed: false, plan: { browser: 'chromium', operation: 'install' } };
-        return { dryRun: false, executed: true, status: await runtime.install() };
+        return { dryRun: false, executed: true, status: browserStatusView(await runtime.install(), context.t) };
       }
       arity(args, 2);
       if (action === 'validate') return tutorial.validate(context, args[1]!, value(flags, 'out'));
