@@ -34,13 +34,13 @@ describe('top-level docker-agent permissions', () => {
     ]);
   });
 
-  it('emits the mapped rules of a partly mapped pattern and names the tools it leaves out', () => {
-    const { rules, diagnostics } = mapped('allow', ['*_directory']);
-    expect(rules).toStrictEqual([{ list: 'allow', rule: 'Glob', at: '/permissions/allow/0' }]);
-    expect(unsupported(diagnostics)).toStrictEqual([{
-      severity: 'info', code: 'permission-unsupported', pointer: '/permissions/allow/0', fidelity: 'U',
-      message: 'The allow pattern *_directory matches create_directory, remove_directory, which have no Claude permission rule of the same reach; only Glob is emitted.',
-    }]);
+  it.each([
+    ['*_directory', ['Glob'], 'The allow pattern *_directory matches create_directory, remove_directory, which have no Claude permission rule of the same reach; only Glob is emitted.'],
+    ['*_task', ['TaskCreate', 'TaskGet', 'TaskUpdate'], 'The allow pattern *_task matches next_task, delete_task, which have no Claude permission rule of the same reach; only TaskCreate, TaskGet, TaskUpdate is emitted.'],
+  ])('emits the mapped rules of the partly mapped pattern %s and names the tools it leaves out', (pattern, emitted, message) => {
+    const { rules, diagnostics } = mapped('allow', [pattern]);
+    expect(rules).toStrictEqual(emitted.map(rule => ({ list: 'allow', rule, at: '/permissions/allow/0' })));
+    expect(unsupported(diagnostics)).toStrictEqual([{ severity: 'info', code: 'permission-unsupported', pointer: '/permissions/allow/0', fidelity: 'U', message }]);
   });
 
   it.each<[string, 'allow' | 'ask' | 'deny', string, McpMode, string[], string]>([

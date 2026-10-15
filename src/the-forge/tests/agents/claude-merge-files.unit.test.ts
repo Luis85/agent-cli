@@ -28,6 +28,7 @@ describe('existing Claude files Forge cannot merge into', () => {
     ['next manifest over a list of mcpServers', () => nextManifest(manifest(), undefined, { mcp: '{"mcpServers": []}' }, { servers: {} }), '.mcp.json mcpServers must be an object.'],
     ['next manifest over unparseable .mcp.json', () => nextManifest(manifest(), undefined, { mcp: '{' }, { servers: {} }), notJson('.mcp.json')],
     ['next manifest over unparseable settings', () => nextManifest(manifest(), undefined, { settings: '{' }, { servers: {} }), notJson('.claude/settings.json')],
+    ['next manifest over scalar settings permissions', () => nextManifest(manifest(), undefined, { settings: '{"permissions": 5}' }, { servers: {} }), '.claude/settings.json permissions must be an object.'],
     ['next manifest over a string allow list', () => nextManifest(manifest(), undefined, { settings: '{"permissions": {"allow": "x"}}' }, { servers: {} }), '.claude/settings.json permissions.allow must be an array of strings.'],
   ])('rejects %s, naming the file and the key', (_name, call, message) => {
     expect(call).toThrowError(invalid(message));
@@ -39,6 +40,7 @@ describe('file style', () => {
     ['a new file with two spaces and a final newline', undefined, '{\n  "mcpServers": {\n    "a": {\n      "command": "x"\n    }\n  }\n}\n'],
     ['a one-line file with the default indent and no final newline', '{"mcpServers": {}}', '{\n  "mcpServers": {\n    "a": {\n      "command": "x"\n    }\n  }\n}'],
     ['a four-space LF file with its final newline', '{\n    "mcpServers": {}\n}\n', '{\n    "mcpServers": {\n        "a": {\n            "command": "x"\n        }\n    }\n}\n'],
+    ['a tab-indented file aligned with spaces', '{\n\t  "mcpServers": {}\n}', '{\n\t"mcpServers": {\n\t\t"a": {\n\t\t\t"command": "x"\n\t\t}\n\t}\n}'],
     ['a tab-indented CRLF file', '{\r\n\t"mcpServers": {}\r\n}\r\n', '{\r\n\t"mcpServers": {\r\n\t\t"a": {\r\n\t\t\t"command": "x"\r\n\t\t}\r\n\t}\r\n}\r\n'],
   ])('writes %s', (_name, text, expected) => {
     expect(mergeMcpServers(text, { a: { command: 'x' } }, manifest())).toBe(expected);

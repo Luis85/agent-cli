@@ -33,6 +33,7 @@ describe('agent references', () => {
     ['org/team/agent', true], ['Registry.Example-1.com/agent', true], ['localhost:5000/agent', true], ['registry.example.com:5000/org/agent:v1.2-rc', true],
     ['ns/host:port/agent', false], ['localhost:/agent', false], ['org//agent', false], ['org/agent/', false], ['/org/agent', false],
     ['org/my_agent', true], ['org/my.agent', true], ['org/my__agent', true], ['org/my---agent', true], ['org/my9agent2', true],
+    ['my_org/agent', true], ['my_a--b/agent', true], ['org/team/my---agent', true], ['org/team/my_agent', true], ['org/team/my_', false],
     ['org/my___agent', false], ['org/my_.agent', false], ['org/agent_', false], ['org/_agent', false], ['org/team_/agent', false], ['org/my agent', false],
     ['org/agent:latest', true], ['org/agent:_tag', true], ['org/agent:', false], ['org/agent:-x', false], ['org/agent:.x', false], ['org/agent:a+b', false],
     [`org/agent:${'a'.repeat(128)}`, true], [`org/agent:${'a'.repeat(129)}`, false],

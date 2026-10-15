@@ -73,6 +73,23 @@ describe('relationsLanded over every concurrent removal', () => {
     const added = item('System.LinkTypes.Dependency-Reverse', 5);
     const operations: PatchOperation[] = [{ op: 'remove', path: '/relations/0' }, { op: 'add', path: '/relations/-', value: added }];
     expect(relationsLanded(read, operations, [returned, { ...added, url: `${organization}/0f3c1d2e/_apis/wit/workItems/5` }])).toBe(true);
+    const multiDigit = [item('System.LinkTypes.Dependency-Reverse', 4), item('System.LinkTypes.Related', 1234)];
+    expect(relationsLanded(multiDigit, operations, [{ rel: 'System.LinkTypes.Related', url: `${organization}/0f3c1d2e/_apis/wit/workItems/1234` }, added])).toBe(true);
+  });
+
+  it('keys a link whose URL only contains a work item path by its whole URL', () => {
+    const [comments, workItem] = [hyperlink(`${organization}/_apis/wit/workItems/7/comments`), hyperlink(`${organization}/_apis/wit/workItems/7`)];
+    expect(relationsLanded([comments, workItem], [{ op: 'remove', path: '/relations/0' }], [comments])).toBe(false);
+    expect(relationsLanded([comments, workItem], [{ op: 'remove', path: '/relations/0' }], [workItem])).toBe(true);
+  });
+
+  it('counts only removals of a whole relation by its index', () => {
+    const read = Array.from({ length: 13 }, (_, index) => item('System.LinkTypes.Related', index + 1));
+    expect(relationsLanded(read, [{ op: 'remove', path: '/relations/12' }], read)).toBe(false);
+    expect(relationsLanded(read, [{ op: 'remove', path: '/relations/12' }], read.slice(0, 12))).toBe(true);
+    // Removing a relation's attribute or another document's path removes no relation.
+    expect(relationsLanded(read, [{ op: 'remove', path: '/relations/0/attributes/comment' }], read)).toBe(true);
+    expect(relationsLanded(read, [{ op: 'remove', path: '/fields/Custom.Links/relations/0' }], read)).toBe(true);
   });
 });
 
