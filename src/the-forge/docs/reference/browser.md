@@ -48,6 +48,8 @@ Installation reports `dryRun`, `executed` and the resulting status or preview pl
 
 A tutorial source is JSON containing the plan, Markdown containing exactly one fenced `forge-tutorial` JSON block, or a JSON Canvas whose text nodes contain exactly one such block. The CLI does not interpret arbitrary prose or Canvas connections as executable behavior. An agent may derive an explicit plan from a user's flow while preserving the original source and intent.
 
+Markdown blocks follow CommonMark parsing: backtick and tilde fences, LF/CRLF line endings, container blocks (lists and blockquotes), and closing fences at least as long as their opening fence are supported. The info string must contain only `forge-tutorial`. Indented code, inline code, HTML comments and tutorial-looking fences inside another code block are examples, not executable plans. Each Canvas text node is parsed independently; exactly one executable block is required across all text nodes.
+
 A minimal JSON source:
 
 ```json

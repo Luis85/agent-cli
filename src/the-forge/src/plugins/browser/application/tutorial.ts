@@ -2,7 +2,7 @@ import type { CommandContext } from '../../../application/plugins/registry.ts';
 import type { FileSnapshot, FileStat } from '../../../domain/documents/file.ts';
 import { vaultPath } from '../../../domain/documents/file.ts';
 import { AppError, ensure } from '../../../domain/shared/errors.ts';
-import { extractTutorial, type TutorialPlan } from '../domain/tutorial.ts';
+import { extractTutorial, type TutorialPlan, type TutorialBlocks } from '../domain/tutorial.ts';
 import { ensureBrowser, browserError } from '../domain/errors.ts';
 import type { BrowserRuntime, BrowserFlowResult } from './runtime.ts';
 import { browserTimeout, expectedRevision, imageMarkdown } from './requests.ts';
@@ -35,7 +35,7 @@ function manual(plan: TutorialPlan, result: BrowserFlowResult): string {
 
 /** Sequential browser work finishes before one guarded publication of the complete tutorial bundle. */
 export class BrowserTutorial {
-  constructor(private readonly runtime: BrowserRuntime) {}
+  constructor(private readonly runtime: BrowserRuntime, private readonly blocks: TutorialBlocks) {}
 
   private async inspect(context: CommandContext, source: string, out?: string) {
     vaultPath(source);
@@ -43,7 +43,7 @@ export class BrowserTutorial {
     let text: string;
     try { text = new TextDecoder('utf-8', { fatal: true }).decode(snapshot.bytes); }
     catch { throw browserError('BROWSER_FLOW_INVALID', 'Tutorial source must be valid UTF-8.'); }
-    const plan = extractTutorial(text, source);
+    const plan = extractTutorial(text, source, this.blocks);
     let current: FileStat | null = null;
     if (out !== undefined) {
       vaultPath(out);

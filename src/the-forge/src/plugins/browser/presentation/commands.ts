@@ -2,6 +2,7 @@ import type { Command } from '../../../application/plugins/registry.ts';
 import { ensure } from '../../../domain/shared/errors.ts';
 import { option } from '../../../application/plugins/command-metadata.ts';
 import { arity, integer, value } from '../../../application/plugins/command-input.ts';
+import type { TutorialBlocks } from '../domain/tutorial.ts';
 import type { BrowserRuntime } from '../application/runtime.ts';
 import { BrowserScreenshot } from '../application/screenshot.ts';
 import { BrowserTutorial } from '../application/tutorial.ts';
@@ -14,8 +15,8 @@ const timeout = option.string('Browser operation timeout in milliseconds, from 1
 const revision = option.string('Current output revision from read (screenshot) or browser validate (tutorial); required before replacing existing output.');
 const projectMode = { scope: 'project', projectOption: 'project', discovery: false } as const;
 
-export function browserCommand(runtime: BrowserRuntime): Command {
-  const screenshot = new BrowserScreenshot(runtime), tutorial = new BrowserTutorial(runtime);
+export function browserCommand(runtime: BrowserRuntime, blocks: TutorialBlocks): Command {
+  const screenshot = new BrowserScreenshot(runtime), tutorial = new BrowserTutorial(runtime, blocks);
   return {
     id: 'browser', description: 'Capture webpage screenshots and repeatable illustrated tutorials through the portable CLI.',
     usage: 'browser [status | install | screenshot <url> --out <image.png> | validate <source> | tutorial <source> --out <directory>]',

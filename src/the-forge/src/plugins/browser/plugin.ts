@@ -1,5 +1,6 @@
 import type { CorePlugin } from '../../application/plugins/core-plugins.ts';
 import { createBrowserRuntime } from './infrastructure/runtime.ts';
+import { tutorialBlocks } from './infrastructure/tutorial-markdown.ts';
 import { browserSkill } from './infrastructure/skill.ts';
 import { browserCommand } from './presentation/commands.ts';
 import { browserStrings } from './presentation/strings.ts';
@@ -11,7 +12,7 @@ export function browserPlugin(distributionPath: string): CorePlugin {
       description: 'Capture guarded webpage screenshots and repeatable illustrated tutorials with a managed browser.' },
     strings: browserStrings,
     create: () => ({
-      commands: [browserCommand(createBrowserRuntime(distributionPath))], skills: [browserSkill],
+      commands: [browserCommand(createBrowserRuntime(distributionPath), tutorialBlocks)], skills: [browserSkill],
       errors: [
         { code: 'BROWSER_UNAVAILABLE', category: 'runtime', summary: 'The browser runtime or executable is unavailable.', hint: 'Run browser status, then browser install, or pass --browser-executable for an installed Chromium browser.' },
         { code: 'BROWSER_CAPTURE_FAILED', category: 'runtime', summary: 'The webpage could not be captured.', hint: 'Check the URL, browser availability and readiness selector; no screenshot was written.' },
