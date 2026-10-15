@@ -114,6 +114,8 @@ describe('workflow helpers', () => {
   it('matches done and started values case-insensitively and offers menu values', () => {
     expect([isDoneValue(settings, 'closed'), isDoneValue(settings, 'Open'), isDoneValue(settings, null)]).toEqual([true, false, false]);
     expect([isStartedValue(settings, 'doing'), isStartedValue(settings, 'Open'), isStartedValue(settings, null)]).toEqual([true, false, false]);
+    expect(isStartedValue({ startedStates: ['Active', 'Doing'] }, 'doing')).toBe(true);
+    expect(isDoneValue({ doneValues: ['Done', 'Closed'] }, 'CLOSED')).toBe(true);
     expect(menuValues(['A'], ['Done'], ['x'])).toEqual(['A']);
     expect(menuValues([], ['Done', 'Closed'], ['Open', 'closed'])).toEqual(['Open', 'closed']);
     expect(menuValues([], ['Done', 'Closed'], ['Open'])).toEqual(['Open', 'Done']);

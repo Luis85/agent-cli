@@ -126,3 +126,37 @@ describe('item fields', () => {
     expect(nearestFolderNote('x/y/z.md', exists)).toBeNull();
   });
 });
+
+describe('bound properties', () => {
+  it('never resolves a parent that names only a heading', () => {
+    const source: NoteSource = { frontmatter: () => ({ parent: '#Here' }), frontmatterLinks: () => [], resolve: linkpath => `${linkpath}.md` };
+    const item = createItems(source, ['Item.md'], resolveSettings({}), () => true).byPath.get('Item.md')!;
+    expect([item.parentPath, item.hasParentValue, item.explicitRoot]).toStrictEqual([null, true, false]);
+  });
+
+  it('resolves a cached link by its trimmed linkpath', () => {
+    const source = vault({ 'n/Item.md': { dependsOn: ['[[A #Part]]', '[[B | alias]]'] }, 'A.md': {}, 'B.md': {} }, { 'n/Item.md': [{ key: 'dependsOn.0', link: 'A #Part' }, { key: 'dependsOn.1', link: 'B | alias' }] });
+    expect(items(source, ['n/Item.md']).byPath.get('n/Item.md')!.dependsOnEntries).toStrictEqual([{ raw: '[[A #Part]]', path: 'A.md' }, { raw: '[[B | alias]]', path: 'B.md' }]);
+  });
+
+  it('reads the first assignee and iteration link, labels, workflow states and tags of bound keys only', () => {
+    const notes = {
+      'n/Item.md': {
+        type: 'Deliverable', assignee: ['[[Ada]]', '[[Bob]]'], iteration: '[[Sprint]]', risk: '1 - High', priority: ['2 - Should'], goal: 'Ship', status: 'Done', built: 'Final', verdict: 'Passed', tags: '#a b',
+      },
+      'Ada.md': {}, 'Bob.md': {}, 'Sprint.md': {},
+    };
+    const bound = {
+      assigneeProperty: 'note.assignee', iterationProperty: 'note.iteration', riskProperty: 'note.risk', priorityProperty: 'note.priority', iterationGoalProperty: 'note.goal',
+      stateProperty: 'note.status', deliverableStateProperty: 'note.built', deliverableDoneValues: 'Final', testStateProperty: 'note.verdict', testDoneValues: 'Passed',
+    };
+    const read = (options: Record<string, unknown>) => {
+      const item = items(vault(notes), ['n/Item.md'], options).byPath.get('n/Item.md')!;
+      return [item.assigneeEntry, item.iterationEntry, item.riskValue, item.priorityValue, item.iterationGoalValue, item.stateValue, item.done,
+        item.deliverableStateValue, item.deliverableDone, item.testStateValue, item.testDone, item.tags];
+    };
+    expect(read(bound)).toStrictEqual([{ raw: '[[Ada]]', path: 'Ada.md' }, { raw: '[[Sprint]]', path: 'Sprint.md' }, '1 - High', '2 - Should', 'Ship', 'Done', true, 'Final', true, 'Passed', true, ['a', 'b']]);
+    expect(read({ tagsProperty: '' })).toStrictEqual([null, null, null, null, null, null, false, null, false, null, false, []]);
+    expect(read({ assigneeProperty: 'note.missing', iterationProperty: 'note.missing' }).slice(0, 2)).toStrictEqual([null, null]);
+  });
+});

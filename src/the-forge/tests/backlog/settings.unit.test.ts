@@ -66,6 +66,18 @@ describe('backlog view settings', () => {
     // The tags role yields to the hierarchy roles instead of colliding.
     expect(resolveSettings({ tagsProperty: 'note.type' }).tagsKey).toBe('');
   });
+
+  it.each<[string, string]>([['files', 'files'], ['note.files', 'files'], ['formula.x', ''], ['file.name', ''], ['other.x', 'other.x'], ['note.', 'note.'], [' status ', 'status']])(
+    'reads the property id %j as the key %j', (id, key) => {
+      expect(resolveSettings({ stateProperty: id }).stateKey).toBe(key);
+    },
+  );
+
+  it('colours deliverable states without requirement states, once per name', () => {
+    expect(resolveSettings({ deliverableStateValues: 'Draft, Done', 'stateColor.draft': 'red', 'stateColor.done': 'blue' }).stateColors).toStrictEqual(Object.assign(Object.create(null), { draft: 'red' }));
+    expect(resolveSettings({ stateValues: 'Open', deliverableStateValues: 'open, Draft', 'stateColor.open': '#00AA11', 'stateColor.draft': 'pink' }).stateColors)
+      .toStrictEqual(Object.assign(Object.create(null), { open: '#00aa11', draft: 'pink' }));
+  });
 });
 
 describe('release view settings', () => {
