@@ -29,7 +29,7 @@ Localized, in the response language:
 | Command, action and generator descriptions | `help`, `schema` (`description`, `annotations.actions`, the `inputSchema` branch descriptions), `make` |
 | Option, argument and global option descriptions | `help`, `schema` (`options`, `args`, `annotations.actions.*.options`, `globalOptions` and the `inputSchema` property descriptions), including the descriptions inside the JSON document an option or argument holds (the `edit --edits` list and the `apply` plan, in `schema` and in `inputSchema` `contentSchema`) |
 | Event descriptions and the delivery explanation | `events`, `schema` (`eventOutput`) |
-| Format and setup guidance, empty-library guidance | `formats`, `setup` (`nextSteps[].purpose`), library commands (`nextStep`) |
+| Format and setup guidance, empty-library and browser recovery guidance | `formats`, `setup` (`nextSteps[].purpose`), library commands (`nextStep`), `browser status` and `browser install` (`nextStep`) |
 | Error summaries and hints | `error.message`, `error.hint`, `schema` (`data.errors[].summary`) |
 | Host warnings | `warnings`, such as the `plugins.disabled`, `plugins.settings`, missing-plugin and setup warnings, failed listeners after a committed write, a metadata cache that could not be saved, a stale write or sync lock that was removed, and a lock that could not be released cleanly (the backlog plugin renders its sync lock warning from its own strings) |
 | Plugin names, descriptions and state reasons | `plugins` (`name`, `description`, `reason`) |
