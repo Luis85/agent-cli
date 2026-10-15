@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { applyPlanSchema, editRequest, parsePlan, type EditOperation } from '../../src/domain/documents/apply-plan.ts';
 import { defaultIssues, schemaIssues } from '../../src/domain/schema/json-schema.ts';
 
+const inPlan = (operation: unknown) => ({ version: 1, operations: [operation] });
 const failure = (value: unknown) => {
   try { parsePlan(value); }
   catch (error) { return error as { code: string; message: string; details?: Record<string, unknown> }; }
@@ -78,6 +79,31 @@ describe('apply plan contract', () => {
     expect(failure({ version: 1, operations: [{ op: 'write', path: 'a.md', content: '' }, { op: 'frontmatter', path: 'a.md' }] })).toMatchObject({
       code: 'INVALID_PLAN', message: 'Operation 1: frontmatter needs set, unset or both.', details: { operation: 1 },
     });
+  });
+
+  it.each<[string, unknown]>([
+    ['an unknown plan property', { version: 1, operations: [{ op: 'delete', path: 'a.md' }], dryRun: true }],
+    ['a plan without version', { operations: [{ op: 'delete', path: 'a.md' }] }],
+    ['an unknown literal edit property', inPlan({ op: 'edit', path: 'a.md', edits: [{ find: 'a', replace: 'b', regex: true }] })],
+    ['a literal edit without replace', inPlan({ op: 'edit', path: 'a.md', edits: [{ find: 'a' }] })],
+    ['an empty find text', inPlan({ op: 'edit', path: 'a.md', edits: [{ find: '', replace: 'b' }] })],
+    ['a replacement that is not text', inPlan({ op: 'edit', path: 'a.md', edits: [{ find: 'a', replace: 5 }] })],
+    ['literal edits without a path', inPlan({ op: 'edit', edits: [{ find: 'a', replace: 'b' }] })],
+    ['an append without a path', inPlan({ op: 'edit', append: 'x' })],
+    ['an empty path', inPlan({ op: 'delete', path: '' })],
+    ['an empty ifMatch', inPlan({ op: 'delete', path: 'a.md', ifMatch: '' })],
+    ['a write without content', inPlan({ op: 'write', path: 'a.md' })],
+    ['a write whose content is not text', inPlan({ op: 'write', path: 'a.md', content: 5 })],
+    ['a frontmatter operation without a path', inPlan({ op: 'frontmatter', set: { a: 1 } })],
+    ['frontmatter set that is not an object', inPlan({ op: 'frontmatter', path: 'a.md', set: 5 })],
+    ['frontmatter unset that is not a list', inPlan({ op: 'frontmatter', path: 'a.md', unset: 'a' })],
+    ['an empty property name to unset', inPlan({ op: 'frontmatter', path: 'a.md', unset: [''] })],
+  ])('rejects %s', (_name, plan) => {
+    expect(failure(plan)).toMatchObject({ code: 'INVALID_PLAN' });
+  });
+
+  it('accepts base64 writes', () => {
+    expect(parsePlan({ version: 1, operations: [{ op: 'write', path: 'a.png', content: 'AA==', encoding: 'base64' }] }).operations[0]).toMatchObject({ encoding: 'base64' });
   });
 
   it('carries sectionLine into a section edit', () => {

@@ -74,6 +74,7 @@ describe('block separation', () => {
     expect(block('Para ^p\n', 'p', 'prepend', 'X')).toBe('X\n\nPara ^p\n');
     expect(block('\nPara ^p\n', 'p', 'prepend', 'X')).toBe('\nX\n\nPara ^p\n');
     expect(block('Para ^p', 'p', 'append', 'X')).toBe('Para ^p\n\nX\n');
+    expect(block('Para ^p\n  ', 'p', 'append', 'X')).toBe('Para ^p\n\nX\n  ');
     expect(block('Para ^p\n```\ncode\n```\n', 'p', 'append', 'X')).toBe('Para ^p\n\nX\n\n```\ncode\n```\n');
   });
 
@@ -122,6 +123,8 @@ describe('block lookup', () => {
     const reversed = { ...parsed, blocks: Object.fromEntries(Object.entries(parsed.blocks!).reverse()) };
     expect(failure(() => editBlock(text, reversed, 'z', 'append', 'x')).details).toEqual({ block: 'z', blocks: ['a', 'b', 'c'] });
     expect(failure(() => editBlock('text\n', {}, 'z', 'append', 'x')).details).toEqual({ block: 'z', blocks: [] });
+    const many = Array.from({ length: 51 }, (_, index) => `Para ^b${index}\n`).join('\n');
+    expect(failure(() => block(many, 'z', 'append', 'x')).details!.blocks).toEqual(Array.from({ length: 50 }, (_, index) => `b${index}`));
   });
 });
 
