@@ -6,11 +6,24 @@
 # (defaults.run.working-directory) and env.FORGE_PROJECT_PATH names it for action inputs, because
 # working-directory applies only to run steps. Paths starting with / are workspace-relative.
 name: Mutation The Forge
-# Stryker mutates the domain code named in stryker.config.json and runs only unit tests,
-# so pull requests trigger it only through code, tests or its toolchain. This workflow is advisory: it is
-# not part of `npm run check` and must not be a required status check (its path filter would leave
-# unrelated pull requests waiting). The weekly run re-tests every mutant and refreshes the cached baseline.
+# Stryker mutates the domain code named in stryker.config.json and runs only unit tests, so the workflow
+# triggers only through code, tests or its toolchain. Mutation testing runs in CI only. This workflow is
+# advisory: it is not part of `npm run check` and must not be a required status check (its path filter
+# would leave unrelated pull requests waiting). Pushes to main refresh the cached baseline that pull
+# requests restore; the weekly run re-tests every mutant.
 on:
+  push:
+    branches: [ main ]
+    paths:
+      - src/the-forge/src/**
+      - src/the-forge/tests/**
+      - src/the-forge/scripts/mutation/**
+      - src/the-forge/stryker.config.json
+      - src/the-forge/vitest.config.ts
+      - src/the-forge/vitest.mutation.config.ts
+      - src/the-forge/package.json
+      - src/the-forge/package-lock.json
+      - .github/workflows/the-forge--mutation.yml
   pull_request:
     paths:
       - src/the-forge/src/**
@@ -29,7 +42,8 @@ permissions:
   contents: read
 concurrency:
   group: mutation-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # A cancelled run saves nothing, so only superseded pull request runs are cancelled; main runs queue.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 defaults:
   run:
     shell: bash
@@ -37,11 +51,18 @@ defaults:
 env:
   FORGE_PROJECT_PATH: src/the-forge
 jobs:
-  mutation:
-    name: mutation (ubuntu-latest, Node 24)
+  # scripts/mutation/shard.mjs splits the files that `mutate` selects into two shards balanced by size. Keep
+  # the shard count in the matrix, the restore and download steps and the merge command in sync.
+  shard:
+    name: mutation shard ${{ matrix.shard }}/2 (ubuntu-latest, Node 24)
     runs-on: ubuntu-latest
-    # A full run takes about 20 minutes on four cores; incremental pull request runs reuse earlier results.
-    timeout-minutes: 45
+    # Budget: 25 minutes per forced shard on four cores; incremental pull request runs reuse earlier results
+    # and take a few minutes.
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [ 1, 2 ]
     steps:
       # Actions are pinned to full commit SHAs; the comment names the release.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,34 +74,96 @@ jobs:
           cache: npm
           cache-dependency-path: ${{ env.FORGE_PROJECT_PATH }}/package-lock.json
       # Stryker's incremental file records earlier results, so a rerun tests only mutants whose code or tests
-      # changed. Pull requests restore the latest result saved on their branch or the default branch. Incremental
-      # mode cannot see toolchain changes, so the lockfile, the mutation configuration and the runner key the cache.
+      # changed. Each shard saves its own file; pull requests restore the latest one saved on their branch or the
+      # default branch. Incremental mode cannot see toolchain changes, so the lockfile, the mutation
+      # configuration and the scripts key the cache.
       - name: Hash the mutation toolchain
         id: toolchain
         env:
           TOOLCHAIN: ${{ hashFiles(format('{0}/package-lock.json', env.FORGE_PROJECT_PATH), format('{0}/stryker.config.json', env.FORGE_PROJECT_PATH), format('{0}/vitest*.config.ts', env.FORGE_PROJECT_PATH), format('{0}/scripts/mutation/**', env.FORGE_PROJECT_PATH)) }}
         run: echo "hash=$TOOLCHAIN" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # Every shard restores the results of both shards: a file that moves to the other shard when sizes change
+      # keeps its earlier results, because shard.mjs seeds its incremental file from all of them.
+      - name: Restore shard 1 results
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ env.FORGE_PROJECT_PATH }}/.quality-reports/mutation/incremental.json
-          key: mutation-${{ steps.toolchain.outputs.hash }}-${{ github.run_id }}
-          restore-keys: mutation-${{ steps.toolchain.outputs.hash }}-
+          path: ${{ env.FORGE_PROJECT_PATH }}/.quality-reports/mutation/shard-1/incremental.json
+          key: mutation-${{ steps.toolchain.outputs.hash }}-shard-1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: mutation-${{ steps.toolchain.outputs.hash }}-shard-1-
+      - name: Restore shard 2 results
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.FORGE_PROJECT_PATH }}/.quality-reports/mutation/shard-2/incremental.json
+          key: mutation-${{ steps.toolchain.outputs.hash }}-shard-2-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: mutation-${{ steps.toolchain.outputs.hash }}-shard-2-
       - name: Report toolchain
         run: |
           node --version
           npm --version
       - run: npm ci
       # The scheduled run passes --force: it re-tests every mutant instead of trusting the incremental file.
+      # Shards never apply thresholds.break; the merge job judges the overall score.
       - name: Mutation testing
+        id: mutate
         env:
+          SHARD: ${{ matrix.shard }}
           FORCE: ${{ github.event_name == 'schedule' && '--force' || '' }}
-        run: npm run mutate -- $FORCE
+        run: node scripts/mutation/shard.mjs --shard "$SHARD/2" $FORCE
+      # Restore and save are separate steps: the combined cache action saves only after a successful job, so a
+      # failed run would discard the results it just computed.
+      - name: Save shard results
+        if: ${{ !cancelled() && steps.mutate.outcome != 'skipped' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.FORGE_PROJECT_PATH }}/.quality-reports/mutation/shard-${{ matrix.shard }}/incremental.json
+          key: mutation-${{ steps.toolchain.outputs.hash }}-shard-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Upload shard report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutation-shard-${{ matrix.shard }}
+          path: ${{ env.FORGE_PROJECT_PATH }}/.quality-reports/mutation/shard-${{ matrix.shard }}/
+          if-no-files-found: warn
+          retention-days: 14
+  # Merges the shard reports, writes the score table to the job summary and applies thresholds.break from
+  # stryker.config.json to the overall score. It needs only Node, so it skips npm ci.
+  merge:
+    name: mutation score (ubuntu-latest, Node 24)
+    needs: shard
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: mutation-shard-1
+          path: ${{ env.FORGE_PROJECT_PATH }}/.quality-reports/mutation/shard-1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: mutation-shard-2
+          path: ${{ env.FORGE_PROJECT_PATH }}/.quality-reports/mutation/shard-2
+      # Fails on a missing or empty shard report, and when the overall score is below thresholds.break.
+      - name: Merge shard reports
+        run: node scripts/mutation/merge.mjs --shards 2
       - name: Upload mutation report
-        if: always()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mutation-report
           path: ${{ env.FORGE_PROJECT_PATH }}/.quality-reports/mutation/
-          include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 14
+      # A shard that failed or timed out may still have uploaded a report; the run fails either way.
+      - name: Require every shard to succeed
+        if: ${{ needs.shard.result != 'success' }}
+        env:
+          SHARDS: ${{ needs.shard.result }}
+        run: |
+          echo "::error::A mutation shard did not succeed (result: $SHARDS)"
+          exit 1

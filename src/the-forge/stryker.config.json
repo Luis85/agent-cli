@@ -8,7 +8,7 @@
   },
   "checkers": [],
   "coverageAnalysis": "perTest",
-  "ignoreStatic": true,
+  "ignoreStatic": false,
   "mutate": [
     "src/plugins/backlog/domain/**/*.ts",
     "src/domain/documents/{diff,apply-plan,literal-edit}.ts",
