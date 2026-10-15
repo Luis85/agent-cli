@@ -2,7 +2,7 @@
 
 [Documentation](../index.md) · How-to
 
-Use `--project <id>` with `read`, `read-many` and `apply` to resolve paths in a named managed project without changing the saved selection. This is useful when several agents share a workspace. Each invocation resolves its own target, and its response reports the executed `context.project` and `context.root`.
+Use `--project <id>` with `read`, `read-many`, `stat` and `apply` to resolve paths in a named managed project without changing the saved selection. This is useful when several agents share a workspace. Each invocation resolves its own target, and its response reports the executed `context.project` and `context.root`.
 
 ```sh
 node bin/forge.js read src/example.ts --project alpha --json
@@ -16,4 +16,4 @@ Use the same explicit project for the initial read, preview and final apply. An 
 
 The option never runs `project open`, creates a project or changes `bin/data/context.json`. Unknown or invalid project IDs fail instead of falling back to the saved project or workspace. A valid explicit target also works when the saved selection is stale or absent. A command without `--project` continues using the saved selection, or workspace scope when none is selected.
 
-`--project` is a command option on commands that declare it, not a global option. Put it after `read`, `read-many` or `apply`; use `help <command>` and `schema <command>` to inspect support. `--root`, when needed, precedes the command and identifies the workspace that owns the named project. See [manage projects](manage-projects.md) for persistent selection.
+`--project` is a command option on commands that declare it, not a global option. Put it after `read`, `read-many`, `stat` or `apply`; use `help <command>` and `schema <command>` to inspect support. `--root`, when needed, precedes the command and identifies the workspace that owns the named project. See [manage projects](manage-projects.md) for persistent selection.
