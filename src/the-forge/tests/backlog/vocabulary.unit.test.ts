@@ -43,6 +43,14 @@ describe('folders', () => {
     expect(typeFolderKey('Test Case')).toBe('typeFolder.test case');
   });
 
+  it.each<[string, string]>([
+    ['Epic', 'requirements'], ['Feature', 'requirements'], ['PBI', 'requirements'], ['Task', 'tasks'], ['Issue', 'issues'], ['Bug', 'bugs'], ['Idea', 'ideas'],
+    ['Deliverable', 'deliverables'], ['Improvement', 'improvements'], ['Milestone', 'milestones'], ['Iteration', 'iterations'], ['Release', 'releases'],
+    ['Test suite', 'tests/suites'], ['Test case', 'tests/cases'],
+  ])('files a %s in docs/%s', (type, folder) => {
+    expect(defaultTypeFolder(type)).toBe(`docs/${folder}`);
+  });
+
   it('reads tables by lowercased name, never off the prototype', () => {
     const table = { pbi: 'x' };
     expect([byName(table, 'PBI'), byName(table, null), byName(table, 'toString'), byName(table, 'Bug')]).toStrictEqual(['x', undefined, undefined, undefined]);

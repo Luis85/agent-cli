@@ -67,6 +67,34 @@ describe('backlog view settings', () => {
     expect(resolveSettings({ tagsProperty: 'note.type' }).tagsKey).toBe('');
   });
 
+  it('defaults every option as backlog-view does', () => {
+    expect(defaultSettings()).toStrictEqual({
+      parentKey: 'parent', orderKey: 'order', typeKey: 'type', hierarchyOnly: true, showOutsideParents: true, folderHierarchy: false, showCounts: true,
+      homeFolder: 'docs', resourceFolder: 'docs/resources',
+      typeFolders: Object.assign(Object.create(null), {
+        epic: 'docs/requirements', feature: 'docs/requirements', pbi: 'docs/requirements', task: 'docs/tasks', issue: 'docs/issues', bug: 'docs/bugs', idea: 'docs/ideas',
+        deliverable: 'docs/deliverables', improvement: 'docs/improvements', milestone: 'docs/milestones', iteration: 'docs/iterations',
+        'test suite': 'docs/tests/suites', 'test case': 'docs/tests/cases',
+      }),
+      stateKey: '', tagsKey: 'tags', doneValues: ['Done', 'Closed', 'Completed', 'Removed'], wipLimits: Object.create(null), columnPolicies: Object.create(null), stateColors: Object.create(null),
+      startedDateKey: '', finishedDateKey: '', startedStates: [], states: [], horizonKey: '', horizonValues: ['Now', 'Next', 'Later'],
+      dependsOnKey: '', startKey: '', targetKey: '', deliverableStateKey: '', deliverableStates: [], deliverableDoneValues: ['Done', 'Closed', 'Completed', 'Removed'],
+      testStateKey: '', testStates: [], testDoneValues: ['Done', 'Closed', 'Completed', 'Removed'],
+      riskKey: '', riskValues: ['1 - High', '2 - Normal', '3 - Low'], priorityKey: '', priorityValues: ['1 - Must', '2 - Should', '3 - Could', "4 - Won't"],
+      assigneeKey: '', iterationKey: '', iterationsOnTimeline: true, iterationBars: false, iterationGoalKey: '', releaseKey: '', releaseDateKey: 'target-date',
+      iterationOpenStates: [], iterationResolvedStates: [], iterationLengthDays: 14, openIn: 'active',
+    });
+    expect(Object.keys(defaultSettings().typeFolders)).toHaveLength(13);
+  });
+
+  it.each(['red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple', 'pink', '#A0b1C2'])('accepts the state colour %s', colour => {
+    expect(resolveSettings({ stateValues: 'Open', 'stateColor.open': colour }).stateColors.open).toBe(colour.toLowerCase());
+  });
+
+  it.each(['mauve', '#abc', '#a0b1c2d', 'red '])('rejects the state colour %j', colour => {
+    expect(resolveSettings({ stateValues: 'Open', 'stateColor.open': ` ${colour}` }).stateColors.open).toBe(colour === 'red ' ? 'red' : undefined);
+  });
+
   it.each<[string, string]>([['files', 'files'], ['note.files', 'files'], ['formula.x', ''], ['file.name', ''], ['other.x', 'other.x'], ['note.', 'note.'], [' status ', 'status']])(
     'reads the property id %j as the key %j', (id, key) => {
       expect(resolveSettings({ stateProperty: id }).stateKey).toBe(key);
