@@ -43,6 +43,7 @@ Import the concrete module you need. Do not add layer barrels, re-export chains 
 | Projects (selection, `project create`/`component` policy) | `application/projects/`, `presentation/workspace/` |
 | Code, form, plugin-folder and project scaffolds (`scaffolds` core plugin, service `scaffolds.projects`) | `plugins/scaffolds/` |
 | Markdown templates, `make document` and the workflow pack (`templates` core plugin, service `templates.installer` for `setup`) | `plugins/templates/` |
+| CLI output transport: stdout write failures, early-closed pipes and stderr diagnostics | `infrastructure/cli/` (installed by `main.ts`) |
 | Plugins and event delivery | `application/plugins/`, `infrastructure/plugins/`, `presentation/cli/catalog-commands.ts` |
 | Claude definitions and installed CLI (`claude` core plugin) | `plugins/claude/`; the agent and hook validators shared with `agents` stay in `domain/claude/` |
 | UI and interaction definitions (`ui` core plugin) | `plugins/ui/`: `domain/components/` and `domain/interactions/` (definitions, library graph, binding syntax), `application/` (library use cases and `plugins.settings.ui`), `infrastructure/` (Markdown codecs), `presentation/` (`components`, `interactions`, `make ui`, `make stories`) |

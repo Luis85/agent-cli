@@ -1,7 +1,7 @@
 import { parseDocument, isMap, isScalar, isAlias, visit, type Document } from 'yaml';
 import { forgeError, ensure, isRecord } from '../../domain/shared/errors.ts';
 import type { ErrorCode } from '../../domain/shared/error-catalog.ts';
-import { fileKind } from '../../domain/documents/file.ts';
+import { fileKind, isTextContent } from '../../domain/documents/file.ts';
 import { validateCanvas } from '../../domain/documents/canvas.ts';
 import type { DocumentCodec, MarkdownParts, YamlStringReplacement } from '../../application/workspace/ports.ts';
 import { replaceInYamlStrings } from './yaml-strings.ts';
@@ -10,6 +10,11 @@ const encode = (text: string) => new TextEncoder().encode(text);
 function textOf(bytes: Uint8Array): string {
   try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
   catch { throw forgeError('INVALID_ENCODING', 'Structured documents and text files must be valid UTF-8.'); }
+}
+function textFileOf(path: string, bytes: Uint8Array): string {
+  const text = textOf(bytes);
+  ensure(isTextContent(path, text), 'INVALID_ENCODING', 'Text files must be UTF-8 without NUL characters; UTF-16 and other binary content stay attachments.');
+  return text;
 }
 function yamlDocument(text: string): Document {
   const document = parseDocument(text, { uniqueKeys: true });
@@ -102,8 +107,8 @@ export class ObsidianDocuments implements DocumentCodec {
   inspect(path: string, bytes: Uint8Array): unknown {
     const kind = fileKind(path);
     if (kind === 'text') {
-      // Text extensions are a hint, not a guarantee; undecodable bytes keep the lossless attachment form.
-      try { return { kind, content: textOf(bytes) }; }
+      // Text extensions are a hint, not a guarantee; undecodable or NUL-bearing bytes keep the lossless attachment form.
+      try { return { kind, content: textFileOf(path, bytes) }; }
       catch { return { kind: 'attachment', encoding: 'base64', content: Buffer.from(bytes).toString('base64') }; }
     }
     if (!['markdown', 'canvas', 'base'].includes(kind)) return { kind, encoding: 'base64', content: Buffer.from(bytes).toString('base64') };
@@ -123,7 +128,7 @@ export class ObsidianDocuments implements DocumentCodec {
     return { kind, data };
   }
   validate(path: string, bytes: Uint8Array): void {
-    if (fileKind(path) === 'text') textOf(bytes); else this.inspect(path, bytes);
+    if (fileKind(path) === 'text') textFileOf(path, bytes); else this.inspect(path, bytes);
   }
   properties(bytes: Uint8Array, changes: Record<string, unknown>, remove: readonly string[] = []): Uint8Array {
     const parts = parseMarkdownParts(textOf(bytes));

@@ -71,10 +71,15 @@ describe('dry-run unified diffs', () => {
   it('reports binary previews without a diff and keeps diffs out of lifecycle records', async () => {
     await mkdir(join(root, 'assets'));
     const { workspace: preview, events } = workspace(true);
-    const result = await preview.write([{ path: 'assets/logo.png', bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]) }, { path: 'data.json', bytes: new Uint8Array([0xff]) }], { diff: true });
+    const utf16 = Buffer.from('Write-Output 1\r\n', 'utf16le');
+    const result = await preview.write([
+      { path: 'assets/logo.png', bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]) }, { path: 'data.json', bytes: new Uint8Array([0xff]) },
+      { path: 'run.ps1', bytes: utf16 },
+    ], { diff: true });
     expect(result.changes).toEqual([
       expect.objectContaining({ path: 'assets/logo.png', operation: 'created', bytes: 4, diff: null }),
       expect.objectContaining({ path: 'data.json', operation: 'created', bytes: 1, diff: null }),
+      expect.objectContaining({ path: 'run.ps1', operation: 'created', bytes: utf16.length, diff: null }),
     ]);
     expect(JSON.stringify(events.history)).not.toContain('"diff"');
     expect(events.history.map(record => record.id)).not.toContain('vault.create');

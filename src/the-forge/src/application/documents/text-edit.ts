@@ -1,5 +1,5 @@
 import { ensure, forgeError } from '../../domain/shared/errors.ts';
-import { fileKind } from '../../domain/documents/file.ts';
+import { fileKind, isTextContent } from '../../domain/documents/file.ts';
 import { applyTextEdit, targetsStructure, type TextEditRequest } from '../../domain/documents/text-edit.ts';
 import type { MetadataIndex } from '../metadata/ports.ts';
 
@@ -23,5 +23,6 @@ export function ensureEditable(path: string, request: TextEditRequest): void {
 export function editBytes(path: string, bytes: Uint8Array, request: TextEditRequest, metadata: Pick<MetadataIndex, 'parseContent'>): Uint8Array {
   ensureEditable(path, request);
   const text = decodeText(bytes);
+  ensure(isTextContent(path, text), 'INVALID_ENCODING', 'Text file edits require UTF-8 without NUL characters; use write for UTF-16 or binary content.');
   return new TextEncoder().encode(applyTextEdit(text, request, () => metadata.parseContent(path, bytes)!));
 }
