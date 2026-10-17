@@ -14,6 +14,9 @@ import { nodeFileDates } from '../../src/infrastructure/workspace/file-dates.ts'
 import { basesPlugin } from '../../src/plugins/bases/plugin.ts';
 import { backlogPlugin } from '../../src/plugins/backlog/plugin.ts';
 import { scopeServices } from './metadata.ts';
+import { closestDestination, linkIndex, resolveLinkpath } from '../../src/domain/metadata/link-resolution.ts';
+import { stringReferences } from '../../src/infrastructure/metadata/markdown-references.ts';
+import type { FrontmatterLink, NoteSource } from '../../src/plugins/backlog/domain/items.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 import { forgeVersion } from './workspace.ts';
 
@@ -46,4 +49,29 @@ export async function runBacklog(root: string, args: string[], flags: Record<str
   const context = { workspace, events, root, workspaceRoot: root, project: null, input: async () => new Uint8Array(), ...scopeServices(workspace, events) } as unknown as CommandContext;
   const data = await registry.commands.get('backlog')!.run(args, flags, context) as Record<string, any>;
   return { data, events: events.history.filter(record => record.id.startsWith('backlog.')) };
+}
+
+/**
+ * A backlog `NoteSource` over in-memory frontmatter with the metadata cache's semantics, as the backlog session reads
+ * it: frontmatter links of every string value, keyed `key`, `key.<index>` for list items and `key.<name>` for nested
+ * values, and link resolution like `getClosestLinkpathDest` over the note paths. A note whose frontmatter is
+ * undefined has no cache entry. `links` replaces the derived links of a note, for link texts a parsed note cannot
+ * produce. `tests/backlog/note-source.unit.test.ts` compares it with the real metadata cache.
+ */
+export function noteSource(notes: Record<string, Record<string, unknown> | undefined>, links: Record<string, FrontmatterLink[]> = {}): NoteSource {
+  const index = linkIndex(Object.keys(notes));
+  const derived = (path: string) => {
+    const found: FrontmatterLink[] = [];
+    const visit = (value: unknown, key: string) => {
+      if (typeof value === 'string') for (const reference of stringReferences(value)) found.push({ key, link: reference.link });
+      else if (value && typeof value === 'object') for (const [name, item] of Object.entries(value)) visit(item, key ? `${key}.${name}` : name);
+    };
+    visit(notes[path] ?? {}, '');
+    return found;
+  };
+  return {
+    frontmatter: path => notes[path],
+    frontmatterLinks: path => links[path] ?? derived(path),
+    resolve: (linkpath, sourcePath) => closestDestination(resolveLinkpath(index, linkpath, sourcePath), sourcePath),
+  };
 }

@@ -2,9 +2,9 @@ import { expect, it } from 'vitest';
 import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { runProcess } from '../support/processes.ts';
 
-it('rejects type errors in every accepted test extension even when runtime assertions pass', async () => {
+it('rejects type errors in every accepted test extension and in scripts even when runtime assertions pass', async () => {
   const root = await mkdtemp(join(tmpdir(), 'forge-typechecked-tests-'));
   try {
     await cp(resolve('tsconfig.json'), join(root, 'tsconfig.json'));
@@ -28,23 +28,28 @@ it('rejects type errors in every accepted test extension even when runtime asser
         await writeFile(join(root, file), content);
       }
     }
+    // Scripts are type-checked like tests: their JSDoc types are checked, although no test imports them.
+    await mkdir(join(root, 'scripts/release'), { recursive: true });
+    const script = { file: 'scripts/release/typed.mjs', content: '/** @type {string} */\nexport const wrong = 42;\n' };
+    cases.push(script);
+    await writeFile(join(root, script.file), script.content);
     const runtimeFile = 'tests/runtime.unit.test.ts';
     const runtime = "import { expect, it } from 'vitest';\nit('passes runtime assertions despite a static error', () => { const value: string = 42; expect(String(value)).toBe('42'); });\n";
     cases.push({ file: runtimeFile, content: runtime });
     await writeFile(join(root, runtimeFile), runtime);
-    const transpiled = spawnSync(process.execPath, [resolve('node_modules/vitest/vitest.mjs'), 'run', runtimeFile], { cwd: root, encoding: 'utf8', timeout: 40_000 });
+    const transpiled = await runProcess(process.execPath, [resolve('node_modules/vitest/vitest.mjs'), 'run', runtimeFile], { cwd: root, timeout: 40_000 });
     expect(transpiled.error).toBeUndefined();
     expect(transpiled.status, transpiled.stdout + transpiled.stderr).toBe(0);
 
     // npm is a .cmd shim on Windows, which Node only starts through a shell; the command is a fixed literal.
-    const typecheck = () => spawnSync('npm run typecheck -- --pretty false', { cwd: root, encoding: 'utf8', timeout: 60_000, shell: true });
-    const invalid = typecheck();
+    const typecheck = () => runProcess('npm run typecheck -- --pretty false', [], { cwd: root, timeout: 60_000, shell: true });
+    const invalid = await typecheck();
     expect(invalid.error).toBeUndefined();
     expect(invalid.status).not.toBe(0);
     for (const { file } of cases) expect(invalid.stdout + invalid.stderr).toContain(file);
     expect(invalid.stdout + invalid.stderr).toContain('TS2322');
     for (const { file, content } of cases) await writeFile(join(root, file), content.replace('= 42', "= '42'"));
-    const repaired = typecheck();
+    const repaired = await typecheck();
     expect(repaired.error).toBeUndefined();
     expect(repaired.status, repaired.stdout + repaired.stderr).toBe(0);
   } finally { await rm(root, { recursive: true, force: true }); }

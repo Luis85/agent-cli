@@ -31,7 +31,7 @@ await writeFile(join(bin, 'forge.js'), [
   '',
 ].join('\n'));
 try { await copyFile(join(bin, 'config/default.json'), join(bin, 'config.json'), constants.COPYFILE_EXCL); }
-catch (error) { if (error.code !== 'EEXIST') throw error; }
+catch (error) { if (/** @type {NodeJS.ErrnoException} */ (error).code !== 'EEXIST') throw error; }
 for (const directory of ['plugins', 'templates']) {
   await mkdir(join(bin, directory), { recursive: true });
   await writeFile(join(bin, directory, '.gitkeep'), '');
@@ -63,7 +63,8 @@ for (const [path, entry] of Object.entries(lock.packages).sort(([a], [b]) => a.l
   notices.push(`## ${dependency.name} ${dependency.version}`, '', `License: ${dependency.license ?? entry.license ?? 'see notice'}.`, '');
   for (const file of files.sort((a, b) => a.name.localeCompare(b.name, 'en'))) {
     const destination = `${path.replaceAll('/', '__')}-${file.name}`;
-    await copyFile(`${path}/${file.name}`, join(bin, 'data/licenses', destination));
+    // Some packages publish CRLF notices; the checkout stores LF, so a build must not leave line-ending changes.
+    await writeFile(join(bin, 'data/licenses', destination), (await readFile(`${path}/${file.name}`, 'utf8')).replace(/\r\n?/g, '\n'));
     notices.push(`- [${file.name}](licenses/${destination})`);
   }
   notices.push('');
@@ -81,6 +82,7 @@ await cp('node_modules/playwright-core', join(bin, 'browser-runtime/playwright-c
 // Ship type-only SDK declarations; runtime plugins need no package imports.
 execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', '--project', 'tsconfig.sdk.json', '--outDir', join(bin, 'data/types')], { stdio: 'inherit' });
 const files = [...distributionPolicy.requiredAssets, 'data/LICENSE', 'data/README.md', 'data/THIRD-PARTY-NOTICES.md'];
+/** @param {string} directory */
 async function collect(directory) {
   const parent = await lstat(join(bin, directory));
   if (!parent.isDirectory() || parent.isSymbolicLink()) throw new Error(`Distribution asset is not a regular directory: ${directory}`);

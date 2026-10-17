@@ -1,21 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { NoteSource } from '../../src/plugins/backlog/domain/items.ts';
 import { buildModel } from '../../src/plugins/backlog/domain/model.ts';
 import {
   estimateValue, generatedSource, releaseIndex, releaseNotesContent, releaseNotesPath, releaseNotesSource, releaseReadiness, scopeRows, membershipTarget,
 } from '../../src/plugins/backlog/domain/releases.ts';
 import { resolveReleaseSettings, resolveSettings } from '../../src/plugins/backlog/domain/settings-resolve.ts';
+import { noteSource } from '../support/backlog.ts';
 
 /** An in-memory vault: frontmatter by path, wikilinks resolved by basename. */
-function vault(notes: Record<string, Record<string, unknown>>): NoteSource {
-  const resolve = (linkpath: string) => Object.keys(notes).find(path => path.slice(path.lastIndexOf('/') + 1, -3) === linkpath) ?? null;
-  return {
-    frontmatter: path => notes[path],
-    frontmatterLinks: path => Object.entries(notes[path] ?? {}).flatMap(([key, value]) => (Array.isArray(value) ? value.map((item, index) => [`${key}.${index}`, item]) : [[key, value]]))
-      .flatMap(([key, value]) => (typeof value === 'string' && /^\[\[.+\]\]$/.test(value) ? [{ key: key as string, link: value.slice(2, -2) }] : [])),
-    resolve,
-  };
-}
 
 const notes = {
   'r/1.0.md': { type: 'Release', order: 1, 'target-date': '2026-10-01', status: 'Open', capacity: 20 },
@@ -30,7 +21,7 @@ const notes = {
 };
 /** The fixture vault, settings and model, built inside each test so a mutant is active while they are read. */
 function fixture() {
-  const source = vault(notes);
+  const source = noteSource(notes);
   const plan = resolveSettings({ stateProperty: 'note.status', dependsOnProperty: 'note.dependsOn', releaseProperty: 'note.release' });
   const release = resolveReleaseSettings({
     membershipProperty: 'note.release', targetDateProperty: 'note.target-date', releasedDateProperty: 'note.released', releaseStatusProperty: 'note.status',

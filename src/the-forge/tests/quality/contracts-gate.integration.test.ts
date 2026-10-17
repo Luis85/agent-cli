@@ -1,8 +1,8 @@
 import { expect, it } from 'vitest';
-import { spawnSync } from 'node:child_process';
 import { cp, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { runProcess } from '../support/processes.ts';
 
 const npmStep = /^npm (?:run )?([\w:-]+)$/;
 
@@ -13,7 +13,7 @@ function stagesOf(scripts: Record<string, string>, name: string): string[] {
   return steps.flatMap(step => stagesOf(scripts, npmStep.exec(step)![1]!));
 }
 
-it('stops the full gate before building when a selected source contract fails', async () => {
+it('stops the full gate before building when a selected source contract fails, and ends it with the showcase drift check', async () => {
   const { scripts } = JSON.parse(await readFile(resolve('package.json'), 'utf8'));
   const selection = /^vitest run (.+)$/.exec(scripts['check:contracts']);
   expect(selection).not.toBeNull();
@@ -23,6 +23,9 @@ it('stops the full gate before building when a selected source contract fails', 
   const contracts = order.indexOf('check:contracts');
   expect(contracts).toBeGreaterThan(-1);
   expect(order.indexOf('build')).toBeGreaterThan(contracts);
+  // The showcase drift check runs alone, after the test suite.
+  expect(order.at(-1)).toBe('showcase:check');
+  expect(scripts['showcase:check']).toBe('node scripts/showcase.mjs --check');
   const root = await realpath(await mkdtemp(join(tmpdir(), 'forge-contract-gate-')));
   try {
     await cp(resolve('vitest.config.ts'), join(root, 'vitest.config.ts'));
@@ -38,8 +41,8 @@ it('stops the full gate before building when a selected source contract fails', 
       await writeFile(join(root, path), `import { expect, it } from 'vitest'; it('source-contract-fault', () => expect(${index === 0}).toBe(false));\n`);
     }
     // Exercise the real script chain with an actual failing Vitest assertion, without building an artifact.
-    const result = spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'check'], {
-      cwd: root, encoding: 'utf8', shell: process.platform === 'win32', timeout: 20_000,
+    const result = await runProcess(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'check'], {
+      cwd: root, shell: process.platform === 'win32', timeout: 20_000,
     });
     expect(result.error).toBeUndefined();
     expect(result.status).not.toBeNull();
