@@ -84,7 +84,8 @@ export default {
     });
     // Obsidian-style vault listener: `move` and `rename` report each moved file with its old path.
     this.unsubscribeRename = context.app.vault.on('rename', ({ path, oldPath, kind }) => {
-      if (kind === 'file') context.events.warn(context.t('moved').replace('{from}', oldPath).replace('{to}', path));
+      // A coded warning lets agents match QUALITY_NOTE_MOVED instead of the localized text.
+      if (kind === 'file') context.events.warn({ code: 'QUALITY_NOTE_MOVED', message: context.t('moved').replace('{from}', oldPath).replace('{to}', path), details: { from: oldPath, to: path } });
     });
   },
   // Runs on activation when plugins.settings.quality changed since the previous activation.

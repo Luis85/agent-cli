@@ -9,6 +9,11 @@ export declare const temporaryPrefix = ".agent-cli-tmp-";
 export declare function aliasesName(segment: string, name: string): boolean;
 /** Reserved names also cover case-insensitive filesystems, Windows trailing-dot/space and short-name aliases and HFS+ ignorable code points. */
 export declare function reservedPathSegment(segment: string): 'git' | 'internal' | undefined;
+/**
+ * Whether `segment` is a Windows reserved device name in any letter case, alone or with an extension, and with
+ * trailing dots or spaces before or after the extension (`con`, `NUL.md`, `Com1 .txt`, `lpt9.tar.gz.`).
+ */
+export declare function isDeviceName(segment: string): boolean;
 export declare function vaultPath(input: string): string;
 /** Obsidian's vault trash: `delete` moves files here unless `--permanent` is passed. It is hidden from the metadata cache. */
 export declare const trashFolder = ".trash";

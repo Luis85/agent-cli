@@ -20,7 +20,7 @@ Read this when you need more than the core loop in [SKILL.md](../SKILL.md): the 
 ## Events and warnings
 - `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`, with `kind: "folder"` records for new folders). Reads, dry runs and unchanged writes return `[]`.
 - `--events all` adds lifecycle records for this invocation; `--events none` drops them. Never rerun a mutation to get more events.
-- `warnings` never mean failure. They report, for example, a `--path` that matched nothing, a truncated read, literal `\n` in `--content`, an empty `--stdin`, a dropped extension on `move`, a working directory outside the workspace or a failed listener after a committed write. After a listener warning, inspect the committed events and read back before considering a repeat.
+- `warnings` never mean failure. They report, for example, a `--path` that matched nothing, a truncated read, literal `\n` in `--content`, an empty `--stdin`, a dropped extension on `move`, a working directory outside the workspace or a failed listener after a committed write. Each entry is `{code, message, details?}`: match `code` (such as `EXTENSION_DROPPED` or `PATH_MATCHED_NOTHING`), never the text. After a listener warning, inspect the committed events and read back before considering a repeat.
 
 ## Other error codes
 - `MISSING_ARGUMENT`: `details.option` names the option; for `--if-match`, take the revision from `read`, `stat` or a dry run.

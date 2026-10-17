@@ -363,6 +363,7 @@
     "data/types/domain/shared/messages.d.ts",
     "data/types/domain/shared/not-found.d.ts",
     "data/types/domain/shared/utf8.d.ts",
+    "data/types/domain/shared/warnings.d.ts",
     "data/types/domain/skills/skill.d.ts",
     "data/types/sdk.d.ts",
     "forge-runtime.js",

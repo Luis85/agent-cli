@@ -53,8 +53,8 @@ const categoryExitCodes = {
   interrupted: 130
 };
 const entry = (category, summary, hint, retryable2 = false) => ({ exitCode: categoryExitCodes[category], category, summary, hint, retryable: retryable2 });
-const claudeDefinitionHint$1 = "Fix the field named in the message, then rerun the command.";
-const argumentsHint$1 = "Correct the arguments named in the message; run help <command> for usage.";
+const claudeDefinitionHint$2 = "Fix the field named in the message, then rerun the command.";
+const argumentsHint$2 = "Correct the arguments named in the message; run help <command> for usage.";
 const errorCatalog = {
   SERVER_START_FAILED: entry("runtime", "The localhost server could not start.", "Check the requested port and installed server bundle, then retry server start."),
   SERVER_STOP_FAILED: entry("runtime", "The verified localhost server could not stop.", "Run server status, then retry server stop.", true),
@@ -63,8 +63,8 @@ const errorCatalog = {
   // Arguments, options and input
   UNKNOWN_COMMAND: entry("input", "The command is not registered.", "Run help or schema to list available commands, including enabled plugin commands."),
   UNKNOWN_OPTION: entry("input", "The option is not accepted by this command.", "Run help <command> to list its options."),
-  MISSING_ARGUMENT: entry("input", "A required argument or option value is missing.", argumentsHint$1),
-  INVALID_ARGUMENT: entry("input", "The arguments or option values are invalid for this command.", argumentsHint$1),
+  MISSING_ARGUMENT: entry("input", "A required argument or option value is missing.", argumentsHint$2),
+  INVALID_ARGUMENT: entry("input", "The arguments or option values are invalid for this command.", argumentsHint$2),
   INVALID_OPTION_VALUE: entry("input", "The option value, or an item of a comma-separated list option, is not one of the values the command declares.", "Use one of error.details.allowed, or for a list option several of them separated by commas; help <command> lists each option's values."),
   DUPLICATE_OPTION: entry("input", "An option was repeated or combined with its negation.", "Pass each option once."),
   INVALID_INPUT: entry("input", "The input options are invalid or contradictory.", "Use exactly one input source and the option combination named in the message."),
@@ -103,15 +103,6 @@ const errorCatalog = {
   INVALID_CANVAS: entry("input", "The Canvas structure is invalid.", "Fix the nodes, edges or ids named in the message; run validate <file.canvas>."),
   INVALID_BASE: entry("input", "The Base structure is invalid.", "Fix the Base definition named in the message; run validate <file.base>."),
   INVALID_POINTER: entry("input", "The JSON Pointer is invalid or does not address a valid location.", "Read the document and use an existing pointer path; /- appends only to an existing array."),
-  // Bases queries
-  INVALID_BASE_QUERY: entry("input", "The Bases query is invalid.", "Check the view, context and expressions named in the message."),
-  INVALID_BASE_EXPRESSION: entry("input", "A Bases expression cannot be parsed.", "Fix the expression named in the message."),
-  BASE_EVALUATION_ERROR: entry("input", "A Bases expression failed while evaluating a file.", "Check the view, file and expression named in the message."),
-  BASE_TIMEOUT: entry("input", "A Bases query exceeded its expression evaluation time budget.", "Simplify the expressions of the .base file named in the message (avoid nested regular-expression quantifiers such as (a+)+) or narrow its filters."),
-  BASE_VIEW_NOT_FOUND: entry("input", "The requested Bases view does not exist.", "Run bases inspect <file.base> and pass an existing --view."),
-  BASE_CONTEXT_NOT_FOUND: entry("input", "The context file is not an indexed vault file.", "Pass an existing vault file to --context."),
-  INVALID_BASE_PROPERTY_TYPES: entry("input", "The Obsidian property type registry is invalid.", "Fix .obsidian/types.json so it is a JSON object of property types."),
-  UNSUPPORTED_BASE_PROPERTY_TYPE: entry("input", "An Obsidian property type is not supported.", "Use a supported type in .obsidian/types.json."),
   // Configuration, setup and projects
   INVALID_ROOT: entry("not-found", "The workspace root does not exist or is not a directory.", "Pass --root (or set FORGE_ROOT) to the existing workspace directory that contains bin/; --root wins over FORGE_ROOT."),
   INVALID_CONFIG: entry("input", "The configuration is invalid or unreadable.", "Fix bin/config.json at the location named in the message, then run config."),
@@ -124,39 +115,14 @@ const errorCatalog = {
   PROJECT_NOT_FOUND: entry("not-found", "The project does not exist.", "Run project list and open an existing project."),
   PROJECT_REQUIRED: entry("input", "This command needs a selected project.", "Run project open <name> first."),
   STALE_PROJECT_CONTEXT: entry("not-found", "The selected project is missing or no longer matches the configuration.", "Run project open <name> to select a valid project, or project close."),
-  // Templates and generation
-  INVALID_TEMPLATE: entry("input", "The Markdown template is invalid.", "Fix the template frontmatter or placeholders named in the message."),
-  INVALID_TEMPLATE_DATE: entry("input", "A template date or date format is invalid.", "Use an ISO date and a supported date format."),
-  INVALID_TEMPLATE_PACK: entry("input", "The template pack is invalid.", "Use unique template ids and destinations."),
-  INVALID_TEMPLATE_VALUES: entry("input", "Template values are missing or have the wrong type.", "Run templates inspect <template.md> and supply its required values."),
-  UNKNOWN_TEMPLATE_VARIABLE: entry("input", "The template uses an undeclared variable.", "Declare the variable in the template or remove the placeholder; run templates inspect <template.md>."),
+  // Generation
   UNKNOWN_GENERATOR: entry("input", "The generator is not registered.", "Run make to list generators."),
   INVALID_GENERATION_PLAN: entry("input", "The generation plan has overlapping outputs or invalid options.", "Use separate output and manifest paths, and do not combine planning with --revisions-from."),
   INVALID_GENERATION_REVISIONS: entry("input", "The revision approval does not match the reviewed plan.", "Create a new plan with --plan-out and pass that file to --revisions-from."),
-  UI_DRIFT: entry("drift", "Generated UI files are missing or differ from their definitions.", "Run the same command with --plan to review, then regenerate."),
-  DATA_SOURCE_DRIFT: entry("drift", "Generated data-source files are missing or differ from their definitions.", "Run the same command with --plan to review, then regenerate."),
   GENERATION_DRIFT: entry("drift", "Generated files are missing or differ from what the generator produces.", "Run the same make command with --plan to review, then regenerate."),
   // Project workflows
   INVALID_WORKFLOW: entry("input", "An authored project workflow is invalid or two workflows generate the same file.", "Fix or rename the workflow under src/infrastructure/workflows/<concern>/ named in the message, then run workflows sync."),
   WORKFLOW_DRIFT: entry("drift", "Generated GitHub workflows are missing, changed or stale.", "Run workflows sync, review the changes in .github/workflows and commit them with their sources."),
-  // UI, interactions and data sources
-  INVALID_UI: entry("input", "A component definition is invalid.", "Fix the definition named in the message; run components validate."),
-  INVALID_UI_LIBRARY: entry("input", "The component library is invalid.", "Run components validate and fix the reported definitions."),
-  INVALID_UI_FRAMEWORK: entry("input", "The UI target is not supported.", "Use html, htmx, vanilla, vue, svelte, react or angular."),
-  EMPTY_UI_LIBRARY: entry("input", "The component library has no definitions.", "Run components init or add a Markdown definition."),
-  DUPLICATE_UI_COMPONENT: entry("input", "Two component definitions share an id.", "Give each component a unique id."),
-  UNKNOWN_UI_COMPONENT: entry("input", "The component is not defined.", "Run components list and use an existing id."),
-  CYCLIC_UI_COMPONENT: entry("input", "Component references form a cycle.", "Remove the cyclic reference named in the message."),
-  UI_RENDERER_UNAVAILABLE: entry("input", "No renderer is available for this UI target.", "Choose a supported --framework."),
-  INVALID_INTERACTION: entry("input", "An interaction definition is invalid.", "Fix the event, actions or bindings named in the message; run interactions validate."),
-  DUPLICATE_INTERACTION: entry("input", "Two interaction definitions share an id.", "Give each interaction a unique id."),
-  EMPTY_INTERACTION_LIBRARY: entry("input", "The interaction library has no definitions.", "Run interactions init or add a Markdown definition."),
-  UNKNOWN_INTERACTION: entry("input", "The interaction is not defined.", "Run interactions list and check the component's interaction references."),
-  INVALID_DATA_SOURCE: entry("input", "A data-source definition is invalid.", "Fix the fields named in the message; run data-sources validate."),
-  DUPLICATE_DATA_SOURCE: entry("input", "Two data-source definitions share an id.", "Give each data source a unique id."),
-  EMPTY_DATA_SOURCE_LIBRARY: entry("input", "The data-source library has no definitions.", "Run data-sources init or add a Markdown definition."),
-  UNKNOWN_DATA_SOURCE: entry("input", "The data source is not defined.", "Run data-sources list and use an existing id."),
-  DATA_SOURCE_RENDERER_UNAVAILABLE: entry("input", "No generator is available for this data source.", "Use a supported data-source kind; run help make for data-source generation."),
   // Plugins, skills and events
   INVALID_PLUGIN: entry("input", "A plugin manifest or implementation is invalid.", "Fix the plugin named in the message, or disable it with --no-plugins."),
   INVALID_PLUGIN_CONFIG: entry("input", "The plugin configuration is invalid.", "List unique lowercase kebab-case ids of installed user plugins in plugins.enabled in bin/config.json; run plugins to list them."),
@@ -168,7 +134,6 @@ const errorCatalog = {
   PLUGIN_SERVICE_CYCLE: entry("input", "Plugin service requirements form a cycle.", "Break the cycle named in error.details.plugins so that one plugin no longer requires a service of another."),
   PLUGIN_LIFECYCLE: entry("input", "A plugin used the host outside its lifecycle.", "Register contributions before activation and stop using the host after disposal."),
   DUPLICATE_OR_INVALID_ID: entry("input", "A contribution id is invalid or already registered.", "Use a unique lowercase dotted id."),
-  UNKNOWN_SKILL: entry("input", "The skill is not registered.", "Run skills list."),
   INVALID_EVENT: entry("input", "An event definition or event state is invalid.", "Define events with a dotted id and validator before disposal."),
   INVALID_EVENT_LISTENER: entry("input", "An event listener is not a function.", "Pass a function as the listener."),
   INVALID_EVENT_PAYLOAD: entry("input", "The event payload does not match its contract.", "Run events and emit a payload that matches the contract."),
@@ -176,29 +141,10 @@ const errorCatalog = {
   UNKNOWN_EVENT: entry("input", "The event is not registered.", "Run events to list registered event ids."),
   EVENT_RECURSION: entry("input", "Event handlers recursed too deeply.", "Stop handlers from emitting the events that trigger them."),
   EVENT_OWNERSHIP: entry("input", "A plugin tried to emit an event it does not own.", "Emit only events in your plugin's own namespace; host events (vault.*, metadataCache.*, workspace.*, operation.*, command.*, plugin.*) are emitted by the host and another plugin's events by that plugin."),
-  // Claude Code definitions
-  INVALID_CLAUDE_AGENT: entry("input", "The Claude agent definition is invalid.", claudeDefinitionHint$1),
-  INVALID_CLAUDE_HOOKS: entry("input", "The Claude hook configuration is invalid.", claudeDefinitionHint$1),
-  INVALID_CLAUDE_PLUGIN: entry("input", "The Claude plugin manifest or a plugin file is invalid.", claudeDefinitionHint$1),
-  INVALID_CLAUDE_SETTINGS: entry("input", "The Claude settings file is invalid.", "Fix the JSON structure of the settings file named in the message. When it names the generation manifest .claude/forge-generated.json, an older Forge wrote it: delete .claude/forge-generated.json and run agents generate again; the rules it listed stay in .claude/settings.json until you remove them."),
-  INVALID_CLAUDE_COMMAND: entry("input", "The Claude command is not supported.", "Run claude capabilities."),
-  INVALID_CLAUDE_ARGUMENT: entry("input", "A Claude command argument is invalid.", argumentsHint$1),
-  INVALID_CLAUDE_OPTION: entry("input", "A Claude option has an invalid value or combination.", "Run help claude and correct the option the message names."),
-  INVALID_CLAUDE_SCOPE: entry("input", "The Claude scope is invalid.", "Run help claude and pass a --scope value supported by that action."),
-  INVALID_CLAUDE_INPUT: entry("input", "The Claude input is invalid or too large.", "Pass valid input within the size limit."),
-  INVALID_CLAUDE_OUTPUT: entry("input", "The Claude output format is invalid.", "Use text, json or json-last-line."),
-  INVALID_CLAUDE_OUTPUT_LIMIT: entry("input", "The Claude output limit is invalid.", "Use a positive integer number of bytes."),
-  INVALID_CLAUDE_TIMEOUT: entry("input", "The Claude timeout is invalid.", "Pass the timeout in milliseconds within the range named in the message."),
-  INVALID_CLAUDE_EXECUTABLE: entry("input", "The Claude executable path is invalid.", "Pass an executable path to --claude-bin."),
-  // Claude Code process
-  CLAUDE_NOT_INSTALLED: entry("external", "The Claude Code executable was not found.", "Install Claude Code and put claude on PATH, or pass --claude-bin."),
-  CLAUDE_WORKING_DIRECTORY_UNAVAILABLE: entry("external", "The Claude working directory is unavailable.", "Check that the selected project or workspace root exists and is a directory."),
-  CLAUDE_COMMAND_FAILED: entry("external", "Claude Code could not be started or stopped unexpectedly.", "Read error.details, inspect external state, then retry deliberately."),
-  CLAUDE_COMMAND_TIMEOUT: entry("external", "The Claude command exceeded its timeout.", "Inspect external state; retry with a larger --timeout only if the work did not complete."),
-  CLAUDE_OUTPUT_LIMIT: entry("external", "Claude output exceeded the size limit.", "Inspect external state; retry with a larger output limit only if needed."),
-  CLAUDE_COMMAND_INTERRUPTED: entry("interrupted", "The Claude command was interrupted by a signal (exit 130 for SIGINT, 143 for SIGTERM).", "Inspect external state before running the command again."),
-  CLAUDE_RUNTIME_FAILED: entry("external", "Claude Code exited with a nonzero status.", "Inspect error.details (native status, output and parsed result) and external state before retrying."),
-  CLAUDE_INVALID_OUTPUT: entry("external", "Claude Code succeeded but did not return the requested JSON.", "Inspect stdout and external state before retrying.")
+  // Claude Code definitions shared by the claude and agents plugins
+  INVALID_CLAUDE_AGENT: entry("input", "The Claude agent definition is invalid.", claudeDefinitionHint$2),
+  INVALID_CLAUDE_HOOKS: entry("input", "The Claude hook configuration is invalid.", claudeDefinitionHint$2),
+  INVALID_CLAUDE_SETTINGS: entry("input", "The Claude settings file is invalid.", "Fix the JSON structure of the settings file named in the message. When it names the generation manifest .claude/forge-generated.json, an older Forge wrote it: delete .claude/forge-generated.json and run agents generate again; the rules it listed stay in .claude/settings.json until you remove them.")
 };
 const errorCodes = Object.keys(errorCatalog);
 function errorDefinition(code2) {
@@ -243,6 +189,11 @@ function ensure(condition, code2, message2, details) {
   if (!condition) throw forgeError(code2, message2, details);
 }
 const isRecord$1 = (value2) => value2 !== null && typeof value2 === "object" && !Array.isArray(value2);
+function failureCode(error2) {
+  if (error2 instanceof AppError) return error2.code;
+  const code2 = error2 instanceof Error ? error2.code : void 0;
+  return typeof code2 === "string" ? code2 : void 0;
+}
 async function standardInput() {
   ensure(!process.stdin.isTTY, "INPUT_REQUIRED", "--stdin needs piped input.");
   const chunks = [];
@@ -275,11 +226,18 @@ function reservedPathSegment(segment2) {
   if (aliasesName(segment2, writerLockName) || canonicalName(segment2).startsWith(temporaryPrefix)) return "internal";
   return void 0;
 }
+const deviceNames = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/;
+function isDeviceName(segment2) {
+  const base2 = segment2.replace(ignorable, "").split(".")[0];
+  return deviceNames.test(base2.toLowerCase().replace(/ +$/, ""));
+}
 function vaultPath(input2) {
   ensure(typeof input2 === "string" && input2.length > 0 && !/[\x00-\x1f\x7f\\:]/.test(input2), "INVALID_PATH", "Use a nonempty, relative POSIX path.");
   const parts = input2.split("/");
   ensure(parts.every((p) => canonicalName(p) !== ""), "INVALID_PATH", "Absolute paths, empty segments and traversal are forbidden.");
   ensure(!parts.some((p) => reservedPathSegment(p) !== void 0), "INVALID_PATH", "Reserved workspace path.");
+  const device2 = parts.find(isDeviceName);
+  ensure(device2 === void 0, "INVALID_PATH", `${device2} is a Windows reserved device name (CON, PRN, AUX, NUL, COM1-COM9 or LPT1-LPT9, with any extension); rename the file or folder.`, { segment: device2 });
   return input2;
 }
 const trashFolder = ".trash";
@@ -476,10 +434,10 @@ const kernelMessages = {
   PATH_MATCHED_NOTHING: "{option} {pattern} matched no file in this scope. Paths are relative to context.root and case-sensitive, and a folder path without glob characters matches everything below it; run list to see the existing paths.",
   READ_TRUNCATED: "{path} was truncated to lines {start}-{end} of {total} ({returned} of {bytes} bytes); continue with --lines {next}-, or raise --max-bytes.",
   READ_BYTES_TRUNCATED: "{path} was truncated to the first {returned} of {bytes} bytes; raise --max-bytes to read the rest.",
-  // Mutations that succeed but probably differ from what the caller meant; each text starts with its stable code.
-  EXTENSION_DROPPED: "EXTENSION_DROPPED: {to} has no extension, so moving {from} drops {extension}. End the destination with / to move into a folder, or add the extension.",
-  LITERAL_NEWLINE: "LITERAL_NEWLINE: --{option} contains the two characters \\n but no line break, so they are written literally. Pass real line breaks, for example with --stdin.",
-  EMPTY_STDIN: 'EMPTY_STDIN: --stdin read no bytes, so {path} is written empty. Pipe the content, or pass --content "" to write an empty file on purpose.'
+  // Mutations that succeed but probably differ from what the caller meant.
+  EXTENSION_DROPPED: "{to} has no extension, so moving {from} drops {extension}. End the destination with / to move into a folder, or add the extension.",
+  LITERAL_NEWLINE: "--{option} contains the two characters \\n but no line break, so they are written literally. Pass real line breaks, for example with --stdin.",
+  EMPTY_STDIN: '--stdin read no bytes, so {path} is written empty. Pipe the content, or pass --content "" to write an empty file on purpose.'
 };
 const hostMessages = /* @__PURE__ */ new WeakSet();
 function kernelMessage(code2, params = {}) {
@@ -491,9 +449,6 @@ const isKernelMessage = (value2) => typeof value2 === "object" && value2 !== nul
 function renderKernelMessage(message2, templates2 = kernelMessages) {
   const params = Object.fromEntries(Object.entries(message2.params).map(([name2, value2]) => [name2, isKernelMessage(value2) ? renderKernelMessage(value2, templates2) : typeof value2 === "string" || typeof value2 === "number" ? value2 : warningText(value2)]));
   return fill(templates2[message2.code], params);
-}
-function renderWarning(warning2, templates2) {
-  return isKernelMessage(warning2) ? renderKernelMessage(warning2, templates2) : warningText(warning2);
 }
 function warningText(value2) {
   try {
@@ -1154,6 +1109,53 @@ class NodeServerController {
     return options2.dryRun || !await readState$1(workspaceRoot) ? stop() : withServerLock(workspaceRoot, stop);
   }
 }
+const pluginWarningCode = "PLUGIN_WARNING";
+const warningCode = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
+const recorded = /* @__PURE__ */ new WeakSet();
+function jsonRecord(value2) {
+  try {
+    const copy2 = JSON.parse(JSON.stringify(value2));
+    return isRecord$1(copy2) ? copy2 : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function codedWarning(value2) {
+  try {
+    if (!isRecord$1(value2) || Object.getPrototypeOf(value2) !== Object.prototype) return void 0;
+    const { code: code2, message: message2, details } = value2;
+    if (typeof code2 !== "string" || !warningCode.test(code2) || Object.hasOwn(kernelMessages, code2) || typeof message2 !== "string") return void 0;
+    const copied = details === void 0 ? {} : jsonRecord(details);
+    return copied === void 0 ? void 0 : { code: code2, message: message2, ...Object.keys(copied).length > 0 ? { details: copied } : {} };
+  } catch {
+    return void 0;
+  }
+}
+function pluginWarning(value2, plugin2) {
+  const coded = codedWarning(value2);
+  const base2 = coded ?? { code: pluginWarningCode, message: warningText(value2) };
+  const details = { ...base2.details, ...plugin2 === void 0 ? {} : { plugin: plugin2 } };
+  const warning2 = Object.freeze({ code: base2.code, message: base2.message, ...Object.keys(details).length > 0 ? { details } : {} });
+  recorded.add(warning2);
+  return warning2;
+}
+const isPluginWarning = (value2) => typeof value2 === "object" && value2 !== null && recorded.has(value2);
+function messageDetails(message2, templates2) {
+  const entries2 = Object.entries(message2.params).map(([name2, value2]) => [
+    name2,
+    isKernelMessage(value2) ? hostWarning(value2, templates2) : typeof value2 === "string" || typeof value2 === "number" ? value2 : warningText(value2)
+  ]);
+  return entries2.length > 0 ? Object.fromEntries(entries2) : void 0;
+}
+function hostWarning(message2, templates2) {
+  const details = messageDetails(message2, templates2);
+  return { code: message2.code, message: renderKernelMessage(message2, templates2), ...details ? { details } : {} };
+}
+function responseWarning(record2, templates2) {
+  if (isKernelMessage(record2)) return hostWarning(record2, templates2);
+  if (isPluginWarning(record2)) return { ...record2 };
+  return { code: pluginWarningCode, message: warningText(record2) };
+}
 function isJsonValue(value2, ancestors = /* @__PURE__ */ new Set()) {
   if (value2 === null || typeof value2 === "string" || typeof value2 === "boolean") return true;
   if (typeof value2 === "number") return Number.isFinite(value2);
@@ -1181,11 +1183,11 @@ class EventBus {
   quitTasks = [];
   settling = /* @__PURE__ */ new Set();
   history = [];
-  /** Warnings in order: plugin text as written, host messages by code for rendering in the response language. */
+  /** Warnings in order: host messages by code for rendering in the response language, plugin warnings as captured. */
   warningRecords = [];
-  /** The warnings in English. */
+  /** The warning messages in English. */
   get warnings() {
-    return this.warningRecords.map((warning2) => renderWarning(warning2));
+    return this.warningRecords.map((warning2) => responseWarning(warning2).message);
   }
   nextOperationId() {
     return ++this.operationId;
@@ -1287,9 +1289,12 @@ class EventBus {
       }
     });
   }
-  /** Records a warning: a host message by code, anything else as text (see warningText), so no value can break the response. */
+  /**
+   * Records a warning: a host message by code, a plugin warning as captured, and any other value as a plugin warning
+   * (see pluginWarning) without a plugin id, so no value can break the response.
+   */
   warn(message2) {
-    if (this.warningRecords.length < 1e3) this.warningRecords.push(isKernelMessage(message2) ? message2 : warningText(message2));
+    if (this.warningRecords.length < 1e3) this.warningRecords.push(isKernelMessage(message2) || isPluginWarning(message2) ? message2 : pluginWarning(message2));
   }
   onLayoutReady(callback) {
     this.ensureCallback(callback);
@@ -1987,9 +1992,10 @@ function pluginEvents(bus, pluginId) {
     once: (id2, listener) => bus.once(id2, listener),
     onAny: (listener) => bus.onAny(listener),
     replay: (listener) => bus.replay(listener),
-    // Plugins are plain JavaScript and may pass any value; it is reported as text. Only a message the host created
-    // with kernelMessage (which core plugins import from the kernel domain) renders from the host catalog.
-    warn: (message2) => bus.warn(isKernelMessage(message2) ? message2 : warningText(message2)),
+    // Plugins are plain JavaScript and may pass any value; it is reported with the plugin's id, as its own coded warning
+    // or as PLUGIN_WARNING text. Only a message the host created with kernelMessage (which core plugins import from
+    // the kernel domain) renders from the host catalog.
+    warn: (message2) => bus.warn(isKernelMessage(message2) ? message2 : pluginWarning(message2, pluginId)),
     onLayoutReady: (callback) => bus.onLayoutReady(callback),
     onQuit: (task2) => bus.onQuit(task2),
     async emit(id2, payload2) {
@@ -2194,6 +2200,7 @@ function optionSuggestions(token, accepts) {
 }
 const unknownActionCodes = ["UNKNOWN_GENERATOR", "INVALID_ARGUMENT"];
 const documentSchema = (value2) => value2 === void 0 || schemaIssues(value2).length === 0;
+const outputLocalizations = ["text", "generators", "events", "errors", "options", "settings"];
 const actionWords = (id2) => id2.split(" ");
 function actionId(command2, args) {
   if (args.length === 0) return command2.defaultAction;
@@ -2415,6 +2422,8 @@ function validateCommandMetadata(command2) {
   ensure(command2.defaultAction === void 0 || typeof command2.defaultAction === "string" && isRecord$1(command2.actions) && Object.hasOwn(command2.actions, command2.defaultAction), "INVALID_PLUGIN", `${where2} defaultAction must name a declared action.`);
   ensure(command2.unknownAction === void 0 || unknownActionCodes.includes(command2.unknownAction) && isRecord$1(command2.actions), "INVALID_PLUGIN", `${where2} unknownAction must be ${unknownActionCodes.join(" or ")} for a command with actions.`);
   ensure(command2.examples === void 0 || Array.isArray(command2.examples) && command2.examples.length >= 1 && command2.examples.length <= 3 && command2.examples.every((example) => typeof example === "string" && (example === command2.id || example.startsWith(`${String(command2.id)} `))), "INVALID_PLUGIN", `${where2} examples must list one to three invocations that start with the command id.`);
+  ensure(command2.generatorActions === void 0 || typeof command2.generatorActions === "boolean", "INVALID_PLUGIN", `${where2} generatorActions must be a boolean.`);
+  ensure(command2.localizedOutput === void 0 || isRecord$1(command2.localizedOutput) && Object.values(command2.localizedOutput).every((kind2) => outputLocalizations.includes(kind2)), "INVALID_PLUGIN", `${where2} localizedOutput must map result fields to ${outputLocalizations.join(", ")}.`);
   ensure(command2.errors === void 0 || Array.isArray(command2.errors) && command2.errors.every((code2) => typeof code2 === "string" && /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code2)), "INVALID_PLUGIN", `${where2} errors must list UPPER_SNAKE_CASE codes.`);
 }
 const languages = ["en", "de"];
@@ -11473,7 +11482,7 @@ function queued(lock, task2) {
   return run2;
 }
 const cacheFolder = ".forge/cache";
-const unlisted = (name2, path2) => reservedPathSegment(name2) !== void 0 || name2.toLowerCase() === "node_modules" || path2.toLowerCase() === cacheFolder;
+const unlisted = (name2, path2) => reservedPathSegment(name2) !== void 0 || isDeviceName(name2) || name2.toLowerCase() === "node_modules" || path2.toLowerCase() === cacheFolder;
 const stagingConcurrency = 8;
 class NodeFiles {
   constructor(root, warning2, owner, wait) {
@@ -11625,7 +11634,8 @@ class NodeFiles {
           continue;
         }
         const relative = prefix + name2, absolute = path$3.join(directory, name2);
-        if (entry2.isSymbolicLink()) special.push({ path: relative, kind: "symlink", target: await promises.readlink(absolute) });
+        if (isDeviceName(name2)) special.push({ path: relative, kind: "other" });
+        else if (entry2.isSymbolicLink()) special.push({ path: relative, kind: "symlink", target: await promises.readlink(absolute) });
         else if (entry2.isDirectory() && name2.toLowerCase() === "node_modules") special.push({ path: relative, kind: "node_modules" });
         else if (entry2.isDirectory()) {
           folders2.push(relative);
@@ -12296,6 +12306,23 @@ function registerCorePlugins(registry2, events2, plugins, host, disabled) {
 function registrySkills(registry2) {
   return { list: () => [...registry2.skills.values()], get: (id2) => registry2.skills.get(id2) };
 }
+class PluginFailure extends Error {
+  constructor(code2, message2, details) {
+    super(message2);
+    this.code = code2;
+    if (details) this.details = details;
+  }
+  code;
+}
+function isCodedFailure(error2) {
+  return error2 instanceof AppError || error2 instanceof PluginFailure;
+}
+function basesError(code2, message2, details) {
+  return new PluginFailure(code2, message2, details);
+}
+function ensureBases(condition, code2, message2, details) {
+  if (!condition) throw new PluginFailure(code2, message2, details);
+}
 class Bases {
   constructor(engine) {
     this.engine = engine;
@@ -12307,8 +12334,8 @@ class Bases {
   async query(path2, options2 = {}) {
     path2 = vaultPath(path2);
     ensure(path2.endsWith(".base"), "INVALID_BASE", "A repository definition must be a native .base file.");
-    ensure(options2.limit === void 0 || Number.isSafeInteger(options2.limit) && options2.limit >= 0, "INVALID_BASE_QUERY", "Query limit must be a nonnegative safe integer.");
-    ensure(options2.view === void 0 || options2.view.trim().length > 0, "INVALID_BASE_QUERY", "View name cannot be empty.");
+    ensureBases(options2.limit === void 0 || Number.isSafeInteger(options2.limit) && options2.limit >= 0, "INVALID_BASE_QUERY", "Query limit must be a nonnegative safe integer.");
+    ensureBases(options2.view === void 0 || options2.view.trim().length > 0, "INVALID_BASE_QUERY", "View name cannot be empty.");
     const context = options2.context === void 0 ? path2 : vaultPath(options2.context);
     return this.engine.query(path2, { ...options2, context });
   }
@@ -18668,14 +18695,14 @@ async function basePropertyTypes(files2) {
   try {
     data = JSON.parse(new TextDecoder().decode(file.bytes));
   } catch (error2) {
-    if (error2 instanceof SyntaxError) throw forgeError("INVALID_BASE_PROPERTY_TYPES", ".obsidian/types.json must contain valid JSON.");
+    if (error2 instanceof SyntaxError) throw basesError("INVALID_BASE_PROPERTY_TYPES", ".obsidian/types.json must contain valid JSON.");
     throw error2;
   }
-  ensure(isRecord$1(data) && isRecord$1(data.types), "INVALID_BASE_PROPERTY_TYPES", ".obsidian/types.json must contain a types mapping.");
+  ensureBases(isRecord$1(data) && isRecord$1(data.types), "INVALID_BASE_PROPERTY_TYPES", ".obsidian/types.json must contain a types mapping.");
   const names2 = { text: "string", multitext: "list", tags: "list", aliases: "list", number: "number", checkbox: "boolean", date: "date", datetime: "date" };
   const result = {};
   for (const [property, type2] of Object.entries(data.types)) {
-    ensure(typeof type2 === "string" && Object.hasOwn(names2, type2), "UNSUPPORTED_BASE_PROPERTY_TYPE", `Unsupported Obsidian property type for ${property}: ${String(type2)}`);
+    ensureBases(typeof type2 === "string" && Object.hasOwn(names2, type2), "UNSUPPORTED_BASE_PROPERTY_TYPE", `Unsupported Obsidian property type for ${property}: ${String(type2)}`);
     result[property] = names2[type2];
   }
   return result;
@@ -18702,7 +18729,7 @@ function adapt(expression2) {
   if (expression2.type === "Member") {
     if (expression2.computed && expression2.object.type === "Identifier" && expression2.object.name === "formula") {
       if (typeof expression2.property !== "string" && expression2.property.type === "Literal" && typeof expression2.property.value === "string") return { ...expression2, computed: false, property: expression2.property.value };
-      ensure(typeof expression2.property !== "string", "INVALID_BASE_EXPRESSION", "Computed formula access needs an expression.");
+      ensureBases(typeof expression2.property !== "string", "INVALID_BASE_EXPRESSION", "Computed formula access needs an expression.");
       return { type: "Call", callee: { type: "Identifier", name: internalFormula, span }, args: [adapt(expression2.property)], span };
     }
     if (expression2.object.type === "Identifier" && expression2.object.name === "this") {
@@ -18712,7 +18739,7 @@ function adapt(expression2) {
     return { ...expression2, object: adapt(expression2.object), property: typeof expression2.property === "string" ? expression2.property : adapt(expression2.property) };
   }
   if (expression2.type === "Unary") {
-    ensure(expression2.operator !== "+", "INVALID_BASE_EXPRESSION", "Unary plus is rejected by the observed Obsidian Bases parser.");
+    ensureBases(expression2.operator !== "+", "INVALID_BASE_EXPRESSION", "Unary plus is rejected by the observed Obsidian Bases parser.");
     return { ...expression2, argument: adapt(expression2.argument) };
   }
   if (expression2.type === "Binary") return { ...expression2, left: adapt(expression2.left), right: adapt(expression2.right) };
@@ -18725,11 +18752,11 @@ function adapt(expression2) {
 }
 function baseExpression(source2) {
   const parsed2 = compileExpression(source2);
-  ensure(parsed2.valid && parsed2.ast, "INVALID_BASE_EXPRESSION", parsed2.diagnostics.map((item) => item.message).join("; ") || "Invalid Bases expression.");
+  ensureBases(parsed2.valid && parsed2.ast, "INVALID_BASE_EXPRESSION", parsed2.diagnostics.map((item) => item.message).join("; ") || "Invalid Bases expression.");
   const nativeNumericMember = (node2) => {
     if (!isRecord$1(node2)) return;
     if (node2.type === "Member" && isRecord$1(node2.object) && node2.object.type === "Literal" && typeof node2.object.value === "number" && isRecord$1(node2.object.span)) {
-      ensure(source2.slice(Number(node2.object.span.start), Number(node2.object.span.end)).trimStart().startsWith("("), "INVALID_BASE_EXPRESSION", "Numeric method receivers need parentheses, as in (1).isTruthy().");
+      ensureBases(source2.slice(Number(node2.object.span.start), Number(node2.object.span.end)).trimStart().startsWith("("), "INVALID_BASE_EXPRESSION", "Numeric method receivers need parentheses, as in (1).isTruthy().");
     }
     for (const value2 of Object.values(node2)) {
       if (Array.isArray(value2)) value2.forEach(nativeNumericMember);
@@ -18745,24 +18772,24 @@ function baseFilter(value2) {
     const compiled2 = baseExpression(value2);
     return (context) => isTruthy(compiled2.evaluateValue(context, { throwOnError: true }));
   }
-  ensure(isRecord$1(value2) && Object.keys(value2).length === 1, "INVALID_BASE_EXPRESSION", "Filters require an expression or a single and/or/not list.");
+  ensureBases(isRecord$1(value2) && Object.keys(value2).length === 1, "INVALID_BASE_EXPRESSION", "Filters require an expression or a single and/or/not list.");
   const [operator, children] = Object.entries(value2)[0];
-  ensure(["and", "or", "not"].includes(operator) && Array.isArray(children), "INVALID_BASE_EXPRESSION", "Filters require an and/or/not list.");
+  ensureBases(["and", "or", "not"].includes(operator) && Array.isArray(children), "INVALID_BASE_EXPRESSION", "Filters require an and/or/not list.");
   const filters = children.map(baseFilter);
   return (context) => operator === "and" ? filters.every((filter) => filter(context)) : operator === "or" ? filters.some((filter) => filter(context)) : !filters.some((filter) => filter(context));
 }
 function diagnostics(items2, label2) {
   const failures = items2.filter((item) => item.severity === "error" || item.code === "circular-formula");
-  ensure(failures.length === 0, "INVALID_BASE_EXPRESSION", `${label2}: ${failures.map((item) => item.message).join("; ")}`);
+  ensureBases(failures.length === 0, "INVALID_BASE_EXPRESSION", `${label2}: ${failures.map((item) => item.message).join("; ")}`);
 }
 function ordering(value2) {
-  ensure(isRecord$1(value2) && typeof value2.property === "string" && value2.property.length > 0, "INVALID_BASE_QUERY", "Sort and groupBy entries need a property name.");
-  ensure(value2.direction === "ASC" || value2.direction === "DESC", "INVALID_BASE_QUERY", "Sort and groupBy direction must be ASC or DESC.");
+  ensureBases(isRecord$1(value2) && typeof value2.property === "string" && value2.property.length > 0, "INVALID_BASE_QUERY", "Sort and groupBy entries need a property name.");
+  ensureBases(value2.direction === "ASC" || value2.direction === "DESC", "INVALID_BASE_QUERY", "Sort and groupBy direction must be ASC or DESC.");
   const property = value2.property;
   const dot = property.indexOf(".");
   const namespace = dot < 0 ? "note" : property.slice(0, dot);
   const name2 = dot < 0 ? property : property.slice(dot + 1);
-  ensure(["note", "file", "formula"].includes(namespace) && name2.length > 0, "INVALID_BASE_QUERY", `Invalid property identifier: ${property}`);
+  ensureBases(["note", "file", "formula"].includes(namespace) && name2.length > 0, "INVALID_BASE_QUERY", `Invalid property identifier: ${property}`);
   const expression2 = baseExpression(`${namespace}[${JSON.stringify(name2)}]`);
   diagnostics(expression2.diagnostics, property);
   return { property, direction: value2.direction, expression: expression2 };
@@ -18771,7 +18798,7 @@ const defaultBaseTimeoutMs = 3e4;
 function vmEvaluationBudget(path2, milliseconds) {
   const context = node_vm.createContext({ task: void 0 }), script = new node_vm.Script("task()");
   let spent = 0;
-  const timeout2 = () => forgeError("BASE_TIMEOUT", `${path2}: the query exceeded its ${milliseconds} ms evaluation budget.`, { path: path2, timeoutMs: milliseconds });
+  const timeout2 = () => basesError("BASE_TIMEOUT", `${path2}: the query exceeded its ${milliseconds} ms evaluation budget.`, { path: path2, timeoutMs: milliseconds });
   return {
     run(task2) {
       if (spent >= milliseconds) throw timeout2();
@@ -18850,24 +18877,24 @@ class NodeBasesQueryEngine {
   async query(path2, options2) {
     const base2 = this.codec.inspect(path2, (await this.files.read(path2)).bytes).data;
     const views2 = base2.views ?? [];
-    ensure(views2.length > 0, "BASE_VIEW_NOT_FOUND", `No views are defined in ${path2}.`);
-    ensure(new Set(views2.map((view2) => view2.name)).size === views2.length, "INVALID_BASE_QUERY", "Base view names must be unique.");
+    ensureBases(views2.length > 0, "BASE_VIEW_NOT_FOUND", `No views are defined in ${path2}.`);
+    ensureBases(new Set(views2.map((view2) => view2.name)).size === views2.length, "INVALID_BASE_QUERY", "Base view names must be unique.");
     const view = options2.view === void 0 ? views2[0] : views2.find((item) => item.name === options2.view);
-    ensure(view, "BASE_VIEW_NOT_FOUND", `View ${options2.view ?? ""} is not defined in ${path2}.`);
+    ensureBases(view, "BASE_VIEW_NOT_FOUND", `View ${options2.view ?? ""} is not defined in ${path2}.`);
     const formulas = base2.formulas ?? {};
     const formulaAsts = Object.fromEntries(Object.entries(formulas).map(([name2, source2]) => [name2, baseExpression(source2).ast]));
     const compiledFormulas = compileFormulaSet(formulaAsts);
     diagnostics(compiledFormulas.diagnostics, "Formulas");
     const globalFilter = baseFilter(base2.filters), viewFilter = baseFilter(view.filters);
-    ensure(view.sort === void 0 || Array.isArray(view.sort), "INVALID_BASE_QUERY", "View sort must be a list of property/direction entries.");
+    ensureBases(view.sort === void 0 || Array.isArray(view.sort), "INVALID_BASE_QUERY", "View sort must be a list of property/direction entries.");
     const sorts = (view.sort ?? []).map(ordering);
     const grouping = view.groupBy === void 0 ? void 0 : ordering(view.groupBy);
-    ensure(view.groupOrder === void 0 || grouping !== void 0 && Array.isArray(view.groupOrder), "INVALID_BASE_QUERY", "groupOrder requires groupBy and a list of visible group values.");
+    ensureBases(view.groupOrder === void 0 || grouping !== void 0 && Array.isArray(view.groupOrder), "INVALID_BASE_QUERY", "groupOrder requires groupBy and a list of visible group values.");
     const groupOrder = view.groupOrder;
     const { files: indexed2, warnings } = await sharedBaseIndex(await this.metadata(), this.dates);
     const contextPath = options2.context ?? path2;
     const thisFile = indexed2.find((file) => file.path === contextPath);
-    ensure(thisFile, "BASE_CONTEXT_NOT_FOUND", `Base context is not an indexed vault file: ${contextPath}`);
+    ensureBases(thisFile, "BASE_CONTEXT_NOT_FOUND", `Base context is not an indexed vault file: ${contextPath}`);
     const propertyTypes2 = await basePropertyTypes(this.files);
     const contextNote = Object.fromEntries(Object.entries(thisFile.properties ?? {}).map(([name2, value2]) => [name2, value2 === null || value2 === "" ? fromJs(value2) : fromJs(value2, propertyTypes2[name2])]));
     const objects = { [internalContext]: { file: fileValue(thisFile), note: contextNote } };
@@ -18904,16 +18931,16 @@ class NodeBasesQueryEngine {
               return value2;
             } };
             const matches2 = globalFilter(context) && viewFilter(context);
-            ensure(evaluationError === void 0, "BASE_EVALUATION_ERROR", evaluationError ?? "Expression evaluation failed.");
+            ensureBases(evaluationError === void 0, "BASE_EVALUATION_ERROR", evaluationError ?? "Expression evaluation failed.");
             if (!matches2) return void 0;
             const group = grouping?.expression.evaluateValue(context, strict);
             const groupIndex = groupPositions && (groupPositions.size === 0 ? -1 : groupPositions.get(groupIdentity(group && toPlain(group))) ?? -1);
             if (groupIndex === -1) return void 0;
             const sort = sorts.map((item) => item.expression.evaluateValue(context, strict));
-            ensure(evaluationError === void 0, "BASE_EVALUATION_ERROR", evaluationError ?? "Expression evaluation failed.");
+            ensureBases(evaluationError === void 0, "BASE_EVALUATION_ERROR", evaluationError ?? "Expression evaluation failed.");
             return { path: file.path, sort, group, groupIndex };
           } catch (error2) {
-            throw forgeError("BASE_EVALUATION_ERROR", `${path2}, view ${String(view.name)}, file ${file.path}: ${errorMessage(error2)}`);
+            throw basesError("BASE_EVALUATION_ERROR", `${path2}, view ${String(view.name)}, file ${file.path}: ${errorMessage(error2)}`);
           }
         })();
         if (row) rows.push(row);
@@ -19002,7 +19029,7 @@ async function validateBaseFile(files2, codec, definitionIssues, path2) {
   try {
     base2 = codec.inspect(path2, bytes).data;
   } catch (error2) {
-    return [{ code: error2 instanceof AppError ? error2.code : "INVALID_BASE", message: errorMessage(error2) }];
+    return [{ code: failureCode(error2) ?? "INVALID_BASE", message: errorMessage(error2) }];
   }
   return definitionIssues(base2);
 }
@@ -19012,11 +19039,11 @@ function baseDefinitionIssues(base2) {
     try {
       work();
     } catch (error2) {
-      issues2.push({ code: error2 instanceof AppError ? error2.code : "INVALID_BASE_EXPRESSION", message: label2 + errorMessage(error2), ...view === void 0 ? {} : { view } });
+      issues2.push({ code: failureCode(error2) ?? "INVALID_BASE_EXPRESSION", message: label2 + errorMessage(error2), ...view === void 0 ? {} : { view } });
     }
   };
   const views2 = base2.views ?? [];
-  check2(void 0, () => ensure(new Set(views2.map((view) => view.name)).size === views2.length, "INVALID_BASE_QUERY", "Base view names must be unique."));
+  check2(void 0, () => ensureBases(new Set(views2.map((view) => view.name)).size === views2.length, "INVALID_BASE_QUERY", "Base view names must be unique."));
   const formulas = Object.entries(base2.formulas ?? {});
   const asts = {};
   for (const [name2, source2] of formulas) check2(void 0, () => {
@@ -19028,18 +19055,39 @@ function baseDefinitionIssues(base2) {
     const name2 = String(view.name);
     check2(name2, () => baseFilter(view.filters));
     check2(name2, () => {
-      ensure(view.sort === void 0 || Array.isArray(view.sort), "INVALID_BASE_QUERY", "View sort must be a list of property/direction entries.");
+      ensureBases(view.sort === void 0 || Array.isArray(view.sort), "INVALID_BASE_QUERY", "View sort must be a list of property/direction entries.");
       (view.sort ?? []).forEach(ordering);
     });
     check2(name2, () => {
       if (view.groupBy !== void 0) ordering(view.groupBy);
-      ensure(view.groupOrder === void 0 || view.groupBy !== void 0 && Array.isArray(view.groupOrder), "INVALID_BASE_QUERY", "groupOrder requires groupBy and a list of visible group values.");
+      ensureBases(view.groupOrder === void 0 || view.groupBy !== void 0 && Array.isArray(view.groupOrder), "INVALID_BASE_QUERY", "groupOrder requires groupBy and a list of visible group values.");
     });
   }
   return issues2;
 }
+const basesErrors = [
+  { code: "INVALID_BASE_QUERY", category: "input", summary: "The Bases query is invalid.", hint: "Check the view, context and expressions named in the message." },
+  { code: "INVALID_BASE_EXPRESSION", category: "input", summary: "A Bases expression cannot be parsed.", hint: "Fix the expression named in the message." },
+  { code: "BASE_EVALUATION_ERROR", category: "input", summary: "A Bases expression failed while evaluating a file.", hint: "Check the view, file and expression named in the message." },
+  { code: "BASE_TIMEOUT", category: "input", summary: "A Bases query exceeded its expression evaluation time budget.", hint: "Simplify the expressions of the .base file named in the message (avoid nested regular-expression quantifiers such as (a+)+) or narrow its filters." },
+  { code: "BASE_VIEW_NOT_FOUND", category: "input", summary: "The requested Bases view does not exist.", hint: "Run bases inspect <file.base> and pass an existing --view." },
+  { code: "BASE_CONTEXT_NOT_FOUND", category: "input", summary: "The context file is not an indexed vault file.", hint: "Pass an existing vault file to --context." },
+  { code: "INVALID_BASE_PROPERTY_TYPES", category: "input", summary: "The Obsidian property type registry is invalid.", hint: "Fix .obsidian/types.json so it is a JSON object of property types." },
+  { code: "UNSUPPORTED_BASE_PROPERTY_TYPE", category: "input", summary: "An Obsidian property type is not supported.", hint: "Use a supported type in .obsidian/types.json." }
+];
+const germanBasesErrors = {
+  INVALID_BASE_QUERY: { summary: "Die Bases-Abfrage ist ungültig.", hint: "Prüfen Sie die in der Meldung genannte Ansicht, den Kontext und die Ausdrücke." },
+  INVALID_BASE_EXPRESSION: { summary: "Ein Bases-Ausdruck kann nicht geparst werden.", hint: "Korrigieren Sie den in der Meldung genannten Ausdruck." },
+  BASE_EVALUATION_ERROR: { summary: "Ein Bases-Ausdruck ist bei der Auswertung einer Datei fehlgeschlagen.", hint: "Prüfen Sie die in der Meldung genannte Ansicht, Datei und den Ausdruck." },
+  BASE_TIMEOUT: { summary: "Eine Bases-Abfrage hat ihr Zeitbudget für die Auswertung von Ausdrücken überschritten.", hint: "Vereinfachen Sie die Ausdrücke der in der Meldung genannten .base-Datei (vermeiden Sie verschachtelte Quantoren in regulären Ausdrücken wie (a+)+) oder grenzen Sie ihre Filter ein." },
+  BASE_VIEW_NOT_FOUND: { summary: "Die angeforderte Bases-Ansicht existiert nicht.", hint: "Führen Sie bases inspect <file.base> aus und übergeben Sie eine vorhandene --view." },
+  BASE_CONTEXT_NOT_FOUND: { summary: "Die Kontextdatei ist keine indexierte Vault-Datei.", hint: "Übergeben Sie eine vorhandene Vault-Datei an --context." },
+  INVALID_BASE_PROPERTY_TYPES: { summary: "Das Register der Obsidian-Eigenschaftstypen ist ungültig.", hint: "Korrigieren Sie .obsidian/types.json zu einem JSON-Objekt mit Eigenschaftstypen." },
+  UNSUPPORTED_BASE_PROPERTY_TYPE: { summary: "Ein Obsidian-Eigenschaftstyp wird nicht unterstützt.", hint: "Verwenden Sie in .obsidian/types.json einen unterstützten Typ." }
+};
 const basesStrings = {
   de: {
+    errors: germanBasesErrors,
     manifest: { name: "Bases-Abfragen", description: "Native Obsidian-Bases-Ansichten als Dateirepositorys abfragen, ohne Obsidian auszuführen." },
     descriptions: {
       "View name for query; the first view when omitted.": "Ansichtsname für query; ohne Angabe die erste Ansicht.",
@@ -19076,6 +19124,7 @@ const basesPlugin = {
         "bases.query": { query: async (context, path2, options2) => localizedQuery(await bases(context).query(path2, options2), context.language) },
         "bases.validation": { validate: (context, path2) => validateBaseFile(context.workspace.files, context.workspace.codec, baseDefinitionIssues, path2) }
       },
+      errors: basesErrors,
       strings: {
         de: {
           commands: { bases: "Native Obsidian-Bases-Ansichten ohne laufendes Obsidian als Datei-Repositories abfragen." },
@@ -19096,7 +19145,7 @@ const __vite_glob_0_2 = '# Editing vault files\n\nRead this for precise edits, a
 const __vite_glob_0_3 = '# Finding and checking vault files\n\nRead this for bounded reads, search and list paging, link reports and vault checks.\n\n## Reads\n- Markdown `read` returns `content` and `properties`; `--parts properties` returns only the frontmatter and `--parts body` only the body.\n- Text and attachment content beyond 256 KiB (`--max-bytes`) is cut with `truncated: true`, `lines: {start, end, total}` and a warning. `--lines <start>-<end>` (1-based, inclusive; also `<start>-` or `<start>`) reads a range; `search` hits report the line numbers.\n- `read-many <paths…>` reads 1-32 paths in order, each counting at most `--max-bytes` toward an 8 MiB total. Any failure rejects the whole bundle, with `details.index` and `details.path`. It is not an atomic snapshot.\n- `stat <path>` returns a file\'s revision and byte count, or a folder\'s revision and counts, without parsing. It also works when `read` fails on malformed frontmatter.\n\n## Search and list\n- `search "release plan"` returns `data.hits` (`path`, 1-based `line` and `column`, `match`, `snippet`, `revision`) in path, line and column order, with `total`. A hit\'s `revision` is the `--if-match` for an `edit` of that file.\n- Narrow with `--path notes` (a folder path selects everything below it; globs such as `notes/**/*.md` work too), `--kind markdown`, `--tag project`, `--property status=active`, `--in body`, `--skip-code` and `--context 2`.\n- `--exclude "**/{dist,coverage}/**"` skips files before they are read and wins over `--path`. Search ignores `.gitignore`.\n- Matching ignores case unless `--case-sensitive`; `--regex` takes a JavaScript regular expression per line. `SEARCH_TIMEOUT` means the expression backtracks too much.\n- `--files-only` returns `files: [{path, revision, hits}]` and `--count` only `total` and `fileCount`.\n- `list --path notes --kind markdown` lists files; `list --tag` and `--property` find notes without a pattern. `.trash` is hidden unless `--include-trash`.\n- Pages hold 500 files or 100 hits: repeat the same command with `--cursor <nextCursor>` until it is absent. A `--path` that matches nothing adds a warning.\n\n## Links\n- `links back <note>` lists every file that links to it (`source`, `line`, `column`, `original`); `links out <note>` lists its links with `status` and `target`.\n- `links unresolved --path "notes/**"` reports broken links with `reason` `missing`, or `ambiguous` with `candidates`: use a longer link path.\n- `links orphans` lists notes nothing links to and `links deadends` notes that link nowhere; list intended entry notes in `plugins.settings.links.roots`.\n- Every report has `issues`: files whose metadata could not be parsed. Fix those first.\n\n## Vault check\n- `vault check` returns `data.findings` (`rule`, `severity`, `path`, `line`, `column`, `message`, `hint`, and `suggestion` for a missing target) and `summary` counts.\n- Rules: `unresolved-link`, `unresolved-embed`, `ambiguous-link`, `unresolved-anchor`, `invalid-frontmatter`, `invalid-canvas`, `invalid-base`, `property-type-mismatch`, `duplicate-block-id`, `empty-file`, `orphan-attachment`.\n- Narrow with `--path "notes/**"` and `--rule unresolved-link,invalid-frontmatter`.\n- `vault check --strict` fails with `VAULT_CHECK_FAILED` (exit 2) while an `error` finding remains, listed in `error.details.findings`.\n- `vault tags --sort count` lists tags with their files; `vault properties --name <property>` shows a property\'s types. Severities and ignore globs live in `plugins.settings.vault-check`.\n';
 const __vite_glob_0_4 = "# Moving, deleting and the writer lock\n\nRead this before restructuring notes, and when a write fails with `WORKSPACE_BUSY` or `ROLLBACK_FAILED`.\n\n## Move and rename\n- Always use the link-aware commands, never a copy plus delete.\n- `move notes/plan.md specs/plan.md --dry-run`, or `rename notes/plan.md Roadmap --dry-run` (a file keeps its extension), returns `data.revision` and a `diff` for every file whose links change.\n- Wikilinks and embeds keep `#Heading`, `#^block` and `|display` text; relative Markdown links are recomputed; frontmatter links and Canvas `file` nodes follow.\n- Review `data.links.unrewritten`, then repeat without `--dry-run` and with `--if-match <revision>`. One batch commits the move and every rewritten file.\n- A `<to>` that ends with `/` or names an existing folder moves the source into it under its own name. Moving a file with an extension to an extensionless name adds a warning.\n- `DESTINATION_EXISTS`: Forge never overwrites the target.\n- A folder moves the same way; its `--if-match` is the folder revision the dry run reports.\n- A repeated move whose source is gone and whose destination holds the revision succeeds with `alreadyApplied: true`.\n\n## Delete\n- `delete notes/scratch.md --if-match <revision>` moves the file to `.trash/` (numbered ` 1`, ` 2`… when taken). A folder needs `--recursive`; `--permanent` removes instead of trashing.\n- `HAS_BACKLINKS` lists the linking files in `details.backlinks`: rewrite or remove those links first, or move the note instead. Pass `--allow-broken-links` only when broken links are intended.\n- `PROTECTED_PATH`: `.obsidian`, `.forge` and, at workspace scope, `bin` are protected in any letter case. `--permanent` also refuses folders with symlinks or `node_modules`: trash them instead.\n- `data.deleted` lists every removed file and folder. A repeated delete fails with `NOT_FOUND`; `details.alreadyDeleted: true` and `details.trashPath` show where the first one put it.\n\n## The writer lock\n- All writers in a workspace share one lock, `.agent-cli.lock`, whatever their project.\n- `WORKSPACE_BUSY` (exit 4): `details.lock` names the holder (pid, hostname, startedAt, command), `details.path` the lock file and `details.stale` is `active`, `unknown` or `stale`.\n- `active` (`retryable: true`): wait `details.retryAfterMs` and retry, or rerun with the global `--wait <ms>`. Never delete an active lock.\n- `unknown` (`retryable: false`): another host, container or boot, or an unreadable lock. Do not retry in a loop. Delete the file in `details.path` only after you verify the recorded process is not a running Forge writer and inspect its changes.\n- `stale` (`retryable: false`): the holder no longer runs but Forge could not remove the file. Confirm no Forge process uses it, delete the file and retry.\n- When Forge removes a stale lock itself, it adds a warning: inspect the interrupted changes with `git status` and read-back before continuing.\n- `ROLLBACK_FAILED`: inspect every listed path and the saved contents before doing more work.\n";
 const __vite_glob_0_5 = "# Generated output and feature commands\n\nRead this when you generate UI or data-source code, manage agents, skills or Claude Code configuration, sync CI workflows, or build webviews and browser evidence. Each feature also has its own skill or reference page.\n\n## UI components and data sources\n- Inspect `components list`, `components inspect <id>` and `plugins.settings.ui` in `config --json` (framework and folders). The `ui` core plugin owns `components`, `interactions`, `make ui` and `make stories`; `data-sources` owns `data-sources` and `make data-source`.\n- Component definitions are workspace-scoped; generated UI uses the active project or `--project <id>`. Start with `components init --dry-run` if there are none, and run `components validate` after edits.\n- Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, check `context.root` and review the generated text.\n- `--plan` compares proposed and current output, `--check` detects drift read-only (exit 5, `UI_DRIFT`) and `--plan-out <file.json>` writes a revision map. Intentional regeneration takes `--revisions-from <file.json>` with the inspected hashes.\n- Generic file commands follow the open project: close it before guarded edits to the shared workspace library.\n- CLI generation does not prove browser behavior or accessibility; test with the project's own toolchain. See `bin/data/docs/reference/ui-components.md`.\n\n## Agents and skills\n- Agent definitions are docker-agent YAML in `agents/*.yaml`: follow the `forge-agents` skill. `agents generate --target claude` maintains `.claude/agents/`; never hand-edit generated agents.\n- `skills list` names the registered skills. `skills show <id>` returns SKILL.md and the list of the skill's `files`; `--file references/<name>.md` returns one of them.\n- `skills install [--target both|claude|agents | --out <dir>]` writes each skill folder into the selected project's `.claude/skills` and `.agents/skills`. Existing different files are refused, so an edited skill is never overwritten.\n\n## Claude Code configuration\n- Use the `claude` command instead of hand-written JSON. `claude capabilities` lists hook events, handler types, plugin components and runtime operations.\n- `claude hooks inspect` returns the settings document (`--scope project|local|user|plugin`, default `project`) with its `revision`; `hooks check` validates it; `hooks add|set|remove|enable|disable|configure` need `--if-match <revision>` once the file exists.\n- `claude agents …` manages `.claude/agents/*.md`; `claude plugins create|inspect|manifest|check|asset|write-asset|remove-asset <dir>` authors a plugin folder without running Claude.\n- `claude plugins list|install|…`, `claude marketplaces …` and `claude runtime …` run the installed `claude` executable and can change the user's installation: preview with `--dry-run`, keep `--scope project` and never pass `--scope user` without consent.\n- Hooks and plugins run commands: review them like code. See `bin/data/docs/reference/claude.md`.\n\n## CI workflows\n- Each project authors workflows in its `src/infrastructure/workflows/<concern>/*.yml`. From the workspace run `workflows sync --dry-run`, review, then `workflows sync`.\n- Never edit the generated `.github/workflows` entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ.\n\n## Webviews and browser evidence\n- Prototype: follow the `forge-webviews` skill. `project create <id> --type webview`, build and test inside that project, `webview inspect --project <id>`, `webview publish --project <id> --dry-run`, then `server start --webview <id>`.\n- Screenshots and illustrated tutorials: follow the `forge-browser` skill and `schema browser`. Dry runs validate without launching a browser.\n";
-const __vite_glob_0_6 = "# Forge protocol\n\nRead this when you need more than the core loop in [SKILL.md](../SKILL.md): the response envelope, discovery details, events, warnings, language and plugins.\n\n## Envelope\n- Success: `{ok: true, data, context, events, warnings}`. Failure: `{ok: false, error: {code, message, hint?, retryable?, details?}, context?, events, warnings}`; built-in codes always carry `hint` and `retryable`.\n- `context.workspaceRoot` is the workspace, `context.root` the root this command used and `context.project` the selected project or `null`. Check `context.root` before reading paths in `changes` or `events`.\n- `--json` prints compact JSON and `--no-json` indented JSON; both are JSON.\n- Exit codes: 0 success, 1 runtime, I/O, plugin or Claude failure, 2 invalid input or conflict, 3 missing file, project or workspace root, 4 writer or server lock busy, 5 generated output drift, 130 (SIGINT) or 143 (SIGTERM) interrupted.\n- `bin/data/docs/reference/errors.md` lists every code with its exit status, hint and `retryable` flag. `schema <command>` publishes its codes in `data.commands[0].errors` and `data.commonErrors`, and `data.errors` describes them.\n\n## Discovery\n- `help` (also no arguments, `--help` and `-h`) returns `{name, version, apiVersion, commands, mutating, globalOptions, next}`: one line per command and the ids of the mutating commands.\n- `help <command>` adds usage, 1-3 `examples`, options, arguments, `annotations.actions` and error codes. Options marked `path: true` accept `./x`, `x\\y` and absolute paths inside the root.\n- `schema <command>` returns the command's JSON Schema 2020-12 `inputSchema`, the `outputSchema` of `data` (or `annotations.actions.<action>.outputSchema`), `errors` and `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `scope`), plus the response `envelope` schema. `schema` alone is a compact index of ids; `schema --all` is the complete catalog.\n- Actions declare their own options: an option of another action fails with `UNKNOWN_OPTION`. Typos and common words (`ls`, `cat`, `grep`, `mv`, `rm`, `--force`) fail with suggestions such as `list` or `--if-match`.\n- Treat `destructiveHint: true` commands as needing a reviewed `--dry-run` first.\n- `config --json` shows the effective configuration: the projects path, defaults, enabled plugins and `plugins.settings.<plugin-id>`.\n\n## Events and warnings\n- `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`, with `kind: \"folder\"` records for new folders). Reads, dry runs and unchanged writes return `[]`.\n- `--events all` adds lifecycle records for this invocation; `--events none` drops them. Never rerun a mutation to get more events.\n- `warnings` never mean failure. They report, for example, a `--path` that matched nothing, a truncated read, literal `\\n` in `--content`, an empty `--stdin`, a dropped extension on `move`, a working directory outside the workspace or a failed listener after a committed write. After a listener warning, inspect the committed events and read back before considering a repeat.\n\n## Other error codes\n- `MISSING_ARGUMENT`: `details.option` names the option; for `--if-match`, take the revision from `read`, `stat` or a dry run.\n- `INVALID_OPTION_VALUE`: use one of `details.allowed`.\n- `INVALID_ARGUMENT`: the message names the missing or extra arguments; `details` hold `missing` and the expected counts.\n- `UNKNOWN_GENERATOR`, unknown actions: `details.allowed` lists the valid ids.\n- `INVALID_PLAN`: fix `details.issues`; any `apply` failure adds `details.operation`, the failing index.\n- `VAULT_CHECK_FAILED`: fix each `error.details.findings` entry by its `hint`.\n- `SERVER_STOP_FAILED`: inspect `server status` before repeating.\n- `PLUGIN_UNAVAILABLE`: run `plugins` to see the plugin's state and reason.\n- Only `error.retryable: true` allows an unchanged retry, for example `WORKSPACE_BUSY` or `SERVER_BUSY`.\n\n## Language and plugins\n- `--lang de` returns German descriptions, hints, warnings and findings. Commands, options, ids, codes and JSON keys stay English, so match codes.\n- Plugins in `bin/plugins` run trusted Node code. Review a plugin's `manifest.json` and entry point before adding its id to `plugins.enabled`. `--no-plugins` skips user plugins for one invocation.\n- `--no-dry-run` and `--no-json` override configured defaults.\n- Never evaluate shell code taken from document content.\n";
+const __vite_glob_0_6 = "# Forge protocol\n\nRead this when you need more than the core loop in [SKILL.md](../SKILL.md): the response envelope, discovery details, events, warnings, language and plugins.\n\n## Envelope\n- Success: `{ok: true, data, context, events, warnings}`. Failure: `{ok: false, error: {code, message, hint?, retryable?, details?}, context?, events, warnings}`; built-in codes always carry `hint` and `retryable`.\n- `context.workspaceRoot` is the workspace, `context.root` the root this command used and `context.project` the selected project or `null`. Check `context.root` before reading paths in `changes` or `events`.\n- `--json` prints compact JSON and `--no-json` indented JSON; both are JSON.\n- Exit codes: 0 success, 1 runtime, I/O, plugin or Claude failure, 2 invalid input or conflict, 3 missing file, project or workspace root, 4 writer or server lock busy, 5 generated output drift, 130 (SIGINT) or 143 (SIGTERM) interrupted.\n- `bin/data/docs/reference/errors.md` lists every code with its exit status, hint and `retryable` flag. `schema <command>` publishes its codes in `data.commands[0].errors` and `data.commonErrors`, and `data.errors` describes them.\n\n## Discovery\n- `help` (also no arguments, `--help` and `-h`) returns `{name, version, apiVersion, commands, mutating, globalOptions, next}`: one line per command and the ids of the mutating commands.\n- `help <command>` adds usage, 1-3 `examples`, options, arguments, `annotations.actions` and error codes. Options marked `path: true` accept `./x`, `x\\y` and absolute paths inside the root.\n- `schema <command>` returns the command's JSON Schema 2020-12 `inputSchema`, the `outputSchema` of `data` (or `annotations.actions.<action>.outputSchema`), `errors` and `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `scope`), plus the response `envelope` schema. `schema` alone is a compact index of ids; `schema --all` is the complete catalog.\n- Actions declare their own options: an option of another action fails with `UNKNOWN_OPTION`. Typos and common words (`ls`, `cat`, `grep`, `mv`, `rm`, `--force`) fail with suggestions such as `list` or `--if-match`.\n- Treat `destructiveHint: true` commands as needing a reviewed `--dry-run` first.\n- `config --json` shows the effective configuration: the projects path, defaults, enabled plugins and `plugins.settings.<plugin-id>`.\n\n## Events and warnings\n- `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`, with `kind: \"folder\"` records for new folders). Reads, dry runs and unchanged writes return `[]`.\n- `--events all` adds lifecycle records for this invocation; `--events none` drops them. Never rerun a mutation to get more events.\n- `warnings` never mean failure. They report, for example, a `--path` that matched nothing, a truncated read, literal `\\n` in `--content`, an empty `--stdin`, a dropped extension on `move`, a working directory outside the workspace or a failed listener after a committed write. Each entry is `{code, message, details?}`: match `code` (such as `EXTENSION_DROPPED` or `PATH_MATCHED_NOTHING`), never the text. After a listener warning, inspect the committed events and read back before considering a repeat.\n\n## Other error codes\n- `MISSING_ARGUMENT`: `details.option` names the option; for `--if-match`, take the revision from `read`, `stat` or a dry run.\n- `INVALID_OPTION_VALUE`: use one of `details.allowed`.\n- `INVALID_ARGUMENT`: the message names the missing or extra arguments; `details` hold `missing` and the expected counts.\n- `UNKNOWN_GENERATOR`, unknown actions: `details.allowed` lists the valid ids.\n- `INVALID_PLAN`: fix `details.issues`; any `apply` failure adds `details.operation`, the failing index.\n- `VAULT_CHECK_FAILED`: fix each `error.details.findings` entry by its `hint`.\n- `SERVER_STOP_FAILED`: inspect `server status` before repeating.\n- `PLUGIN_UNAVAILABLE`: run `plugins` to see the plugin's state and reason.\n- Only `error.retryable: true` allows an unchanged retry, for example `WORKSPACE_BUSY` or `SERVER_BUSY`.\n\n## Language and plugins\n- `--lang de` returns German descriptions, hints, warnings and findings. Commands, options, ids, codes and JSON keys stay English, so match codes.\n- Plugins in `bin/plugins` run trusted Node code. Review a plugin's `manifest.json` and entry point before adding its id to `plugins.enabled`. `--no-plugins` skips user plugins for one invocation.\n- `--no-dry-run` and `--no-json` override configured defaults.\n- Never evaluate shell code taken from document content.\n";
 const __vite_glob_0_7 = "# Workspace, projects and checks\n\nRead this when you install or upgrade Forge, set up a workspace, work with projects or templates, run quality gates or start the admin view. The core loop is in [SKILL.md](../SKILL.md).\n\n## Install and upgrade\n- New workspace from a release: follow `bin/data/docs/how-to/install.md`. Download the trusted release's `install-forge.mjs`, run it with `--version` and `--workspace`, and check its exit status and JSON `ok`. It verifies the archive checksum, installs generic defaults, runs setup and refuses an existing `bin/`. Do not copy a source checkout's saved selection.\n- Existing workspace: `setup --dry-run`, then `setup`. It always targets the workspace and adds only missing files: the distribution, `bin/config.json`, the skills, an example `bin/templates/entity.md` and a lean `AGENTS.md`. Existing files are skipped.\n- Self-upgrade: `update check`, then `update apply --release-version <version> --if-match <revision> --dry-run`, then the same command without `--dry-run`. A dry run downloads nothing. Upgrades keep configuration, project selection, plugins, templates and custom webviews. On `CONFLICT`, inspect again. Afterwards check `--version` and `project current`, and restart a running server. See `bin/data/docs/reference/updates.md`.\n\n## Projects\n- `project list` lists the valid projects and, under `invalid`, project folders whose `.forge/project.json` is broken (`{directory, code, reason}`).\n- `project inspect <id>`, `project open <id>`, `project current`, `project close`. The selection lives in `bin/data/context.json` and is shared by every invocation.\n- With `--project <id>`, use the same project for the read, the preview and the write: a revision identifies bytes, not the project. An unknown project fails instead of falling back.\n- Checking `project current` does not lock the selection. Coordinate selection changes with other agents, or use separate workspaces when agents need different selections.\n- `STALE_PROJECT_CONTEXT` names the selected `project` and `directory` with the cause: open a valid project or `project close`.\n- New code project: `project create <kebab-name> --dry-run` (`--type webview` for a prototype). New domain or application file: `project component [id] <PascalName> --kind domain|application --dry-run`; omit the id for the open project.\n- Shared templates always live in workspace `bin/templates` and plugins in `bin/plugins`.\n\n## Templates and documents\n- `templates list`, then `templates inspect <name.md>` for its required values.\n- `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`; review the full text before applying. `--date <ISO>` makes dates repeatable.\n- Workflow stages: `templates inspect workflow/prd.md`, `templates install workflow --dry-run`, then `make document <Title> --template workflow/<kind>.md --values '{\"owner\":\"Team\"}' --dry-run`. See `bin/data/docs/tutorials/idea-to-production.md`. A drafted document is not a completed requirement.\n- When the `templates` or `scaffolds` core plugin is disabled, its commands and generators are unknown, `setup` skips the templates with a warning and `project create` fails with `PLUGIN_UNAVAILABLE`.\n\n## Checks and reporting\n- For generated TypeScript projects, run `npm run check:fast` from the project folder while you work, fix the cause of each failure, rerun the failed stage and finish with `npm run check`. For other projects, read their scripts first.\n- Never weaken a gate to hide a failure.\n- Summarize changed files, acceptance evidence, checks run and remaining limits.\n\n## Admin view\n- Only after the user agrees: `server start --webview admin` and share `data.url`. The CLI never opens a browser.\n- `server status` is read-only, `server start` reuses a running server and `server stop` ends it. Start and stop support `--dry-run`.\n- The URL fragment holds a bearer token: treat it as local session access, and fetch a fresh link after a restart. See `bin/data/docs/reference/server.md`.\n";
 const workflow = '---\nname: forge-workflow\ndescription: Drive the portable Forge CLI (node bin/forge.js) safely. Discover commands with help and schema, pick the workspace and project, preview writes with --dry-run, guard them with --if-match, retry lost writes and recover from error codes. Use when a workspace has bin/forge.js, when starting any Forge task, or when a Forge command fails.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nEvery command prints one JSON envelope and never prompts. Check the exit code and `ok`, and match `error.code`, never message text.\n\n## Root and scope\n- The workspace is the folder holding `bin/`, not your working directory. Pick another with `--root <dir>` or `FORGE_ROOT=<dir>`; `--root` wins, and a missing root fails with `INVALID_ROOT`.\n- Paths are relative to `context.root`: the open project, or the workspace. Check `project current`. `project open <id>` changes the selection for every agent, and `project close` clears it.\n- With parallel agents, leave the selection alone and pass `--project <id>` to file commands (`read`, `search`, `edit`, `apply`…).\n\n## Discover\n- `help` lists commands. `help <command>` gives usage, examples, options and error codes. `schema <command>` gives the JSON Schema input and output.\n- Avoid `schema --all`: it is every command at once.\n- Global flags such as `--root`, `--dry-run` and `--wait` may come before or after the command.\n\n## Safe edit loop\n1. `read <path>` and keep `data.revision`.\n2. Run the change with `--dry-run --if-match <revision>` and review `data.changes[].diff`.\n3. Rerun it without `--dry-run`, then read the file back.\n4. Change several files at once with one `apply <plan.json>`: all or nothing, with `ifMatch` on every existing path.\n5. After note changes, run `vault check --strict` until it passes.\n\n## Arguments\n- Quote every value, and quote empty variables (`--replace "$X"`). An option never takes the next flag as its value: it fails with `MISSING_ARGUMENT`.\n- Write a value that starts with `-` as `--key=value` (`--find=--draft`). Pass multiline or shell-sensitive text with `--stdin`.\n\n## Bounded output\n- `read` truncates at 256 KiB (`truncated: true`); read on with `--lines <a>-<b>`.\n- `list` returns 500 files per page and `search` 100 hits. Repeat with `--cursor <nextCursor>` until it is absent.\n- Narrow with `--path <folder or glob>`, `--kind`, or `search --files-only` / `--count`. Check `warnings` too.\n\n## Retries\n- Lost track of a write? Run it again. `operation: "unchanged"` or `alreadyApplied: true` means it already happened.\n- A repeated `delete` fails with `NOT_FOUND`; `details.alreadyDeleted` and `details.trashPath` show it already succeeded.\n- Retry an unchanged command only when `error.retryable` is true.\n\n## Errors\nExit codes: 1 runtime, 2 input or conflict, 3 not found, 4 busy, 5 drift, 130/143 interrupted. Every error has a `hint`.\n- `CONFLICT`: reread the file and reapply your change to its current content. If `details.alreadyApplied` is true, the change is already there. Never resend the old change unchanged.\n- `NO_MATCH`: copy the exact text, using `details.nearMatch` and `details.lineEndings`.\n- `AMBIGUOUS_EDIT`: extend `--find` until it matches once (`details.lines`).\n- `UNKNOWN_COMMAND`, `UNKNOWN_OPTION`: see `details.suggestions` and `help <command>`.\n- `INVALID_PATH`: use `details.suggestion`.\n- `NOT_FOUND`: check `details.path` and `project current`.\n- `WORKSPACE_BUSY`: wait `details.retryAfterMs`, or pass `--wait <ms>`.\n- `ROLLBACK_FAILED`: inspect every listed file before continuing.\n\n## Reference\n- [Protocol](references/protocol.md): envelope, events, warnings, language, plugins and other error codes.\n- [Workspace](references/workspace.md): install, setup, updates, projects, templates, quality gates and the admin server.\n- [Generation](references/generation.md): UI, data sources, agents, skills, Claude Code, workflows, webviews and browser.\n- Notes, Canvas, Bases and attachments: the `forge-vault` skill.\n';
 const vault = '---\nname: forge-vault\ndescription: Read, search, link-check, create and edit Obsidian Markdown notes, frontmatter properties, Canvas, Bases and attachments through Forge with revision guards, link-preserving moves and trash deletes. Use when working with notes, wikilinks, backlinks, tags, .canvas or .base files, or any vault file edit in a Forge workspace.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nEdit vault files only through Forge, so links, frontmatter and revisions stay intact. Root rules, the read → `--dry-run` → `--if-match` loop and retries are in the `forge-workflow` skill.\n\n## Paths\n- Paths are relative to `context.root`: the open project, or the workspace. `--project <id>` targets another project for one call.\n- `./x`, `x\\y` and absolute paths inside the root are accepted. Traversal, symlinks and `.git` fail with `INVALID_PATH`.\n\n## Read and find\n- `read <path>` returns `revision`; a note also returns `content` and `properties` (`--parts body` for the body only).\n- Content over 256 KiB is cut (`truncated: true`, `lines.total`): continue with `--lines <a>-<b>`. A note with broken frontmatter still reads, with `properties: null` and an `issue`.\n- `search "text"` returns hits with `path`, `line` and `revision`. Narrow with `--path notes`, `--tag`, `--property status=active`, `--regex`, `--files-only` or `--count`.\n- `list --path notes --kind markdown` lists files. Page both with `--cursor <nextCursor>`.\n- `read-many <paths…>` reads up to 32 files; `stat <path>` gives a revision without content.\n- `links back <note>` lists notes that link to it; `links unresolved` lists broken links.\n\n## Change\n- New file: `create notes/idea.md --content \'# Idea\'`; existing files are refused.\n- One replacement: `edit <file> --find <old> --replace <new> --if-match <rev>`. Several: `--edits \'[{"find":"a","replace":"b"}]\'`.\n- Part of a note: `--section "Plan > Risks" --append --content "- Item"` or `--block <id> --replace <text>` instead of `--find`.\n- Frontmatter: `properties <note> --set \'{"status":"draft"}\' --unset old --if-match <rev>`. Untouched YAML keeps its bytes.\n- Whole file: `write <path> --stdin --if-match <rev>`. Canvas or Base JSON: `patch <file> --pointer /nodes/- --value \'<json>\' --if-match <rev>`.\n- Several files: one `apply plan.json`, with `--dry-run` first and `ifMatch` on every existing path.\n- Move or rename: `move <from> <to>` rewrites every link. A `<to>` ending in `/` or naming a folder moves into it.\n- Delete: `delete <path>` moves the file to `.trash/`. Never copy and delete to move.\n- Dry-run `move`, `rename` and `delete` first: the preview reports the `revision` for `--if-match`.\n\n## Verify\n- Read the file back and run `validate <path>`.\n- Run `vault check --strict` and fix each finding by its `hint` until it passes.\n\n## Errors\n- `NO_MATCH`: copy the exact current text, including whitespace and line endings.\n- `AMBIGUOUS_EDIT`: extend `--find` until it matches once (`details.lines`).\n- `SECTION_NOT_FOUND`: pick from `details.headings` or `details.blocks`.\n- `AMBIGUOUS_SECTION`: pass a `details.candidates` line as `--section-line`.\n- `CONFLICT`: reread and reapply your change to the current content.\n- `DESTINATION_EXISTS`: Forge never overwrites; choose another target.\n- `HAS_BACKLINKS`: fix the links in `details.backlinks` first, or move the note instead.\n- `PROTECTED_PATH`: `.obsidian`, `.forge` and workspace `bin` cannot move or be deleted.\n\n## Reference\n- [Editing](references/editing.md): sections, blocks, apply plans, properties, Canvas, Bases, text, attachments and templates.\n- [Finding and checking](references/finding.md): read limits, search, list, links and vault check rules.\n- [Moving, deleting and locks](references/moving-and-locks.md): link rewriting, the trash and `WORKSPACE_BUSY` recovery.\n- Screenshots in notes: the `forge-browser` skill.\n';
@@ -19140,6 +19189,9 @@ function changesOutput(properties2 = {}, required2 = []) {
     required: ["dryRun", "changes", ...required2],
     properties: { dryRun: dryRunSchema, changes: changesSchema, preview: previewSchema, ...properties2 }
   };
+}
+function ensureSkill(condition, code2, message2, details) {
+  if (!condition) throw new PluginFailure(code2, message2, details);
 }
 const listOutput$1 = { type: "object", required: ["skills"], properties: { skills: { type: "array", items: { type: "string" } } } };
 const showOutput = {
@@ -19198,7 +19250,7 @@ function skillsCommand(skills2) {
       if (action2 === "show") {
         arity(args, 2);
         const skill = skills2.get(args[1]);
-        ensure(skill, "UNKNOWN_SKILL", args[1]);
+        ensureSkill(skill, "UNKNOWN_SKILL", args[1]);
         const files2 = skillFileNames(skill), path2 = value$2(flags, "file") ?? "SKILL.md";
         ensure(files2.includes(path2), "INVALID_OPTION_VALUE", `--file must be one of: ${files2.join(", ")}.`, { option: "file", value: path2, allowed: files2 });
         return { id: skill.id, path: path2, content: path2 === "SKILL.md" ? skill.content : skill.files[path2], files: files2 };
@@ -19212,8 +19264,15 @@ function skillsCommand(skills2) {
     }
   };
 }
+const skillErrors = [
+  { code: "UNKNOWN_SKILL", category: "input", summary: "The skill is not registered.", hint: "Run skills list." }
+];
+const germanSkillErrors = {
+  UNKNOWN_SKILL: { summary: "Der Skill ist nicht registriert.", hint: "Verfügbare Skills zeigt skills list." }
+};
 const skillsStrings = {
   de: {
+    errors: germanSkillErrors,
     manifest: { name: "Agent-Skills", description: "Mitgelieferte Agent-Skills und der Befehl skills, um sie aufzulisten, zu lesen und zu installieren." },
     descriptions: {
       "skills install: the skill roots, .claude/skills (claude), .agents/skills (agents) or both (the default).": "skills install: die Skill-Stammordner .claude/skills (claude), .agents/skills (agents) oder beide (Standard).",
@@ -19238,6 +19297,7 @@ const skillsPlugin = {
   create: (host) => ({
     skills: bundledSkills,
     commands: [skillsCommand(host.skills)],
+    errors: skillErrors,
     strings: {
       de: {
         commands: { skills: "Mitgelieferte und von Plugins bereitgestellte Agent-Skills auflisten, lesen oder installieren." },
@@ -19544,17 +19604,6 @@ class Pager {
     ensure(value2.q === fingerprint(this.query), "INVALID_ARGUMENT", "--cursor belongs to a different query; pass the same pattern and filters, or rerun without --cursor.");
     return value2.after;
   }
-}
-class PluginFailure extends Error {
-  constructor(code2, message2, details) {
-    super(message2);
-    this.code = code2;
-    if (details) this.details = details;
-  }
-  code;
-}
-function isCodedFailure(error2) {
-  return error2 instanceof AppError || error2 instanceof PluginFailure;
 }
 const searchScopes = ["body", "frontmatter", "all"];
 const searchKinds = ["markdown", "canvas", "base", "text"];
@@ -22041,6 +22090,7 @@ class AgentAuthoring {
     return { path: path2, agent: name2, agents: names2, created: !current, diagnostics: [...extra, ...checked2.diagnostics.map((entry2) => ({ ...entry2, path: path2 }))], ...result };
   }
 }
+const generationDrift = (message2, details) => forgeError("GENERATION_DRIFT", message2, details);
 class GenerationService {
   constructor(workspace2) {
     this.workspace = workspace2;
@@ -22086,9 +22136,13 @@ class GenerationService {
     }
     return { matches: outputs.every((output2) => output2.status === "unchanged"), revisions: orderedRevisions, outputs, ...manifest ? { manifest } : {} };
   }
-  async check(writes, errorCode2) {
+  /**
+   * The plan when every output matches; otherwise the drift failure `drift` builds from the message and details
+   * (`details.outputs`): GENERATION_DRIFT for `make`, or the code of the plugin that generates the files.
+   */
+  async check(writes, drift = generationDrift) {
     const plan = await this.plan(writes);
-    if (!plan.matches) throw forgeError(errorCode2, "Generated outputs are missing or differ from their definitions. Run the same command with --plan to review changes.", { outputs: plan.outputs.map(({ path: path2, status: status2 }) => ({ path: path2, status: status2 })) });
+    if (!plan.matches) throw drift("Generated outputs are missing or differ from their definitions. Run the same command with --plan to review changes.", { outputs: plan.outputs.map(({ path: path2, status: status2 }) => ({ path: path2, status: status2 })) });
     return plan;
   }
   validate(writes) {
@@ -22481,7 +22535,7 @@ const unsupportedFields = [
   "redact_secrets",
   "budgets"
 ];
-function templates$1(value2, at) {
+function templates$2(value2, at) {
   return templateExpressions(value2).map((expression2) => expression2.body.startsWith("env.") ? diagnostic("warning", "template-literal", at, say("envTemplateLiteral", { expression: expression2.source }), "A") : diagnostic("warning", "template-literal", at, say("templateLiteral", { expression: expression2.source }), "U"));
 }
 function promptOptions(name2, agent) {
@@ -22523,9 +22577,9 @@ function claudeAgent(config2, name2, instructions2, names2, style) {
     description2 = `The ${name2} agent.`;
     diagnostics2.push(diagnostic("warning", "description-synthesized", `${at}/description`, say("agentDescription", { description: description2 }), "A"));
   }
-  diagnostics2.push(...templates$1(description2, `${at}/description`));
+  diagnostics2.push(...templates$2(description2, `${at}/description`));
   const instruction = instructionText(agent.instruction) ?? instructions2[name2] ?? "";
-  diagnostics2.push(...templates$1(instruction, agent.instruction === void 0 ? `${at}/instruction_file` : `${at}/instruction`), ...promptOptions(name2, agent));
+  diagnostics2.push(...templates$2(instruction, agent.instruction === void 0 ? `${at}/instruction_file` : `${at}/instruction`), ...promptOptions(name2, agent));
   const model2 = claudeModel(config2, name2, agent, style), tools = claudeTools(config2, name2, agent), hooks2 = claudeHooks(name2, agent.hooks);
   const delegates = delegation(name2, agent, names2), preloaded = skills(name2, agent);
   diagnostics2.push(...model2.diagnostics, ...tools.diagnostics, ...hooks2.diagnostics, ...delegates.diagnostics, ...preloaded.diagnostics);
@@ -22771,10 +22825,10 @@ function recordedRules(path2, value2) {
   }
   return nonEmpty$1(rules2);
 }
-function reconcileRules(list2, before, recorded, granted, coverage) {
-  const remaining = new Map(recorded.map((entry2) => [entry2.rule, entry2.origins.filter((origin) => !covers(coverage, origin))]));
+function reconcileRules(list2, before, recorded2, granted, coverage) {
+  const remaining = new Map(recorded2.map((entry2) => [entry2.rule, entry2.origins.filter((origin) => !covers(coverage, origin))]));
   const grants = new Map(granted.map((entry2) => [entry2.rule, entry2.origins]));
-  const revoked = recorded.filter((entry2) => remaining.get(entry2.rule).length === 0 && !grants.has(entry2.rule) && before.includes(entry2.rule)).map((entry2) => ({ list: list2, rule: entry2.rule, origins: entry2.origins }));
+  const revoked = recorded2.filter((entry2) => remaining.get(entry2.rule).length === 0 && !grants.has(entry2.rule) && before.includes(entry2.rule)).map((entry2) => ({ list: list2, rule: entry2.rule, origins: entry2.origins }));
   const kept = before.filter((rule2) => !revoked.some((entry2) => entry2.rule === rule2));
   const rules2 = [...kept, ...granted.map((entry2) => entry2.rule).filter((rule2) => !kept.includes(rule2))];
   const owned = rules2.flatMap((rule2) => {
@@ -23095,8 +23149,8 @@ class AgentGeneration {
   async coverage(request, sources, manifest) {
     if (request.file === void 0 && request.agent === void 0) return { files: null };
     const files2 = sources.map((source2) => source2.path);
-    const recorded = new Set(Object.values(manifest.settings.permissions ?? {}).flatMap((rules2) => rules2.flatMap((rule2) => rule2.origins.map((origin) => origin.file))));
-    const present2 = await Promise.all([...recorded].map(async (file) => await this.isFile(file) ? [file] : []));
+    const recorded2 = new Set(Object.values(manifest.settings.permissions ?? {}).flatMap((rules2) => rules2.flatMap((rule2) => rule2.origins.map((origin) => origin.file))));
+    const present2 = await Promise.all([...recorded2].map(async (file) => await this.isFile(file) ? [file] : []));
     return { files: files2, ...request.agent ? { agent: request.agent } : {}, existing: [.../* @__PURE__ */ new Set([...files2, ...present2.flat()])] };
   }
   /** Whether a recorded scope path names an existing file; an invalid, missing or symlinked path does not. */
@@ -23125,8 +23179,8 @@ class AgentGeneration {
   status(output2) {
     if (output2.status !== "changed" || output2.currentContent === void 0) return output2.status;
     try {
-      const current = this.ports.markdown.parse(output2.currentContent), recorded = record$4(current.metadata["x-forge-source"]).outputHash;
-      return typeof recorded === "string" && recorded === this.outputHash(current) ? "changed" : "hand-edited";
+      const current = this.ports.markdown.parse(output2.currentContent), recorded2 = record$4(current.metadata["x-forge-source"]).outputHash;
+      return typeof recorded2 === "string" && recorded2 === this.outputHash(current) ? "changed" : "hand-edited";
     } catch {
       return "hand-edited";
     }
@@ -24443,12 +24497,12 @@ function requireUtil() {
   util.checkStrictMode = checkStrictMode;
   return util;
 }
-var names$2 = {};
+var names$3 = {};
 var hasRequiredNames;
 function requireNames() {
-  if (hasRequiredNames) return names$2;
+  if (hasRequiredNames) return names$3;
   hasRequiredNames = 1;
-  Object.defineProperty(names$2, "__esModule", { value: true });
+  Object.defineProperty(names$3, "__esModule", { value: true });
   const codegen_1 = /* @__PURE__ */ requireCodegen();
   const names2 = {
     // validation function arguments
@@ -24479,8 +24533,8 @@ function requireNames() {
     jsonLen: new codegen_1.Name("jsonLen"),
     jsonPart: new codegen_1.Name("jsonPart")
   };
-  names$2.default = names2;
-  return names$2;
+  names$3.default = names2;
+  return names$3;
 }
 var hasRequiredErrors;
 function requireErrors() {
@@ -33090,7 +33144,7 @@ function synced(context, field2) {
 }
 const basename$2 = (path2) => path2.slice(path2.lastIndexOf("/") + 1).replace(/\.md$/i, "");
 const iterationNote = (session, name2) => session.cache.files().find((path2) => path2.toLowerCase().endsWith(".md") && basename$2(path2).toLowerCase() === name2.toLowerCase() && isIterationType(readString(ownValue(session.cache.getFileCache(path2)?.frontmatter, session.settings.typeKey)))) ?? null;
-const scalar$1 = (value2) => value2 === void 0 || value2 === null || value2 === "" ? null : typeof value2 === "string" || typeof value2 === "number" || typeof value2 === "boolean" ? value2 : void 0;
+const scalar$2 = (value2) => value2 === void 0 || value2 === null || value2 === "" ? null : typeof value2 === "string" || typeof value2 === "number" || typeof value2 === "boolean" ? value2 : void 0;
 const itemType = (item) => item.typeName ?? (displayType(item) || null);
 function localValues(context, item, frontmatter, body) {
   const values2 = /* @__PURE__ */ new Map();
@@ -33114,7 +33168,7 @@ function localValues(context, item, frontmatter, body) {
     else if (entry2.path !== null) values2.set("iteration", iterationPath(root, basename$2(entry2.path)));
   }
   if (synced(context, "area")) {
-    const area = scalar$1(ownValue(frontmatter, context.connection.areaProperty));
+    const area = scalar$2(ownValue(frontmatter, context.connection.areaProperty));
     if (area === null || typeof area === "string") values2.set("area", area === null ? null : area.trim().replace(/\\+$/, "") || null);
   }
   if (synced(context, "priority")) {
@@ -33132,7 +33186,7 @@ function localValues(context, item, frontmatter, body) {
     values2.set("description", text2 === "" ? null : text2);
   }
   for (const key of Object.keys(context.mapping.properties)) {
-    const value2 = scalar$1(ownValue(frontmatter, key));
+    const value2 = scalar$2(ownValue(frontmatter, key));
     if (value2 !== void 0) values2.set(`${PROPERTY}${key}`, value2);
   }
   return values2;
@@ -33152,7 +33206,7 @@ function remoteValues(context, remote) {
   if (synced(context, "tags")) values2.set("tags", remote.tags);
   if (synced(context, "description") && remote.description !== void 0) values2.set("description", remote.description);
   for (const [key, reference] of Object.entries(context.mapping.properties)) {
-    const value2 = scalar$1(remote.fields[reference]);
+    const value2 = scalar$2(remote.fields[reference]);
     if (value2 !== void 0) values2.set(`${PROPERTY}${key}`, value2);
   }
   return values2;
@@ -33750,7 +33804,7 @@ async function runSync(context, services2, request, warning2 = englishSyncWarnin
   } finally {
     interruption?.dispose();
     services2.activity.syncing = false;
-    for (const { lock, release: release2 } of releases.reverse()) if (!await release2()) context.events.warn(warning2("lockLeft", { lock }));
+    for (const { lock, release: release2 } of releases.reverse()) if (!await release2()) context.events.warn({ code: "BACKLOG_SYNC_LOCK_LEFT", message: warning2("lockLeft", { lock }), details: { lock } });
   }
   return {
     dryRun: request.mode === "status" || context.workspace.dryRun,
@@ -34743,6 +34797,12 @@ function requireLocalizedFormat() {
 }
 var localizedFormatExports = requireLocalizedFormat();
 const localizedFormat = /* @__PURE__ */ getDefaultExportFromCjs(localizedFormatExports);
+function templateError(code2, message2, details) {
+  return new PluginFailure(code2, message2, details);
+}
+function ensureTemplate(condition, code2, message2, details) {
+  if (!condition) throw new PluginFailure(code2, message2, details);
+}
 dayjs.extend(utc);
 dayjs.extend(advancedFormat);
 dayjs.extend(localizedFormat);
@@ -34753,18 +34813,18 @@ function textOf(bytes) {
     throw forgeError("INVALID_ENCODING", "Templates must be valid UTF-8.");
   }
 }
-function placeholders(text2) {
+function placeholders$1(text2) {
   const result = [];
   const braces = /{{|}}/g;
   for (let match = braces.exec(text2); match; match = braces.exec(text2)) {
-    ensure(match[0] === "{{", "INVALID_TEMPLATE", "Unexpected closing template braces.");
+    ensureTemplate(match[0] === "{{", "INVALID_TEMPLATE", "Unexpected closing template braces.");
     const close = text2.indexOf("}}", braces.lastIndex);
-    ensure(close >= 0, "INVALID_TEMPLATE", "Unclosed template placeholder.");
+    ensureTemplate(close >= 0, "INVALID_TEMPLATE", "Unclosed template placeholder.");
     const expression2 = text2.slice(braces.lastIndex, close).trim();
     const parsed2 = /^([A-Za-z_][\w.-]*)(?::([^{}\r\n]+))?$/.exec(expression2);
-    ensure(parsed2, "INVALID_TEMPLATE", `Invalid template placeholder: {{${expression2}}}.`);
+    ensureTemplate(parsed2, "INVALID_TEMPLATE", `Invalid template placeholder: {{${expression2}}}.`);
     const key = parsed2[1], format2 = parsed2[2];
-    ensure(format2 === void 0 || key === "date" || key === "time", "INVALID_TEMPLATE", "Only date and time placeholders accept a format.");
+    ensureTemplate(format2 === void 0 || key === "date" || key === "time", "INVALID_TEMPLATE", "Only date and time placeholders accept a format.");
     result.push({ expression: expression2, key, ...format2 === void 0 ? {} : { format: format2 }, start: match.index, end: close + 2 });
     braces.lastIndex = close + 2;
   }
@@ -34786,28 +34846,28 @@ const jsonIssues$1 = {
 };
 function jsonValue$1(value2) {
   const issue2 = jsonValueIssue(value2);
-  if (issue2) throw forgeError("INVALID_TEMPLATE_VALUES", jsonIssues$1[issue2]);
+  if (issue2) throw templateError("INVALID_TEMPLATE_VALUES", jsonIssues$1[issue2]);
 }
 function asText(value2) {
   return typeof value2 === "string" ? value2 : JSON.stringify(value2);
 }
 function renderYaml(source2, resolve2) {
-  const tokens = placeholders(source2);
+  const tokens = placeholders$1(source2);
   const resolved2 = tokens.map(resolve2);
   const serializedValues = JSON.stringify(resolved2);
   let prefix = "AGENTCLITEMPLATETOKEN";
   while (source2.includes(prefix) || serializedValues.includes(prefix)) prefix += "X";
   const sentinels = tokens.map((_, index2) => `${prefix}${index2}END`);
   const document2 = distExports.parseDocument(replaceTokens(source2, tokens, (_, index2) => sentinels[index2]), { uniqueKeys: true });
-  ensure(document2.errors.length === 0, "INVALID_TEMPLATE", document2.errors.map((error2) => error2.message).join("; "));
-  ensure(document2.contents === null || distExports.isMap(document2.contents), "INVALID_TEMPLATE", "Template frontmatter must be a YAML mapping.");
+  ensureTemplate(document2.errors.length === 0, "INVALID_TEMPLATE", document2.errors.map((error2) => error2.message).join("; "));
+  ensureTemplate(document2.contents === null || distExports.isMap(document2.contents), "INVALID_TEMPLATE", "Template frontmatter must be a YAML mapping.");
   const consumed = /* @__PURE__ */ new Set();
   const sentinelPattern = new RegExp(`${prefix}(\\d+)END`, "g");
   distExports.visit(document2, (key, node2, path2) => {
-    ensure(path2.length < 100, "INVALID_TEMPLATE", "Template YAML is nested too deeply.");
+    ensureTemplate(path2.length < 100, "INVALID_TEMPLATE", "Template YAML is nested too deeply.");
     if (key === "key") {
-      ensure(distExports.isScalar(node2) && typeof node2.value === "string", "INVALID_TEMPLATE", "Template YAML keys must be strings.");
-      ensure(!node2.value.includes(prefix), "INVALID_TEMPLATE", "Template placeholders cannot be used in YAML keys.");
+      ensureTemplate(distExports.isScalar(node2) && typeof node2.value === "string", "INVALID_TEMPLATE", "Template YAML keys must be strings.");
+      ensureTemplate(!node2.value.includes(prefix), "INVALID_TEMPLATE", "Template placeholders cannot be used in YAML keys.");
     }
     if (!distExports.isScalar(node2) || typeof node2.value !== "string" || key === "key") return;
     const scalar2 = node2.value;
@@ -34827,30 +34887,30 @@ function renderYaml(source2, resolve2) {
       return asText(resolved2[position2]);
     });
   });
-  ensure(consumed.size === tokens.length, "INVALID_TEMPLATE", "Placeholders in frontmatter are supported only in scalar values, not comments, tags or anchors.");
+  ensureTemplate(consumed.size === tokens.length, "INVALID_TEMPLATE", "Placeholders in frontmatter are supported only in scalar values, not comments, tags or anchors.");
   let data;
   try {
     data = document2.toJS({ maxAliasCount: 100 });
   } catch {
-    throw forgeError("INVALID_TEMPLATE", "Template YAML aliases are invalid or excessive.");
+    throw templateError("INVALID_TEMPLATE", "Template YAML aliases are invalid or excessive.");
   }
   try {
     jsonValue$1(data);
   } catch {
-    throw forgeError("INVALID_TEMPLATE", "Template YAML must contain JSON-compatible values without cycles.");
+    throw templateError("INVALID_TEMPLATE", "Template YAML must contain JSON-compatible values without cycles.");
   }
   return document2.toString();
 }
 function instant(date2) {
   if (date2 === void 0) return dayjs.utc();
   const match = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2}))?$/.exec(date2);
-  ensure(match, "INVALID_TEMPLATE_DATE", "Use an ISO date (YYYY-MM-DD) or timestamp with an explicit timezone.");
+  ensureTemplate(match, "INVALID_TEMPLATE_DATE", "Use an ISO date (YYYY-MM-DD) or timestamp with an explicit timezone.");
   const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
   const calendar = /* @__PURE__ */ new Date(0);
   calendar.setUTCFullYear(year, month, 0);
   const daysInMonth2 = calendar.getUTCDate();
   const parsed2 = dayjs.utc(date2);
-  ensure(month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth2 && Number(match[4] ?? 0) < 24 && Number(match[5] ?? 0) < 60 && Number(match[6] ?? 0) < 60 && parsed2.isValid(), "INVALID_TEMPLATE_DATE", "Template date is not a valid calendar date.");
+  ensureTemplate(month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth2 && Number(match[4] ?? 0) < 24 && Number(match[5] ?? 0) < 60 && Number(match[6] ?? 0) < 60 && parsed2.isValid(), "INVALID_TEMPLATE_DATE", "Template date is not a valid calendar date.");
   return parsed2;
 }
 class MarkdownTemplates {
@@ -34860,7 +34920,7 @@ class MarkdownTemplates {
   parts;
   inspect(bytes) {
     const parts = this.parts(textOf(bytes));
-    const tokens = [...placeholders(parts.yaml), ...placeholders(parts.body)];
+    const tokens = [...placeholders$1(parts.yaml), ...placeholders$1(parts.body)];
     if (parts.exists) renderYaml(parts.yaml, (token) => `{{${token.expression}}}`);
     const builtin = (token) => ["title", "date", "time"].includes(token.key);
     return {
@@ -34870,13 +34930,13 @@ class MarkdownTemplates {
     };
   }
   render(bytes, options2) {
-    ensure(typeof options2.title === "string" && options2.title.trim().length > 0, "INVALID_TEMPLATE_VALUES", "A nonempty template title is required.");
+    ensureTemplate(typeof options2.title === "string" && options2.title.trim().length > 0, "INVALID_TEMPLATE_VALUES", "A nonempty template title is required.");
     const values2 = options2.values ?? {};
-    ensure(isRecord$1(values2), "INVALID_TEMPLATE_VALUES", "Template values must be a JSON object.");
+    ensureTemplate(isRecord$1(values2), "INVALID_TEMPLATE_VALUES", "Template values must be a JSON object.");
     jsonValue$1(values2);
-    for (const key of ["title", "date", "time"]) ensure(!Object.hasOwn(values2, key), "INVALID_TEMPLATE_VALUES", `${key} is reserved; use the corresponding template option.`);
+    for (const key of ["title", "date", "time"]) ensureTemplate(!Object.hasOwn(values2, key), "INVALID_TEMPLATE_VALUES", `${key} is reserved; use the corresponding template option.`);
     const date2 = instant(options2.date);
-    for (const format2 of [options2.dateFormat, options2.timeFormat]) ensure(format2 === void 0 || typeof format2 === "string" && format2.length > 0, "INVALID_TEMPLATE_DATE", "Date and time formats must be nonempty strings.");
+    for (const format2 of [options2.dateFormat, options2.timeFormat]) ensureTemplate(format2 === void 0 || typeof format2 === "string" && format2.length > 0, "INVALID_TEMPLATE_DATE", "Date and time formats must be nonempty strings.");
     const resolve2 = (token) => {
       if (token.key === "title") return options2.title;
       if (token.key === "date" || token.key === "time") {
@@ -34884,14 +34944,14 @@ class MarkdownTemplates {
         try {
           return date2.format(format2);
         } catch {
-          throw forgeError("INVALID_TEMPLATE_DATE", `Unsupported date format: ${format2}.`);
+          throw templateError("INVALID_TEMPLATE_DATE", `Unsupported date format: ${format2}.`);
         }
       }
-      ensure(Object.hasOwn(values2, token.key), "UNKNOWN_TEMPLATE_VARIABLE", `Missing template value: ${token.key}.`);
+      ensureTemplate(Object.hasOwn(values2, token.key), "UNKNOWN_TEMPLATE_VARIABLE", `Missing template value: ${token.key}.`);
       return values2[token.key];
     };
     const parts = this.parts(textOf(bytes));
-    const body = replaceTokens(parts.body, placeholders(parts.body), (token) => asText(resolve2(token)));
+    const body = replaceTokens(parts.body, placeholders$1(parts.body), (token) => asText(resolve2(token)));
     const frontmatter = parts.exists ? `---${parts.newline}${renderYaml(parts.yaml, resolve2).replace(/\r?\n/g, parts.newline)}---${parts.newline}` : "";
     return new TextEncoder().encode(parts.prefix + frontmatter + body);
   }
@@ -34943,7 +35003,7 @@ class TemplateInstaller {
   artifacts;
   async install() {
     const candidates2 = this.artifacts.map((artifact) => ({ path: `bin/templates/${vaultPath(artifact.path)}`, bytes: new TextEncoder().encode(artifact.content) }));
-    ensure(new Set(candidates2.map((candidate) => candidate.path)).size === candidates2.length, "INVALID_TEMPLATE_PACK", "Template destinations must be unique.");
+    ensureTemplate(new Set(candidates2.map((candidate) => candidate.path)).size === candidates2.length, "INVALID_TEMPLATE_PACK", "Template destinations must be unique.");
     const writes = [], skipped = [];
     for (const candidate of candidates2) {
       if (await readOrMissing(() => this.workspace.files.read(candidate.path))) skipped.push(candidate.path);
@@ -34989,7 +35049,7 @@ function templatesCommand(templates2, workflowPack) {
       }
       ensure(action2 === "inspect", "INVALID_ARGUMENT", "Use templates list, templates inspect <template.md>, or templates install workflow.");
       arity(args, 2);
-      ensure(args[1].toLowerCase().endsWith(".md"), "INVALID_TEMPLATE", "Use a Markdown template.");
+      ensureTemplate(args[1].toLowerCase().endsWith(".md"), "INVALID_TEMPLATE", "Use a Markdown template.");
       const path2 = `bin/templates/${vaultPath(args[1])}`;
       return { path: path2, ...templates2(context).inspect((await environment.files.read(path2)).bytes) };
     }
@@ -35015,7 +35075,7 @@ function documentGenerator(templates2) {
     async run({ name: title2, flags, context }) {
       ensure(title2.trim() === title2 && title2.length > 0 && !/[/\\:]/.test(title2), "INVALID_NAME", "Document title must be a nonempty filename without path separators.");
       const template = value$2(flags, "template", true);
-      ensure(template.toLowerCase().endsWith(".md"), "INVALID_TEMPLATE", "Use a Markdown template.");
+      ensureTemplate(template.toLowerCase().endsWith(".md"), "INVALID_TEMPLATE", "Use a Markdown template.");
       const source2 = await context.environment.files.read(`bin/templates/${vaultPath(template)}`);
       const inline2 = value$2(flags, "values"), from = value$2(flags, "values-from");
       ensure(inline2 === void 0 || from === void 0, "INVALID_INPUT", "Use either --values or --values-from.");
@@ -35029,8 +35089,23 @@ function documentGenerator(templates2) {
     }
   };
 }
+const templateErrors = [
+  { code: "INVALID_TEMPLATE", category: "input", summary: "The Markdown template is invalid.", hint: "Fix the template frontmatter or placeholders named in the message." },
+  { code: "INVALID_TEMPLATE_DATE", category: "input", summary: "A template date or date format is invalid.", hint: "Use an ISO date and a supported date format." },
+  { code: "INVALID_TEMPLATE_PACK", category: "input", summary: "The template pack is invalid.", hint: "Use unique template ids and destinations." },
+  { code: "INVALID_TEMPLATE_VALUES", category: "input", summary: "Template values are missing or have the wrong type.", hint: "Run templates inspect <template.md> and supply its required values." },
+  { code: "UNKNOWN_TEMPLATE_VARIABLE", category: "input", summary: "The template uses an undeclared variable.", hint: "Declare the variable in the template or remove the placeholder; run templates inspect <template.md>." }
+];
+const germanTemplateErrors = {
+  INVALID_TEMPLATE: { summary: "Die Markdown-Vorlage ist ungültig.", hint: "Korrigieren Sie das in der Meldung genannte Frontmatter oder die Platzhalter." },
+  INVALID_TEMPLATE_DATE: { summary: "Ein Datum oder Datumsformat der Vorlage ist ungültig.", hint: "Verwenden Sie ein ISO-Datum und ein unterstütztes Datumsformat." },
+  INVALID_TEMPLATE_PACK: { summary: "Das Vorlagenpaket ist ungültig.", hint: "Verwenden Sie eindeutige Vorlagen-IDs und Zielpfade." },
+  INVALID_TEMPLATE_VALUES: { summary: "Vorlagenwerte fehlen oder haben den falschen Typ.", hint: "Führen Sie templates inspect <template.md> aus und geben Sie die Pflichtwerte an." },
+  UNKNOWN_TEMPLATE_VARIABLE: { summary: "Die Vorlage verwendet eine nicht deklarierte Variable.", hint: "Deklarieren Sie die Variable oder entfernen Sie den Platzhalter; prüfen Sie mit templates inspect <template.md>." }
+};
 const templatesStrings = {
   de: {
+    errors: germanTemplateErrors,
     manifest: { name: "Vorlagen", description: "Obsidian-Markdown-Vorlagen zu Dokumenten rendern und das Planungs-Workflow-Paket installieren." },
     descriptions: {
       "list (default), inspect or install.": "list (Standard), inspect oder install.",
@@ -35070,6 +35145,7 @@ const templatesPlugin = {
           timeFormat: { type: "string", minLength: 1, default: "HH:mm", description: "dayjs format of {{time}} placeholders without their own format." }
         }
       },
+      errors: templateErrors,
       strings: {
         de: {
           commands: { templates: "Markdown-Vorlagen und Pflichtfelder entdecken oder das Planungspaket installieren." },
@@ -35131,7 +35207,7 @@ it('reports invalid required fields without submitting data', () => {
 `;
 }
 const encodeText$1 = (text2) => new TextEncoder().encode(text2);
-function names$1(name2, directory) {
+function names$2(name2, directory) {
   ensure(/^[A-Z][A-Za-z0-9]*$/.test(name2), "INVALID_NAME", "Use a PascalCase TypeScript name, for example WorkItem.");
   vaultPath(directory);
   return { name: name2, directory, file: name2.replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2").replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase() };
@@ -35156,7 +35232,7 @@ const scaffoldGenerators = [
   { id: "form", description: "Typed form definition with Zod validation and HTML preview in a Forge project.", directory: "src/presentation/forms", async generate({ name: input2, directory: dir, context }) {
     ensure(context.project, "PROJECT_REQUIRED", "Open a Forge project with project open <name> before making a form.");
     await context.workspace.files.read("src/presentation/forms/form-model.ts");
-    const { name: name2, directory, file } = names$1(input2, dir);
+    const { name: name2, directory, file } = names$2(input2, dir);
     const relative = path$3.posix.relative(directory, "src/presentation/forms/form-model.js");
     const runtimeImport = relative.startsWith(".") ? relative : `./${relative}`;
     const definition2 = `${directory}/${file}.form.ts`;
@@ -35167,7 +35243,7 @@ const scaffoldGenerators = [
     ];
   } },
   { id: "entity", description: "Domain entity with identity and invariant enforcement.", generate({ name: input2, directory: dir }) {
-    const { name: name2, directory, file } = names$1(input2, dir);
+    const { name: name2, directory, file } = names$2(input2, dir);
     return [{ path: `${directory}/${file}.ts`, bytes: encodeText$1(`export class ${name2} {
   private constructor(readonly id: string) {}
 
@@ -35179,7 +35255,7 @@ const scaffoldGenerators = [
 `) }];
   } },
   { id: "value-object", description: "Immutable value object with equality and validation.", generate({ name: input2, directory: dir }) {
-    const { name: name2, directory, file } = names$1(input2, dir);
+    const { name: name2, directory, file } = names$2(input2, dir);
     return [{ path: `${directory}/${file}.ts`, bytes: encodeText$1(`export class ${name2} {
   private constructor(readonly value: string) { globalThis.Object.freeze(this); }
 
@@ -35193,7 +35269,7 @@ const scaffoldGenerators = [
 `) }];
   } },
   { id: "use-case", description: "Application use case with an injected repository port.", directory: "src/application", generate({ name: input2, directory: dir }) {
-    const { name: name2, directory, file } = names$1(input2, dir);
+    const { name: name2, directory, file } = names$2(input2, dir);
     return [{ path: `${directory}/${file}.ts`, bytes: encodeText$1(`export interface ${name2}Input { readonly id: string }
 export interface ${name2}Repository { exists(id: string): globalThis.Promise<boolean> }
 
@@ -35208,7 +35284,7 @@ export class ${name2} {
 `) }];
   } },
   { id: "event", description: "Typed event payload and runtime descriptor.", generate({ name: input2, directory: dir }) {
-    const { name: name2, directory, file } = names$1(input2, dir);
+    const { name: name2, directory, file } = names$2(input2, dir);
     return [{ path: `${directory}/${file}.ts`, bytes: encodeText$1(`export interface ${name2} { readonly id: string }
 export const ${name2}Event = {
   id: 'app.${file}',
@@ -35219,7 +35295,7 @@ export const ${name2}Event = {
 `) }];
   } },
   { id: "plugin", description: "Installable plugin folder with a manifest, namespaced command and lifecycle hooks.", scope: "workspace", directory: "bin/plugins", fixedDirectory: true, generate({ name: input2, directory: dir }) {
-    const { name: name2, directory, file } = names$1(input2, dir);
+    const { name: name2, directory, file } = names$2(input2, dir);
     const manifest = {
       id: file,
       name: name2,
@@ -35353,7 +35429,7 @@ const testsPrototypeUnitTestTsTemplate = "import { describe, expect, it } from '
 const tsconfigJsonTemplate = '{\n  "compilerOptions": {\n    "target": "ES2022",\n    "useDefineForClassFields": true,\n    "lib": [\n      "ES2022",\n      "DOM",\n      "DOM.Iterable"\n    ],\n    "module": "ESNext",\n    "skipLibCheck": true,\n    "moduleResolution": "Bundler",\n    "allowImportingTsExtensions": true,\n    "resolveJsonModule": true,\n    "isolatedModules": true,\n    "verbatimModuleSyntax": true,\n    "noEmit": true,\n    "strict": true,\n    "types": [\n      "vite/client",\n      "node"\n    ]\n  },\n  "include": [\n    "src/**/*.ts",\n    "src/**/*.vue",\n    "vite.config.ts",\n    "tests/**/*.ts",\n    "playwright.config.ts",\n    "vitest.config.ts",\n    "scripts/**/*.ts"\n  ]\n}\n';
 const viteConfigTsTemplate = "import { defineConfig } from 'vite';\nimport vue from '@vitejs/plugin-vue';\nimport ui from '@nuxt/ui/vite';\nimport { config } from './package.json';\nimport { notices } from './scripts/notices';\n\nexport default defineConfig({\n  base: `/views/${config.webview.id}/`,\n  plugins: [vue(), ui({\n    dts: false,\n    colorMode: false,\n    ui: { colors: { primary: 'emerald', neutral: 'slate' } },\n    // Dynamic icon names are not always found by scanning. Bundle them locally:\n    // the portable server deliberately blocks remote icon requests.\n    icon: { clientBundle: { icons: ['lucide:bookmark', 'lucide:check', 'lucide:search'] } },\n  }), notices()],\n  build: { outDir: 'dist', sourcemap: false },\n});\n";
 const vitestConfigTsTemplate = "import { defineConfig } from 'vitest/config';\nexport default defineConfig({ test: { include: ['tests/**/*.unit.test.ts'], environment: 'node' } });\n";
-const templates = {
+const templates$1 = {
   ".gitignore": gitignoreTemplate,
   "AGENTS.md": agentsMdTemplate,
   "DESIGN.md": designMdTemplate,
@@ -35384,7 +35460,7 @@ function webviewScaffold(name2, projectsDirectory) {
   const workspaceRelative = "../".repeat(directory.split("/").length);
   const files2 = {
     ".forge/project.json": JSON.stringify({ schemaVersion: 1, name: name2, type: "webview" }, null, 2) + "\n",
-    ...templates
+    ...templates$1
   };
   return Object.entries(files2).map(([path2, source2]) => ({
     path: `${directory}/${path2}`,
@@ -35540,12 +35616,19 @@ const scaffoldsPlugin = {
   })
 };
 const uiFrameworks = ["html", "htmx", "vanilla", "vue", "svelte", "react", "angular"];
+function uiError(code2, message2, details) {
+  return new PluginFailure(code2, message2, details);
+}
+function ensureUi(condition, code2, message2, details) {
+  if (!condition) throw new PluginFailure(code2, message2, details);
+}
+const isUiError = (error2, code2) => error2 instanceof Error && error2.code === code2;
 const interactionEvents = ["click", "dblclick", "input", "change", "submit", "keydown", "keyup", "focus", "blur"];
 const interactionTriggerEvents = /* @__PURE__ */ new Set([...interactionEvents, "focusin", "focusout"]);
 function validateInteractionLibrary(definitions2) {
   const ids = /* @__PURE__ */ new Set();
   for (const definition2 of definitions2) {
-    ensure(!ids.has(definition2.id), "DUPLICATE_INTERACTION", `Duplicate interaction ${definition2.id}.`);
+    ensureUi(!ids.has(definition2.id), "DUPLICATE_INTERACTION", `Duplicate interaction ${definition2.id}.`);
     ids.add(definition2.id);
   }
 }
@@ -35599,8 +35682,8 @@ function uiBindingSource(definition2, name2) {
   return Object.hasOwn(fields2, key) ? fields2[key] : void 0;
 }
 function validateUiBindings(definition2, value2) {
-  for (const name2 of uiBindings(value2)) ensure(uiBindingSource(definition2, name2), "INVALID_UI", `${definition2.id} binds unknown field ${name2}.`);
-  ensure(!uiHasMalformedBinding(value2), "INVALID_UI", `${definition2.id} contains a malformed binding.`);
+  for (const name2 of uiBindings(value2)) ensureUi(uiBindingSource(definition2, name2), "INVALID_UI", `${definition2.id} binds unknown field ${name2}.`);
+  ensureUi(!uiHasMalformedBinding(value2), "INVALID_UI", `${definition2.id} contains a malformed binding.`);
 }
 function interactionValues(interaction) {
   return interaction.actions.flatMap((action2) => action2.type === "navigate" || action2.type === "upload-form" ? [action2.url] : action2.type === "save-form" ? [action2.key] : action2.type === "download-form" ? [action2.filename] : action2.type === "emit" ? Object.values(action2.detail ?? {}) : action2.type === "set-state" && "value" in action2 ? [action2.value] : []);
@@ -35613,32 +35696,32 @@ function valueType(definition2, value2) {
   const binding = uiWholeBinding(value2);
   if (!binding) return typeof value2;
   const source2 = uiBindingSource(definition2, binding);
-  ensure(source2.default !== void 0 || "required" in source2 && source2.required, "INVALID_UI", `${definition2.id} interaction cannot read optional field ${binding} without a default.`);
+  ensureUi(source2.default !== void 0 || "required" in source2 && source2.required, "INVALID_UI", `${definition2.id} interaction cannot read optional field ${binding} without a default.`);
   return source2.type;
 }
 function validateAttachment(definition2, node2, interaction) {
   for (const action2 of interaction.actions) {
     if (action2.type === "set-state" || action2.type === "toggle-state") {
       const state2 = definition2.state?.[action2.state];
-      ensure(state2, "INVALID_UI", `${definition2.id} interaction ${interaction.id} requires state ${action2.state}.`);
-      if (action2.type === "toggle-state") ensure(state2.type === "boolean", "INVALID_UI", `Interaction ${interaction.id} can toggle only boolean state ${action2.state}.`);
+      ensureUi(state2, "INVALID_UI", `${definition2.id} interaction ${interaction.id} requires state ${action2.state}.`);
+      if (action2.type === "toggle-state") ensureUi(state2.type === "boolean", "INVALID_UI", `Interaction ${interaction.id} can toggle only boolean state ${action2.state}.`);
       else if ("fromEvent" in action2) {
-        ensure(["input", "change"].includes(interaction.event), "INVALID_UI", `Interaction ${interaction.id} reads form values only from input/change events.`);
-        ensure(action2.fromEvent === "checked" ? node2.tag === "input" : ["input", "select", "textarea"].includes(node2.tag), "INVALID_UI", `Interaction ${interaction.id} cannot read ${action2.fromEvent} from ${node2.tag}.`);
-        ensure(state2.type === (action2.fromEvent === "checked" ? "boolean" : "string"), "INVALID_UI", `Interaction ${interaction.id} ${action2.fromEvent} does not match state ${action2.state}.`);
-      } else ensure(valueType(definition2, action2.value) === state2.type, "INVALID_UI", `Interaction ${interaction.id} value does not match state ${action2.state}.`);
+        ensureUi(["input", "change"].includes(interaction.event), "INVALID_UI", `Interaction ${interaction.id} reads form values only from input/change events.`);
+        ensureUi(action2.fromEvent === "checked" ? node2.tag === "input" : ["input", "select", "textarea"].includes(node2.tag), "INVALID_UI", `Interaction ${interaction.id} cannot read ${action2.fromEvent} from ${node2.tag}.`);
+        ensureUi(state2.type === (action2.fromEvent === "checked" ? "boolean" : "string"), "INVALID_UI", `Interaction ${interaction.id} ${action2.fromEvent} does not match state ${action2.state}.`);
+      } else ensureUi(valueType(definition2, action2.value) === state2.type, "INVALID_UI", `Interaction ${interaction.id} value does not match state ${action2.state}.`);
     } else if (action2.type === "navigate" || action2.type === "upload-form") {
-      ensure(valueType(definition2, action2.url) === "string", "INVALID_UI", `Interaction ${interaction.id} navigation must resolve to a string.`);
-      if (!uiBindings(action2.url).length) ensure(isSafeNavigationUrl(action2.url), "INVALID_UI", `Interaction ${interaction.id} has an unsafe navigation URL.`);
+      ensureUi(valueType(definition2, action2.url) === "string", "INVALID_UI", `Interaction ${interaction.id} navigation must resolve to a string.`);
+      if (!uiBindings(action2.url).length) ensureUi(isSafeNavigationUrl(action2.url), "INVALID_UI", `Interaction ${interaction.id} has an unsafe navigation URL.`);
     } else if (action2.type === "save-form" || action2.type === "download-form") {
       const value2 = action2.type === "save-form" ? action2.key : action2.filename;
-      ensure(valueType(definition2, value2) === "string", "INVALID_UI", `Interaction ${interaction.id} requires a string ${action2.type === "save-form" ? "storage key" : "filename"}.`);
+      ensureUi(valueType(definition2, value2) === "string", "INVALID_UI", `Interaction ${interaction.id} requires a string ${action2.type === "save-form" ? "storage key" : "filename"}.`);
     } else {
-      ensure(!interactionTriggerEvents.has(action2.event), "INVALID_UI", `Interaction ${interaction.id} must emit a custom event, not native trigger ${action2.event}.`);
+      ensureUi(!interactionTriggerEvents.has(action2.event), "INVALID_UI", `Interaction ${interaction.id} must emit a custom event, not native trigger ${action2.event}.`);
       for (const value2 of Object.values(action2.detail ?? {})) valueType(definition2, value2);
     }
     if (["save-form", "upload-form", "download-form"].includes(action2.type)) {
-      ensure(node2.tag === "form" && interaction.event === "submit" || ["button", "input"].includes(node2.tag) && interaction.event === "click", "INVALID_UI", `Interaction ${interaction.id} requires a form submit or an associated button/input click.`);
+      ensureUi(node2.tag === "form" && interaction.event === "submit" || ["button", "input"].includes(node2.tag) && interaction.event === "click", "INVALID_UI", `Interaction ${interaction.id} requires a form submit or an associated button/input click.`);
     }
   }
 }
@@ -35649,7 +35732,7 @@ function validateUiInteractions(definitions2, interactions) {
     const walk2 = (node2) => {
       if ("tag" in node2) for (const id2 of node2.interactions ?? []) {
         const interaction = byId2.get(id2);
-        ensure(interaction, "UNKNOWN_INTERACTION", `${definition2.id} references missing interaction ${id2}. Inspect the interactions library or import its definition.`);
+        ensureUi(interaction, "UNKNOWN_INTERACTION", `${definition2.id} references missing interaction ${id2}. Inspect the interactions library or import its definition.`);
         validateAttachment(definition2, node2, interaction);
       }
       if ("children" in node2) for (const child of node2.children ?? []) walk2(child);
@@ -35667,12 +35750,12 @@ function componentInteractionIds(definition2) {
   return [...ids].sort();
 }
 function checkValue(value2, type2, label2) {
-  ensure(typeof value2 === type2, "INVALID_UI", `${label2} must be ${type2}.`);
+  ensureUi(typeof value2 === type2, "INVALID_UI", `${label2} must be ${type2}.`);
 }
 function validateUiLibrary(definitions2, interactions = []) {
   const byId2 = /* @__PURE__ */ new Map();
   for (const definition2 of definitions2) {
-    ensure(!byId2.has(definition2.id), "DUPLICATE_UI_COMPONENT", `Duplicate component ${definition2.id}.`);
+    ensureUi(!byId2.has(definition2.id), "DUPLICATE_UI_COMPONENT", `Duplicate component ${definition2.id}.`);
     byId2.set(definition2.id, definition2);
   }
   const edges = /* @__PURE__ */ new Map();
@@ -35684,7 +35767,7 @@ function validateUiLibrary(definitions2, interactions = []) {
     const walk2 = (node2) => {
       if ("slot" in node2) {
         slots++;
-        ensure(slots <= 1, "INVALID_UI", `${definition2.id} may project its default child slot only once.`);
+        ensureUi(slots <= 1, "INVALID_UI", `${definition2.id} may project its default child slot only once.`);
         return;
       }
       if ("tag" in node2) {
@@ -35692,35 +35775,35 @@ function validateUiLibrary(definitions2, interactions = []) {
         for (const value2 of Object.values(node2.attrs ?? {})) checkBinding(value2);
       } else {
         const target2 = byId2.get(node2.component);
-        ensure(target2, "UNKNOWN_UI_COMPONENT", `${definition2.id} references missing component ${node2.component}.`);
+        ensureUi(target2, "UNKNOWN_UI_COMPONENT", `${definition2.id} references missing component ${node2.component}.`);
         references2.add(node2.component);
         for (const [name2, value2] of Object.entries(node2.props ?? {})) {
           const targetProp = target2.props[name2];
-          ensure(targetProp, "INVALID_UI", `${definition2.id} supplies unknown prop ${node2.component}.${name2}.`);
+          ensureUi(targetProp, "INVALID_UI", `${definition2.id} supplies unknown prop ${node2.component}.${name2}.`);
           checkBinding(value2);
           const binding = uiWholeBinding(value2);
           if (binding) {
             const source2 = uiBindingSource(definition2, binding);
-            ensure(source2.type === targetProp.type, "INVALID_UI", `Prop binding type differs for ${node2.component}.${name2}.`);
-            ensure(!targetProp.required || targetProp.default !== void 0 || "required" in source2 && source2.required || source2.default !== void 0, "INVALID_UI", `Optional prop ${definition2.id}.${binding} cannot satisfy required ${node2.component}.${name2}.`);
+            ensureUi(source2.type === targetProp.type, "INVALID_UI", `Prop binding type differs for ${node2.component}.${name2}.`);
+            ensureUi(!targetProp.required || targetProp.default !== void 0 || "required" in source2 && source2.required || source2.default !== void 0, "INVALID_UI", `Optional prop ${definition2.id}.${binding} cannot satisfy required ${node2.component}.${name2}.`);
           } else if (!uiBindings(value2).length) checkValue(value2, targetProp.type, `${node2.component}.${name2}`);
-          else ensure(targetProp.type === "string", "INVALID_UI", `Interpolated ${node2.component}.${name2} must be a string.`);
+          else ensureUi(targetProp.type === "string", "INVALID_UI", `Interpolated ${node2.component}.${name2} must be a string.`);
         }
-        for (const [name2, prop2] of Object.entries(target2.props)) ensure(!prop2.required || prop2.default !== void 0 || Object.hasOwn(node2.props ?? {}, name2), "INVALID_UI", `${definition2.id} must supply required prop ${node2.component}.${name2}.`);
+        for (const [name2, prop2] of Object.entries(target2.props)) ensureUi(!prop2.required || prop2.default !== void 0 || Object.hasOwn(node2.props ?? {}, name2), "INVALID_UI", `${definition2.id} must supply required prop ${node2.component}.${name2}.`);
       }
       for (const child of node2.children ?? []) walk2(child);
     };
     walk2(definition2.root);
     for (const args of [definition2.storybook?.args, ...(definition2.storybook?.stories ?? []).map((story2) => story2.args)]) {
       for (const [name2, value2] of Object.entries(args ?? {})) {
-        ensure(Object.hasOwn(definition2.props, name2), "INVALID_UI", `${definition2.id} story has unknown prop ${name2}.`);
+        ensureUi(Object.hasOwn(definition2.props, name2), "INVALID_UI", `${definition2.id} story has unknown prop ${name2}.`);
         checkValue(value2, definition2.props[name2].type, `${definition2.id} story prop ${name2}`);
       }
     }
   }
   const visited = /* @__PURE__ */ new Set(), active = /* @__PURE__ */ new Set();
   const visit2 = (id2) => {
-    ensure(!active.has(id2), "CYCLIC_UI_COMPONENT", `Cyclic component reference involving ${id2}.`);
+    ensureUi(!active.has(id2), "CYCLIC_UI_COMPONENT", `Cyclic component reference involving ${id2}.`);
     if (visited.has(id2)) return;
     active.add(id2);
     for (const child of edges.get(id2) ?? []) visit2(child);
@@ -35745,7 +35828,7 @@ function selectUiComponents(definitions2, id2) {
   const select = (component) => {
     if (selected2.has(component)) return;
     const definition2 = byId2.get(component);
-    ensure(definition2, "UNKNOWN_UI_COMPONENT", `Missing component ${component}.`);
+    ensureUi(definition2, "UNKNOWN_UI_COMPONENT", `Missing component ${component}.`);
     selected2.add(component);
     for (const dependency of componentDependencies(definition2.root)) select(dependency);
   };
@@ -35776,7 +35859,7 @@ class UiLibrary {
     const sources = await this.sources(directory);
     await this.validateDefinitions(sources.map((source22) => source22.definition), interactionDirectory);
     const source2 = sources.find((candidate) => candidate.definition.id === id2);
-    ensure(source2, "UNKNOWN_UI_COMPONENT", `No component ${id2} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
+    ensureUi(source2, "UNKNOWN_UI_COMPONENT", `No component ${id2} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
     return { ...source2.definition, revision: source2.revision, bytes: source2.bytes.length };
   }
   async validate(directory, interactionDirectory) {
@@ -35807,7 +35890,7 @@ Describe this component.
     vaultPath(directory);
     ensureSeparateDirectories(sourceDirectory, directory);
     const sources = await this.sources(sourceDirectory), imported = sources.map((source2) => source2.definition), existing = await this.discover(directory);
-    ensure(imported.length, "EMPTY_UI_LIBRARY", `No component definitions in ${sourceDirectory}.`);
+    ensureUi(imported.length, "EMPTY_UI_LIBRARY", `No component definitions in ${sourceDirectory}.`);
     await this.validateDefinitions([...existing, ...imported], interactionDirectory);
     const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${directory}/${definition2.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
     return { components: imported.map((definition2) => definition2.id), ...await this.commit(plan) };
@@ -35832,32 +35915,32 @@ Describe this component.
   }
   async check(directory, options2) {
     ensure(options2.revisions === void 0, "INVALID_GENERATION_PLAN", "Checks do not accept regeneration revisions.");
-    return { framework: options2.framework, ...await new GenerationService(this.workspace).check(await this.render(directory, options2), "UI_DRIFT") };
+    return { framework: options2.framework, ...await new GenerationService(this.workspace).check(await this.render(directory, options2), (message2, details) => uiError("UI_DRIFT", message2, details)) };
   }
   async render(directory, options2) {
-    ensure(this.renderer, "UI_RENDERER_UNAVAILABLE", "No UI renderer is configured.");
-    ensure(uiFrameworks.includes(options2.framework), "INVALID_UI_FRAMEWORK", `Unknown framework ${options2.framework}.`);
+    ensureUi(this.renderer, "UI_RENDERER_UNAVAILABLE", "No UI renderer is configured.");
+    ensureUi(uiFrameworks.includes(options2.framework), "INVALID_UI_FRAMEWORK", `Unknown framework ${options2.framework}.`);
     vaultPath(options2.outputDirectory);
     if (options2.storiesDirectory) vaultPath(options2.storiesDirectory);
-    ensure(!(options2.storybook || options2.storiesOnly) || options2.storiesDirectory, "INVALID_UI", "Storybook generation requires a stories directory.");
+    ensureUi(!(options2.storybook || options2.storiesOnly) || options2.storiesDirectory, "INVALID_UI", "Storybook generation requires a stories directory.");
     const interactions = await this.interactions(options2.interactionDirectory);
     let definitions2 = await this.discover(directory);
     validateUiLibrary(definitions2, interactions);
-    ensure(definitions2.length, "EMPTY_UI_LIBRARY", `No component definitions in ${directory}. Run components init --library ${directory}, or add a Markdown component definition.`);
-    if (options2.component) ensure(definitions2.some((definition2) => definition2.id === options2.component), "UNKNOWN_UI_COMPONENT", `No component ${options2.component} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
+    ensureUi(definitions2.length, "EMPTY_UI_LIBRARY", `No component definitions in ${directory}. Run components init --library ${directory}, or add a Markdown component definition.`);
+    if (options2.component) ensureUi(definitions2.some((definition2) => definition2.id === options2.component), "UNKNOWN_UI_COMPONENT", `No component ${options2.component} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
     if (options2.component) definitions2 = selectUiComponents(definitions2, options2.component);
     for (const definition2 of definitions2) if ((options2.storybook || options2.storiesOnly) && definition2.storybook?.extension) {
       try {
         await this.workspace.files.read(definition2.storybook.extension);
       } catch (error2) {
-        if (isNotFound(error2)) throw forgeError("INVALID_UI", `Missing Storybook extension ${definition2.storybook.extension}.`);
+        if (isNotFound(error2)) throw uiError("INVALID_UI", `Missing Storybook extension ${definition2.storybook.extension}.`);
         throw error2;
       }
     }
     const ids = new Set(definitions2.flatMap(componentInteractionIds));
     const renderOptions = { ...options2, interactions: interactions.filter((interaction) => ids.has(interaction.id)) };
     if (options2.storiesOnly) {
-      ensure(this.renderer.componentPaths, "UI_RENDERER_UNAVAILABLE", "Standalone stories require a renderer with component artifact paths.");
+      ensureUi(this.renderer.componentPaths, "UI_RENDERER_UNAVAILABLE", "Standalone stories require a renderer with component artifact paths.");
       for (const path2 of this.renderer.componentPaths(definitions2, renderOptions)) await this.workspace.files.read(path2);
     }
     return this.renderer.generate(definitions2, renderOptions);
@@ -35937,7 +36020,7 @@ class InteractionLibrary {
     const sources = await this.sources(directory);
     validateInteractionLibrary(sources.map((source22) => source22.definition));
     const source2 = sources.find((candidate) => candidate.definition.id === id2);
-    ensure(source2, "UNKNOWN_INTERACTION", `No interaction ${id2} in ${directory}. Run interactions list --library ${directory}.`);
+    ensureUi(source2, "UNKNOWN_INTERACTION", `No interaction ${id2} in ${directory}. Run interactions list --library ${directory}.`);
     return { ...source2.definition, revision: source2.revision, bytes: source2.bytes.length };
   }
   async validate(directory) {
@@ -35967,7 +36050,7 @@ class InteractionLibrary {
   async import(sourceDirectory, directory) {
     ensureSeparateDirectories(sourceDirectory, directory);
     const sources = await this.sources(sourceDirectory);
-    ensure(sources.length, "EMPTY_INTERACTION_LIBRARY", `No interaction definitions in ${sourceDirectory}.`);
+    ensureUi(sources.length, "EMPTY_INTERACTION_LIBRARY", `No interaction definitions in ${sourceDirectory}.`);
     validateInteractionLibrary([...await this.list(directory), ...sources.map((source2) => source2.definition)]);
     const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${directory}/${definition2.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
     return { interactions: sources.map((source2) => source2.definition.id), ...await this.commit(plan) };
@@ -42003,16 +42086,16 @@ class MarkdownUiDefinitions {
     try {
       const document2 = this.documents.inspect("definition.md", bytes);
       const result = schema$2.safeParse(document2.properties);
-      ensure(result.success, "INVALID_UI", `${path2}: ${result.success ? "" : result.error.issues.map((issue2) => `${issue2.path.join(".")}: ${issue2.message}`).join("; ")}`);
+      ensureUi(result.success, "INVALID_UI", `${path2}: ${result.success ? "" : result.error.issues.map((issue2) => `${issue2.path.join(".")}: ${issue2.message}`).join("; ")}`);
       const extension2 = result.data.storybook?.extension;
       if (extension2 !== void 0) {
         vaultPath(extension2);
-        ensure(/\.(?:[cm]?js|tsx?)$/.test(extension2), "INVALID_UI", `${path2}: Storybook extension must be a JS or TS module.`);
+        ensureUi(/\.(?:[cm]?js|tsx?)$/.test(extension2), "INVALID_UI", `${path2}: Storybook extension must be a JS or TS module.`);
       }
       return { ...result.data, description: document2.body, sourcePath: path2 };
     } catch (error2) {
-      if (error2 instanceof AppError && error2.code === "INVALID_UI") throw error2;
-      throw forgeError("INVALID_UI", `${path2}: ${error2 instanceof Error ? error2.message : "Invalid component definition."}`);
+      if (isUiError(error2, "INVALID_UI")) throw error2;
+      throw uiError("INVALID_UI", `${path2}: ${error2 instanceof Error ? error2.message : "Invalid component definition."}`);
     }
   }
   serialize(definition2) {
@@ -42723,15 +42806,15 @@ const renderers = {
 };
 function renderUiComponents(input2, framework, outputDirectory, interactions = []) {
   vaultPath(outputDirectory);
-  ensure(uiFrameworks.includes(framework), "INVALID_UI_FRAMEWORK", `Unknown UI framework: ${framework}`);
+  ensureUi(uiFrameworks.includes(framework), "INVALID_UI_FRAMEWORK", `Unknown UI framework: ${framework}`);
   const definitions2 = new Map(input2.map((definition2) => [definition2.id, definition2]));
-  ensure(definitions2.size === input2.length, "INVALID_UI_LIBRARY", "Duplicate UI component IDs.");
+  ensureUi(definitions2.size === input2.length, "INVALID_UI_LIBRARY", "Duplicate UI component IDs.");
   const visited = /* @__PURE__ */ new Set();
   function visit2(id2, stack) {
-    ensure(!stack.includes(id2), "INVALID_UI_LIBRARY", `Cyclic component reference: ${[...stack, id2].join(" -> ")}`);
+    ensureUi(!stack.includes(id2), "INVALID_UI_LIBRARY", `Cyclic component reference: ${[...stack, id2].join(" -> ")}`);
     if (visited.has(id2)) return;
     const definition2 = definitions2.get(id2);
-    ensure(definition2, "INVALID_UI_LIBRARY", `Unknown UI component: ${id2}`);
+    ensureUi(definition2, "INVALID_UI_LIBRARY", `Unknown UI component: ${id2}`);
     for (const child of componentDependencies(definition2.root)) visit2(child, [...stack, id2]);
     visited.add(id2);
   }
@@ -42838,7 +42921,7 @@ function renderUiStories(definitions2, framework, componentDirectory, storiesDir
   });
 }
 const identifier$1 = string$3().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).refine((value2) => !["__proto__", "constructor", "prototype"].includes(value2), "Reserved state name.");
-const scalar = union([string$3(), number$1().finite(), boolean(), _null()]).refine((value2) => !uiHasMalformedBinding(value2), "Invalid scalar binding syntax.");
+const scalar$1 = union([string$3(), number$1().finite(), boolean(), _null()]).refine((value2) => !uiHasMalformedBinding(value2), "Invalid scalar binding syntax.");
 const safeKey = string$3().min(1).refine((value2) => !["__proto__", "constructor", "prototype"].includes(value2), "Reserved detail key.");
 const url$1 = string$3().min(1).refine((value2) => {
   if (uiHasMalformedBinding(value2)) return false;
@@ -42847,14 +42930,14 @@ const url$1 = string$3().min(1).refine((value2) => {
   return isSafeNavigationUrl(example);
 }, "Use an HTTP(S) or relative URL with valid scalar bindings, without credentials or executable schemes.");
 const action$1 = union([
-  strictObject({ type: literal$1("set-state"), state: identifier$1, value: scalar }),
+  strictObject({ type: literal$1("set-state"), state: identifier$1, value: scalar$1 }),
   strictObject({ type: literal$1("set-state"), state: identifier$1, fromEvent: _enum(["value", "checked"]) }),
   strictObject({ type: literal$1("toggle-state"), state: identifier$1 }),
   strictObject({ type: literal$1("navigate"), url: url$1 }),
   strictObject({ type: literal$1("save-form"), key: string$3().min(1).refine((value2) => value2.trim().length > 0 && !uiHasMalformedBinding(value2), "Use a nonempty storage key with valid bindings.") }),
   strictObject({ type: literal$1("upload-form"), url: url$1 }),
   strictObject({ type: literal$1("download-form"), filename: string$3().min(1).refine((value2) => value2.trim().length > 0 && !uiHasMalformedBinding(value2) && !/[/\\]/.test(value2) && [...value2].every((character) => character.charCodeAt(0) >= 32), "Use a filename without path separators or control characters and with valid bindings.") }),
-  strictObject({ type: literal$1("emit"), event: string$3().regex(/^[A-Za-z][A-Za-z0-9_.:-]*$/).refine((value2) => !interactionTriggerEvents.has(value2), "Emit a custom event name; native interaction events would recursively trigger handlers."), detail: record$2(safeKey, scalar).optional() })
+  strictObject({ type: literal$1("emit"), event: string$3().regex(/^[A-Za-z][A-Za-z0-9_.:-]*$/).refine((value2) => !interactionTriggerEvents.has(value2), "Emit a custom event name; native interaction events would recursively trigger handlers."), detail: record$2(safeKey, scalar$1).optional() })
 ]);
 const schema$1 = strictObject({
   schemaVersion: literal$1(1),
@@ -42886,11 +42969,11 @@ class MarkdownInteractionDefinitions {
     try {
       const document2 = this.documents.inspect("interaction.md", bytes);
       const result = schema$1.safeParse(document2.properties);
-      ensure(result.success, "INVALID_INTERACTION", `${path2}: ${result.success ? "" : result.error.issues.map((issue2) => `${issue2.path.join(".")}: ${issue2.message}`).join("; ")}`);
+      ensureUi(result.success, "INVALID_INTERACTION", `${path2}: ${result.success ? "" : result.error.issues.map((issue2) => `${issue2.path.join(".")}: ${issue2.message}`).join("; ")}`);
       return { ...result.data, description: document2.body, sourcePath: path2 };
     } catch (error2) {
-      if (error2 instanceof AppError && error2.code === "INVALID_INTERACTION") throw error2;
-      throw forgeError("INVALID_INTERACTION", `${path2}: ${error2 instanceof Error ? error2.message : "Invalid interaction definition."}`);
+      if (isUiError(error2, "INVALID_INTERACTION")) throw error2;
+      throw uiError("INVALID_INTERACTION", `${path2}: ${error2 instanceof Error ? error2.message : "Invalid interaction definition."}`);
     }
   }
   serialize(definition2) {
@@ -43115,6 +43198,37 @@ function uiGenerators(services2) {
     }
   ];
 }
+const germanRegenerateHint$1 = "Führen Sie denselben Befehl mit --plan aus, prüfen Sie die Änderungen und generieren Sie dann neu.";
+const uiErrors = [
+  { code: "UI_DRIFT", category: "drift", summary: "Generated UI files are missing or differ from their definitions.", hint: "Run the same command with --plan to review, then regenerate." },
+  { code: "INVALID_UI", category: "input", summary: "A component definition is invalid.", hint: "Fix the definition named in the message; run components validate." },
+  { code: "INVALID_UI_LIBRARY", category: "input", summary: "The component library is invalid.", hint: "Run components validate and fix the reported definitions." },
+  { code: "INVALID_UI_FRAMEWORK", category: "input", summary: "The UI target is not supported.", hint: "Use html, htmx, vanilla, vue, svelte, react or angular." },
+  { code: "EMPTY_UI_LIBRARY", category: "input", summary: "The component library has no definitions.", hint: "Run components init or add a Markdown definition." },
+  { code: "DUPLICATE_UI_COMPONENT", category: "input", summary: "Two component definitions share an id.", hint: "Give each component a unique id." },
+  { code: "UNKNOWN_UI_COMPONENT", category: "input", summary: "The component is not defined.", hint: "Run components list and use an existing id." },
+  { code: "CYCLIC_UI_COMPONENT", category: "input", summary: "Component references form a cycle.", hint: "Remove the cyclic reference named in the message." },
+  { code: "UI_RENDERER_UNAVAILABLE", category: "input", summary: "No renderer is available for this UI target.", hint: "Choose a supported --framework." },
+  { code: "INVALID_INTERACTION", category: "input", summary: "An interaction definition is invalid.", hint: "Fix the event, actions or bindings named in the message; run interactions validate." },
+  { code: "DUPLICATE_INTERACTION", category: "input", summary: "Two interaction definitions share an id.", hint: "Give each interaction a unique id." },
+  { code: "EMPTY_INTERACTION_LIBRARY", category: "input", summary: "The interaction library has no definitions.", hint: "Run interactions init or add a Markdown definition." },
+  { code: "UNKNOWN_INTERACTION", category: "input", summary: "The interaction is not defined.", hint: "Run interactions list and check the component's interaction references." }
+];
+const germanUiErrors = {
+  UI_DRIFT: { summary: "Generierte UI-Dateien fehlen oder weichen von den Definitionen ab.", hint: germanRegenerateHint$1 },
+  INVALID_UI: { summary: "Eine Komponentendefinition ist ungültig.", hint: "Korrigieren Sie die genannte Definition; prüfen Sie mit components validate." },
+  INVALID_UI_LIBRARY: { summary: "Die Komponentenbibliothek ist ungültig.", hint: "Führen Sie components validate aus und korrigieren Sie die gemeldeten Definitionen." },
+  INVALID_UI_FRAMEWORK: { summary: "Das UI-Ziel wird nicht unterstützt.", hint: "Verwenden Sie html, htmx, vanilla, vue, svelte, react oder angular." },
+  EMPTY_UI_LIBRARY: { summary: "Die Komponentenbibliothek enthält keine Definitionen.", hint: "Führen Sie components init aus oder fügen Sie eine Markdown-Definition hinzu." },
+  DUPLICATE_UI_COMPONENT: { summary: "Zwei Komponentendefinitionen haben dieselbe ID.", hint: "Vergeben Sie für jede Komponente eine eindeutige ID." },
+  UNKNOWN_UI_COMPONENT: { summary: "Die Komponente ist nicht definiert.", hint: "Führen Sie components list aus und verwenden Sie eine vorhandene ID." },
+  CYCLIC_UI_COMPONENT: { summary: "Die Komponentenreferenzen bilden einen Zyklus.", hint: "Entfernen Sie die in der Meldung genannte zyklische Referenz." },
+  UI_RENDERER_UNAVAILABLE: { summary: "Für dieses UI-Ziel ist kein Generator verfügbar.", hint: "Wählen Sie ein unterstütztes --framework." },
+  INVALID_INTERACTION: { summary: "Eine Interaktionsdefinition ist ungültig.", hint: "Korrigieren Sie das genannte Ereignis, die Aktionen oder Bindungen; prüfen Sie mit interactions validate." },
+  DUPLICATE_INTERACTION: { summary: "Zwei Interaktionsdefinitionen haben dieselbe ID.", hint: "Vergeben Sie für jede Interaktion eine eindeutige ID." },
+  EMPTY_INTERACTION_LIBRARY: { summary: "Die Interaktionsbibliothek enthält keine Definitionen.", hint: "Führen Sie interactions init aus oder fügen Sie eine Markdown-Definition hinzu." },
+  UNKNOWN_INTERACTION: { summary: "Die Interaktion ist nicht definiert.", hint: "Führen Sie interactions list aus und prüfen Sie die Interaktionsreferenzen der Komponente." }
+};
 function libraryActions(command2, noun) {
   return {
     [`${command2} list`]: `Die ${noun}definitionen der Bibliothek auflisten.`,
@@ -43140,6 +43254,7 @@ const de$2 = {
 };
 const uiStrings = {
   de: {
+    errors: germanUiErrors,
     manifest: { name: "UI-Bibliotheken", description: "Markdown-Bibliotheken für Komponenten und Interaktionen mit deterministischer UI- und Storybook-Generierung für sieben Ziele." },
     descriptions: {
       "Root element tag for create.": "Tag des Wurzelelements für create.",
@@ -43190,13 +43305,21 @@ const uiPlugin = {
     generators: uiGenerators(services$1),
     settings: uiSettingsSchema,
     pathSettings: uiPathSettings,
+    errors: uiErrors,
     strings: { de: de$2 }
   })
 };
+function dataSourceError(code2, message2, details) {
+  return new PluginFailure(code2, message2, details);
+}
+function ensureDataSource(condition, code2, message2, details) {
+  if (!condition) throw new PluginFailure(code2, message2, details);
+}
+const isDataSourceError = (error2, code2) => error2 instanceof Error && error2.code === code2;
 function validateLibrary(definitions2) {
   const ids = /* @__PURE__ */ new Set();
   for (const definition2 of definitions2) {
-    ensure(!ids.has(definition2.id), "DUPLICATE_DATA_SOURCE", `Duplicate data source ${definition2.id}.`);
+    ensureDataSource(!ids.has(definition2.id), "DUPLICATE_DATA_SOURCE", `Duplicate data source ${definition2.id}.`);
     ids.add(definition2.id);
   }
 }
@@ -43233,7 +43356,7 @@ class DataSourceLibrary {
     const sources = await this.sources(directory);
     validateLibrary(sources.map((source22) => source22.definition));
     const source2 = sources.find((candidate) => candidate.definition.id === id2);
-    ensure(source2, "UNKNOWN_DATA_SOURCE", `No data source ${id2} in ${directory}.`);
+    ensureDataSource(source2, "UNKNOWN_DATA_SOURCE", `No data source ${id2} in ${directory}.`);
     return { ...source2.definition, revision: source2.revision };
   }
   async validate(directory) {
@@ -43255,7 +43378,7 @@ class DataSourceLibrary {
   async import(sourceDirectory, directory) {
     ensureSeparateDirectories(sourceDirectory, directory);
     const sources = await this.sources(sourceDirectory);
-    ensure(sources.length, "EMPTY_DATA_SOURCE_LIBRARY", `No data-source definitions in ${sourceDirectory}.`);
+    ensureDataSource(sources.length, "EMPTY_DATA_SOURCE_LIBRARY", `No data-source definitions in ${sourceDirectory}.`);
     validateLibrary([...await this.list(directory), ...sources.map((source2) => source2.definition)]);
     const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${directory}/${definition2.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
     return { sources: sources.map((source2) => source2.definition.id), ...await this.commit(plan) };
@@ -43277,17 +43400,17 @@ class DataSourceLibrary {
   }
   async check(directory, options2) {
     ensure(options2.revisions === void 0, "INVALID_GENERATION_PLAN", "Checks do not accept regeneration revisions.");
-    return new GenerationService(this.workspace).check((await this.prepare(directory, options2)).writes, "DATA_SOURCE_DRIFT");
+    return new GenerationService(this.workspace).check((await this.prepare(directory, options2)).writes, (message2, details) => dataSourceError("DATA_SOURCE_DRIFT", message2, details));
   }
   async prepare(directory, options2) {
-    ensure(this.renderer, "DATA_SOURCE_RENDERER_UNAVAILABLE", "No data-source renderer is configured.");
+    ensureDataSource(this.renderer, "DATA_SOURCE_RENDERER_UNAVAILABLE", "No data-source renderer is configured.");
     vaultPath(options2.outputDirectory);
     vaultPath(options2.testDataDirectory);
     let definitions2 = await this.list(directory);
-    ensure(definitions2.length, "EMPTY_DATA_SOURCE_LIBRARY", `No data-source definitions in ${directory}.`);
+    ensureDataSource(definitions2.length, "EMPTY_DATA_SOURCE_LIBRARY", `No data-source definitions in ${directory}.`);
     if (options2.source) {
       definitions2 = definitions2.filter((definition2) => definition2.id === options2.source);
-      ensure(definitions2.length, "UNKNOWN_DATA_SOURCE", `No data source ${options2.source} in ${directory}.`);
+      ensureDataSource(definitions2.length, "UNKNOWN_DATA_SOURCE", `No data source ${options2.source} in ${directory}.`);
     }
     return { definitions: definitions2, writes: this.renderer.generate(definitions2, options2) };
   }
@@ -43417,15 +43540,15 @@ class MarkdownDataSourceDefinitions {
     try {
       const document2 = this.documents.inspect("definition.md", bytes);
       const result = schema.safeParse(document2.properties);
-      ensure(result.success, "INVALID_DATA_SOURCE", `${path2}: ${result.success ? "" : result.error.issues.map((issue2) => `${issue2.path.join(".")}: ${issue2.message}`).join("; ")}`);
+      ensureDataSource(result.success, "INVALID_DATA_SOURCE", `${path2}: ${result.success ? "" : result.error.issues.map((issue2) => `${issue2.path.join(".")}: ${issue2.message}`).join("; ")}`);
       if (result.data.json) {
         vaultPath(result.data.json.path);
-        ensure(result.data.json.path.endsWith(".json"), "INVALID_DATA_SOURCE", `${path2}: JSON source path must end in .json.`);
+        ensureDataSource(result.data.json.path.endsWith(".json"), "INVALID_DATA_SOURCE", `${path2}: JSON source path must end in .json.`);
       }
       return { ...result.data, description: document2.body, sourcePath: path2 };
     } catch (error2) {
-      if (error2 instanceof AppError && error2.code === "INVALID_DATA_SOURCE") throw error2;
-      throw forgeError("INVALID_DATA_SOURCE", `${path2}: ${error2 instanceof Error ? error2.message : "Invalid data-source definition."}`);
+      if (isDataSourceError(error2, "INVALID_DATA_SOURCE")) throw error2;
+      throw dataSourceError("INVALID_DATA_SOURCE", `${path2}: ${error2 instanceof Error ? error2.message : "Invalid data-source definition."}`);
     }
   }
   serialize(definition2) {
@@ -43688,8 +43811,26 @@ function dataSourcesCommand(services2) {
     }
   };
 }
+const germanRegenerateHint = "Führen Sie denselben Befehl mit --plan aus, prüfen Sie die Änderungen und generieren Sie dann neu.";
+const dataSourceErrors = [
+  { code: "DATA_SOURCE_DRIFT", category: "drift", summary: "Generated data-source files are missing or differ from their definitions.", hint: "Run the same command with --plan to review, then regenerate." },
+  { code: "INVALID_DATA_SOURCE", category: "input", summary: "A data-source definition is invalid.", hint: "Fix the fields named in the message; run data-sources validate." },
+  { code: "DUPLICATE_DATA_SOURCE", category: "input", summary: "Two data-source definitions share an id.", hint: "Give each data source a unique id." },
+  { code: "EMPTY_DATA_SOURCE_LIBRARY", category: "input", summary: "The data-source library has no definitions.", hint: "Run data-sources init or add a Markdown definition." },
+  { code: "UNKNOWN_DATA_SOURCE", category: "input", summary: "The data source is not defined.", hint: "Run data-sources list and use an existing id." },
+  { code: "DATA_SOURCE_RENDERER_UNAVAILABLE", category: "input", summary: "No generator is available for this data source.", hint: "Use a supported data-source kind; run help make for data-source generation." }
+];
+const germanDataSourceErrors = {
+  DATA_SOURCE_DRIFT: { summary: "Generierte Datenquellendateien fehlen oder weichen von den Definitionen ab.", hint: germanRegenerateHint },
+  INVALID_DATA_SOURCE: { summary: "Eine Datenquellendefinition ist ungültig.", hint: "Korrigieren Sie die genannten Felder; prüfen Sie mit data-sources validate." },
+  DUPLICATE_DATA_SOURCE: { summary: "Zwei Datenquellendefinitionen haben dieselbe ID.", hint: "Vergeben Sie für jede Datenquelle eine eindeutige ID." },
+  EMPTY_DATA_SOURCE_LIBRARY: { summary: "Die Datenquellenbibliothek enthält keine Definitionen.", hint: "Führen Sie data-sources init aus oder fügen Sie eine Markdown-Definition hinzu." },
+  UNKNOWN_DATA_SOURCE: { summary: "Die Datenquelle ist nicht definiert.", hint: "Führen Sie data-sources list aus und verwenden Sie eine vorhandene ID." },
+  DATA_SOURCE_RENDERER_UNAVAILABLE: { summary: "Für diese Datenquelle ist kein Generator verfügbar.", hint: "Verwenden Sie eine unterstützte Datenquellenart; Hinweise zur Generierung zeigt help make." }
+};
 const dataSourcesStrings = {
   de: {
+    errors: germanDataSourceErrors,
     manifest: { name: "Datenquellen", description: "Markdown-Definitionen für REST- und lokale JSON-Datenquellen mit typisierten Adaptern und deterministischen Testdaten." },
     descriptions: {
       "Data-source kind for create.": "Art der Datenquelle für create.",
@@ -43734,6 +43875,7 @@ const dataSourcesPlugin = {
     generators: [dataSourceGenerator(services)],
     settings: dataSourceSettingsSchema,
     pathSettings: dataSourcePathSettings,
+    errors: dataSourceErrors,
     strings: {
       de: {
         commands: { "data-sources": "Markdown-Datenquellen verwalten, prüfen, importieren und exportieren." },
@@ -43780,11 +43922,44 @@ async function notifyClaude(events2, id2, payload2, localize = englishClaudeText
     if (!events2.ids().includes(id2)) return;
     await events2.emit(id2, payload2);
   } catch (failure2) {
+    const details = { event: id2, diagnostic: errorMessage(failure2) };
     try {
-      events2.warn(localize("notificationFailed", { event: id2, diagnostic: errorMessage(failure2) }));
+      events2.warn({ code: "CLAUDE_NOTIFICATION_FAILED", message: localize("notificationFailed", details), details });
     } catch {
     }
   }
+}
+const claudeErrorCategories = {
+  INVALID_CLAUDE_PLUGIN: "input",
+  INVALID_CLAUDE_COMMAND: "input",
+  INVALID_CLAUDE_ARGUMENT: "input",
+  INVALID_CLAUDE_OPTION: "input",
+  INVALID_CLAUDE_SCOPE: "input",
+  INVALID_CLAUDE_INPUT: "input",
+  INVALID_CLAUDE_OUTPUT: "input",
+  INVALID_CLAUDE_OUTPUT_LIMIT: "input",
+  INVALID_CLAUDE_TIMEOUT: "input",
+  INVALID_CLAUDE_EXECUTABLE: "input",
+  CLAUDE_NOT_INSTALLED: "external",
+  CLAUDE_WORKING_DIRECTORY_UNAVAILABLE: "external",
+  CLAUDE_COMMAND_FAILED: "external",
+  CLAUDE_COMMAND_TIMEOUT: "external",
+  CLAUDE_OUTPUT_LIMIT: "external",
+  CLAUDE_COMMAND_INTERRUPTED: "interrupted",
+  CLAUDE_RUNTIME_FAILED: "external",
+  CLAUDE_INVALID_OUTPUT: "external"
+};
+function claudeError(code2, message2, details) {
+  return new PluginFailure(code2, message2, details);
+}
+function ensureClaude(condition, code2, message2, details) {
+  if (!condition) throw new PluginFailure(code2, message2, details);
+}
+function summarizeClaudeError(error2) {
+  const code2 = error2 instanceof Error && !(error2 instanceof AppError) ? error2.code : void 0;
+  if (typeof code2 !== "string" || !Object.hasOwn(claudeErrorCategories, code2)) return summarizeError(error2);
+  const exitCode = error2.exitCode;
+  return { code: code2, exitCode: typeof exitCode === "number" ? exitCode : categoryExitCodes[claudeErrorCategories[code2]] };
 }
 function nativeResult(stdout, output2) {
   if (output2 === "text") return void 0;
@@ -43832,24 +44007,24 @@ class ClaudeLifecycle {
       await this.notify("claude.succeeded", { ...operation2, ...exitCode === void 0 ? {} : { exitCode } });
       return result;
     } catch (error2) {
-      await this.notify("claude.failed", { ...operation2, ...exitCode === void 0 ? {} : { exitCode }, error: summarizeError(error2) });
+      await this.notify("claude.failed", { ...operation2, ...exitCode === void 0 ? {} : { exitCode }, error: summarizeClaudeError(error2) });
       throw error2;
     }
   }
   async invoke(request, observeExit) {
-    ensure(isRecord$1(request), "INVALID_CLAUDE_ARGUMENT", "Claude execution requires an invocation object.");
+    ensureClaude(isRecord$1(request), "INVALID_CLAUDE_ARGUMENT", "Claude execution requires an invocation object.");
     const executable2 = request.executable ?? "claude";
-    ensure(typeof executable2 === "string" && executable2.trim().length > 0 && !executable2.includes("\0"), "INVALID_CLAUDE_EXECUTABLE", "Provide the Claude executable name or path.");
-    ensure(Array.isArray(request.args) && request.args.every((argument) => typeof argument === "string" && !argument.includes("\0")), "INVALID_CLAUDE_ARGUMENT", "Claude arguments must be strings without null bytes.");
+    ensureClaude(typeof executable2 === "string" && executable2.trim().length > 0 && !executable2.includes("\0"), "INVALID_CLAUDE_EXECUTABLE", "Provide the Claude executable name or path.");
+    ensureClaude(Array.isArray(request.args) && request.args.every((argument) => typeof argument === "string" && !argument.includes("\0")), "INVALID_CLAUDE_ARGUMENT", "Claude arguments must be strings without null bytes.");
     const args = [...request.args], timeoutMs = request.timeoutMs, input2 = request.stdin;
-    ensure(timeoutMs === void 0 || Number.isSafeInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 36e5, "INVALID_CLAUDE_TIMEOUT", "Claude timeout must be milliseconds from 1 to 3600000.");
-    ensure(input2 === void 0 || typeof input2 === "string", "INVALID_CLAUDE_INPUT", "Claude standard input must be UTF-8 text.");
+    ensureClaude(timeoutMs === void 0 || Number.isSafeInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 36e5, "INVALID_CLAUDE_TIMEOUT", "Claude timeout must be milliseconds from 1 to 3600000.");
+    ensureClaude(input2 === void 0 || typeof input2 === "string", "INVALID_CLAUDE_INPUT", "Claude standard input must be UTF-8 text.");
     const inputBytes = input2 === void 0 ? void 0 : new TextEncoder().encode(input2).length;
-    ensure(inputBytes === void 0 || inputBytes <= 1024 * 1024, "INVALID_CLAUDE_INPUT", "Claude standard input must not exceed 1 MiB.");
+    ensureClaude(inputBytes === void 0 || inputBytes <= 1024 * 1024, "INVALID_CLAUDE_INPUT", "Claude standard input must not exceed 1 MiB.");
     const output2 = request.output ?? "text";
-    ensure(["text", "json", "json-last-line"].includes(output2), "INVALID_CLAUDE_OUTPUT", "Claude output must be text, json, or json-last-line.");
+    ensureClaude(["text", "json", "json-last-line"].includes(output2), "INVALID_CLAUDE_OUTPUT", "Claude output must be text, json, or json-last-line.");
     const sensitive = request.sensitiveArgs ?? [];
-    ensure(Array.isArray(sensitive) && sensitive.every((index2) => Number.isSafeInteger(index2) && index2 >= 0 && index2 < args.length), "INVALID_CLAUDE_ARGUMENT", "Sensitive argument indices must address native arguments.");
+    ensureClaude(Array.isArray(sensitive) && sensitive.every((index2) => Number.isSafeInteger(index2) && index2 >= 0 && index2 < args.length), "INVALID_CLAUDE_ARGUMENT", "Sensitive argument indices must address native arguments.");
     const redact2 = new Set(sensitive);
     for (const [index2, argument] of args.entries()) if (argument === "--config" && index2 + 1 < args.length) redact2.add(index2 + 1);
     else if (argument.startsWith("--config=")) redact2.add(index2);
@@ -43862,7 +44037,7 @@ class ClaudeLifecycle {
     };
     if (this.scope.dryRun) return { dryRun: true, executed: false, plan };
     const result = await this.runtime(executable2).run(args, { cwd: this.scope.cwd, ...timeoutMs === void 0 ? {} : { timeoutMs }, ...input2 === void 0 ? {} : { stdin: input2 } });
-    ensure(Number.isInteger(result.exitCode), "CLAUDE_RUNTIME_FAILED", "Claude Code returned no exit status.");
+    ensureClaude(Number.isInteger(result.exitCode), "CLAUDE_RUNTIME_FAILED", "Claude Code returned no exit status.");
     observeExit(result.exitCode);
     await this.notify("claude.executed", { executable: executable2, cwd: this.scope.cwd, exitCode: result.exitCode });
     let data, malformed = false;
@@ -43872,8 +44047,8 @@ class ClaudeLifecycle {
       malformed = true;
     }
     const details = { ...plan, ...result, ...data === void 0 ? {} : { result: data } };
-    if (result.exitCode !== 0) throw forgeError("CLAUDE_RUNTIME_FAILED", `Claude Code exited with status ${result.exitCode}. Inspect the native result before retrying; the command may have changed external state.`, details);
-    if (malformed) throw forgeError("CLAUDE_INVALID_OUTPUT", "Claude exited successfully but did not return the requested JSON. Inspect stdout and external state before retrying.", details);
+    if (result.exitCode !== 0) throw claudeError("CLAUDE_RUNTIME_FAILED", `Claude Code exited with status ${result.exitCode}. Inspect the native result before retrying; the command may have changed external state.`, details);
+    if (malformed) throw claudeError("CLAUDE_INVALID_OUTPUT", "Claude exited successfully but did not return the requested JSON. Inspect stdout and external state before retrying.", details);
     return { dryRun: false, executed: true, ...details };
   }
 }
@@ -43952,22 +44127,22 @@ class NodeClaudeRuntime {
   constructor(options2 = {}) {
     this.executable = options2.executable ?? "claude";
     this.maxOutputBytes = options2.maxOutputBytes ?? 1024 * 1024;
-    ensure(this.executable.trim().length > 0 && !this.executable.includes("\0"), "INVALID_CLAUDE_EXECUTABLE", "Provide the Claude executable name or path.");
-    ensure(Number.isSafeInteger(this.maxOutputBytes) && this.maxOutputBytes > 0, "INVALID_CLAUDE_OUTPUT_LIMIT", "Claude output limit must be a positive integer.");
+    ensureClaude(this.executable.trim().length > 0 && !this.executable.includes("\0"), "INVALID_CLAUDE_EXECUTABLE", "Provide the Claude executable name or path.");
+    ensureClaude(Number.isSafeInteger(this.maxOutputBytes) && this.maxOutputBytes > 0, "INVALID_CLAUDE_OUTPUT_LIMIT", "Claude output limit must be a positive integer.");
   }
   async run(args, options2) {
     const timeoutMs = options2.timeoutMs ?? 12e4;
-    ensure(
+    ensureClaude(
       Number.isInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 2147483647,
       "INVALID_CLAUDE_TIMEOUT",
       "Claude timeout must be a positive integer no greater than 2147483647 milliseconds."
     );
-    ensure(
+    ensureClaude(
       args.every((argument) => typeof argument === "string" && !argument.includes("\0")),
       "INVALID_CLAUDE_ARGUMENT",
       "Claude arguments must be strings without null bytes."
     );
-    ensure(
+    ensureClaude(
       options2.stdin === void 0 || typeof options2.stdin === "string" && Buffer.byteLength(options2.stdin, "utf8") <= 1024 * 1024,
       "INVALID_CLAUDE_INPUT",
       "Claude standard input must be UTF-8 text no larger than 1048576 bytes."
@@ -43976,9 +44151,9 @@ class NodeClaudeRuntime {
     try {
       directory = (await promises.stat(options2.cwd)).isDirectory();
     } catch (error2) {
-      throw forgeError("CLAUDE_WORKING_DIRECTORY_UNAVAILABLE", `Cannot access Claude working directory: ${options2.cwd}`, { cause: errorMessage(error2) });
+      throw claudeError("CLAUDE_WORKING_DIRECTORY_UNAVAILABLE", `Cannot access Claude working directory: ${options2.cwd}`, { cause: errorMessage(error2) });
     }
-    ensure(directory, "CLAUDE_WORKING_DIRECTORY_UNAVAILABLE", `Claude working directory is not a directory: ${options2.cwd}`);
+    ensureClaude(directory, "CLAUDE_WORKING_DIRECTORY_UNAVAILABLE", `Claude working directory is not a directory: ${options2.cwd}`);
     return new Promise((resolve2, reject) => {
       const grouped = process.platform !== "win32";
       const child = childProcess.spawn(this.executable, [...args], {
@@ -44021,15 +44196,16 @@ class NodeClaudeRuntime {
         if (["CLAUDE_COMMAND_TIMEOUT", "CLAUDE_OUTPUT_LIMIT", "CLAUDE_COMMAND_INTERRUPTED"].includes(code2)) {
           message2 += ` ${terminationRequested ? "Termination requested." : "Termination could not be requested."} Inspect its state before retrying.`;
         }
-        reject(forgeError(code2, message2, {
+        const failure2 = claudeError(code2, message2, {
           executable: this.executable,
           ...details,
           terminationScope: grouped ? "process-group" : "direct-process",
           terminationRequested,
           ...output2()
-        }, exitCode));
+        });
+        reject(exitCode === void 0 ? failure2 : Object.assign(failure2, { exitCode }));
       };
-      const interrupt = () => fail2("CLAUDE_COMMAND_INTERRUPTED", "Forge received SIGINT while running Claude.", { signal: "SIGINT" });
+      const interrupt = () => fail2("CLAUDE_COMMAND_INTERRUPTED", "Forge received SIGINT while running Claude.", { signal: "SIGINT" }, 130);
       const terminate = () => fail2("CLAUDE_COMMAND_INTERRUPTED", "Forge received SIGTERM while running Claude.", { signal: "SIGTERM" }, 143);
       const exit2 = () => {
         try {
@@ -44119,7 +44295,7 @@ class ClaudeAgents {
         if (names2.has(entry2.name)) duplicates.add(entry2.name);
         names2.add(entry2.name);
       } catch (error2) {
-        entry2.error = { code: error2 instanceof AppError ? error2.code : "OPERATION_FAILED", message: errorMessage(error2) };
+        entry2.error = { code: failureCode(error2) ?? "OPERATION_FAILED", message: errorMessage(error2) };
       }
       agents2.push(entry2);
     }
@@ -44392,7 +44568,7 @@ const claudePluginCapabilities = {
   ]
 };
 function check(condition, path2, requirement) {
-  ensure(condition, "INVALID_CLAUDE_PLUGIN", `${path2}: ${requirement}`);
+  ensureClaude(condition, "INVALID_CLAUDE_PLUGIN", `${path2}: ${requirement}`);
 }
 function object(value2, path2) {
   check(isRecord$1(value2), path2, "must be an object.");
@@ -44571,7 +44747,7 @@ function hooks$1(value2, path2) {
   try {
     validateClaudeHooks(value2);
   } catch (error2) {
-    if (error2 instanceof AppError) throw forgeError("INVALID_CLAUDE_PLUGIN", `${path2}: ${error2.message}`);
+    if (error2 instanceof AppError) throw claudeError("INVALID_CLAUDE_PLUGIN", `${path2}: ${error2.message}`);
     throw error2;
   }
 }
@@ -44647,9 +44823,9 @@ function json$2(bytes, path2) {
   try {
     value2 = JSON.parse(decode$2(bytes));
   } catch (error2) {
-    throw forgeError("INVALID_CLAUDE_PLUGIN", `${path2}: ${errorMessage(error2)}`);
+    throw claudeError("INVALID_CLAUDE_PLUGIN", `${path2}: ${errorMessage(error2)}`);
   }
-  ensure(isRecord$1(value2), "INVALID_CLAUDE_PLUGIN", `${path2} must contain a JSON object.`);
+  ensureClaude(isRecord$1(value2), "INVALID_CLAUDE_PLUGIN", `${path2} must contain a JSON object.`);
   return value2;
 }
 function nativeReferences(manifest) {
@@ -44800,9 +44976,9 @@ class ClaudePluginService {
     }
     if (kinds.has("hooks")) {
       const config2 = json$2(bytes, path2);
-      ensure(config2.hooks !== void 0 || config2.modules !== void 0, "INVALID_CLAUDE_PLUGIN", `${path2}: hook files require a hooks wrapper, or modules for a Claude mod.`);
+      ensureClaude(config2.hooks !== void 0 || config2.modules !== void 0, "INVALID_CLAUDE_PLUGIN", `${path2}: hook files require a hooks wrapper, or modules for a Claude mod.`);
       if (config2.hooks !== void 0) validateClaudeHooks(config2.hooks);
-      if (config2.modules !== void 0) ensure(Array.isArray(config2.modules) && config2.modules.every((entry2) => typeof entry2 === "string"), "INVALID_CLAUDE_PLUGIN", `${path2}: modules must be an array of module paths.`);
+      if (config2.modules !== void 0) ensureClaude(Array.isArray(config2.modules) && config2.modules.every((entry2) => typeof entry2 === "string"), "INVALID_CLAUDE_PLUGIN", `${path2}: modules must be an array of module paths.`);
     }
     if (kinds.has("mcp") && !/\.(mcpb|dxt)$/.test(path2)) {
       const config2 = json$2(bytes, path2);
@@ -44909,7 +45085,7 @@ function actionArgs(section2, args) {
   return { action: nested ? "eval init" : args[0] ?? "", operands: args.slice(nested ? 2 : 1) };
 }
 function commandDefinition(section2, action2) {
-  ensure(
+  ensureClaude(
     Object.hasOwn(commands$1, section2) && Object.hasOwn(commands$1[section2], action2),
     "INVALID_CLAUDE_COMMAND",
     `Unknown Claude ${section2} command: ${action2 || "(missing)"}. See help claude.`
@@ -44927,7 +45103,7 @@ function claudeRuntimeNeedsInput(section2, args, flags) {
   return section2 === "plugins" && args[0] === "configure" && flags["values-stdin"] === true;
 }
 function stringValue(value2, flag2) {
-  ensure(typeof value2 === "string" && value2.length > 0 && !value2.includes("\0"), "INVALID_CLAUDE_OPTION", `--${flag2} requires a nonempty string without null bytes.`);
+  ensureClaude(typeof value2 === "string" && value2.length > 0 && !value2.includes("\0"), "INVALID_CLAUDE_OPTION", `--${flag2} requires a nonempty string without null bytes.`);
 }
 function listValue(value2, flag2) {
   stringValue(value2, flag2);
@@ -44936,53 +45112,53 @@ function listValue(value2, flag2) {
     try {
       result = JSON.parse(value2);
     } catch {
-      ensure(false, "INVALID_CLAUDE_OPTION", `--${flag2} must be a string or a JSON array of strings.`);
+      ensureClaude(false, "INVALID_CLAUDE_OPTION", `--${flag2} must be a string or a JSON array of strings.`);
     }
   }
   const list2 = Array.isArray(result) ? result : [result];
-  ensure(list2.length > 0 && list2.every((item) => typeof item === "string" && item.trim().length > 0 && !item.startsWith("-") && !item.includes("\0")), "INVALID_CLAUDE_OPTION", `--${flag2} requires nonempty strings that do not start with a dash or contain null bytes.`);
+  ensureClaude(list2.length > 0 && list2.every((item) => typeof item === "string" && item.trim().length > 0 && !item.startsWith("-") && !item.includes("\0")), "INVALID_CLAUDE_OPTION", `--${flag2} requires nonempty strings that do not start with a dash or contain null bytes.`);
   return list2;
 }
 function optionArgs(flag2, kind2, value2) {
   if (kind2 === "boolean") {
-    ensure(typeof value2 === "boolean", "INVALID_CLAUDE_OPTION", `--${flag2} is a boolean option.`);
+    ensureClaude(typeof value2 === "boolean", "INVALID_CLAUDE_OPTION", `--${flag2} is a boolean option.`);
     return value2 ? [`--${flag2}`] : [];
   }
   if (kind2 === "optional-string" && (value2 === true || value2 === "")) return [`--${flag2}`];
   if (kind2 === "list" || kind2 === "repeat") {
     const list2 = listValue(value2, flag2);
-    if (flag2 === "with") ensure(list2.every((item) => ["skills", "agents", "hooks", "mcp", "lsp", "output-style", "channel"].includes(item)), "INVALID_CLAUDE_OPTION", "--with must name skills, agents, hooks, mcp, lsp, output-style, or channel.");
-    if (flag2 === "config") ensure(list2.every((item) => /^[^=\s]+=/.test(item)), "INVALID_CLAUDE_OPTION", "--config entries must use key=value.");
+    if (flag2 === "with") ensureClaude(list2.every((item) => ["skills", "agents", "hooks", "mcp", "lsp", "output-style", "channel"].includes(item)), "INVALID_CLAUDE_OPTION", "--with must name skills, agents, hooks, mcp, lsp, output-style, or channel.");
+    if (flag2 === "config") ensureClaude(list2.every((item) => /^[^=\s]+=/.test(item)), "INVALID_CLAUDE_OPTION", "--config entries must use key=value.");
     return kind2 === "repeat" ? list2.flatMap((item) => [`--${flag2}`, item]) : [`--${flag2}`, ...list2];
   }
   stringValue(value2, flag2);
-  if (kind2 === "hash") ensure(/^[a-fA-F0-9]{64}$/.test(value2), "INVALID_CLAUDE_OPTION", "--accept-command requires the displayed command SHA-256 hash.");
-  if (kind2 === "integer") ensure(/^\d+$/.test(value2) && Number.isSafeInteger(Number(value2)) && Number(value2) >= 1, "INVALID_CLAUDE_OPTION", `--${flag2} must be a positive integer.`);
-  if (kind2 === "number") ensure(value2.trim().length > 0 && Number.isFinite(Number(value2)) && Number(value2) >= 0, "INVALID_CLAUDE_OPTION", `--${flag2} must be a finite nonnegative number.`);
-  if (flag2 === "concurrency") ensure(Number(value2) <= 8, "INVALID_CLAUDE_OPTION", "--concurrency must be between 1 and 8.");
-  if (flag2 === "threshold") ensure(Number(value2) <= 1, "INVALID_CLAUDE_OPTION", "--threshold must be between 0 and 1.");
-  if (flag2 === "ablation") ensure(["none", "with-without"].includes(value2), "INVALID_CLAUDE_OPTION", "--ablation must be none or with-without.");
-  if (flag2 === "mocks") ensure(["record", "off"].includes(value2), "INVALID_CLAUDE_OPTION", "--mocks must be record or off.");
-  if (flag2 === "native-json-output") ensure(value2.endsWith(".json"), "INVALID_CLAUDE_OPTION", "--native-json-output must name a .json file.");
+  if (kind2 === "hash") ensureClaude(/^[a-fA-F0-9]{64}$/.test(value2), "INVALID_CLAUDE_OPTION", "--accept-command requires the displayed command SHA-256 hash.");
+  if (kind2 === "integer") ensureClaude(/^\d+$/.test(value2) && Number.isSafeInteger(Number(value2)) && Number(value2) >= 1, "INVALID_CLAUDE_OPTION", `--${flag2} must be a positive integer.`);
+  if (kind2 === "number") ensureClaude(value2.trim().length > 0 && Number.isFinite(Number(value2)) && Number(value2) >= 0, "INVALID_CLAUDE_OPTION", `--${flag2} must be a finite nonnegative number.`);
+  if (flag2 === "concurrency") ensureClaude(Number(value2) <= 8, "INVALID_CLAUDE_OPTION", "--concurrency must be between 1 and 8.");
+  if (flag2 === "threshold") ensureClaude(Number(value2) <= 1, "INVALID_CLAUDE_OPTION", "--threshold must be between 0 and 1.");
+  if (flag2 === "ablation") ensureClaude(["none", "with-without"].includes(value2), "INVALID_CLAUDE_OPTION", "--ablation must be none or with-without.");
+  if (flag2 === "mocks") ensureClaude(["record", "off"].includes(value2), "INVALID_CLAUDE_OPTION", "--mocks must be record or off.");
+  if (flag2 === "native-json-output") ensureClaude(value2.endsWith(".json"), "INVALID_CLAUDE_OPTION", "--native-json-output must name a .json file.");
   return value2.startsWith("-") ? [`--${flag2}=${value2}`] : [`--${flag2}`, value2];
 }
 function commandRules(section2, action2, operands, flags) {
-  ensure(!(flags.yes === true && flags["accept-command"] !== void 0), "INVALID_CLAUDE_OPTION", "Choose --yes or --accept-command, not both.");
-  ensure(!(flags.scaffold === true && flags["no-scaffold"] === true), "INVALID_CLAUDE_OPTION", "Choose --scaffold or --no-scaffold.");
-  ensure(!(flags["no-publish"] === true && flags["publish-report"] === true), "INVALID_CLAUDE_OPTION", "Choose --no-publish or --publish-report.");
+  ensureClaude(!(flags.yes === true && flags["accept-command"] !== void 0), "INVALID_CLAUDE_OPTION", "Choose --yes or --accept-command, not both.");
+  ensureClaude(!(flags.scaffold === true && flags["no-scaffold"] === true), "INVALID_CLAUDE_OPTION", "Choose --scaffold or --no-scaffold.");
+  ensureClaude(!(flags["no-publish"] === true && flags["publish-report"] === true), "INVALID_CLAUDE_OPTION", "Choose --no-publish or --publish-report.");
   if (section2 === "plugins" && action2 === "disable") {
-    ensure(flags.all === true ? operands.length === 0 && flags.scope === void 0 : operands.length === 1, "INVALID_CLAUDE_ARGUMENT", "Disable one plugin, or use --all without a plugin name or scope.");
+    ensureClaude(flags.all === true ? operands.length === 0 && flags.scope === void 0 : operands.length === 1, "INVALID_CLAUDE_ARGUMENT", "Disable one plugin, or use --all without a plugin name or scope.");
   }
-  if (section2 === "plugins" && action2 === "configure") ensure(/^[^@\s]+@[^@\s]+$/.test(operands[0]), "INVALID_CLAUDE_ARGUMENT", "Plugin configure requires the full name@marketplace identifier from plugin list.");
-  if (section2 === "plugins" && action2 === "eval init") ensure(flags.interactive !== true, "INVALID_CLAUDE_OPTION", "--interactive requires a terminal. Use --bare with a case name, or invoke claude plugin eval init directly in your terminal.");
-  if (section2 === "marketplaces" && action2 === "add" && flags.claudeai === true) ensure(flags.scope === void 0 && flags.sparse === void 0, "INVALID_CLAUDE_OPTION", "--claudeai cannot be combined with --scope or --sparse.");
+  if (section2 === "plugins" && action2 === "configure") ensureClaude(/^[^@\s]+@[^@\s]+$/.test(operands[0]), "INVALID_CLAUDE_ARGUMENT", "Plugin configure requires the full name@marketplace identifier from plugin list.");
+  if (section2 === "plugins" && action2 === "eval init") ensureClaude(flags.interactive !== true, "INVALID_CLAUDE_OPTION", "--interactive requires a terminal. Use --bare with a case name, or invoke claude plugin eval init directly in your terminal.");
+  if (section2 === "marketplaces" && action2 === "add" && flags.claudeai === true) ensureClaude(flags.scope === void 0 && flags.sparse === void 0, "INVALID_CLAUDE_OPTION", "--claudeai cannot be combined with --scope or --sparse.");
 }
 function buildClaudeRuntimeArgs(section2, args, flags) {
   const { action: action2, operands } = actionArgs(section2, args);
   const command2 = commandDefinition(section2, action2);
   arity(operands, command2.min, command2.max ?? command2.min);
   for (const operand of operands) {
-    ensure(
+    ensureClaude(
       operand.trim().length > 0 && !operand.startsWith("-") && !operand.includes("\0"),
       "INVALID_CLAUDE_ARGUMENT",
       "Claude command operands must be nonempty and cannot start with a dash or contain null bytes. Prefix a dash-leading local path with ./ ."
@@ -44993,7 +45169,7 @@ function buildClaudeRuntimeArgs(section2, args, flags) {
     if (Object.hasOwn(globalOptions, flag2) || flag2 === "claude-bin" || flag2 === "timeout") continue;
     if (input2 && ["content", "from", "stdin"].includes(flag2)) continue;
     if (flag2 === "scope" && command2.scope) {
-      ensure(
+      ensureClaude(
         typeof value2 === "string" && ["user", "project", "local", ...command2.managed ? ["managed"] : []].includes(value2),
         "INVALID_CLAUDE_SCOPE",
         `Invalid scope for Claude ${section2} ${action2}: ${String(value2)}.`
@@ -45001,7 +45177,7 @@ function buildClaudeRuntimeArgs(section2, args, flags) {
       continue;
     }
     const kind2 = command2.options && Object.hasOwn(command2.options, flag2) ? command2.options[flag2] : void 0;
-    ensure(kind2, "INVALID_CLAUDE_OPTION", `--${flag2} is not supported by Claude ${section2} ${action2}.`);
+    ensureClaude(kind2, "INVALID_CLAUDE_OPTION", `--${flag2} is not supported by Claude ${section2} ${action2}.`);
     const translated2 = optionArgs(flag2, kind2, value2);
     if (!["native-json", "native-json-output"].includes(flag2)) options2.push(...translated2);
   }
@@ -45227,12 +45403,56 @@ function claudeCommand(adapters) {
         const values2 = parseJson(await claudeInput(flags, context));
         ensure(isRecord$1(values2) && Object.values(values2).every((item) => typeof item === "string" && !/[\r\n]/.test(item)), "INVALID_INPUT", "Claude plugin configuration must map keys to single-line string values.");
         input2 = JSON.stringify(values2) + "\n";
-        ensure(new TextEncoder().encode(input2).length <= 1024 * 1024, "INVALID_CLAUDE_INPUT", "Claude configuration input must not exceed 1 MiB.");
+        ensureClaude(new TextEncoder().encode(input2).length <= 1024 * 1024, "INVALID_CLAUDE_INPUT", "Claude configuration input must not exceed 1 MiB.");
       }
       return adapters.lifecycle.execute({ args: command2, executable: executable2, timeoutMs, stdin: input2, output: claudeRuntimeOutput(section2, args.slice(1), flags) });
     }
   });
 }
+const argumentsHint$1 = "Correct the arguments named in the message; run help <command> for usage.";
+const claudeDefinitionHint$1 = "Fix the field named in the message, then rerun the command.";
+const germanArgumentsHint = "Korrigieren Sie die in der Meldung genannten Argumente; die Verwendung zeigt help <command>.";
+const germanClaudeDefinitionHint = "Korrigieren Sie das in der Meldung genannte Feld und führen Sie den Befehl erneut aus.";
+const claudeErrors = [
+  { code: "INVALID_CLAUDE_PLUGIN", category: claudeErrorCategories.INVALID_CLAUDE_PLUGIN, summary: "The Claude plugin manifest or a plugin file is invalid.", hint: claudeDefinitionHint$1 },
+  { code: "INVALID_CLAUDE_COMMAND", category: claudeErrorCategories.INVALID_CLAUDE_COMMAND, summary: "The Claude command is not supported.", hint: "Run claude capabilities." },
+  { code: "INVALID_CLAUDE_ARGUMENT", category: claudeErrorCategories.INVALID_CLAUDE_ARGUMENT, summary: "A Claude command argument is invalid.", hint: argumentsHint$1 },
+  { code: "INVALID_CLAUDE_OPTION", category: claudeErrorCategories.INVALID_CLAUDE_OPTION, summary: "A Claude option has an invalid value or combination.", hint: "Run help claude and correct the option the message names." },
+  { code: "INVALID_CLAUDE_SCOPE", category: claudeErrorCategories.INVALID_CLAUDE_SCOPE, summary: "The Claude scope is invalid.", hint: "Run help claude and pass a --scope value supported by that action." },
+  { code: "INVALID_CLAUDE_INPUT", category: claudeErrorCategories.INVALID_CLAUDE_INPUT, summary: "The Claude input is invalid or too large.", hint: "Pass valid input within the size limit." },
+  { code: "INVALID_CLAUDE_OUTPUT", category: claudeErrorCategories.INVALID_CLAUDE_OUTPUT, summary: "The Claude output format is invalid.", hint: "Use text, json or json-last-line." },
+  { code: "INVALID_CLAUDE_OUTPUT_LIMIT", category: claudeErrorCategories.INVALID_CLAUDE_OUTPUT_LIMIT, summary: "The Claude output limit is invalid.", hint: "Use a positive integer number of bytes." },
+  { code: "INVALID_CLAUDE_TIMEOUT", category: claudeErrorCategories.INVALID_CLAUDE_TIMEOUT, summary: "The Claude timeout is invalid.", hint: "Pass the timeout in milliseconds within the range named in the message." },
+  { code: "INVALID_CLAUDE_EXECUTABLE", category: claudeErrorCategories.INVALID_CLAUDE_EXECUTABLE, summary: "The Claude executable path is invalid.", hint: "Pass an executable path to --claude-bin." },
+  { code: "CLAUDE_NOT_INSTALLED", category: claudeErrorCategories.CLAUDE_NOT_INSTALLED, summary: "The Claude Code executable was not found.", hint: "Install Claude Code and put claude on PATH, or pass --claude-bin." },
+  { code: "CLAUDE_WORKING_DIRECTORY_UNAVAILABLE", category: claudeErrorCategories.CLAUDE_WORKING_DIRECTORY_UNAVAILABLE, summary: "The Claude working directory is unavailable.", hint: "Check that the selected project or workspace root exists and is a directory." },
+  { code: "CLAUDE_COMMAND_FAILED", category: claudeErrorCategories.CLAUDE_COMMAND_FAILED, summary: "Claude Code could not be started or stopped unexpectedly.", hint: "Read error.details, inspect external state, then retry deliberately." },
+  { code: "CLAUDE_COMMAND_TIMEOUT", category: claudeErrorCategories.CLAUDE_COMMAND_TIMEOUT, summary: "The Claude command exceeded its timeout.", hint: "Inspect external state; retry with a larger --timeout only if the work did not complete." },
+  { code: "CLAUDE_OUTPUT_LIMIT", category: claudeErrorCategories.CLAUDE_OUTPUT_LIMIT, summary: "Claude output exceeded the size limit.", hint: "Inspect external state; retry with a larger output limit only if needed." },
+  { code: "CLAUDE_COMMAND_INTERRUPTED", category: claudeErrorCategories.CLAUDE_COMMAND_INTERRUPTED, summary: "The Claude command was interrupted by a signal (exit 130 for SIGINT, 143 for SIGTERM).", hint: "Inspect external state before running the command again." },
+  { code: "CLAUDE_RUNTIME_FAILED", category: claudeErrorCategories.CLAUDE_RUNTIME_FAILED, summary: "Claude Code exited with a nonzero status.", hint: "Inspect error.details (native status, output and parsed result) and external state before retrying." },
+  { code: "CLAUDE_INVALID_OUTPUT", category: claudeErrorCategories.CLAUDE_INVALID_OUTPUT, summary: "Claude Code succeeded but did not return the requested JSON.", hint: "Inspect stdout and external state before retrying." }
+];
+const germanClaudeErrors = {
+  INVALID_CLAUDE_PLUGIN: { summary: "Das Claude-Plugin-Manifest oder eine Plugin-Datei ist ungültig.", hint: germanClaudeDefinitionHint },
+  INVALID_CLAUDE_COMMAND: { summary: "Dieser Claude-Befehl wird nicht unterstützt.", hint: "Unterstützte Befehle zeigt claude capabilities." },
+  INVALID_CLAUDE_ARGUMENT: { summary: "Ein Argument des Claude-Befehls ist ungültig.", hint: germanArgumentsHint },
+  INVALID_CLAUDE_OPTION: { summary: "Eine Claude-Option hat einen ungültigen Wert oder eine ungültige Kombination.", hint: "Prüfen Sie help claude und korrigieren Sie die in der Meldung genannte Option." },
+  INVALID_CLAUDE_SCOPE: { summary: "Der Claude-Geltungsbereich ist ungültig.", hint: "Prüfen Sie help claude und übergeben Sie einen für diese Aktion unterstützten --scope." },
+  INVALID_CLAUDE_INPUT: { summary: "Die Claude-Eingabe ist ungültig oder zu groß.", hint: "Übergeben Sie gültige Eingaben innerhalb des Größenlimits." },
+  INVALID_CLAUDE_OUTPUT: { summary: "Das Claude-Ausgabeformat ist ungültig.", hint: "Verwenden Sie text, json oder json-last-line." },
+  INVALID_CLAUDE_OUTPUT_LIMIT: { summary: "Das Claude-Ausgabelimit ist ungültig.", hint: "Verwenden Sie eine positive ganze Zahl von Bytes." },
+  INVALID_CLAUDE_TIMEOUT: { summary: "Das Claude-Zeitlimit ist ungültig.", hint: "Geben Sie das Zeitlimit in Millisekunden innerhalb des in der Meldung genannten Bereichs an." },
+  INVALID_CLAUDE_EXECUTABLE: { summary: "Der Pfad zur Claude-Code-CLI ist ungültig.", hint: "Übergeben Sie einen ausführbaren Pfad an --claude-bin." },
+  CLAUDE_NOT_INSTALLED: { summary: "Die Claude-Code-CLI wurde nicht gefunden.", hint: "Installieren Sie Claude Code und nehmen Sie claude in PATH auf oder verwenden Sie --claude-bin." },
+  CLAUDE_WORKING_DIRECTORY_UNAVAILABLE: { summary: "Das Arbeitsverzeichnis für Claude Code ist nicht verfügbar.", hint: "Prüfen Sie, dass das ausgewählte Projekt oder der Workspace existiert und ein Verzeichnis ist." },
+  CLAUDE_COMMAND_FAILED: { summary: "Claude Code konnte nicht gestartet werden oder wurde unerwartet beendet.", hint: "Lesen Sie error.details, prüfen Sie den externen Zustand und wiederholen Sie dann bewusst." },
+  CLAUDE_COMMAND_TIMEOUT: { summary: "Der Claude-Befehl hat sein Zeitlimit überschritten.", hint: "Prüfen Sie den externen Zustand; wiederholen Sie mit größerem --timeout nur, wenn die Arbeit nicht abgeschlossen wurde." },
+  CLAUDE_OUTPUT_LIMIT: { summary: "Die Claude-Ausgabe hat das Größenlimit überschritten.", hint: "Prüfen Sie den externen Zustand; wiederholen Sie nur bei Bedarf mit größerem Ausgabelimit." },
+  CLAUDE_COMMAND_INTERRUPTED: { summary: "Der Claude-Befehl wurde durch ein Signal unterbrochen (Exit 130 bei SIGINT, 143 bei SIGTERM).", hint: "Prüfen Sie den externen Zustand, bevor Sie den Befehl erneut ausführen." },
+  CLAUDE_RUNTIME_FAILED: { summary: "Claude Code wurde mit einem Status ungleich null beendet.", hint: "Prüfen Sie error.details (nativer Status, Ausgabe und geparstes Ergebnis) und den externen Zustand vor einer Wiederholung." },
+  CLAUDE_INVALID_OUTPUT: { summary: "Claude Code war erfolgreich, lieferte aber nicht das angeforderte JSON.", hint: "Prüfen Sie stdout und den externen Zustand vor einer Wiederholung." }
+};
 const passthrough = {
   list: "Passed to the native Claude Code CLI as --{name} (one string or a JSON array) by {actions}.",
   flag: "Passed to the native Claude Code CLI as --{name} by {actions}."
@@ -45243,6 +45463,7 @@ const germanPassthrough = {
 };
 const claudeStrings = {
   de: {
+    errors: germanClaudeErrors,
     manifest: { name: "Claude-Code-Verwaltung", description: "Native Claude-Code-Agenten, -Hooks und -Plugins verwalten und den Lebenszyklus der installierten Claude-Code-CLI ausführen." },
     descriptions: {
       ...Object.fromEntries(Object.values(claudeRuntimeOptions).map(({ description: description2 }) => [description2, retranslate(description2, passthrough, germanPassthrough)])),
@@ -45357,6 +45578,7 @@ const claudePlugin = {
       onunload() {
         lifecycle = void 0;
       },
+      errors: claudeErrors,
       strings: { de: de$1 }
     };
   }
@@ -65060,7 +65282,7 @@ function sections(text2, headings) {
     return { heading: heading2, path: stack.map((item) => item.heading.trim()), bodyStart: nextLine(text2, heading2.position.end.offset), end: next?.position.start.offset ?? text2.length };
   });
 }
-function names(path2, segments2, same2) {
+function names$1(path2, segments2, same2) {
   if (!same2(path2.at(-1), segments2.at(-1))) return false;
   let next = 0;
   for (const ancestor of path2.slice(0, -1)) if (next < segments2.length - 1 && same2(ancestor, segments2[next])) next++;
@@ -65083,8 +65305,8 @@ function onLine(matches2, heading2, line) {
 function findSection(text2, headings, heading2, line) {
   const segments2 = pathSegments(heading2);
   const all2 = sections(text2, headings);
-  let matches2 = all2.filter((section2) => names(section2.path, segments2, exact));
-  if (matches2.length === 0) matches2 = all2.filter((section2) => names(section2.path, segments2, caseless));
+  let matches2 = all2.filter((section2) => names$1(section2.path, segments2, exact));
+  if (matches2.length === 0) matches2 = all2.filter((section2) => names$1(section2.path, segments2, caseless));
   if (matches2.length === 0) {
     throw forgeError("SECTION_NOT_FOUND", `No heading matches the section path "${heading2}".`, { section: heading2, headings: all2.slice(0, reportedHeadings).map(describe$1) });
   }
@@ -69276,7 +69498,7 @@ function ensureValuesAreNotFlags(tokens, options2) {
     if (!token.startsWith("--") || token.includes("=") || !known2(key) || options2[key] !== "string") continue;
     const next = tokens[++index2];
     if (next !== void 0 && flag2(next)) {
-      throw forgeError("MISSING_ARGUMENT", `--${key} needs a value, but ${next} follows it; write a literal value that starts with - as --${key}=<value>.`, { option: key });
+      throw forgeError("MISSING_ARGUMENT", `--${key} needs a value, but ${next} follows it; write a literal value that starts with - as --${key}=<value>.`, { option: key, next });
     }
   }
 }
@@ -69356,6 +69578,8 @@ function generationCommand(registry2) {
       { name: "name", description: "The name or id the generator creates from." }
     ],
     unknownAction: "UNKNOWN_GENERATOR",
+    generatorActions: true,
+    localizedOutput: { generators: "generators" },
     // make's own codes, then each registered generator's, so schema make covers every generator.
     get errors() {
       return [.../* @__PURE__ */ new Set([...makeErrors, ...[...registry2.generators.values()].flatMap((generator) => generator.errors ?? [])])];
@@ -69392,7 +69616,7 @@ function generationCommand(registry2) {
       const writes = await generator.generate(request);
       if (generator.review) {
         const { mode, manifestPath: manifestPath2, revisions } = await generationControls(flags, context.workspace.files);
-        if (mode === "check") return { generator: generator.id, check: true, ...await generation.check(writes, "GENERATION_DRIFT") };
+        if (mode === "check") return { generator: generator.id, check: true, ...await generation.check(writes) };
         if (mode === "plan") return { generator: generator.id, plan: true, ...await generation.plan(writes, manifestPath2) };
         return { generator: generator.id, ...await generation.commit(writes, revisions) };
       }
@@ -69454,18 +69678,16 @@ const germanActions = {
   "workflows sync": "Die generierten .github/workflows-Einstiegspunkte schreiben; mit --check Abweichungen melden, ohne zu schreiben."
 };
 const germanGuidance = {
-  helpNext: "Verwendung, Optionen, Argumente, Fehler und Beispiele eines Befehls zeigt help <command>, seine JSON-Schemas schema <command>. make listet die Generatoren, skills die Agent-Skills.",
-  attachments: "Dateien verlustfrei als Bytes lesen, kopieren, ersetzen und einbetten; keine integrierte Konvertierung, Darstellung oder PDF-Inhaltsbearbeitung.",
-  otherFiles: "Uninterpretierte Bytes; Plugins können weitere Verarbeitung bereitstellen.",
-  textFiles: "textFilenames gelten ohne Beachtung der Groß- und Kleinschreibung, auch mit Punkt-Suffixen, die mit einem anderen Zeichen als einem Punkt beginnen; native Erweiterungen haben Vorrang. UTF-8 lesen, wörtlich bearbeiten, ergänzen und vollständig ersetzen, mit Unified-Diffs im Probelauf; ungültiges UTF-8 und Inhalte mit NUL-Zeichen werden als Base64-Anhang gelesen.",
-  delivery: "Geordnet, abgewartet und mit separaten Snapshots je Behandler; Fehler werden zu Warnungen. Obsidian-artige vault.*-Ereignisse folgen jedem erfolgreichen Schreibvorgang (zuerst neue Ordner, übergeordnete vor untergeordneten, dann Dateien in Stapelreihenfolge); Probeläufe senden stattdessen workspace.quick-preview. Nach den vault.*-Ereignissen eines Stapels folgen metadataCache.changed, metadataCache.deleted, metadataCache.resolve und ein metadataCache.resolved, sobald der Metadaten-Cache in diesem Aufruf geladen wurde. operation.*-, command.*- und plugin.*-Ereignisse sind Lebenszyklusphasen des Hosts, die claude.*-Ereignisse des claude-Kern-Plugins Phasen jedes Claude-Aufrufs; workspace.*-Ereignisse entsprechen Obsidians Workspace (file-open, quick-preview, layout-ready, quit, project-change). Host-Namensräume gehören dem Host: Plugins beobachten sie, senden aber nur eigene Ereignisse. onAny beobachtet alle Ereignisse; replay liest den begrenzten Verlauf dieses Aufrufs. Keine dauerhafte Wiederholung. Die Antwort enthält standardmäßig nur vault.*-Ereignisse; --events none|changes|all oder settings.events wählt die Ausgabe, ohne Zustellung oder replay zu ändern.",
-  schemaMore: "Führen Sie schema <Befehl> für den Vertrag eines Befehls oder schema --all für alle Befehle aus.",
-  eventChanges: "Nur erfolgreich geschriebene vault.*-Ereignisse: vault.create, vault.modify, vault.delete und vault.rename für Dateien und Ordner.",
-  setup: {
-    "node bin/forge.js templates list": "Die installierten, bearbeitbaren Planungsvorlagen entdecken.",
-    "node bin/forge.js templates inspect workflow/prd.md": "Planungseingaben vor dem Generieren eines Anforderungsdokuments prüfen.",
-    "node bin/forge.js project list": "Ein Projekt suchen und vor dem Generieren von Projektdateien ausdrücklich öffnen."
-  }
+  "Run help <command> for its usage, options, arguments, errors and examples, or schema <command> for its JSON Schemas. make lists generators; skills lists agent skills.": "Verwendung, Optionen, Argumente, Fehler und Beispiele eines Befehls zeigt help <command>, seine JSON-Schemas schema <command>. make listet die Generatoren, skills die Agent-Skills.",
+  "Run schema <command> for one command's contract, or schema --all for every command.": "Führen Sie schema <Befehl> für den Vertrag eines Befehls oder schema --all für alle Befehle aus.",
+  "Only committed vault.* records: vault.create, vault.modify, vault.delete and vault.rename, for files and folders.": "Nur erfolgreich geschriebene vault.*-Ereignisse: vault.create, vault.modify, vault.delete und vault.rename für Dateien und Ordner.",
+  "textFilenames match case-insensitively, including dot suffixes that start with a non-dot character; native extensions take precedence. UTF-8 read, literal edit, append and full replacement with unified dry-run diffs; files that are not valid UTF-8 or contain NUL characters read as base64 attachments.": "textFilenames gelten ohne Beachtung der Groß- und Kleinschreibung, auch mit Punkt-Suffixen, die mit einem anderen Zeichen als einem Punkt beginnen; native Erweiterungen haben Vorrang. UTF-8 lesen, wörtlich bearbeiten, ergänzen und vollständig ersetzen, mit Unified-Diffs im Probelauf; ungültiges UTF-8 und Inhalte mit NUL-Zeichen werden als Base64-Anhang gelesen.",
+  "Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.": "Dateien verlustfrei als Bytes lesen, kopieren, ersetzen und einbetten; keine integrierte Konvertierung, Darstellung oder PDF-Inhaltsbearbeitung.",
+  "Opaque bytes; plugins can provide additional processing.": "Uninterpretierte Bytes; Plugins können weitere Verarbeitung bereitstellen.",
+  "Ordered, awaited, per-listener snapshots; failures become warnings. Obsidian-style vault.* records follow each committed write (new folders first, parent before child, then files in batch order); dry runs emit workspace.quick-preview instead. Once the metadata cache is loaded in the invocation, the vault.* records of each batch are followed by metadataCache.changed, metadataCache.deleted, metadataCache.resolve and one metadataCache.resolved. operation.*, command.* and plugin.* records are host lifecycle phases, and the claude core plugin's claude.* records are the phases of each Claude invocation; workspace.* records are Obsidian workspace analogues (file-open, quick-preview, layout-ready, quit, project-change). Host namespaces are host-owned: plugins observe them but emit only their own events. onAny observes all events; replay reads bounded invocation history. No persistent replay. Responses include only vault.* records by default; --events none|changes|all or settings.events selects the output without changing delivery or replay.": "Geordnet, abgewartet und mit separaten Snapshots je Behandler; Fehler werden zu Warnungen. Obsidian-artige vault.*-Ereignisse folgen jedem erfolgreichen Schreibvorgang (zuerst neue Ordner, übergeordnete vor untergeordneten, dann Dateien in Stapelreihenfolge); Probeläufe senden stattdessen workspace.quick-preview. Nach den vault.*-Ereignissen eines Stapels folgen metadataCache.changed, metadataCache.deleted, metadataCache.resolve und ein metadataCache.resolved, sobald der Metadaten-Cache in diesem Aufruf geladen wurde. operation.*-, command.*- und plugin.*-Ereignisse sind Lebenszyklusphasen des Hosts, die claude.*-Ereignisse des claude-Kern-Plugins Phasen jedes Claude-Aufrufs; workspace.*-Ereignisse entsprechen Obsidians Workspace (file-open, quick-preview, layout-ready, quit, project-change). Host-Namensräume gehören dem Host: Plugins beobachten sie, senden aber nur eigene Ereignisse. onAny beobachtet alle Ereignisse; replay liest den begrenzten Verlauf dieses Aufrufs. Keine dauerhafte Wiederholung. Die Antwort enthält standardmäßig nur vault.*-Ereignisse; --events none|changes|all oder settings.events wählt die Ausgabe, ohne Zustellung oder replay zu ändern.",
+  "Discover the installed editable planning templates.": "Die installierten, bearbeitbaren Planungsvorlagen entdecken.",
+  "Inspect planning inputs before generating a requirements document.": "Planungseingaben vor dem Generieren eines Anforderungsdokuments prüfen.",
+  "Find a project, then explicitly open it before generating project files.": "Ein Projekt suchen und vor dem Generieren von Projektdateien ausdrücklich öffnen."
 };
 const germanEvents = {
   "command.started": "Ein weitergeleiteter Befehl aktiviert gleich Plugins und läuft an.",
@@ -69645,13 +69867,12 @@ const germanKernelMessages = {
   PATH_MATCHED_NOTHING: "{option} {pattern} trifft in diesem Bereich keine Datei. Pfade sind relativ zu context.root und unterscheiden Groß- und Kleinschreibung, und ein Ordnerpfad ohne Glob-Zeichen umfasst alles darunter; list zeigt die vorhandenen Pfade.",
   READ_TRUNCATED: "{path} wurde auf die Zeilen {start}-{end} von {total} gekürzt ({returned} von {bytes} Bytes); lesen Sie mit --lines {next}- weiter oder erhöhen Sie --max-bytes.",
   READ_BYTES_TRUNCATED: "{path} wurde auf die ersten {returned} von {bytes} Bytes gekürzt; erhöhen Sie --max-bytes, um den Rest zu lesen.",
-  EXTENSION_DROPPED: "EXTENSION_DROPPED: {to} hat keine Dateiendung, daher verliert {from} beim Verschieben die Endung {extension}. Beenden Sie das Ziel mit /, um in einen Ordner zu verschieben, oder ergänzen Sie die Endung.",
-  LITERAL_NEWLINE: "LITERAL_NEWLINE: --{option} enthält die beiden Zeichen \\n, aber keinen Zeilenumbruch, daher werden sie wörtlich geschrieben. Übergeben Sie echte Zeilenumbrüche, zum Beispiel mit --stdin.",
-  EMPTY_STDIN: 'EMPTY_STDIN: --stdin hat keine Bytes gelesen, daher wird {path} leer geschrieben. Leiten Sie den Inhalt weiter oder übergeben Sie --content "", um absichtlich eine leere Datei zu schreiben.'
+  EXTENSION_DROPPED: "{to} hat keine Dateiendung, daher verliert {from} beim Verschieben die Endung {extension}. Beenden Sie das Ziel mit /, um in einen Ordner zu verschieben, oder ergänzen Sie die Endung.",
+  LITERAL_NEWLINE: "--{option} enthält die beiden Zeichen \\n, aber keinen Zeilenumbruch, daher werden sie wörtlich geschrieben. Übergeben Sie echte Zeilenumbrüche, zum Beispiel mit --stdin.",
+  EMPTY_STDIN: '--stdin hat keine Bytes gelesen, daher wird {path} leer geschrieben. Leiten Sie den Inhalt weiter oder übergeben Sie --content "", um absichtlich eine leere Datei zu schreiben.'
 };
 const claudeDefinitionHint = "Korrigieren Sie das in der Meldung genannte Feld und führen Sie den Befehl erneut aus.";
 const argumentsHint = "Korrigieren Sie die in der Meldung genannten Argumente; die Verwendung zeigt help <command>.";
-const regenerateHint = "Führen Sie denselben Befehl mit --plan aus, prüfen Sie die Änderungen und generieren Sie dann neu.";
 const germanErrors = {
   SERVER_START_FAILED: { summary: "Der lokale Server konnte nicht starten.", hint: "Prüfen Sie den angeforderten Port und das installierte Server-Bundle und wiederholen Sie server start." },
   SERVER_STOP_FAILED: { summary: "Der verifizierte lokale Server konnte nicht beendet werden.", hint: "Führen Sie server status aus und wiederholen Sie server stop." },
@@ -69671,11 +69892,11 @@ const germanErrors = {
   INVALID_LANGUAGE: { summary: "Die Sprache wird nicht unterstützt.", hint: "Verwenden Sie --lang en oder --lang de." },
   INVALID_NAME: { summary: "Der Name entspricht nicht der erforderlichen Namensregel.", hint: "Verwenden Sie das in der Meldung beschriebene Format, zum Beispiel PascalCase." },
   INVALID_KEY: { summary: "Der Eigenschaftsschlüssel ist reserviert oder unsicher.", hint: "Verwenden Sie einen anderen Eigenschaftsschlüssel." },
-  INVALID_RESULT: { summary: "Der Befehl lieferte Daten, die nicht als JSON serialisierbar sind.", hint: "Prüfen Sie bestätigte Vault-Ereignisse und lesen Sie betroffene Dateien erneut, bevor Sie es wieder versuchen; melden Sie den fehlerhaften Plugin-Befehl." },
-  OPERATION_FAILED: { summary: "Ein unerwarteter Laufzeit- oder E/A-Fehler ist aufgetreten.", hint: "Lesen Sie die ursprüngliche Diagnose, prüfen Sie den Zustand des Workspace und lesen Sie betroffene Dateien vor einem erneuten Versuch." },
+  INVALID_RESULT: { summary: "Der Befehl lieferte Daten, die nicht als JSON serialisierbar sind.", hint: "Prüfen Sie bestätigte Tresor-Ereignisse und lesen Sie betroffene Dateien erneut, bevor Sie es wieder versuchen; melden Sie den fehlerhaften Plugin-Befehl." },
+  OPERATION_FAILED: { summary: "Ein unerwarteter Laufzeit- oder E/A-Fehler ist aufgetreten.", hint: "Lesen Sie die ursprüngliche Diagnose, prüfen Sie den Arbeitsbereich und lesen Sie betroffene Dateien vor einem erneuten Versuch." },
   // Pfade, Dateien und geschützte Schreibvorgänge
-  INVALID_PATH: { summary: "Der Pfad ist kein gültiger relativer Pfad im Workspace oder Projekt.", hint: "Verwenden Sie einen relativen Pfad im ausgewählten Workspace oder Projekt mit Schrägstrichen und ohne ..-Segmente." },
-  UNSAFE_PATH: { summary: "Der Pfad verlässt den Workspace oder durchquert eine symbolische Verknüpfung.", hint: "Verwenden Sie einen Pfad innerhalb des Workspace ohne symbolische Verknüpfungen." },
+  INVALID_PATH: { summary: "Der Pfad ist kein gültiger relativer Pfad im Arbeitsbereich.", hint: "Verwenden Sie einen relativen Pfad im ausgewählten Arbeitsbereich oder Projekt mit Schrägstrichen und ohne ..-Segmente." },
+  UNSAFE_PATH: { summary: "Der Pfad verlässt den Arbeitsbereich oder durchquert eine symbolische Verknüpfung.", hint: "Verwenden Sie einen Pfad innerhalb des Arbeitsbereichs ohne symbolische Verknüpfungen." },
   NOT_FOUND: { summary: "Die Datei oder Ressource wurde nicht gefunden.", hint: "Prüfen Sie Pfad und ausgewähltes Projekt (project current); list zeigt vorhandene Dateien. error.details.alreadyDeleted true bedeutet, dass ein Löschvorgang die Datei bereits nach error.details.trashPath verschoben hat." },
   CONFLICT: { summary: "Die Datei existiert bereits oder ihre Revision hat sich seit dem Lesen geändert.", hint: "Die Meldung nennt den Fall. Eine vorhandene Datei (error.details.expectedRevision null): ersetzen Sie sie mit write --if-match oder ändern Sie sie mit edit. Eine fehlende Datei (error.details.currentRevision null): prüfen Sie den Pfad oder lassen Sie den Schutz weg, um sie anzulegen. Eine geänderte Datei: lesen Sie sie erneut, gleichen Sie Ihre Änderung mit dem aktuellen Inhalt ab und versuchen Sie es mit error.details.currentRevision über den Revisionsschutz des Befehls erneut (--if-match, ifMatch in einem Plan oder --revisions-from). error.details.alreadyApplied true bedeutet, dass die Datei die angeforderte Änderung bereits enthält; ein erneuter Versuch ist nicht nötig." },
   NO_MATCH: { summary: "Der --find-Text kommt in der Datei nicht vor.", hint: "Lesen Sie die Datei erneut und übernehmen Sie den exakten aktuellen Text einschließlich Leerraum und Zeilenenden in --find; error.details.lineEndings nennt die Zeilenenden der Datei und error.details.nearMatch eine Zeile, die ohne Beachtung von Leerraum und Groß- und Kleinschreibung passt." },
@@ -69700,15 +69921,6 @@ const germanErrors = {
   INVALID_CANVAS: { summary: "Die Canvas-Struktur ist ungültig.", hint: "Korrigieren Sie die genannten Knoten, Kanten oder IDs; prüfen Sie mit validate <file.canvas>." },
   INVALID_BASE: { summary: "Die Base-Struktur ist ungültig.", hint: "Korrigieren Sie die genannte Base-Definition; prüfen Sie mit validate <file.base>." },
   INVALID_POINTER: { summary: "Der JSON Pointer ist ungültig oder verweist auf keine gültige Position.", hint: "Lesen Sie das Dokument und verwenden Sie einen vorhandenen Pointer-Pfad; /- hängt nur an ein vorhandenes Array an." },
-  // Bases-Abfragen
-  INVALID_BASE_QUERY: { summary: "Die Bases-Abfrage ist ungültig.", hint: "Prüfen Sie die in der Meldung genannte Ansicht, den Kontext und die Ausdrücke." },
-  INVALID_BASE_EXPRESSION: { summary: "Ein Bases-Ausdruck kann nicht geparst werden.", hint: "Korrigieren Sie den in der Meldung genannten Ausdruck." },
-  BASE_EVALUATION_ERROR: { summary: "Ein Bases-Ausdruck ist bei der Auswertung einer Datei fehlgeschlagen.", hint: "Prüfen Sie die in der Meldung genannte Ansicht, Datei und den Ausdruck." },
-  BASE_TIMEOUT: { summary: "Eine Bases-Abfrage hat ihr Zeitbudget für die Auswertung von Ausdrücken überschritten.", hint: "Vereinfachen Sie die Ausdrücke der in der Meldung genannten .base-Datei (vermeiden Sie verschachtelte Quantoren in regulären Ausdrücken wie (a+)+) oder grenzen Sie ihre Filter ein." },
-  BASE_VIEW_NOT_FOUND: { summary: "Die angeforderte Bases-Ansicht existiert nicht.", hint: "Führen Sie bases inspect <file.base> aus und übergeben Sie eine vorhandene --view." },
-  BASE_CONTEXT_NOT_FOUND: { summary: "Die Kontextdatei ist keine indexierte Vault-Datei.", hint: "Übergeben Sie eine vorhandene Vault-Datei an --context." },
-  INVALID_BASE_PROPERTY_TYPES: { summary: "Das Register der Obsidian-Eigenschaftstypen ist ungültig.", hint: "Korrigieren Sie .obsidian/types.json zu einem JSON-Objekt mit Eigenschaftstypen." },
-  UNSUPPORTED_BASE_PROPERTY_TYPE: { summary: "Ein Obsidian-Eigenschaftstyp wird nicht unterstützt.", hint: "Verwenden Sie in .obsidian/types.json einen unterstützten Typ." },
   // Konfiguration, Installation und Projekte
   INVALID_ROOT: { summary: "Das Workspace-Stammverzeichnis existiert nicht oder ist kein Verzeichnis.", hint: "Übergeben Sie mit --root (oder FORGE_ROOT) das vorhandene Workspace-Verzeichnis, das bin/ enthält; --root hat Vorrang vor FORGE_ROOT." },
   INVALID_CONFIG: { summary: "Die Konfiguration ist ungültig oder nicht lesbar.", hint: "Korrigieren Sie bin/config.json an der in der Meldung genannten Stelle und prüfen Sie mit config." },
@@ -69721,39 +69933,14 @@ const germanErrors = {
   PROJECT_NOT_FOUND: { summary: "Das Projekt existiert nicht.", hint: "Führen Sie project list aus und öffnen Sie ein vorhandenes Projekt." },
   PROJECT_REQUIRED: { summary: "Dieser Befehl benötigt ein ausgewähltes Projekt.", hint: "Öffnen Sie zuerst mit project open <name> ein Projekt." },
   STALE_PROJECT_CONTEXT: { summary: "Das ausgewählte Projekt fehlt oder stimmt nicht mehr mit der Konfiguration überein.", hint: "Wählen Sie mit project open <name> ein gültiges Projekt oder verwenden Sie project close." },
-  // Vorlagen und Generierung
-  INVALID_TEMPLATE: { summary: "Die Markdown-Vorlage ist ungültig.", hint: "Korrigieren Sie das in der Meldung genannte Frontmatter oder die Platzhalter." },
-  INVALID_TEMPLATE_DATE: { summary: "Ein Datum oder Datumsformat der Vorlage ist ungültig.", hint: "Verwenden Sie ein ISO-Datum und ein unterstütztes Datumsformat." },
-  INVALID_TEMPLATE_PACK: { summary: "Das Vorlagenpaket ist ungültig.", hint: "Verwenden Sie eindeutige Vorlagen-IDs und Zielpfade." },
-  INVALID_TEMPLATE_VALUES: { summary: "Vorlagenwerte fehlen oder haben den falschen Typ.", hint: "Führen Sie templates inspect <template.md> aus und geben Sie die Pflichtwerte an." },
-  UNKNOWN_TEMPLATE_VARIABLE: { summary: "Die Vorlage verwendet eine nicht deklarierte Variable.", hint: "Deklarieren Sie die Variable oder entfernen Sie den Platzhalter; prüfen Sie mit templates inspect <template.md>." },
+  // Generierung
   UNKNOWN_GENERATOR: { summary: "Der Generator ist nicht registriert.", hint: "Verfügbare Generatoren zeigt make." },
   INVALID_GENERATION_PLAN: { summary: "Der Generierungsplan hat überlappende Ausgaben oder ungültige Optionen.", hint: "Verwenden Sie getrennte Ausgabe- und Manifestpfade und kombinieren Sie die Planung nicht mit --revisions-from." },
   INVALID_GENERATION_REVISIONS: { summary: "Die Revisionsfreigabe passt nicht zum geprüften Plan.", hint: "Erstellen Sie mit --plan-out einen neuen Plan und übergeben Sie diese Datei an --revisions-from." },
-  UI_DRIFT: { summary: "Generierte UI-Dateien fehlen oder weichen von den Definitionen ab.", hint: regenerateHint },
-  DATA_SOURCE_DRIFT: { summary: "Generierte Datenquellendateien fehlen oder weichen von den Definitionen ab.", hint: regenerateHint },
   GENERATION_DRIFT: { summary: "Generierte Dateien fehlen oder weichen von der Ausgabe des Generators ab.", hint: "Führen Sie denselben make-Befehl mit --plan aus, prüfen Sie die Änderungen und generieren Sie dann neu." },
   // Projekt-Workflows
   INVALID_WORKFLOW: { summary: "Ein Projekt-Workflow ist ungültig, oder zwei Workflows erzeugen dieselbe Datei.", hint: "Korrigieren oder benennen Sie den in der Meldung genannten Workflow unter src/infrastructure/workflows/<concern>/ um und führen Sie dann workflows sync aus." },
   WORKFLOW_DRIFT: { summary: "Generierte GitHub-Workflows fehlen, weichen ab oder sind veraltet.", hint: "Führen Sie workflows sync aus, prüfen Sie die Änderungen in .github/workflows und committen Sie sie zusammen mit ihren Quellen." },
-  // UI, Interaktionen und Datenquellen
-  INVALID_UI: { summary: "Eine Komponentendefinition ist ungültig.", hint: "Korrigieren Sie die genannte Definition; prüfen Sie mit components validate." },
-  INVALID_UI_LIBRARY: { summary: "Die Komponentenbibliothek ist ungültig.", hint: "Führen Sie components validate aus und korrigieren Sie die gemeldeten Definitionen." },
-  INVALID_UI_FRAMEWORK: { summary: "Das UI-Ziel wird nicht unterstützt.", hint: "Verwenden Sie html, htmx, vanilla, vue, svelte, react oder angular." },
-  EMPTY_UI_LIBRARY: { summary: "Die Komponentenbibliothek enthält keine Definitionen.", hint: "Führen Sie components init aus oder fügen Sie eine Markdown-Definition hinzu." },
-  DUPLICATE_UI_COMPONENT: { summary: "Zwei Komponentendefinitionen haben dieselbe ID.", hint: "Vergeben Sie für jede Komponente eine eindeutige ID." },
-  UNKNOWN_UI_COMPONENT: { summary: "Die Komponente ist nicht definiert.", hint: "Führen Sie components list aus und verwenden Sie eine vorhandene ID." },
-  CYCLIC_UI_COMPONENT: { summary: "Die Komponentenreferenzen bilden einen Zyklus.", hint: "Entfernen Sie die in der Meldung genannte zyklische Referenz." },
-  UI_RENDERER_UNAVAILABLE: { summary: "Für dieses UI-Ziel ist kein Generator verfügbar.", hint: "Wählen Sie ein unterstütztes --framework." },
-  INVALID_INTERACTION: { summary: "Eine Interaktionsdefinition ist ungültig.", hint: "Korrigieren Sie das genannte Ereignis, die Aktionen oder Bindungen; prüfen Sie mit interactions validate." },
-  DUPLICATE_INTERACTION: { summary: "Zwei Interaktionsdefinitionen haben dieselbe ID.", hint: "Vergeben Sie für jede Interaktion eine eindeutige ID." },
-  EMPTY_INTERACTION_LIBRARY: { summary: "Die Interaktionsbibliothek enthält keine Definitionen.", hint: "Führen Sie interactions init aus oder fügen Sie eine Markdown-Definition hinzu." },
-  UNKNOWN_INTERACTION: { summary: "Die Interaktion ist nicht definiert.", hint: "Führen Sie interactions list aus und prüfen Sie die Interaktionsreferenzen der Komponente." },
-  INVALID_DATA_SOURCE: { summary: "Eine Datenquellendefinition ist ungültig.", hint: "Korrigieren Sie die genannten Felder; prüfen Sie mit data-sources validate." },
-  DUPLICATE_DATA_SOURCE: { summary: "Zwei Datenquellendefinitionen haben dieselbe ID.", hint: "Vergeben Sie für jede Datenquelle eine eindeutige ID." },
-  EMPTY_DATA_SOURCE_LIBRARY: { summary: "Die Datenquellenbibliothek enthält keine Definitionen.", hint: "Führen Sie data-sources init aus oder fügen Sie eine Markdown-Definition hinzu." },
-  UNKNOWN_DATA_SOURCE: { summary: "Die Datenquelle ist nicht definiert.", hint: "Führen Sie data-sources list aus und verwenden Sie eine vorhandene ID." },
-  DATA_SOURCE_RENDERER_UNAVAILABLE: { summary: "Für diese Datenquelle ist kein Generator verfügbar.", hint: "Verwenden Sie eine unterstützte Datenquellenart; Hinweise zur Generierung zeigt help make." },
   // Plugins, Skills und Ereignisse
   INVALID_PLUGIN: { summary: "Ein Plugin-Manifest oder eine Plugin-Implementierung ist ungültig.", hint: "Korrigieren Sie das genannte Plugin oder deaktivieren Sie Plugins mit --no-plugins." },
   INVALID_PLUGIN_CONFIG: { summary: "Die Plugin-Konfiguration ist ungültig.", hint: "Tragen Sie in bin/config.json unter plugins.enabled eindeutige Kebab-Case-IDs installierter Benutzer-Plugins ein; plugins listet sie auf." },
@@ -69765,7 +69952,6 @@ const germanErrors = {
   PLUGIN_SERVICE_CYCLE: { summary: "Die Dienstabhängigkeiten der Plugins bilden einen Zyklus.", hint: "Lösen Sie den in error.details.plugins genannten Zyklus auf, sodass ein Plugin keinen Dienst des anderen mehr benötigt." },
   PLUGIN_LIFECYCLE: { summary: "Ein Plugin hat den Host außerhalb seines Lebenszyklus verwendet.", hint: "Registrieren Sie Beiträge vor der Aktivierung und verwenden Sie den Host nach der Freigabe nicht mehr." },
   DUPLICATE_OR_INVALID_ID: { summary: "Eine Beitrags-ID ist ungültig oder bereits registriert.", hint: "Verwenden Sie eine eindeutige, kleingeschriebene ID mit Punkten." },
-  UNKNOWN_SKILL: { summary: "Der Skill ist nicht registriert.", hint: "Verfügbare Skills zeigt skills list." },
   INVALID_EVENT: { summary: "Eine Ereignisdefinition oder der Ereigniszustand ist ungültig.", hint: "Definieren Sie Ereignisse vor der Freigabe mit einer ID mit Punkten und einem Validator." },
   INVALID_EVENT_LISTENER: { summary: "Ein Ereignisbehandler ist keine Funktion.", hint: "Übergeben Sie eine Funktion als Behandler." },
   INVALID_EVENT_PAYLOAD: { summary: "Die Ereignisdaten entsprechen nicht dem Ereignisvertrag.", hint: "Prüfen Sie den Vertrag mit events und senden Sie passende Daten." },
@@ -69776,30 +69962,76 @@ const germanErrors = {
   // Claude-Code-Definitionen
   INVALID_CLAUDE_AGENT: { summary: "Die Claude-Agentendefinition ist ungültig.", hint: claudeDefinitionHint },
   INVALID_CLAUDE_HOOKS: { summary: "Die Claude-Hook-Konfiguration ist ungültig.", hint: claudeDefinitionHint },
-  INVALID_CLAUDE_PLUGIN: { summary: "Das Claude-Plugin-Manifest oder eine Plugin-Datei ist ungültig.", hint: claudeDefinitionHint },
-  INVALID_CLAUDE_SETTINGS: { summary: "Die Claude-Einstellungsdatei ist ungültig.", hint: "Korrigieren Sie die JSON-Struktur der in der Meldung genannten Einstellungsdatei. Nennt sie das Generierungsmanifest .claude/forge-generated.json, stammt es von einer älteren Forge-Version: Löschen Sie .claude/forge-generated.json und führen Sie agents generate erneut aus; die darin aufgeführten Regeln bleiben in .claude/settings.json, bis Sie sie entfernen." },
-  INVALID_CLAUDE_COMMAND: { summary: "Dieser Claude-Befehl wird nicht unterstützt.", hint: "Unterstützte Befehle zeigt claude capabilities." },
-  INVALID_CLAUDE_ARGUMENT: { summary: "Ein Argument des Claude-Befehls ist ungültig.", hint: argumentsHint },
-  INVALID_CLAUDE_OPTION: { summary: "Eine Claude-Option hat einen ungültigen Wert oder eine ungültige Kombination.", hint: "Prüfen Sie help claude und korrigieren Sie die in der Meldung genannte Option." },
-  INVALID_CLAUDE_SCOPE: { summary: "Der Claude-Geltungsbereich ist ungültig.", hint: "Prüfen Sie help claude und übergeben Sie einen für diese Aktion unterstützten --scope." },
-  INVALID_CLAUDE_INPUT: { summary: "Die Claude-Eingabe ist ungültig oder zu groß.", hint: "Übergeben Sie gültige Eingaben innerhalb des Größenlimits." },
-  INVALID_CLAUDE_OUTPUT: { summary: "Das Claude-Ausgabeformat ist ungültig.", hint: "Verwenden Sie text, json oder json-last-line." },
-  INVALID_CLAUDE_OUTPUT_LIMIT: { summary: "Das Claude-Ausgabelimit ist ungültig.", hint: "Verwenden Sie eine positive ganze Zahl von Bytes." },
-  INVALID_CLAUDE_TIMEOUT: { summary: "Das Claude-Zeitlimit ist ungültig.", hint: "Geben Sie das Zeitlimit in Millisekunden innerhalb des in der Meldung genannten Bereichs an." },
-  INVALID_CLAUDE_EXECUTABLE: { summary: "Der Pfad zur Claude-Code-CLI ist ungültig.", hint: "Übergeben Sie einen ausführbaren Pfad an --claude-bin." },
-  // Claude-Code-Prozess
-  CLAUDE_NOT_INSTALLED: { summary: "Die Claude-Code-CLI wurde nicht gefunden.", hint: "Installieren Sie Claude Code und nehmen Sie claude in PATH auf oder verwenden Sie --claude-bin." },
-  CLAUDE_WORKING_DIRECTORY_UNAVAILABLE: { summary: "Das Arbeitsverzeichnis für Claude Code ist nicht verfügbar.", hint: "Prüfen Sie, dass das ausgewählte Projekt oder der Workspace existiert und ein Verzeichnis ist." },
-  CLAUDE_COMMAND_FAILED: { summary: "Claude Code konnte nicht gestartet werden oder wurde unerwartet beendet.", hint: "Lesen Sie error.details, prüfen Sie den externen Zustand und wiederholen Sie dann bewusst." },
-  CLAUDE_COMMAND_TIMEOUT: { summary: "Der Claude-Befehl hat sein Zeitlimit überschritten.", hint: "Prüfen Sie den externen Zustand; wiederholen Sie mit größerem --timeout nur, wenn die Arbeit nicht abgeschlossen wurde." },
-  CLAUDE_OUTPUT_LIMIT: { summary: "Die Claude-Ausgabe hat das Größenlimit überschritten.", hint: "Prüfen Sie den externen Zustand; wiederholen Sie nur bei Bedarf mit größerem Ausgabelimit." },
-  CLAUDE_COMMAND_INTERRUPTED: { summary: "Der Claude-Befehl wurde durch ein Signal unterbrochen (Exit 130 bei SIGINT, 143 bei SIGTERM).", hint: "Prüfen Sie den externen Zustand, bevor Sie den Befehl erneut ausführen." },
-  CLAUDE_RUNTIME_FAILED: { summary: "Claude Code wurde mit einem Status ungleich null beendet.", hint: "Prüfen Sie error.details (nativer Status, Ausgabe und geparstes Ergebnis) und den externen Zustand vor einer Wiederholung." },
-  CLAUDE_INVALID_OUTPUT: { summary: "Claude Code war erfolgreich, lieferte aber nicht das angeforderte JSON.", hint: "Prüfen Sie stdout und den externen Zustand vor einer Wiederholung." }
+  INVALID_CLAUDE_SETTINGS: { summary: "Die Claude-Einstellungsdatei ist ungültig.", hint: "Korrigieren Sie die JSON-Struktur der in der Meldung genannten Einstellungsdatei. Nennt sie das Generierungsmanifest .claude/forge-generated.json, stammt es von einer älteren Forge-Version: Löschen Sie .claude/forge-generated.json und führen Sie agents generate erneut aus; die darin aufgeführten Regeln bleiben in .claude/settings.json, bis Sie sie entfernen." }
 };
 function germanHintVariant(code2, value2) {
   const { variants } = germanErrors[code2];
   return variants !== void 0 && Object.hasOwn(variants, value2) ? variants[value2] : void 0;
+}
+const scalar = (value2) => typeof value2 === "string" || typeof value2 === "number" && Number.isFinite(value2);
+const names = (value2) => Array.isArray(value2) && value2.length > 0 && value2.every((item) => typeof item === "string") ? value2 : void 0;
+function templateValues(details) {
+  const values2 = {};
+  for (const [key, value2] of Object.entries(details)) if (scalar(value2)) values2[key] = value2;
+  if (typeof details.option === "string") values2.named = `Option --${details.option}`;
+  if (typeof details.argument === "string") values2.named = `Argument <${details.argument}>${typeof details.index === "number" ? ` an Position ${details.index}` : ""}`;
+  if (typeof details.value === "string") values2.quoted = JSON.stringify(details.value);
+  if (typeof details.minimum === "number" && typeof details.maximum === "number") values2.range = details.minimum === details.maximum ? details.minimum : `${details.minimum} bis ${details.maximum}`;
+  const missing2 = names(details.missing), allowed = names(details.allowed);
+  if (missing2) values2.missingArguments = missing2.map((name2) => `<${name2}>`).join(" ");
+  if (allowed) values2.allowedValues = allowed.join(", ");
+  return values2;
+}
+const device = "{segment} ist ein unter Windows reservierter Gerätename (CON, PRN, AUX, NUL, COM1-COM9 oder LPT1-LPT9, mit beliebiger Endung); benennen Sie die Datei oder den Ordner um.";
+const stdin = (details) => details.suggestion === "--stdin";
+const templates = {
+  NOT_FOUND: [
+    { text: "Die Datei {path} wurde nicht gefunden; ein Löschvorgang hat sie bereits nach {trashPath} verschoben.", when: (details) => details.alreadyDeleted === true },
+    { text: "Die Datei oder Ressource {path} wurde nicht gefunden." }
+  ],
+  UNKNOWN_COMMAND: [{ text: "Der Befehl {command} ist nicht registriert." }],
+  UNKNOWN_OPTION: [{ text: "Der Befehl {command} akzeptiert die Option {option} nicht." }, { text: "Die Option {option} wird nicht akzeptiert." }],
+  MISSING_ARGUMENT: [
+    { text: "Die Option --{option} benötigt einen Wert, aber {next} folgt ihr; einen Wert, der mit - beginnt, schreiben Sie als --{option}=<Wert>." },
+    { text: "--if-match ist erforderlich: Übergeben Sie die aktuelle Revision, data.revision aus read oder stat (auch ein Probelauf von move, rename oder delete meldet sie).", when: (details) => details.option === "if-match" },
+    { text: "Die Option --{option} ist erforderlich." }
+  ],
+  INVALID_ARGUMENT: [
+    { text: "Es fehlt {missingArguments}: Falsche Anzahl an Positionsargumenten, erwartet {range}, erhalten {received}." },
+    { text: "Falsche Anzahl an Positionsargumenten: erwartet {range}, erhalten {received}." },
+    { text: "Unbekannte Aktion {action}; verfügbar sind {allowedValues}." },
+    { text: "Jeder Pfad darf nur einmal vorkommen; er steht bereits an Position {duplicateOf}." },
+    { text: "Die gelesenen Dateien umfassen {bytes} Bytes und überschreiten die Gesamtgrenze von 8 MiB; senken Sie --max-bytes ({maxBytes}) oder lesen Sie weniger Dateien." },
+    { text: "--lines beginnt nach der letzten Zeile; der Text hat {total} Zeile(n)." }
+  ],
+  INVALID_OPTION_VALUE: [{ text: "--{option} erlaubt {quoted} nicht; gültige Werte (bei einer kommagetrennten Listenoption mehrere davon): {allowedValues}." }],
+  UNKNOWN_GENERATOR: [{ text: "Unbekannter Generator {generator}; verfügbar sind {allowedValues}." }],
+  CONFLICT: [
+    { text: "{path} enthält die angeforderte Änderung bereits (Revision {currentRevision}); ein erneuter Versuch ist nicht nötig.", when: (details) => details.alreadyApplied === true },
+    { text: "{path} existiert bereits mit der Revision {currentRevision}.", when: (details) => details.expectedRevision === null },
+    { text: "{path} existiert nicht, erwartet wurde die Revision {expectedRevision}.", when: (details) => details.currentRevision === null },
+    { text: "{path} wurde seit dem Lesen geändert: erwartet {expectedRevision}, aktuell {currentRevision}." }
+  ],
+  DESTINATION_EXISTS: [{ text: "Das Ziel {path} existiert bereits." }],
+  INVALID_PATH: [
+    { text: `{named} {quoted}: ${device}` },
+    { text: "{named} {quoted} ist kein gültiger relativer Pfad im Arbeitsbereich; leiten Sie eine Datei außerhalb des Bereichs stattdessen mit --stdin weiter.", when: stdin },
+    { text: "{named} {quoted} ist kein gültiger relativer Pfad im Arbeitsbereich; gemeint ist vermutlich {suggestion}." },
+    { text: "{named} {quoted} ist kein gültiger relativer Pfad im Arbeitsbereich." },
+    { text: device },
+    { text: "Der Pfad {path} ist auf diesem Dateisystem nicht verwendbar ({reason})." },
+    { text: "Der Ordner {path} enthält einen Eintrag, dessen Name kein gültiges UTF-8 ist: {entry}." }
+  ]
+};
+const placeholders = (text2) => [...text2.matchAll(/\{(\w+)\}/g)].map((match) => match[1]);
+function germanErrorMessage(code2, details) {
+  const candidates2 = templates[code2];
+  if (candidates2 === void 0 || details === void 0) return void 0;
+  const values2 = templateValues(details);
+  const template = candidates2.find((entry2) => (entry2.when?.(details) ?? true) && placeholders(entry2.text).every((name2) => Object.hasOwn(values2, name2)));
+  if (template === void 0) return void 0;
+  const located2 = typeof details.operation === "number" ? `Vorgang ${details.operation}: ` : "";
+  return located2 + fill(template.text, values2);
 }
 const suggestionCodes = /* @__PURE__ */ new Set(["UNKNOWN_COMMAND", "UNKNOWN_OPTION", "UNKNOWN_GENERATOR", "INVALID_ARGUMENT"]);
 const phrases = {
@@ -69856,7 +70088,8 @@ class Localizer {
   }
   /**
    * The command with German descriptions of itself and its actions where a catalog has them. Actions are keyed
-   * `<command> <action>` in the kernel and plugin catalogs; `make` actions are generators.
+   * `<command> <action>` in the kernel and plugin catalogs; the actions of a command with `generatorActions` are
+   * generators, described by generator id.
    */
   command(command2) {
     if (this.language !== "de") return command2;
@@ -69865,7 +70098,7 @@ class Localizer {
     let translatedActions = false;
     const actions2 = command2.actions && Object.fromEntries(Object.entries(command2.actions).map(([id2, action2]) => {
       const key = `${command2.id} ${id2}`;
-      const german = translated(germanActions, key) ?? this.plugins?.text("de", "actions", key) ?? (command2.id === "make" ? this.german("generators", id2) : void 0);
+      const german = translated(germanActions, key) ?? this.plugins?.text("de", "actions", key) ?? (command2.generatorActions ? this.german("generators", id2) : void 0);
       const actionOptions = this.options(action2.options);
       if (german || actionOptions !== action2.options) translatedActions = true;
       return [id2, { ...action2, ...german ? { description: german } : {}, ...actionOptions ? { options: actionOptions } : {} }];
@@ -69895,11 +70128,12 @@ class Localizer {
     return Object.fromEntries(Object.entries(value2).map(([key, item]) => [key, key === "description" && typeof item === "string" ? this.description(item) : this.schema(item)]));
   }
   /**
-   * A host warning or plugin state reason in the response language. Plugin warnings keep their own text, and any
-   * record that is not a message the host created reads as text, so it can neither pass for one nor break the response.
+   * A host warning or plugin state reason as the response's `{code, message, details?}`: host messages in the
+   * response language, plugin warnings as raised. Any record that is not a message the host created reads as
+   * PLUGIN_WARNING text, so it can neither pass for one nor break the response.
    */
   warning(warning2) {
-    return renderWarning(warning2, this.language === "de" ? germanKernelMessages : void 0);
+    return responseWarning(warning2, this.language === "de" ? germanKernelMessages : void 0);
   }
   /** A plugin's manifest `name` and `description` in the response language. */
   manifest(manifest) {
@@ -69921,31 +70155,33 @@ class Localizer {
       return summary ? { ...item, summary } : item;
     });
   }
-  globalOptions(data) {
-    return isRecord$1(data.globalOptions) ? { globalOptions: this.options(data.globalOptions) } : {};
+  /** English guidance text in the response language, by its text, wherever `value` holds it. */
+  text(value2) {
+    if (typeof value2 === "string") return translated(germanGuidance, value2) ?? this.plugins?.description("de", value2) ?? value2;
+    if (Array.isArray(value2)) return value2.map((item) => this.text(item));
+    return isRecord$1(value2) ? Object.fromEntries(Object.entries(value2).map(([key, item]) => [key, this.text(item)])) : value2;
   }
-  eventOutput(value2) {
-    return isRecord$1(value2) && typeof value2.changes === "string" ? { ...value2, changes: germanGuidance.eventChanges } : value2;
+  output(kind2, value2) {
+    switch (kind2) {
+      case "text":
+        return this.text(value2);
+      case "generators":
+      case "events":
+        return this.catalogued(kind2, value2);
+      case "errors":
+        return Array.isArray(value2) ? this.errors(value2) : value2;
+      case "options":
+        return isRecord$1(value2) ? this.options(value2) : value2;
+      case "settings":
+        return Array.isArray(value2) ? value2.map((section2) => isRecord$1(section2) ? { ...section2, schema: this.schema(section2.schema) } : section2) : value2;
+    }
   }
+  /** A successful result in the response language: only the fields the command's `localizedOutput` names change. */
   result(command2, data) {
-    if (this.language === "en" || !isRecord$1(data)) return data;
-    if (command2 === "schema" && typeof data.more === "string") return { ...data, generators: this.catalogued("generators", data.generators), more: germanGuidance.schemaMore };
-    if (command2 === "schema" && Array.isArray(data.errors)) return { ...data, eventOutput: this.eventOutput(data.eventOutput), ...this.globalOptions(data), generators: this.catalogued("generators", data.generators), errors: this.errors(data.errors) };
-    if (command2 === "help" && typeof data.next === "string") return { ...data, next: germanGuidance.helpNext };
-    if (["help", "schema", "make"].includes(command2) && Array.isArray(data.generators)) return { ...data, ...data.eventOutput === void 0 ? {} : { eventOutput: this.eventOutput(data.eventOutput) }, ...this.globalOptions(data), generators: this.catalogued("generators", data.generators) };
-    if (command2 === "help" && isRecord$1(data.globalOptions)) return { ...data, ...this.globalOptions(data) };
-    if (command2 === "config" && Array.isArray(data.sections)) return { ...data, sections: data.sections.map((section2) => isRecord$1(section2) ? { ...section2, schema: this.schema(section2.schema) } : section2) };
-    if (command2 === "formats") return { ...data, textFiles: germanGuidance.textFiles, attachments: germanGuidance.attachments, otherFiles: germanGuidance.otherFiles };
-    if (command2 === "events") return { ...data, contracts: this.catalogued("events", data.contracts), delivery: germanGuidance.delivery };
-    if (command2 === "setup" && Array.isArray(data.nextSteps)) return {
-      ...data,
-      nextSteps: data.nextSteps.map((step) => {
-        if (!isRecord$1(step) || typeof step.command !== "string") return step;
-        const purpose = translated(germanGuidance.setup, step.command);
-        return purpose ? { ...step, purpose } : step;
-      })
-    };
-    return data;
+    const fields2 = command2?.localizedOutput;
+    if (this.language === "en" || fields2 === void 0 || !isRecord$1(data)) return data;
+    const localized2 = Object.entries(fields2).filter(([field2]) => Object.hasOwn(data, field2));
+    return localized2.length === 0 ? data : { ...data, ...Object.fromEntries(localized2.map(([field2, kind2]) => [field2, this.output(kind2, data[field2])])) };
   }
   /** Built-in and plugin-registered codes add a catalog hint and retryability; other plugin codes keep their own shape. */
   error(error2) {
@@ -69968,7 +70204,8 @@ class Localizer {
     const refined = typeof variant === "string" && Object.hasOwn(builtIn.variants.hints, variant) ? variant : void 0;
     if (!german) return { code: code2, message: diagnostic2, hint: guidedHint(refined ? builtIn.variants.hints[refined] : definition2.hint, code2, details, "en", this.invoked), retryable: retryable2, ...details ? { details } : {} };
     const germanHint = refined === void 0 ? void 0 : germanHintVariant(code2, refined);
-    return { code: code2, message: german.summary, hint: guidedHint(germanHint ?? german.hint, code2, details, "de", this.invoked), retryable: retryable2, details: { ...details, localization: { originalMessage: diagnostic2, ...details?.localization !== void 0 ? { originalDetails: details.localization } : {} } } };
+    const message2 = (builtIn ? germanErrorMessage(code2, details) : void 0) ?? german.summary;
+    return { code: code2, message: message2, hint: guidedHint(germanHint ?? german.hint, code2, details, "de", this.invoked), retryable: retryable2, details: { ...details, localization: { originalMessage: diagnostic2, ...details?.localization !== void 0 ? { originalDetails: details.localization } : {} } } };
   }
 }
 function pluginCatalog(registry2, installed, localizer = new Localizer("en", registry2.catalog)) {
@@ -69978,7 +70215,7 @@ function pluginCatalog(registry2, installed, localizer = new Localizer("en", reg
     return {
       ...localizer.manifest(plugin2.manifest),
       core: registry2.origins.get(plugin2.manifest.id) === "core",
-      ...unavailable ? { state: "unavailable", reason: localizer.warning(unavailable.reason) } : { state: "enabled", reason: null },
+      ...unavailable ? { state: "unavailable", reason: localizer.warning(unavailable.reason).message } : { state: "enabled", reason: null },
       contributions: {
         commands: (plugin2.commands ?? []).map((command2) => command2.id),
         generators: (plugin2.generators ?? []).map((generator) => generator.id),
@@ -69991,15 +70228,15 @@ function pluginCatalog(registry2, installed, localizer = new Localizer("en", reg
       }
     };
   });
-  const disabledCore = registry2.disabled.map((manifest) => ({ ...localizer.manifest(manifest), core: true, state: "disabled", reason: localizer.warning(registry2.disabledReason(manifest.id) ?? kernelMessage("PLUGIN_LISTED_DISABLED")), contributions: null }));
+  const disabledCore = registry2.disabled.map((manifest) => ({ ...localizer.manifest(manifest), core: true, state: "disabled", reason: localizer.warning(registry2.disabledReason(manifest.id) ?? kernelMessage("PLUGIN_LISTED_DISABLED")).message, contributions: null }));
   const coreIds = /* @__PURE__ */ new Set([...registry2.disabled.map((manifest) => manifest.id), ...[...registry2.origins].filter(([, origin]) => origin === "core").map(([id2]) => id2)]);
   const others = installed.filter((entry2) => coreIds.has(entry2.manifest.id) || !registry2.origins.has(entry2.manifest.id)).map((entry2) => ({
     ...entry2.manifest,
     core: false,
-    ...coreIds.has(entry2.manifest.id) ? { state: "rejected", reason: localizer.warning(kernelMessage("PLUGIN_ID_RESERVED", { plugin: entry2.manifest.id })) } : entry2.skipped ? { state: "skipped", reason: localizer.warning(kernelMessage("PLUGIN_SKIPPED")) } : { state: "disabled", reason: localizer.warning(kernelMessage("PLUGIN_NOT_ENABLED")) },
+    ...coreIds.has(entry2.manifest.id) ? { state: "rejected", reason: localizer.warning(kernelMessage("PLUGIN_ID_RESERVED", { plugin: entry2.manifest.id })).message } : entry2.skipped ? { state: "skipped", reason: localizer.warning(kernelMessage("PLUGIN_SKIPPED")).message } : { state: "disabled", reason: localizer.warning(kernelMessage("PLUGIN_NOT_ENABLED")).message },
     contributions: null
   }));
-  const missing2 = [...registry2.missing].map(([id2, reason]) => ({ id: id2, core: false, state: "missing", reason: localizer.warning(reason), contributions: null }));
+  const missing2 = [...registry2.missing].map(([id2, reason]) => ({ id: id2, core: false, state: "missing", reason: localizer.warning(reason).message, contributions: null }));
   return [...loaded.filter((plugin2) => plugin2.core), ...disabledCore, ...loaded.filter((plugin2) => !plugin2.core), ...missing2, ...others];
 }
 const text$3 = { type: "string" };
@@ -70042,7 +70279,20 @@ const common = {
     description: "Event records selected by --events: committed vault.* records by default.",
     items: { type: "object", required: ["id", "payload"], properties: { id: text$3, payload: {} } }
   },
-  warnings: { type: "array", items: text$3, description: "Nonfatal problems, such as failed event listeners after a committed write." }
+  warnings: {
+    type: "array",
+    description: "Nonfatal problems, such as failed event listeners after a committed write; match on code, not message.",
+    items: {
+      type: "object",
+      additionalProperties: false,
+      required: ["code", "message"],
+      properties: {
+        code: { type: "string", pattern: "^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$", description: "Stable warning code; PLUGIN_WARNING for plugin text without a code of its own." },
+        message: { type: "string", description: "The warning in the response language." },
+        details: { type: "object", description: "The values the message names, such as path or option; details.plugin names the plugin that warned." }
+      }
+    }
+  }
 };
 const envelopeSchema = {
   $schema: jsonSchemaDialect,
@@ -70186,6 +70436,13 @@ const commonErrors = [
   "INVALID_RESULT",
   "OPERATION_FAILED"
 ];
+const indexDescriptionLength = 76;
+function indexDescription(description2) {
+  const sentence = /^(.*?)[.;](?:\s|$)/s.exec(description2)?.[1]?.concat(".") ?? description2;
+  if (sentence.length <= indexDescriptionLength) return sentence;
+  const cut = sentence.slice(0, indexDescriptionLength);
+  return `${cut.slice(0, cut.lastIndexOf(" ")).replace(/[\s,;:(]+$/, "")}…`;
+}
 function describe(command2, includeOutput = true) {
   const { id: id2, description: description2, usage, options: options2, args, output: output2, examples } = command2;
   const annotations2 = commandAnnotations(command2);
@@ -70220,23 +70477,32 @@ function catalogCommands(registry2) {
     skills: [...registry2.skills.keys()]
   });
   return [
-    { id: "help", description: "Discover commands and usage without prompts.", usage: "help [command]", ...discovery$1, args: commandArgument, errors: ["UNKNOWN_COMMAND"], run(args) {
-      arity(args, 0, 1);
-      if (!args[0]) {
-        const commands2 = [...registry2.commands.values()];
-        return {
-          name: identity2.name,
-          version: identity2.version,
-          apiVersion: identity2.apiVersion,
-          commands: Object.fromEntries(commands2.map((command22) => [command22.id, command22.description])),
-          mutating: commands2.filter((command22) => commandAnnotations(command22).mutating).map((command22) => command22.id),
-          globalOptions: Object.keys(globalOptionMetadata).map((key) => `--${key}`),
-          next: helpNext
-        };
+    {
+      id: "help",
+      description: "Discover commands and usage without prompts.",
+      usage: "help [command]",
+      ...discovery$1,
+      args: commandArgument,
+      errors: ["UNKNOWN_COMMAND"],
+      localizedOutput: { next: "text", globalOptions: "options" },
+      run(args) {
+        arity(args, 0, 1);
+        if (!args[0]) {
+          const commands2 = [...registry2.commands.values()];
+          return {
+            name: identity2.name,
+            version: identity2.version,
+            apiVersion: identity2.apiVersion,
+            commands: Object.fromEntries(commands2.map((command22) => [command22.id, indexDescription(command22.description)])),
+            mutating: commands2.filter((command22) => commandAnnotations(command22).mutating).map((command22) => command22.id),
+            globalOptions: Object.keys(globalOptionMetadata).map((key) => `--${key}`),
+            next: helpNext
+          };
+        }
+        const command2 = registry2.resolveCommand(args[0]);
+        return { ...describe(command2, false), globalOptions: globalOptionMetadata };
       }
-      const command2 = registry2.resolveCommand(args[0]);
-      return { ...describe(command2, false), globalOptions: globalOptionMetadata };
-    } },
+    },
     {
       id: "schema",
       description: "Machine-readable contract: JSON Schema 2020-12 input and output schemas, annotations and error codes of one command, or with --all of every command; without either, an index of command, generator and skill ids.",
@@ -70246,6 +70512,7 @@ function catalogCommands(registry2) {
       options: { all: option$1.boolean("Return the complete contract of every command instead of the index.") },
       errors: ["UNKNOWN_COMMAND"],
       output: schemaOutput,
+      localizedOutput: { more: "text", eventOutput: "text", globalOptions: "options", generators: "generators", errors: "errors" },
       run(args, flags) {
         arity(args, 0, 1);
         ensure(args[0] === void 0 || flags.all !== true, "INVALID_ARGUMENT", "Pass a command or --all, not both.");
@@ -70271,17 +70538,24 @@ function catalogCommands(registry2) {
         return { ...head, commands: [contract(command2)], commonErrors, errors: errors2.filter((entry2) => codes.has(entry2.code)) };
       }
     },
-    { id: "formats", description: "Native Obsidian formats and supported operations.", usage: "formats", ...discovery$1, run(args) {
-      arity(args, 0);
-      return { nativeFormats, structured: ["md", "canvas", "base"], text: textExtensions, textFilenames, textFiles: "textFilenames match case-insensitively, including dot suffixes that start with a non-dot character; native extensions take precedence. UTF-8 read, literal edit, append and full replacement with unified dry-run diffs; files that are not valid UTF-8 or contain NUL characters read as base64 attachments.", attachments: "Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.", otherFiles: "Opaque bytes; plugins can provide additional processing." };
-    } }
+    {
+      id: "formats",
+      description: "Native Obsidian formats and supported operations.",
+      usage: "formats",
+      ...discovery$1,
+      localizedOutput: { textFiles: "text", attachments: "text", otherFiles: "text" },
+      run(args) {
+        arity(args, 0);
+        return { nativeFormats, structured: ["md", "canvas", "base"], text: textExtensions, textFilenames, textFiles: "textFilenames match case-insensitively, including dot suffixes that start with a non-dot character; native extensions take precedence. UTF-8 read, literal edit, append and full replacement with unified dry-run diffs; files that are not valid UTF-8 or contain NUL characters read as base64 attachments.", attachments: "Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.", otherFiles: "Opaque bytes; plugins can provide additional processing." };
+      }
+    }
   ];
 }
 const hostNamespaces = [...hostEventNamespaces];
 const eventDelivery = "Ordered, awaited, per-listener snapshots; failures become warnings. Obsidian-style vault.* records follow each committed write (new folders first, parent before child, then files in batch order); dry runs emit workspace.quick-preview instead. Once the metadata cache is loaded in the invocation, the vault.* records of each batch are followed by metadataCache.changed, metadataCache.deleted, metadataCache.resolve and one metadataCache.resolved. operation.*, command.* and plugin.* records are host lifecycle phases, and the claude core plugin's claude.* records are the phases of each Claude invocation; workspace.* records are Obsidian workspace analogues (file-open, quick-preview, layout-ready, quit, project-change). Host namespaces are host-owned: plugins observe them but emit only their own events. onAny observes all events; replay reads bounded invocation history. No persistent replay. Responses include only vault.* records by default; --events none|changes|all or settings.events selects the output without changing delivery or replay.";
 function extensionCommands(registry2, services2) {
   return [
-    { id: "events", description: "List invocation event contracts.", usage: "events", ...discovery$1, run(args, _, { events: events2 }) {
+    { id: "events", description: "List invocation event contracts.", usage: "events", ...discovery$1, localizedOutput: { contracts: "events", delivery: "text" }, run(args, _, { events: events2 }) {
       arity(args, 0);
       return { events: events2.ids(), contracts: events2.catalog(), hostNamespaces, delivery: eventDelivery };
     } },
@@ -70332,6 +70606,7 @@ function workspaceCommands(services2) {
       mutating: false,
       errors: ["INVALID_CONFIG"],
       output: configOutput,
+      localizedOutput: { sections: "settings" },
       run(args) {
         arity(args, 0);
         return { ...services2.loaded, sections: services2.configSections() };
@@ -70345,6 +70620,7 @@ function workspaceCommands(services2) {
       mutating: true,
       ...additive,
       errors: ["INVALID_SETUP"],
+      localizedOutput: { nextSteps: "text" },
       run(args) {
         arity(args, 0);
         return services2.setup();
@@ -71100,7 +71376,11 @@ async function plannedBatch(staged, trashDestinations) {
   const trash = trashDestinations.filter((path2) => renames.some((rename2) => within(rename2.to, path2)));
   return { batch: { renames, writes }, previous: previous2, trash, operations: operations2 };
 }
-const silentEvents = () => new EventBus({ depth: () => 0, run: (callback) => callback() });
+function silentEvents() {
+  const bus = new EventBus({ depth: () => 0, run: (callback) => callback() });
+  registerHostEvents(bus);
+  return bus;
+}
 function contentBytes(content2, encoding) {
   if (encoding === "utf8") return new TextEncoder().encode(content2);
   return base64Bytes(content2, "Invalid base64 content.");
@@ -71130,7 +71410,8 @@ class PlanRunner {
         failure2 ??= error2;
       }
     } };
-    const planned = new Workspace(this.staged, workspace2.codec, silentEvents(), false, workspace2.root, observer);
+    const planningEvents = silentEvents();
+    const planned = new Workspace(this.staged, workspace2.codec, planningEvents, false, workspace2.root, observer);
     this.planning = { workspace: planned, files: new FileManager(planned, index2, { workspace: this.scope.workspaceScope }) };
     const operations2 = [];
     for (const [position2, item] of plan.operations.entries()) {
@@ -71142,6 +71423,7 @@ class PlanRunner {
         throw located(error2, position2, item.op);
       }
     }
+    for (const warning2 of planningEvents.warningRecords) if (isKernelMessage(warning2)) workspace2.warn(warning2);
     const { batch, previous: previous2, trash, operations: owners } = await plannedBatch(this.staged, this.trash);
     for (const summary of operations2) if (summary.op === "delete" && !trash.includes(String(summary.trashPath))) summary.trashPath = null;
     if (batch.renames.length + batch.writes.length === 0) return { dryRun: workspace2.dryRun, operations: operations2, renames: [], changes: [], folders: [] };
@@ -71681,8 +71963,8 @@ function checked(input2, origin, scope2) {
     const { source: source2 } = origin;
     const named = "option" in source2 ? `Option --${source2.option}` : `Argument <${source2.argument}>${source2.index === void 0 ? "" : ` at index ${source2.index}`}`;
     const better = suggestion(input2, path2, origin, scope2);
-    const stdin = better === "--stdin" ? " To use a file from outside the scope, pipe it with --stdin instead." : "";
-    throw forgeError("INVALID_PATH", `${named} ${JSON.stringify(input2)}: ${error2.message}${absoluteReason(path2, scope2)}${stdin}`, { ...source2, value: input2, ...better === void 0 ? {} : { suggestion: better } });
+    const stdin2 = better === "--stdin" ? " To use a file from outside the scope, pipe it with --stdin instead." : "";
+    throw forgeError("INVALID_PATH", `${named} ${JSON.stringify(input2)}: ${error2.message}${absoluteReason(path2, scope2)}${stdin2}`, { ...error2.details, ...source2, value: input2, ...better === void 0 ? {} : { suggestion: better } });
   }
 }
 function normalizedPathInputs(command2, args, flags, scope2) {
@@ -71694,10 +71976,10 @@ function normalizedPathInputs(command2, args, flags, scope2) {
     return argument?.path === true ? checked(value2, { source: source2, stdin: false }, scope2) : value2;
   });
   const normalizedFlags = Object.assign(/* @__PURE__ */ Object.create(null), flags);
-  const options2 = commandOptions(command2, args), stdin = options2.stdin?.type === "boolean";
+  const options2 = commandOptions(command2, args), stdin2 = options2.stdin?.type === "boolean";
   for (const [key, option2] of Object.entries(options2)) {
     const value2 = flags[key];
-    if (option2.path === true && typeof value2 === "string") normalizedFlags[key] = checked(value2, { source: { option: key }, stdin }, scope2);
+    if (option2.path === true && typeof value2 === "string") normalizedFlags[key] = checked(value2, { source: { option: key }, stdin: stdin2 }, scope2);
   }
   return [normalizedArgs, normalizedFlags];
 }
@@ -71825,7 +72107,8 @@ async function run() {
       activeContext = { workspaceRoot: files2.root, root: project2 ? path$3.resolve(files2.root, project2.directory) : files2.root, project: project2 };
       const app = createApp({ workspace: workspace2, metadata: vaultMetadata, events: events2, project: project2 });
       const context = { workspace: workspace2, environment, events: events2, metadata: vaultMetadata, app, ...activeContext, language: settings2.language, input: standardInput };
-      const commandId = parsed2.flags.help ? "help" : id2;
+      const invokedCommand = parsed2.flags.help ? registry2.resolveCommand("help") : command2;
+      const commandId = invokedCommand.id;
       const data = await invokeCommand(events2, {
         command: commandId,
         root: context.root,
@@ -71840,8 +72123,8 @@ async function run() {
         await registry2.activate(events2, context, skipUserPlugins ? void 0 : new WorkspacePluginState(environment, (message2) => events2.warn(message2), settingsRevision));
         await announceLayoutReady(events2);
       }, async () => {
-        const output2 = parsed2.flags.help ? await registry2.commands.get("help").run(id2 === "help" ? [] : [id2], {}, context) : await runCommand(command2, ...normalizedPathInputs(command2, parsed2.args.slice(1), flags, context), context);
-        return localizer().result(commandId, output2);
+        const output2 = parsed2.flags.help ? await invokedCommand.run(id2 === "help" ? [] : [id2], {}, context) : await runCommand(command2, ...normalizedPathInputs(command2, parsed2.args.slice(1), flags, context), context);
+        return localizer().result(registry2.commands.get(commandId), output2);
       });
       result = { ok: true, data };
     }

@@ -29,3 +29,5 @@ export declare function summarizeError(error: unknown): {
 export declare function errorMessage(error: unknown): string;
 export declare function ensure(condition: unknown, code: ErrorCode, message: string, details?: Record<string, unknown>): asserts condition;
 export declare const isRecord: (value: unknown) => value is Record<string, unknown>;
+/** The code of a coded failure: a host error, or a plugin `Error` with a string `code` before the host mapped it. */
+export declare function failureCode(error: unknown): string | undefined;

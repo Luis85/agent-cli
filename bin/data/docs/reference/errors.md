@@ -13,7 +13,7 @@ Every built-in failure has a stable `code` from this catalog. The catalog is the
 | Field | Meaning |
 | --- | --- |
 | `code` | Stable machine identifier. Match on it, never on `message` |
-| `message` | The original diagnostic in English, or the translated summary with `--lang de` |
+| `message` | The original diagnostic in English; with `--lang de` a German sentence with the concrete values from `details` (path, command, option, revisions) for the codes [CLI language](language.md) lists, otherwise the code's German summary |
 | `hint` | The next step to take. Present for every catalogued code |
 | `retryable` | `true` when repeating the unchanged invocation later can succeed. The catalog gives each code's default; an occurrence may override it, as `WORKSPACE_BUSY` does with `false` for a lock whose holder Forge cannot verify. Built-in `WORKSPACE_BUSY`, `SERVER_BUSY` and `SERVER_STOP_FAILED` may be retryable; inspect lifecycle state with `server status` before repeating a failed stop |
 | `details` | Optional structured data, documented per code below |
@@ -128,14 +128,6 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 | `INVALID_CANVAS` | 2 | input | no | The Canvas structure is invalid. | Fix the nodes, edges or ids named in the message; run `validate <file.canvas>`. |
 | `INVALID_BASE` | 2 | input | no | The Base structure is invalid. | Fix the Base definition named in the message; run `validate <file.base>`. |
 | `INVALID_POINTER` | 2 | input | no | The JSON Pointer is invalid or does not address a valid location. | Read the document and use an existing pointer path; `/-` appends only to an existing array. |
-| `INVALID_BASE_QUERY` | 2 | input | no | The Bases query is invalid. | Check the view, context and expressions named in the message. |
-| `INVALID_BASE_EXPRESSION` | 2 | input | no | A Bases expression cannot be parsed. | Fix the expression named in the message. |
-| `BASE_EVALUATION_ERROR` | 2 | input | no | A Bases expression failed while evaluating a file. | Check the view, file and expression named in the message. |
-| `BASE_TIMEOUT` | 2 | input | no | A Bases query exceeded its 30-second expression evaluation budget over all files (`details.path`, `details.timeoutMs`); no partial result is returned. | Simplify the expressions of the .base file named in the message (avoid nested regular-expression quantifiers such as (a+)+) or narrow its filters. |
-| `BASE_VIEW_NOT_FOUND` | 2 | input | no | The requested Bases view does not exist. | Run `bases inspect <file.base>` and pass an existing `--view`. |
-| `BASE_CONTEXT_NOT_FOUND` | 2 | input | no | The context file is not an indexed vault file. | Pass an existing vault file to `--context`. |
-| `INVALID_BASE_PROPERTY_TYPES` | 2 | input | no | The Obsidian property type registry is invalid. | Fix `.obsidian/types.json` so it is a JSON object of property types. |
-| `UNSUPPORTED_BASE_PROPERTY_TYPE` | 2 | input | no | An Obsidian property type is not supported. | Use a supported type in `.obsidian/types.json`. |
 | `INVALID_ROOT` | 3 | not-found | no | The workspace root does not exist or is not a directory. | Pass --root (or set FORGE_ROOT) to the existing workspace directory that contains bin/; --root wins over FORGE_ROOT. |
 | `INVALID_CONFIG` | 2 | input | no | The configuration is invalid or unreadable. | Fix `bin/config.json` at the location named in the message, then run config. |
 | `INVALID_SETUP` | 2 | input | no | Setup cannot complete with the current distribution files. | Repair the bin path named in the message, then run setup again. |
@@ -147,36 +139,12 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 | `PROJECT_NOT_FOUND` | 3 | not-found | no | The project does not exist. | Run project list and open an existing project. |
 | `PROJECT_REQUIRED` | 2 | input | no | This command needs a selected project. | Run `project open <name>` first. |
 | `STALE_PROJECT_CONTEXT` | 3 | not-found | no | The selected project is missing or no longer matches the configuration. | Run `project open <name>` to select a valid project, or project close. |
-| `INVALID_TEMPLATE` | 2 | input | no | The Markdown template is invalid. | Fix the template frontmatter or placeholders named in the message. |
-| `INVALID_TEMPLATE_DATE` | 2 | input | no | A template date or date format is invalid. | Use an ISO date and a supported date format. |
-| `INVALID_TEMPLATE_PACK` | 2 | input | no | The template pack is invalid. | Use unique template ids and destinations. |
-| `INVALID_TEMPLATE_VALUES` | 2 | input | no | Template values are missing or have the wrong type. | Run `templates inspect <template.md>` and supply its required values. |
-| `UNKNOWN_TEMPLATE_VARIABLE` | 2 | input | no | The template uses an undeclared variable. | Declare the variable in the template or remove the placeholder; run `templates inspect <template.md>`. |
 | `UNKNOWN_GENERATOR` | 2 | input | no | The generator is not registered. | Run make to list generators. |
 | `INVALID_GENERATION_PLAN` | 2 | input | no | The generation plan has overlapping outputs or invalid options. | Use separate output and manifest paths, and do not combine planning with `--revisions-from`. |
 | `INVALID_GENERATION_REVISIONS` | 2 | input | no | The revision approval does not match the reviewed plan. | Create a new plan with `--plan-out` and pass that file to `--revisions-from`. |
-| `UI_DRIFT` | 5 | drift | no | Generated UI files are missing or differ from their definitions. | Run the same command with `--plan` to review, then regenerate. |
-| `DATA_SOURCE_DRIFT` | 5 | drift | no | Generated data-source files are missing or differ from their definitions. | Run the same command with `--plan` to review, then regenerate. |
 | `GENERATION_DRIFT` | 5 | drift | no | Generated files are missing or differ from what the generator produces. | Run the same make command with `--plan` to review, then regenerate. |
 | `INVALID_WORKFLOW` | 2 | input | no | An authored project workflow is invalid or two workflows generate the same file. | Fix or rename the workflow under `src/infrastructure/workflows/<concern>/` named in the message, then run `workflows sync`. |
 | `WORKFLOW_DRIFT` | 5 | drift | no | Generated GitHub workflows are missing, changed or stale. | Run `workflows sync`, review the changes in `.github/workflows` and commit them with their sources. |
-| `INVALID_UI` | 2 | input | no | A component definition is invalid. | Fix the definition named in the message; run components validate. |
-| `INVALID_UI_LIBRARY` | 2 | input | no | The component library is invalid. | Run components validate and fix the reported definitions. |
-| `INVALID_UI_FRAMEWORK` | 2 | input | no | The UI target is not supported. | Use html, htmx, vanilla, vue, svelte, react or angular. |
-| `EMPTY_UI_LIBRARY` | 2 | input | no | The component library has no definitions. | Run components init or add a Markdown definition. |
-| `DUPLICATE_UI_COMPONENT` | 2 | input | no | Two component definitions share an id. | Give each component a unique id. |
-| `UNKNOWN_UI_COMPONENT` | 2 | input | no | The component is not defined. | Run components list and use an existing id. |
-| `CYCLIC_UI_COMPONENT` | 2 | input | no | Component references form a cycle. | Remove the cyclic reference named in the message. |
-| `UI_RENDERER_UNAVAILABLE` | 2 | input | no | No renderer is available for this UI target. | Choose a supported `--framework`. |
-| `INVALID_INTERACTION` | 2 | input | no | An interaction definition is invalid. | Fix the event, actions or bindings named in the message; run interactions validate. |
-| `DUPLICATE_INTERACTION` | 2 | input | no | Two interaction definitions share an id. | Give each interaction a unique id. |
-| `EMPTY_INTERACTION_LIBRARY` | 2 | input | no | The interaction library has no definitions. | Run interactions init or add a Markdown definition. |
-| `UNKNOWN_INTERACTION` | 2 | input | no | The interaction is not defined. | Run interactions list and check the component's interaction references. |
-| `INVALID_DATA_SOURCE` | 2 | input | no | A data-source definition is invalid. | Fix the fields named in the message; run data-sources validate. |
-| `DUPLICATE_DATA_SOURCE` | 2 | input | no | Two data-source definitions share an id. | Give each data source a unique id. |
-| `EMPTY_DATA_SOURCE_LIBRARY` | 2 | input | no | The data-source library has no definitions. | Run data-sources init or add a Markdown definition. |
-| `UNKNOWN_DATA_SOURCE` | 2 | input | no | The data source is not defined. | Run data-sources list and use an existing id. |
-| `DATA_SOURCE_RENDERER_UNAVAILABLE` | 2 | input | no | No generator is available for this data source. | Use a supported data-source kind; run help make for data-source generation. |
 | `INVALID_PLUGIN` | 2 | input | no | A plugin manifest or implementation is invalid. | Fix the plugin named in the message, or disable it with `--no-plugins`. |
 | `INVALID_PLUGIN_CONFIG` | 2 | input | no | The plugin configuration is invalid. | List unique lowercase kebab-case ids of installed user plugins in `plugins.enabled` in `bin/config.json`; run plugins to list them. |
 | `INCOMPATIBLE_PLUGIN` | 2 | input | no | The plugin requires a newer Forge version. | Update The Forge or disable the plugin. |
@@ -187,7 +155,6 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 | `PLUGIN_SERVICE_CYCLE` | 2 | input | no | Plugin service requirements form a cycle. | Break the cycle named in `error.details.plugins` so that one plugin no longer requires a service of another. |
 | `PLUGIN_LIFECYCLE` | 2 | input | no | A plugin used the host outside its lifecycle. | Register contributions before activation and stop using the host after disposal. |
 | `DUPLICATE_OR_INVALID_ID` | 2 | input | no | A contribution id is invalid or already registered. | Use a unique lowercase dotted id. |
-| `UNKNOWN_SKILL` | 2 | input | no | The skill is not registered. | Run skills list. |
 | `INVALID_EVENT` | 2 | input | no | An event definition or event state is invalid. | Define events with a dotted id and validator before disposal. |
 | `INVALID_EVENT_LISTENER` | 2 | input | no | An event listener is not a function. | Pass a function as the listener. |
 | `INVALID_EVENT_PAYLOAD` | 2 | input | no | The event payload does not match its contract. | Run events and emit a payload that matches the contract. |
@@ -197,25 +164,7 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 | `EVENT_OWNERSHIP` | 2 | input | no | A plugin tried to emit an event it does not own. | Emit only events in your plugin's own namespace; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`) are emitted by the host and another plugin's events by that plugin. |
 | `INVALID_CLAUDE_AGENT` | 2 | input | no | The Claude agent definition is invalid. | Fix the field named in the message, then rerun the command. |
 | `INVALID_CLAUDE_HOOKS` | 2 | input | no | The Claude hook configuration is invalid. | Fix the field named in the message, then rerun the command. |
-| `INVALID_CLAUDE_PLUGIN` | 2 | input | no | The Claude plugin manifest or a plugin file is invalid. | Fix the field named in the message, then rerun the command. |
 | `INVALID_CLAUDE_SETTINGS` | 2 | input | no | The Claude settings file is invalid. | Fix the JSON structure of the settings file named in the message. When it names the generation manifest `.claude/forge-generated.json`, an older Forge wrote it: delete `.claude/forge-generated.json` and run `agents generate` again; the rules it listed stay in `.claude/settings.json` until you remove them. |
-| `INVALID_CLAUDE_COMMAND` | 2 | input | no | The Claude command is not supported. | Run claude capabilities. |
-| `INVALID_CLAUDE_ARGUMENT` | 2 | input | no | A Claude command argument is invalid. | Correct the arguments named in the message; run `help <command>` for usage. |
-| `INVALID_CLAUDE_OPTION` | 2 | input | no | A Claude option has an invalid value or combination. | Run help claude and correct the option the message names. |
-| `INVALID_CLAUDE_SCOPE` | 2 | input | no | The Claude scope is invalid. | Run help claude and pass a `--scope` value supported by that action. |
-| `INVALID_CLAUDE_INPUT` | 2 | input | no | The Claude input is invalid or too large. | Pass valid input within the size limit. |
-| `INVALID_CLAUDE_OUTPUT` | 2 | input | no | The Claude output format is invalid. | Use text, json or json-last-line. |
-| `INVALID_CLAUDE_OUTPUT_LIMIT` | 2 | input | no | The Claude output limit is invalid. | Use a positive integer number of bytes. |
-| `INVALID_CLAUDE_TIMEOUT` | 2 | input | no | The Claude timeout is invalid. | Pass the timeout in milliseconds within the range named in the message. |
-| `INVALID_CLAUDE_EXECUTABLE` | 2 | input | no | The Claude executable path is invalid. | Pass an executable path to `--claude-bin`. |
-| `CLAUDE_NOT_INSTALLED` | 1 | external | no | The Claude Code executable was not found. | Install Claude Code and put claude on PATH, or pass `--claude-bin`. |
-| `CLAUDE_WORKING_DIRECTORY_UNAVAILABLE` | 1 | external | no | The Claude working directory is unavailable. | Check that the selected project or workspace root exists and is a directory. |
-| `CLAUDE_COMMAND_FAILED` | 1 | external | no | Claude Code could not be started or stopped unexpectedly. | Read error.details, inspect external state, then retry deliberately. |
-| `CLAUDE_COMMAND_TIMEOUT` | 1 | external | no | The Claude command exceeded its timeout. | Inspect external state; retry with a larger `--timeout` only if the work did not complete. |
-| `CLAUDE_OUTPUT_LIMIT` | 1 | external | no | Claude output exceeded the size limit. | Inspect external state; retry with a larger output limit only if needed. |
-| `CLAUDE_COMMAND_INTERRUPTED` | 130 | interrupted | no | The Claude command was interrupted by a signal (exit 130 for SIGINT, 143 for SIGTERM). | Inspect external state before running the command again. |
-| `CLAUDE_RUNTIME_FAILED` | 1 | external | no | Claude Code exited with a nonzero status. | Inspect error.details (native status, output and parsed result) and external state before retrying. |
-| `CLAUDE_INVALID_OUTPUT` | 1 | external | no | Claude Code succeeded but did not return the requested JSON. | Inspect stdout and external state before retrying. |
 
 ## Core plugin codes
 
@@ -254,3 +203,78 @@ Bundled [core plugins](plugins.md#core-and-user-plugins) register their own code
 | `CONNECTION_INVALID` | `connector` | 2 | input | no | A connection profile fails its platform schema or names unknown mapping fields, or its organization host is not trusted (`details.host`; list it in `FORGE_CONNECTOR_ALLOWED_HOSTS`), in which case no request was sent; `details.issues` names each path |
 | `CONNECTOR_AUTH_FAILED` | `connector` | 1 | external | no | The token variable named in `details.tokenEnv` is unset, or the service refused it (`details.status` 401, 403, 203 or a sign-in redirect). Set the variable to a valid token; the token itself never appears in output. A sync sends no further request after the refusal; items it created before are already recorded in the sync state, so the next sync does not create them again |
 | `CONNECTOR_REQUEST_FAILED` | `connector` | 1 | external | yes | A request failed: `details.status` (null when the service was unreachable or timed out), `method` and `url`; `details.reason: "stale-revision"` marks a revision guard, `"relations-changed"` an update that was applied but whose link changes could not be confirmed. Throttled requests (429, 503) were already retried |
+| `INVALID_BASE_QUERY` | `bases` | 2 | input | no | The Bases query is invalid. Check the view, context and expressions named in the message |
+| `INVALID_BASE_EXPRESSION` | `bases` | 2 | input | no | A Bases expression cannot be parsed. Fix the expression named in the message |
+| `BASE_EVALUATION_ERROR` | `bases` | 2 | input | no | A Bases expression failed while evaluating a file. Check the view, file and expression named in the message |
+| `BASE_TIMEOUT` | `bases` | 2 | input | no | A Bases query exceeded its 30-second expression evaluation budget over all files (`details.path`, `details.timeoutMs`); no partial result is returned. Simplify the expressions of the .base file named in the message (avoid nested regular-expression quantifiers such as (a+)+) or narrow its filters |
+| `BASE_VIEW_NOT_FOUND` | `bases` | 2 | input | no | The requested Bases view does not exist. Run `bases inspect <file.base>` and pass an existing `--view` |
+| `BASE_CONTEXT_NOT_FOUND` | `bases` | 2 | input | no | The context file is not an indexed vault file. Pass an existing vault file to `--context` |
+| `INVALID_BASE_PROPERTY_TYPES` | `bases` | 2 | input | no | The Obsidian property type registry is invalid. Fix `.obsidian/types.json` so it is a JSON object of property types |
+| `UNSUPPORTED_BASE_PROPERTY_TYPE` | `bases` | 2 | input | no | An Obsidian property type is not supported. Use a supported type in `.obsidian/types.json` |
+| `INVALID_TEMPLATE` | `templates` | 2 | input | no | The Markdown template is invalid. Fix the template frontmatter or placeholders named in the message |
+| `INVALID_TEMPLATE_DATE` | `templates` | 2 | input | no | A template date or date format is invalid. Use an ISO date and a supported date format |
+| `INVALID_TEMPLATE_PACK` | `templates` | 2 | input | no | The template pack is invalid. Use unique template ids and destinations |
+| `INVALID_TEMPLATE_VALUES` | `templates` | 2 | input | no | Template values are missing or have the wrong type. Run `templates inspect <template.md>` and supply its required values |
+| `UNKNOWN_TEMPLATE_VARIABLE` | `templates` | 2 | input | no | The template uses an undeclared variable. Declare the variable in the template or remove the placeholder; run `templates inspect <template.md>` |
+| `UI_DRIFT` | `ui` | 5 | drift | no | Generated UI files are missing or differ from their definitions. Run the same command with `--plan` to review, then regenerate |
+| `INVALID_UI` | `ui` | 2 | input | no | A component definition is invalid. Fix the definition named in the message; run components validate |
+| `INVALID_UI_LIBRARY` | `ui` | 2 | input | no | The component library is invalid. Run components validate and fix the reported definitions |
+| `INVALID_UI_FRAMEWORK` | `ui` | 2 | input | no | The UI target is not supported. Use html, htmx, vanilla, vue, svelte, react or angular |
+| `EMPTY_UI_LIBRARY` | `ui` | 2 | input | no | The component library has no definitions. Run components init or add a Markdown definition |
+| `DUPLICATE_UI_COMPONENT` | `ui` | 2 | input | no | Two component definitions share an id. Give each component a unique id |
+| `UNKNOWN_UI_COMPONENT` | `ui` | 2 | input | no | The component is not defined. Run components list and use an existing id |
+| `CYCLIC_UI_COMPONENT` | `ui` | 2 | input | no | Component references form a cycle. Remove the cyclic reference named in the message |
+| `UI_RENDERER_UNAVAILABLE` | `ui` | 2 | input | no | No renderer is available for this UI target. Choose a supported `--framework` |
+| `INVALID_INTERACTION` | `ui` | 2 | input | no | An interaction definition is invalid. Fix the event, actions or bindings named in the message; run interactions validate |
+| `DUPLICATE_INTERACTION` | `ui` | 2 | input | no | Two interaction definitions share an id. Give each interaction a unique id |
+| `EMPTY_INTERACTION_LIBRARY` | `ui` | 2 | input | no | The interaction library has no definitions. Run interactions init or add a Markdown definition |
+| `UNKNOWN_INTERACTION` | `ui` | 2 | input | no | The interaction is not defined. Run interactions list and check the component's interaction references |
+| `DATA_SOURCE_DRIFT` | `data-sources` | 5 | drift | no | Generated data-source files are missing or differ from their definitions. Run the same command with `--plan` to review, then regenerate |
+| `INVALID_DATA_SOURCE` | `data-sources` | 2 | input | no | A data-source definition is invalid. Fix the fields named in the message; run data-sources validate |
+| `DUPLICATE_DATA_SOURCE` | `data-sources` | 2 | input | no | Two data-source definitions share an id. Give each data source a unique id |
+| `EMPTY_DATA_SOURCE_LIBRARY` | `data-sources` | 2 | input | no | The data-source library has no definitions. Run data-sources init or add a Markdown definition |
+| `UNKNOWN_DATA_SOURCE` | `data-sources` | 2 | input | no | The data source is not defined. Run data-sources list and use an existing id |
+| `DATA_SOURCE_RENDERER_UNAVAILABLE` | `data-sources` | 2 | input | no | No generator is available for this data source. Use a supported data-source kind; run help make for data-source generation |
+| `INVALID_CLAUDE_PLUGIN` | `claude` | 2 | input | no | The Claude plugin manifest or a plugin file is invalid. Fix the field named in the message, then rerun the command |
+| `INVALID_CLAUDE_COMMAND` | `claude` | 2 | input | no | The Claude command is not supported. Run claude capabilities |
+| `INVALID_CLAUDE_ARGUMENT` | `claude` | 2 | input | no | A Claude command argument is invalid. Correct the arguments named in the message; run `help <command>` for usage |
+| `INVALID_CLAUDE_OPTION` | `claude` | 2 | input | no | A Claude option has an invalid value or combination. Run help claude and correct the option the message names |
+| `INVALID_CLAUDE_SCOPE` | `claude` | 2 | input | no | The Claude scope is invalid. Run help claude and pass a `--scope` value supported by that action |
+| `INVALID_CLAUDE_INPUT` | `claude` | 2 | input | no | The Claude input is invalid or too large. Pass valid input within the size limit |
+| `INVALID_CLAUDE_OUTPUT` | `claude` | 2 | input | no | The Claude output format is invalid. Use text, json or json-last-line |
+| `INVALID_CLAUDE_OUTPUT_LIMIT` | `claude` | 2 | input | no | The Claude output limit is invalid. Use a positive integer number of bytes |
+| `INVALID_CLAUDE_TIMEOUT` | `claude` | 2 | input | no | The Claude timeout is invalid. Pass the timeout in milliseconds within the range named in the message |
+| `INVALID_CLAUDE_EXECUTABLE` | `claude` | 2 | input | no | The Claude executable path is invalid. Pass an executable path to `--claude-bin` |
+| `CLAUDE_NOT_INSTALLED` | `claude` | 1 | external | no | The Claude Code executable was not found. Install Claude Code and put claude on PATH, or pass `--claude-bin` |
+| `CLAUDE_WORKING_DIRECTORY_UNAVAILABLE` | `claude` | 1 | external | no | The Claude working directory is unavailable. Check that the selected project or workspace root exists and is a directory |
+| `CLAUDE_COMMAND_FAILED` | `claude` | 1 | external | no | Claude Code could not be started or stopped unexpectedly. Read error.details, inspect external state, then retry deliberately |
+| `CLAUDE_COMMAND_TIMEOUT` | `claude` | 1 | external | no | The Claude command exceeded its timeout. Inspect external state; retry with a larger `--timeout` only if the work did not complete |
+| `CLAUDE_OUTPUT_LIMIT` | `claude` | 1 | external | no | Claude output exceeded the size limit. Inspect external state; retry with a larger output limit only if needed |
+| `CLAUDE_COMMAND_INTERRUPTED` | `claude` | 130 | interrupted | no | The Claude command was interrupted by a signal (exit 130 for SIGINT, 143 for SIGTERM). Inspect external state before running the command again |
+| `CLAUDE_RUNTIME_FAILED` | `claude` | 1 | external | no | Claude Code exited with a nonzero status. Inspect error.details (native status, output and parsed result) and external state before retrying |
+| `CLAUDE_INVALID_OUTPUT` | `claude` | 1 | external | no | Claude Code succeeded but did not return the requested JSON. Inspect stdout and external state before retrying |
+| `UNKNOWN_SKILL` | `skills` | 2 | input | no | The skill is not registered. Run skills list |
+
+## Warnings
+
+A nonfatal problem never changes `ok` or the exit status; it is one entry of the envelope's `warnings`: `{code, message, details?}`. Match `code`, never the `message`, which follows `--lang`. `details` holds the values the message names, as given; a value that is itself a message, such as a reason, is a nested `{code, message, details?}`. A plugin warning keeps the code its plugin gave it (`context.events.warn({code, message, details})`), or reads `PLUGIN_WARNING` when the plugin passed text; `details.plugin` names the plugin when it warned through its own `context.events`. A plugin cannot raise a host warning code.
+
+Reads and filters an agent could misread:
+
+- `PATH_MATCHED_NOTHING`: a `--path` filter selected no file (`details.option`, `details.pattern`).
+- `READ_TRUNCATED`, `READ_BYTES_TRUNCATED`: `read` or `read-many` returned only part of a file (`details.path`, `start`, `end`, `total`, `returned`, `bytes`, `next`).
+- `CWD_OUTSIDE_WORKSPACE`: the working directory lies outside the workspace, so relative paths do not resolve against it (`details.cwd`, `details.workspaceRoot`).
+
+Writes that succeed but probably differ from what was meant:
+
+- `LITERAL_NEWLINE`: `--content` or `--replace` holds `\n` as two characters and no line break (`details.option`).
+- `EMPTY_STDIN`: `--stdin` read no bytes, so the file is written empty (`details.path`).
+- `EXTENSION_DROPPED`: a move, also inside an `apply` plan, gives a file an extensionless destination (`details.from`, `details.to`, `details.extension`).
+
+Failures after a committed write or in lifecycle callbacks, which never undo the result: `POST_COMMIT_FAILED`, `VAULT_NOTIFICATION_FAILED`, `REMOVAL_TEMPORARY_LEFT`, `REMOVAL_SYNC_FAILED`, `METADATA_CACHE_UNSAVED`, `EVENT_HISTORY_FULL`, `EVENT_LISTENER_FAILED`, `EVENT_REPLAY_FAILED`, `HOST_NOTIFICATION_FAILED`, `LAYOUT_CALLBACK_FAILED`, `QUIT_TASK_FAILED`, `PLUGIN_CLEANUP_FAILED`; `details.diagnostic` keeps the original, untranslated failure message.
+
+Locks: `LOCK_RECOVERED` (a stale writer or sync lock was removed; `details` has `path`, `pid`, `host` and `since`, `details.reason` is the nested warning `LOCK_STALE_DEAD_PROCESS`, `LOCK_STALE_REUSED_PID` or `LOCK_STALE_REBOOTED`, and `details.command` the nested `LOCK_HOLDER_COMMAND` with the holder's command, or empty), `LOCK_LEFT_FOREIGN`, `LOCK_REMOVED_BY_OTHER` and `LOCK_UNREMOVABLE`.
+
+Configuration and plugins: `PLUGIN_UNAVAILABLE`, `PLUGIN_MISSING_WARNING`, `SETTINGS_UNDECLARED`, `SETTINGS_UNKNOWN_PLUGIN`, `DISABLED_UNKNOWN_PLUGIN`, `PLUGIN_DIRECTORY_IGNORED`, `PLUGIN_STATE_IGNORED`, `PLUGIN_STATE_UNSAVED` and `SETUP_TEMPLATES_UNAVAILABLE`. Their nested `details.reason`, and the `reason` text that `plugins` reports for each plugin, is one of `PLUGIN_LISTED_DISABLED`, `PLUGIN_NOT_ENABLED`, `PLUGIN_SKIPPED`, `PLUGIN_ID_RESERVED`, `PLUGIN_SETTINGS_INVALID`, `PLUGIN_PROVIDER_UNAVAILABLE`, `PLUGIN_PROVIDER_DISABLED`, `PLUGIN_PROVIDER_MISSING` or `PLUGIN_MISSING`.
+
+Core plugins: `BACKLOG_SYNC_LOCK_LEFT` (`backlog`: a sync lock no longer carried this run's token and was left in place; `details.lock`) and `CLAUDE_NOTIFICATION_FAILED` (`claude`: a `claude.*` lifecycle event could not be emitted; `details.event`, `details.diagnostic`).
