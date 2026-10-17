@@ -91,10 +91,10 @@ export class NodeBasesQueryEngine implements BasesQueryEngine {
     const compiledFormulaByName = new Map(Object.entries(formulaAsts).map(([name, ast]) => [name, compileExpression(ast)]));
     const groupPositions = groupOrder && positions(groupOrder);
     const rows: Row[] = [];
-    const budget = vmEvaluationBudget(path, this.timeoutMs);
-    for (const { file, context } of new BaseRowContexts(indexed, { thisFile, formulas: formulaAsts, propertyTypes, objects, now: new Date() }).rows()) {
-      // The budget's watchdog interrupts a runaway expression (a backtracking regular expression) between or inside files.
-      const row = budget.run((): Row | undefined => {
+    const contexts = new BaseRowContexts(indexed, { thisFile, formulas: formulaAsts, propertyTypes, objects, now: new Date() });
+    // One watchdog covers the whole synchronous evaluation and interrupts a runaway (backtracking) expression anywhere in it.
+    vmEvaluationBudget(path, this.timeoutMs).run(() => { for (const { file, context } of contexts.rows()) {
+      const row = ((): Row | undefined => {
         try {
           const evaluating = new Set<string>();
           let evaluationError: string | undefined;
@@ -129,9 +129,9 @@ export class NodeBasesQueryEngine implements BasesQueryEngine {
         } catch (error) {
           throw forgeError('BASE_EVALUATION_ERROR', `${path}, view ${String(view.name)}, file ${file.path}: ${errorMessage(error)}`);
         }
-      });
+      })();
       if (row) rows.push(row);
-    }
+    } });
     rows.sort((a, b) => {
       if (grouping && a.group && b.group) {
         const comparison = groupOrder ? a.groupIndex! - b.groupIndex! : compare(a.group, b.group) * (grouping.direction === 'DESC' ? -1 : 1);
