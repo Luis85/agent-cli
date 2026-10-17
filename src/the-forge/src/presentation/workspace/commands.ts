@@ -21,6 +21,17 @@ const configOutput: JsonSchema = {
   },
 };
 
+const projectListOutput: JsonSchema = {
+  type: 'object', required: ['directory', 'projects', 'invalid'],
+  properties: {
+    directory: { type: 'string' }, projects: { type: 'array', items: projectInfoSchema },
+    invalid: {
+      type: 'array', description: 'Project directories whose .forge/project.json is invalid; the other projects stay usable.',
+      items: { type: 'object', required: ['directory', 'code', 'reason'], properties: { directory: { type: 'string' }, code: { type: 'string', enum: ['INVALID_PROJECT', 'INVALID_PROJECT_NAME'] }, reason: { type: 'string' } } },
+    },
+  },
+};
+
 export function workflowCommands(services: WorkflowServices): Command[] {
   const config = services.loaded.config;
   return [
@@ -32,7 +43,7 @@ export function workflowCommands(services: WorkflowServices): Command[] {
       scope: 'workspace', discovery: false, mutating: true, defaultAction: 'list',
       errors: ['INVALID_PROJECT', 'INVALID_PROJECT_NAME', 'INVALID_PROJECT_CONTEXT', 'PROJECT_EXISTS', 'PROJECT_NOT_FOUND', 'PROJECT_REQUIRED', 'STALE_PROJECT_CONTEXT', 'INVALID_NAME', 'INVALID_COMPONENT_KIND', 'PLUGIN_UNAVAILABLE'],
       actions: {
-        list: { description: 'List managed projects.', mutating: false, output: { type: 'object', required: ['directory', 'projects'], properties: { directory: { type: 'string' }, projects: { type: 'array', items: projectInfoSchema } } } },
+        list: { description: 'List managed projects, and the directories whose project marker is invalid.', mutating: false, output: projectListOutput },
         create: { description: 'Create a self-contained TypeScript library or Vue webview project.', ...additive, options: { type: option.string('Project scaffold type for project create.', { enum: ['library', 'webview'], default: 'library' }) } },
         open: { description: 'Select a project for file commands and generators.', ...additive },
         current: { description: 'Report the selected project.', mutating: false, output: { type: 'object', required: ['project'], properties: { project: selectedProjectSchema } } },
@@ -45,7 +56,7 @@ export function workflowCommands(services: WorkflowServices): Command[] {
       const action = args[0] ?? 'list';
       if (action !== 'create') ensure(flags.type === undefined, 'INVALID_ARGUMENT', '--type is only valid with project create.');
       if (action !== 'component') ensure(flags.kind === undefined, 'INVALID_ARGUMENT', '--kind is only valid with project component.');
-      if (action === 'list') { arity(args, 0, 1); return { directory: config.paths.projects, projects: await services.projects.list() }; }
+      if (action === 'list') { arity(args, 0, 1); return { directory: config.paths.projects, ...await services.projects.discover() }; }
       if (action === 'current') { arity(args, 1); return { project: await services.projects.current() }; }
       if (action === 'open') { arity(args, 2); return services.projects.open(args[1]!); }
       if (action === 'close') { arity(args, 1); return services.projects.close(); }

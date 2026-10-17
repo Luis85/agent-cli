@@ -46,7 +46,7 @@ Output schemas describe the documented fields and their types. Objects stay open
 | `search` | `{hits: [{path, line, column, match, snippet, before?, after?, revision}], total, nextCursor?}` |
 | `links out` / `back` / `unresolved` | `{path?, links \| backlinks, issues}` with each link's location, resolution status, target or reason |
 | `links orphans` / `deadends` | `{files, issues}` |
-| `project list` / `project current` | `{directory, projects}` / `{project}`, where a project is `{schemaVersion, name, type, directory}` or `null` |
+| `project list` / `project current` | `{directory, projects, invalid}` / `{project}`, where a project is `{schemaVersion, name, type, directory}` or `null`, and `invalid` lists `{directory, code, reason}` for each project directory whose `.forge/project.json` is invalid, so the other projects stay listed |
 | `config` | `{path, root, config, sections}` |
 | `schema` | This document |
 | `skills list` / `skills show` | `{skills}` / `{id, content}` |
