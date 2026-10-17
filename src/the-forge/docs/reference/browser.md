@@ -14,7 +14,7 @@ The `browser` core plugin provides Playwright-based webpage screenshots and illu
 | `browser validate <source.json\|md\|canvas> [--out <directory>]` | Read and normalize a tutorial plan; optionally inspect its output folder revision. Does not launch a browser. |
 | `browser tutorial <source.json\|md\|canvas> --out <directory> [options]` | Execute a reviewed flow and write its illustrated document package. |
 
-File paths are relative to the active scope. For screenshot, validate and tutorial, use the command's `--project <id>` option to target a managed project for one invocation without changing persistent selection. Workspace routing `--root <workspace>` precedes the command. Status/installation concern the browser runtime; capture/tutorial destinations remain explicit scoped paths. `schema browser --json` is the installed executable's exact option and response contract.
+File paths are relative to the active scope. For screenshot, validate and tutorial, use the command's `--project <id>` option to target a managed project for one invocation without changing persistent selection. Workspace routing `--root <workspace>` (or `FORGE_ROOT`) may appear on either side of the command. Status/installation concern the browser runtime; capture/tutorial destinations remain explicit scoped paths. `schema browser --json` is the installed executable's exact option and response contract.
 
 ## Screenshot options and output
 

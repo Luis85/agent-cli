@@ -37,7 +37,7 @@ node bin/forge.js read src/main.ts --json
 node bin/forge.js project list
 ```
 
-For an agent, start with `help <command>` for usage and `schema <command> --json` for the exact input/output contract. `schema --json` alone lists the command ids; use the complete `schema --all --json` only when you need the entire installed catalog. Check both `ok` and the exit status, verify `context.root`, and preview mutations before applying them with the current file revision. The [workflow skill](src/the-forge/skills/forge-workflow/SKILL.md) describes this loop.
+For an agent, the [For AI agents](src/the-forge/README.md#for-ai-agents) quick start sums up the contract. Start with `help <command>` for usage and `schema <command> --json` for the exact input/output contract. `schema --json` alone lists the command ids; use the complete `schema --all --json` only when you need the entire installed catalog. Check both `ok` and the exit status, verify `context.root`, and preview mutations before applying them with the current file revision. The [workflow skill](src/the-forge/skills/forge-workflow/SKILL.md) describes this loop.
 
 To start a new, empty workspace instead, follow the quickstart in [The Forge README](src/the-forge/README.md#use-the-committed-bundle).
 

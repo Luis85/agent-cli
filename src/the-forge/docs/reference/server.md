@@ -24,7 +24,7 @@ node bin/forge.js server stop --dry-run
 node bin/forge.js server stop --json
 ```
 
-Use `--root <workspace>` before the command to target another workspace. Use `--no-dry-run` to explicitly override an enabled `settings.dryRun` when applying a reviewed startup or shutdown.
+Use `--root <workspace>` (or the `FORGE_ROOT` environment variable) to target another workspace. Use `--no-dry-run` to explicitly override an enabled `settings.dryRun` when applying a reviewed startup or shutdown.
 
 ## Response
 

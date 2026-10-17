@@ -62,6 +62,21 @@ The `plugins` section has three keys:
 | `plugins.disabled` | `[]` | Bundled core plugin ids to turn off, such as `["skills"]`. Core plugins are enabled by default; other ids are ignored with a warning. A plugin that requires a service of a disabled core plugin becomes unavailable (`backlog` without `bases`) |
 | `plugins.settings` | `{}` | One config section per plugin id, validated against the JSON Schema that the loaded plugin declares; defaults fill missing values and `config` shows the effective result. An invalid section makes only that plugin, and plugins that require its services, unavailable, with a warning: their commands fail with `PLUGIN_UNAVAILABLE`. Sections naming no installed plugin are kept with a warning. Core plugins declare sections too: `search.timeoutMs` bounds [search matching](search.md#regular-expression-safety), `links.roots` lists entry notes that are never [orphans](links.md#orphans-and-dead-ends), `vault-check.rules` sets [vault check](vault.md#settings) rule severities (`error`, `warning`, `info` or `off`) and `vault-check.ignore` the path globs it skips, `agents.directory` (a contained relative folder, shown without a trailing slash like the `ui` and `data-sources` folders) and `agents.defaultModel` configure [agent definitions](agents.md), `backlog.base`/`backlog.view` choose the default [backlog](backlog.md#choosing-the-backlog), `connector.connections` holds the [connection profiles](connectors.md#connection-profiles) of backlog sync, `templates.dateFormat`/`templates.timeFormat` (defaults `YYYY-MM-DD` and `HH:mm`) set the dayjs formats of [template](templates.md) `{{date}}` and `{{time}}` placeholders without their own format, `ui` holds the UI framework and folders described above, and `data-sources` the data-source folders described below. See [config sections](plugins.md#config-sections) |
 
+## Environment variables
+
+Configuration stays in `bin/config.json`; these variables change one user's or one session's behavior without editing it:
+
+| Variable | Effect | Reference |
+| --- | --- | --- |
+| `FORGE_ROOT` | Workspace root when `--root` is absent; an empty value is ignored | [CLI](cli.md) |
+| `FORGE_BROWSER_EXECUTABLE` | Browser executable when `--browser-executable` is absent, before the managed Chromium | [browser](browser.md) |
+| `FORGE_TUTORIAL_*` | The only names a tutorial `fill` action's `valueFromEnv` may read | [browser](browser.md) |
+| `FORGE_CONNECTOR_ALLOWED_HOSTS` | Comma-separated extra hosts a connector may send its token to, such as an Azure DevOps Server | [connectors](connectors.md) |
+| A connection's `tokenEnv` | The connector token (default `AZURE_DEVOPS_EXT_PAT`); never stored in configuration | [connectors](connectors.md) |
+| `CLAUDE_CONFIG_DIR` | Claude Code's user configuration folder for `claude --scope user`, unless `--claude-dir` is given | [Claude](claude.md) |
+| `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` | Proxy that screenshot and tutorial browser runs use; loopback always bypasses it | [browser](browser.md) |
+| `NODE_DISABLE_COMPILE_CACHE` | `1` turns off the Node compile cache that `bin/forge.js` enables in the OS temporary directory | none |
+
 ## Core plugin settings
 
 Every setting the bundled core plugins declare, by section. `config` reports the same schemas, with their descriptions in the response language, in `data.sections`; the linked pages describe each setting in detail.

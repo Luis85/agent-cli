@@ -3,7 +3,7 @@
 Read this when you need more than the core loop in [SKILL.md](../SKILL.md): the response envelope, discovery details, events, warnings, language and plugins.
 
 ## Envelope
-- Success: `{ok: true, data, context, events, warnings}`. Failure: `{ok: false, error: {code, message, hint, retryable, details?}, context?, events, warnings}`.
+- Success: `{ok: true, data, context, events, warnings}`. Failure: `{ok: false, error: {code, message, hint?, retryable?, details?}, context?, events, warnings}`; built-in codes always carry `hint` and `retryable`.
 - `context.workspaceRoot` is the workspace, `context.root` the root this command used and `context.project` the selected project or `null`. Check `context.root` before reading paths in `changes` or `events`.
 - `--json` prints compact JSON and `--no-json` indented JSON; both are JSON.
 - Exit codes: 0 success, 1 runtime, I/O, plugin or Claude failure, 2 invalid input or conflict, 3 missing file, project or workspace root, 4 writer or server lock busy, 5 generated output drift, 130 (SIGINT) or 143 (SIGTERM) interrupted.
