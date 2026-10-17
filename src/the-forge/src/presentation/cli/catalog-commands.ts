@@ -1,4 +1,5 @@
 import metadata from '../../../package.json';
+import { forgeIdentity } from './identity.ts';
 import { errorCatalog, errorCodes } from '../../domain/shared/error-catalog.ts';
 import { nativeFormats, textExtensions, textFilenames } from '../../domain/documents/file.ts';
 import { eventOutputLevels } from '../../application/plugins/event-output.ts';
@@ -44,7 +45,7 @@ function describe(command: Command, includeOutput = true) {
 }
 
 export function catalogCommands(registry: Registry): Command[] {
-  const identity = { name: 'The Forge', version: metadata.version, apiVersion: 1, node: metadata.engines.node };
+  const identity = { ...forgeIdentity, node: metadata.engines.node };
   const catalog = () => ({
     ...identity, dialect: jsonSchemaDialect,
     globalOptions: globalOptionMetadata, envelope: envelopeSchema,

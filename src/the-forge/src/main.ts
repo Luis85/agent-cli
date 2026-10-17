@@ -59,6 +59,7 @@ import { commands } from './presentation/cli/commands.ts';
 import { declaredValues, parseArguments, parseBootstrap } from './presentation/cli/arguments.ts';
 import { invocationPolicy } from './presentation/cli/invocation-policy.ts';
 import { language, Localizer } from './presentation/localization/localization.ts';
+import { forgeIdentity } from './presentation/cli/identity.ts';
 import { kernelMessage, type KernelMessage } from './domain/shared/kernel-messages.ts';
 
 /** Bundled core plugins in registration order; each `src/plugins/<id>/plugin.ts` wires its own layers. */
@@ -69,7 +70,7 @@ const corePlugins = [
 
 async function run(): Promise<void> {
   const tokens = process.argv.slice(2);
-  const registry = new Registry(skillFrontmatter), events = new EventBus(new NodeEventScope());
+  const registry = new Registry(skillFrontmatter, metadata.version), events = new EventBus(new NodeEventScope());
   let result: Record<string, unknown>;
   let activeContext: Pick<CommandContext, 'workspaceRoot' | 'root' | 'project'> | undefined;
   let localizer = new Localizer();
@@ -91,7 +92,7 @@ async function run(): Promise<void> {
       if (requestedEvents !== undefined) eventOutput(requestedEvents);
       const parsed = parseArguments(tokens, globalOptions);
       ensure(parsed.args.length === 0, 'INVALID_ARGUMENT', '--version does not accept a command.');
-      result = { ok: true, data: { name: 'The Forge', version: metadata.version, apiVersion: 1 } };
+      result = { ok: true, data: { ...forgeIdentity } };
     } else {
       const loaded = await loadConfig({ defaultPath: resolve(__dirname, 'config.json'), cwd: process.cwd(), root: value(bootstrap.flags, 'root') });
       const config = loaded.config;
@@ -125,7 +126,7 @@ async function run(): Promise<void> {
           return new SetupService(environment, config, await readSetupArtifacts(__dirname), [...registry.skills.values()], templates?.setupTemplates() ?? null).run();
         },
         configSections: () => registry.settings.sections(),
-        installedPlugins: () => installedPlugins('bin/plugins', config.plugins.enabled, skipUserPlugins, files, message => events.warn(message)),
+        installedPlugins: () => installedPlugins('bin/plugins', config.plugins.enabled, skipUserPlugins, files, metadata.version, message => events.warn(message)),
       };
       for (const command of commands(registry, services)) registry.add(registry.commands, command);
       // Bundled core plugins register in bundle order before user plugins; --no-plugins skips only user plugins.

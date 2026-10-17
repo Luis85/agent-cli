@@ -97,22 +97,25 @@ export interface PluginContributions {
   onunload?(): void | Promise<void>;
 }
 export interface Plugin extends PluginContributions { manifest: PluginManifest }
-const appVersion = [0, 1, 0];
-export function validatePluginManifest(value: unknown, origin: PluginOrigin = 'user'): asserts value is PluginManifest {
+/** Validates a manifest, including that its `minAppVersion` is at most `appVersion`, the running Forge version. */
+export function validatePluginManifest(value: unknown, appVersion: string, origin: PluginOrigin = 'user'): asserts value is PluginManifest {
   ensure(isRecord(value) && typeof value.id === 'string' && /^[a-z][a-z0-9-]*$/.test(value.id), 'INVALID_PLUGIN', 'Plugin manifest requires a lowercase kebab-case id.');
   ensurePluginNamespace(value.id);
   ensure(origin === 'core' ? value.core === true : value.core === undefined, 'PLUGIN_NAMESPACE', origin === 'core' ? `Bundled plugin ${value.id} must declare core: true.` : `Plugin ${value.id} cannot declare core; only bundled core plugins are core plugins.`);
   for (const key of ['name', 'description', 'author']) ensure(typeof value[key] === 'string' && value[key].trim().length > 0, 'INVALID_PLUGIN', `Plugin manifest requires ${key}.`);
   for (const key of ['version', 'minAppVersion']) ensure(typeof value[key] === 'string' && /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value[key]), 'INVALID_PLUGIN', `Plugin manifest requires a numeric ${key}.`);
-  const minimum = (value.minAppVersion as string).split('.').map(Number);
-  const firstDifference = minimum.findIndex((part, index) => part !== appVersion[index]);
-  ensure(firstDifference === -1 || minimum[firstDifference]! < appVersion[firstDifference]!, 'INCOMPATIBLE_PLUGIN', `Plugin ${value.id} requires agent-cli ${value.minAppVersion} or newer.`);
+  const minimum = (value.minAppVersion as string).split('.').map(Number), running = appVersion.split('.').map(Number);
+  const firstDifference = minimum.findIndex((part, index) => part !== running[index]);
+  ensure(firstDifference === -1 || minimum[firstDifference]! < running[firstDifference]!, 'INCOMPATIBLE_PLUGIN', `Plugin ${value.id} requires The Forge ${value.minAppVersion} or newer; this is ${appVersion}.`);
 }
 /** A plugin's commands and generators fail with PLUGIN_UNAVAILABLE while the plugin cannot run, so they declare it. */
 const availabilityErrors = (errors: readonly string[] = []) => errors.includes('PLUGIN_UNAVAILABLE') ? errors : [...errors, 'PLUGIN_UNAVAILABLE'];
 export class Registry {
-  /** `skillFrontmatter` reads the frontmatter of contributed SKILL.md files for their specification checks. */
-  constructor(private readonly skillFrontmatter: SkillFrontmatterReader) {}
+  /**
+   * `skillFrontmatter` reads the frontmatter of contributed SKILL.md files for their specification checks;
+   * `appVersion` is the running Forge version that plugin manifests' `minAppVersion` must not exceed.
+   */
+  constructor(private readonly skillFrontmatter: SkillFrontmatterReader, readonly appVersion: string) {}
   readonly commands = new Map<string, Command>();
   readonly generators = new Map<string, Generator>();
   readonly skills = new Map<string, Skill>();
@@ -143,7 +146,7 @@ export class Registry {
   register(plugin: Plugin, events: EventBus, origin: PluginOrigin = 'user'): void {
     ensure(this.state === 'registering', 'PLUGIN_LIFECYCLE', 'Plugins must register before activation.');
     ensure(isRecord(plugin), 'INVALID_PLUGIN', 'Plugin must export an object or class.');
-    validatePluginManifest(plugin.manifest, origin);
+    validatePluginManifest(plugin.manifest, this.appVersion, origin);
     const pluginId = plugin.manifest.id;
     ensure(!this.origins.has(pluginId) && !this.disabled.some(manifest => manifest.id === pluginId), 'DUPLICATE_PLUGIN', pluginId);
     validateContributions(plugin as unknown as Record<string, unknown>, pluginId, origin, this.skillFrontmatter);
@@ -173,7 +176,7 @@ export class Registry {
   }
   /** A bundled core plugin listed in `plugins.disabled`: it contributes nothing and `plugins` lists it with `reason`. */
   disable(manifest: PluginManifest, reason: KernelMessage): void {
-    validatePluginManifest(manifest, 'core');
+    validatePluginManifest(manifest, this.appVersion, 'core');
     ensure(!this.origins.has(manifest.id) && !this.disabled.some(entry => entry.id === manifest.id), 'DUPLICATE_PLUGIN', manifest.id);
     this.disabled.push(manifest);
     this.disabledReasons.set(manifest.id, reason);

@@ -9,12 +9,12 @@ import type { EventBus } from '../../application/plugins/events.ts';
 import type { InstalledPlugin } from '../../application/plugins/core-plugins.ts';
 import { kernelMessage, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
 
-async function readManifest(path: string, files: NodeFiles): Promise<PluginManifest> {
+async function readManifest(path: string, files: NodeFiles, appVersion: string): Promise<PluginManifest> {
   const text = new TextDecoder('utf-8', { fatal: true }).decode((await files.read(path)).bytes);
   let value: unknown;
   try { value = JSON.parse(text); }
   catch { throw forgeError('INVALID_PLUGIN', `Invalid JSON in plugin manifest: ${path}`); }
-  validatePluginManifest(value);
+  validatePluginManifest(value, appVersion);
   return value;
 }
 
@@ -42,7 +42,7 @@ async function loadModule(directory: string, files: NodeFiles): Promise<unknown>
  * User plugin directories with a valid manifest, without executing any plugin code. `skipped` marks enabled
  * plugins that `--no-plugins` left unloaded; an unreadable or invalid manifest is reported through `warn`.
  */
-export async function installedPlugins(directory: string, enabled: readonly string[], skipped: boolean, files: NodeFiles, warn: (message: KernelMessage) => void): Promise<InstalledPlugin[]> {
+export async function installedPlugins(directory: string, enabled: readonly string[], skipped: boolean, files: NodeFiles, appVersion: string, warn: (message: KernelMessage) => void): Promise<InstalledPlugin[]> {
   let folder;
   try { folder = await files.stat(directory); }
   catch (error) { if (error instanceof AppError && error.code === 'NOT_FOUND') return []; throw error; }
@@ -51,7 +51,7 @@ export async function installedPlugins(directory: string, enabled: readonly stri
   const installed: InstalledPlugin[] = [];
   for (const id of ids) {
     try {
-      const manifest = await readManifest(`${directory}/${id}/manifest.json`, files);
+      const manifest = await readManifest(`${directory}/${id}/manifest.json`, files, appVersion);
       ensure(manifest.id === id, 'INVALID_PLUGIN', `Manifest id must match plugin directory ${id}.`);
       installed.push({ manifest, skipped: skipped && enabled.includes(id) });
     } catch (error) { warn(kernelMessage('PLUGIN_DIRECTORY_IGNORED', { directory: `${directory}/${id}`, diagnostic: error instanceof Error ? error.message : String(error) })); }
@@ -70,7 +70,7 @@ export async function loadEnabledPlugins(directory: string, ids: readonly string
   for (const id of ids) {
     const path = `${directory}/${id}/manifest.json`;
     let manifest: PluginManifest;
-    try { manifest = await readManifest(path, files); }
+    try { manifest = await readManifest(path, files, registry.appVersion); }
     catch (error) {
       if (!(error instanceof AppError) || error.code !== 'NOT_FOUND') throw error;
       registry.recordMissing(id, path, events);

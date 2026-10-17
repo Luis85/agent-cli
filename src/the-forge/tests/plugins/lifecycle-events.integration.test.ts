@@ -5,10 +5,11 @@ import { Registry, type CommandContext, type Plugin } from '../../src/applicatio
 import { registerHostEvents } from '../../src/application/plugins/host-events.ts';
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
+import { forgeVersion } from '../support/workspace.ts';
 
 const plugin = (id: string): Plugin => ({ manifest: { id, name: id, version: '1.0.0', minAppVersion: '0.1.0', description: 'Lifecycle test', author: 'Test' } });
 const create = () => {
-  const registry = new Registry(skillFrontmatter), events = new EventBus(new NodeEventScope());
+  const registry = new Registry(skillFrontmatter, forgeVersion), events = new EventBus(new NodeEventScope());
   registerHostEvents(events);
   return { registry, events, context: {} as CommandContext };
 };

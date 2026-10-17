@@ -16,6 +16,7 @@ import { commands } from '../../src/presentation/cli/commands.ts';
 import { claudeBytes, claudeInput } from '../../src/plugins/claude/presentation/input.ts';
 import { ScopedFiles } from '../../src/application/workspace/scoped-files.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
+import { forgeVersion } from '../support/workspace.ts';
 
 let root: string, registry: Registry, context: CommandContext, events: EventBus;
 beforeEach(async () => {
@@ -26,7 +27,7 @@ beforeEach(async () => {
   events.define({ id: 'vault.create', validate: (value): value is object => typeof value === 'object' });
   const workspace = new Workspace(files, new ObsidianDocuments(), events, false);
   context = { workspace, events, root, workspaceRoot: root, project: null, ...scopeServices(workspace, events), input: async () => new Uint8Array() };
-  registry = new Registry(skillFrontmatter);
+  registry = new Registry(skillFrontmatter, forgeVersion);
   const loaded = await loadConfig({ defaultPath: join(root, 'bin/config.json'), cwd: root });
   for (const command of commands(registry, {
     loaded, files,
