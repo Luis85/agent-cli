@@ -17,22 +17,22 @@ export const templateInstallerService = 'templates.installer';
 const encode = (value: string) => new TextEncoder().encode(value);
 const instructions = `# The Forge workflow
 
-Read bin/data/README.md and bin/data/docs/reference/cli.md before using the CLI.
-Run \`node bin/forge.js help\` or \`node bin/forge.js schema --json\` to discover commands.
-Environment settings and enabled plugins live in bin/config.json.
-Shared templates live in bin/templates and plugins live in bin/plugins.
+Work on this workspace's files through \`node bin/forge.js\`; every command returns one JSON envelope.
+Before your first command, read the forge-workflow skill in .claude/skills or .agents/skills; the
+other installed forge-* skills cover notes, code generation, backlogs, agents, webviews and the browser.
+Run \`node bin/forge.js help\` for the command index and \`node bin/forge.js help <command>\` for usage and examples.
+Environment settings and enabled plugins live in bin/config.json; shared templates live in bin/templates
+and plugins in bin/plugins.
 
-Run \`node bin/forge.js project list\` to discover projects, then
-\`node bin/forge.js project open <id>\` to select a project before working on its files.
-Check \`node bin/forge.js project current\` before scoped operations; paths resolve inside the open project.
-Run \`node bin/forge.js project close\` when finished with that project.
+Run \`node bin/forge.js project list\`, then \`node bin/forge.js project open <id>\` before working on a project's files.
+Check \`node bin/forge.js project current\`: paths resolve inside the open project. Run
+\`node bin/forge.js project close\` when finished with it.
 
 Establish acceptance criteria before generating or editing files. Read existing files first,
-preview mutations with --dry-run, and supply the current revision with --if-match when replacing files.
+preview mutations with --dry-run, and pass the current revision with --if-match when changing files.
 Treat conflicts as a request to reread and reconcile. Verify changes with the project's checks.
 Keep domain invariants explicit, application use cases dependent on injected ports, and adapters at the edges.
 Use clear names and focused functions; verify acceptance criteria and failure behavior with meaningful tests.
-Use the installed agent skills in .claude/skills or .agents/skills for the development and file-editing workflows.
 Enable only reviewed plugins: plugins execute with Node's permissions.
 `;
 /** Idempotent installation: existing project files always remain owned by the user. */

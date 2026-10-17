@@ -62,6 +62,9 @@ it('installs fixed environment directories and configured projects through works
   for (const skills of ['.claude/skills', '.agents/skills']) expect(await readFile(join(root, skills, 'forge-workflow/SKILL.md'), 'utf8')).toContain('name: forge-workflow');
   const guidance = await readFile(join(root, 'AGENTS.md'), 'utf8');
   for (const command of ['--if-match', 'node bin/forge.js', 'project open', 'project current', 'project close']) expect(guidance).toContain(command);
+  // The guidance points agents to the installed skill and per-command help, not to the full reference docs.
+  for (const pointer of ['forge-workflow skill', 'help <command>']) expect(guidance).toContain(pointer);
+  expect(guidance).not.toContain('cli.md');
   expect(await readdir(join(root, 'bin'))).toEqual(['browser-runtime', 'config', 'config.json', 'data', 'forge-runtime.js', 'forge-server.cjs', 'forge.js', 'package.json', 'plugins', 'templates', 'webviews']);
   expect(await readFile(join(root, 'work/projects/.gitkeep'))).toHaveLength(0);
   expect(events.history.filter(record => (record.payload as { kind: string }).kind === 'file')).toHaveLength(21);
