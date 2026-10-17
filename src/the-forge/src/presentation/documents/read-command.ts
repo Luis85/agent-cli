@@ -25,7 +25,7 @@ export function readCommand(): Command {
     examples: ['read notes/idea.md', 'read notes/idea.md --lines 40-80', 'read notes/idea.md --parts body'],
     usage: 'read <path> [--parts content,properties,body] [--lines start-end] [--max-bytes count] [--project id]',
     scope: 'project', projectOption: 'project', discovery: false, mutating: false,
-    args: [{ name: 'path', description: 'Vault path relative to the command scope.', required: true, path: true }], errors: ['NOT_FOUND', 'INVALID_FRONTMATTER'],
+    args: [{ name: 'path', description: 'Vault path relative to the command scope.', required: true, path: true }], errors: ['NOT_FOUND', 'INVALID_CANVAS', 'INVALID_BASE', 'INVALID_YAML'],
     options: {
       parts: option.string('Comma-separated parts of a Markdown read; content and properties by default.', { enum: markdownParts, list: true }),
       lines: option.string('Only these 1-based, inclusive lines of Markdown or text content: start-end, start- or start.'),

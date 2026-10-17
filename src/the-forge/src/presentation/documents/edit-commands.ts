@@ -9,6 +9,7 @@ import { option, type CommandFlags } from '../../application/plugins/command-met
 import { decodeText, editBytes, ensureEditable } from '../../application/documents/text-edit.ts';
 import { PlanRunner } from '../../application/documents/apply.ts';
 import { applyOutput, editOutput } from './output.ts';
+import { inputWarnings } from './input-warnings.ts';
 
 /** JSON text, `@path` (a file in the command scope) or `-` (standard input). */
 async function jsonInput(source: string, context: Pick<CommandContext, 'workspace' | 'input'>): Promise<unknown> {
@@ -81,6 +82,7 @@ export function editCommand(): Command {
       arity(args, 1); const path = args[0]!;
       const request = await editRequest(flags, context);
       ensureEditable(path, request);
+      inputWarnings(path, flags, undefined, ['content', 'replace'], context.workspace);
       return context.workspace.edit(path, value(flags, 'if-match', true)!, bytes => editBytes(path, bytes, request, context.metadata));
     },
   };
@@ -90,9 +92,10 @@ export function applyCommand(): Command {
   return {
     id: 'apply', description: 'Run a JSON plan of writes, edits, frontmatter changes, moves and deletions as one guarded batch.', usage: 'apply <plan.json|-> [--project id]',
     examples: ['apply plan.json --dry-run', 'apply plan.json'],
-    // Destructive: write, edit and delete replace or remove content. Not idempotent: an operation without ifMatch,
-    // such as an append, applies again on a repeat; only a plan whose every operation carries ifMatch fails instead.
-    scope: 'project', projectOption: 'project', discovery: false, mutating: true, destructive: true, idempotent: false, errors: applyErrors, output: applyOutput,
+    // Destructive: write, edit and delete replace or remove content. Idempotent: every operation on a path that
+    // existed before the plan needs its ifMatch, so a repeat fails with CONFLICT (the first run changed those paths
+    // or created the others) or, when the plan changed nothing, changes nothing again.
+    scope: 'project', projectOption: 'project', discovery: false, mutating: true, destructive: true, idempotent: true, errors: applyErrors, output: applyOutput,
     args: [{ name: 'plan', description: 'Plan file in the command scope, or - to read the plan from standard input.', required: true, schema: applyPlanSchema, path: true }],
     options: { project: option.string('Use this project instead of the selected project.') },
     async run(args, _flags, context) {

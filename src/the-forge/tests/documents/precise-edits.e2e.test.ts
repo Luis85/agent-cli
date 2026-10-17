@@ -60,10 +60,11 @@ describe('precise edits through the portable CLI', () => {
 
   it('applies a mixed plan from a file or standard input in one guarded batch', async () => {
     const { root, cli, revision, text } = await vault('apply');
+    const planRevision = await revision('notes/Plan.md');
     const plan = { version: 1, operations: [
-      { op: 'edit', path: 'notes/Plan.md', section: 'Goals', append: 'Ship v2 later.', ifMatch: await revision('notes/Plan.md') },
-      { op: 'frontmatter', path: 'notes/Plan.md', set: { status: 'active' }, unset: [] },
-      { op: 'move', from: 'notes/Plan.md', to: 'specs/Roadmap.md' },
+      { op: 'edit', path: 'notes/Plan.md', section: 'Goals', append: 'Ship v2 later.', ifMatch: planRevision },
+      { op: 'frontmatter', path: 'notes/Plan.md', set: { status: 'active' }, unset: [], ifMatch: planRevision },
+      { op: 'move', from: 'notes/Plan.md', to: 'specs/Roadmap.md', ifMatch: planRevision },
       { op: 'write', path: 'specs/README.md', content: 'Specs live here; start at [[Roadmap]].\n' },
       { op: 'delete', path: 'notes/Scratch.md', ifMatch: await revision('notes/Scratch.md') },
     ] };

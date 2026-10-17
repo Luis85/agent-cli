@@ -1,4 +1,4 @@
-import { committedEvents } from '../support/events.ts';
+import { committedEvents, unchangedRepeat } from '../support/events.ts';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -258,7 +258,7 @@ describe('portable selected-project workflows', () => {
     expect(committedEvents(created.body.events)).toHaveLength(2);
     expect(await readFile(join(selectedRoot, 'src/presentation/forms/contact-details.form.ts'), 'utf8')).toContain('ContactDetailsForm');
     expect(await readFile(join(selectedRoot, 'tests/contact-details.form.unit.test.ts'), 'utf8')).toContain('validates and normalizes form data');
-    expect((await run(['make', 'form', 'ContactDetails'])).body.error.code).toBe('CONFLICT');
+    expect(unchangedRepeat(await run(['make', 'form', 'ContactDetails']))).toBe(true);
     for (const out of ['../outside', '/absolute', 'src/../outside']) {
       const rejected = await run(['make', 'form', 'UnsafeForm', '--out', out]);
       expect(rejected.body.error.code).toBe('INVALID_PATH');

@@ -7,7 +7,8 @@ import { portableCli } from './portable-cli.ts';
 
 /**
  * `idempotentHint` against behavior: every mutating mode the schema publishes runs twice in one workspace. A mode
- * declared idempotent must leave every file unchanged on the identical repeat (it reports no changes or fails);
+ * declared idempotent must leave every file unchanged on the identical repeat (it reports no changes, only
+ * `unchanged` ones, or fails);
  * a mode declared non-idempotent must change the workspace again, or name why no probe can run it. The probes are
  * grouped by command family; each family runs in its own workspace and test file, so the families run in parallel
  * and a failing probe affects only the later probes of its family.
@@ -43,7 +44,8 @@ views:
 const agent = '---\nname: reviewer\ndescription: Review changes\n---\n\nReview the change without modifying files.\n';
 const hook = JSON.stringify({ matcher: 'Bash', hooks: [{ type: 'command', command: 'true' }] });
 const workflow = 'name: web check\non:\n  pull_request:\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npm ci\n';
-const appendPlan = JSON.stringify({ version: 1, operations: [{ op: 'edit', path: 'notes/log.md', append: 'again' }] });
+// The repeat needs ifMatch for the file the first run created, so it fails with CONFLICT.
+const createPlan = JSON.stringify({ version: 1, operations: [{ op: 'write', path: 'notes/log.md', content: 'start\n' }, { op: 'edit', path: 'notes/log.md', append: 'again' }] });
 
 /** The revision of a file in the selected project, as `read` reports it. */
 const revision = async (fixture: Fixture, path: string) => createHash('sha256').update(await readFile(join(fixture.project, project, path))).digest('hex');
@@ -78,7 +80,7 @@ export const families: Record<string, { preamble?: Array<[readonly string[]]>; p
     { mode: 'move', args: async fixture => ['move', 'notes/b.md', 'notes/c.md', '--if-match', await revision(fixture, 'notes/b.md')] },
     { mode: 'rename', args: async fixture => ['rename', 'notes/c.md', 'd.md', '--if-match', await revision(fixture, 'notes/c.md')] },
     { mode: 'delete', args: async fixture => ['delete', 'notes/d.md', '--if-match', await revision(fixture, 'notes/d.md')] },
-    { mode: 'apply', args: ['apply', '-'], input: appendPlan, prepare: [[['create', 'notes/log.md', '--content', 'start\n']]] },
+    { mode: 'apply', args: ['apply', '-'], input: createPlan },
   ] },
   generators: { preamble: selectedProject, probes: [
     { mode: 'templates install', args: ['templates', 'install'] },
@@ -186,7 +188,8 @@ export function probeFamily(name: string): void {
           const after = await snapshot(fixture.project);
           if (declared.get(probe.mode)) {
             expect(after, repeat.stdout).toEqual(before);
-            if (repeat.status === 0) expect(repeat.body.data.changes ?? [], repeat.stdout).toEqual([]);
+            const changed = (repeat.body.data?.changes ?? []).filter((change: { operation: string }) => change.operation !== 'unchanged');
+            if (repeat.status === 0) expect(changed, repeat.stdout).toEqual([]);
           } else {
             expect(repeat.status, repeat.stdout).toBe(0);
             expect(after, repeat.stdout).not.toEqual(before);

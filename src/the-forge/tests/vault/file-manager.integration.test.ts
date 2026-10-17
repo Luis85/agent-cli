@@ -49,10 +49,12 @@ describe('moving notes with link updates', () => {
   });
 
   it('moves folders, keeps links intact and refuses existing destinations or stale revisions', async () => {
-    await writeVault(root, { ...vault, 'notes/sub/Detail.md': '[[Plan]]', 'specs/Existing.md': 'x' });
+    await writeVault(root, { ...vault, 'notes/sub/Detail.md': '[[Plan]]', 'specs/Existing.md': 'x', 'specs/notes/Kept.md': 'x' });
     const { app, files, metadata } = await vaultScope(root);
     const folder = await files.stat('notes');
-    await expect(app.fileManager.move('notes', 'specs', { ifMatch: folder.revision })).rejects.toMatchObject({ code: 'DESTINATION_EXISTS' });
+    await expect(app.fileManager.move('notes', 'specs/Existing.md', { ifMatch: folder.revision })).rejects.toMatchObject({ code: 'DESTINATION_EXISTS' });
+    // An existing folder receives the source under its own name, which exists there too.
+    await expect(app.fileManager.move('notes', 'specs', { ifMatch: folder.revision })).rejects.toMatchObject({ code: 'DESTINATION_EXISTS', details: { path: 'specs/notes' } });
     await expect(app.fileManager.move('notes', 'notes/inner', { ifMatch: folder.revision })).rejects.toMatchObject({ code: 'INVALID_MOVE' });
     await expect(app.fileManager.move('notes', 'archive/notes', { ifMatch: 'stale' })).rejects.toMatchObject({ code: 'CONFLICT' });
     const moved = await app.fileManager.move('notes', 'archive/notes', { ifMatch: folder.revision });

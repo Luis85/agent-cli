@@ -98,7 +98,12 @@ export interface FileSnapshot { path: string; bytes: Uint8Array; revision: strin
 /** A check-only file or folder condition; an omitted revision requires the path to be absent. */
 export interface GuardRequest { path: string; expectedRevision?: string }
 export interface WriteRequest { path: string; bytes: Uint8Array; expectedRevision?: string }
-export interface FileChange { path: string; revision: string; operation: 'created' | 'updated' | 'deleted'; bytes: number }
+/**
+ * One file change in batch order. `unchanged` is a write whose bytes equal the stored file: nothing is written or
+ * published. `alreadyApplied` marks such a write whose revision guard did not match (an existing file for a create,
+ * or a stale revision): the file already holds exactly the requested bytes, as after a retried request.
+ */
+export interface FileChange { path: string; revision: string; operation: 'created' | 'updated' | 'deleted' | 'unchanged'; bytes: number; alreadyApplied?: true }
 /** A guarded move of a file or folder. A folder's `expectedRevision` is its folder revision (see `FileStat`). */
 export interface RenameRequest { from: string; to: string; expectedRevision: string }
 /** A guarded removal of a file or, recursively, a folder. A folder's `expectedRevision` is its folder revision. */

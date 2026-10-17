@@ -85,7 +85,7 @@ describe('check-only batch guards', () => {
     await put('project/source/input.txt', 'source');
     const scoped = new ScopedFiles(files, 'project'), source = await scoped.stat('source');
     await scoped.commit({ guards: [{ path: 'source', expectedRevision: source.revision }, { path: 'dist' }], writes: [{ path: 'dist/index.html', bytes: bytes('built') }] }, false);
-    await expect(scoped.commit({ guards: [{ path: 'dist/index.html', expectedRevision: 'stale' }], writes: [{ path: 'other.txt', bytes: bytes('bad') }] }, false)).rejects.toMatchObject({ code: 'CONFLICT', details: { path: 'project/dist/index.html' } });
+    await expect(scoped.commit({ guards: [{ path: 'dist/index.html', expectedRevision: 'stale' }], writes: [{ path: 'other.txt', bytes: bytes('bad') }] }, false)).rejects.toMatchObject({ code: 'CONFLICT', message: 'Guarded paths changed; read again before modifying: dist/index.html', details: { path: 'dist/index.html' } });
     expect(await scoped.list()).toEqual(['dist/index.html', 'source/input.txt']);
   });
 

@@ -80,7 +80,7 @@ export class StagedFiles implements FileRepository {
 
   async read(path: string): Promise<FileSnapshot> {
     const file = await this.current(vaultPath(path));
-    if (!file) throw forgeError('NOT_FOUND', `File not found: ${path}`);
+    if (!file) throw forgeError('NOT_FOUND', `File not found: ${path}`, { path });
     return { path, bytes: file.bytes, revision: file.revision };
   }
 
@@ -103,7 +103,7 @@ export class StagedFiles implements FileRepository {
     const file = await this.current(path);
     if (file) return { path, kind: 'file', revision: file.revision, bytes: file.bytes.length };
     const files = await this.filesUnder(path), original = this.vacatedFolders.has(path) ? undefined : await this.baseFolder(path);
-    if (!original && files.length === 0) throw forgeError('NOT_FOUND', `File or folder not found: ${path}`);
+    if (!original && files.length === 0) throw forgeError('NOT_FOUND', `File or folder not found: ${path}`, { path });
     const touched = files.some(file => this.staged.has(`${path}/${file}`)) || original?.files.some(file => this.vacated.has(`${path}/${file}`));
     if (original && !touched) return original;
     const revisions = await Promise.all(files.map(async file => `${file}\0${(await this.current(`${path}/${file}`))!.revision}`));

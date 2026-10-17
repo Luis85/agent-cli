@@ -76,7 +76,7 @@ export class NodeFiles implements FileRepository, BatchHost {
       const bytes = await readFile(await this.resolvePath(path));
       return { path, bytes, revision: revisionOf(bytes) };
     } catch (error) {
-      if (missing(error)) throw forgeError('NOT_FOUND', `File not found: ${path}`);
+      if (missing(error)) throw forgeError('NOT_FOUND', `File not found: ${path}`, { path });
       throw pathFailure(error, path);
     }
   }
@@ -138,9 +138,9 @@ export class NodeFiles implements FileRepository, BatchHost {
     const target = await this.resolvePath(path, true);
     let info;
     try { info = await lstat(target); }
-    catch (error) { if (missing(error)) throw forgeError('NOT_FOUND', `File or folder not found: ${path}`); throw pathFailure(error, path); }
+    catch (error) { if (missing(error)) throw forgeError('NOT_FOUND', `File or folder not found: ${path}`, { path }); throw pathFailure(error, path); }
     // An entry that disappears after lstat was removed concurrently, as if it had never been found.
-    const gone = () => forgeError('NOT_FOUND', `File or folder not found: ${path}`);
+    const gone = () => forgeError('NOT_FOUND', `File or folder not found: ${path}`, { path });
     if (info.isDirectory()) {
       const snapshot = await this.folder(path);
       if (!snapshot) throw gone();

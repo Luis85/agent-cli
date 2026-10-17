@@ -59,7 +59,11 @@ describe('Forge project management', () => {
     await expect(service().create('existing')).rejects.toMatchObject({ code: 'PROJECT_EXISTS' });
     await service().create('billing');
     await service().component('billing', 'Invoice');
+    // A repeat finds the identical files and writes nothing; an edited component is never overwritten.
+    expect((await service().component('billing', 'Invoice')).changes.every(change => change.operation === 'unchanged')).toBe(true);
+    await writeFile(join(root, 'projects/billing/src/domain/invoice.ts'), 'edited\n');
     await expect(service().component('billing', 'Invoice')).rejects.toMatchObject({ code: 'CONFLICT' });
+    expect(await readFile(join(root, 'projects/billing/src/domain/invoice.ts'), 'utf8')).toBe('edited\n');
     expect(await readFile(join(root, 'projects/existing/notes.txt'), 'utf8')).toBe('User content');
   });
 

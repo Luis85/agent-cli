@@ -1,6 +1,7 @@
 import { AppError, ensure, forgeError, isRecord } from '../../domain/shared/errors.ts';
 import { aliasesName, fileKind, isInTrash, trashFolder, vaultPath, type FileSnapshot, type FileStat, type WriteRequest } from '../../domain/documents/file.ts';
 import { revisionConflict } from '../../domain/documents/write-plan.ts';
+import { kernelMessage } from '../../domain/shared/kernel-messages.ts';
 import type { Workspace } from '../workspace/workspace.ts';
 import type { Backlink, MetadataIndex } from '../metadata/ports.ts';
 import { planLinkUpdates, rewriteText, type UnrewrittenLink } from './link-plan.ts';
@@ -26,6 +27,9 @@ function copyName(name: string, kind: FileStat['kind'], copy: number): string {
   return dot > 0 ? `${name.slice(0, dot)} ${copy}${name.slice(dot)}` : `${name} ${copy}`;
 }
 const folders = (paths: readonly string[]) => paths.map((path): DeletedEntry => ({ path, kind: 'folder' }));
+const basename = (path: string) => path.slice(path.lastIndexOf('/') + 1);
+/** A file name's extension with its dot, or empty; a leading dot starts a name, not an extension. */
+const extensionOf = (path: string) => { const name = basename(path), dot = name.lastIndexOf('.'); return dot > 0 ? name.slice(dot) : ''; };
 
 /**
  * Obsidian's FileManager for the agent: moves and renames that keep every link intact, guarded deletion to the
@@ -35,14 +39,28 @@ const folders = (paths: readonly string[]) => paths.map((path): DeletedEntry => 
 export class FileManager {
   constructor(private readonly workspace: Workspace, private readonly metadata: MetadataIndex, private readonly scope: FileManagerScope) {}
 
-  /** Moves a file or folder and, unless `updateLinks` is false, rewrites every link to it in the same batch. */
+  /**
+   * Moves a file or folder and, unless `updateLinks` is false, rewrites every link to it in the same batch. A
+   * destination that ends with `/` or names an existing folder receives the source under its own name. A retry
+   * whose source is gone while the destination holds the `ifMatch` revision reports `alreadyApplied` and writes nothing.
+   */
   async move(from: string, to: string, options: MoveOptions = {}) {
-    from = vaultPath(from); to = vaultPath(to);
+    const into = typeof to === 'string' && to.endsWith('/');
+    from = vaultPath(from); to = vaultPath(into ? to.replace(/\/+$/, '') : to);
+    if (into || (from.toLowerCase() !== to.toLowerCase() && await this.isFolder(to))) to = `${to}/${basename(from)}`;
+    return this.relocate(from, to, options);
+  }
+
+  /** Moves `from` to exactly `to`. */
+  private async relocate(from: string, to: string, options: MoveOptions) {
     ensure(from !== to, 'INVALID_MOVE', `The destination equals the source: ${from}`);
     ensure(!to.startsWith(`${from}/`), 'INVALID_MOVE', `Cannot move ${from} into itself.`);
     this.ensureMovable(from); this.ensureMovable(to);
-    const entry = await this.workspace.files.stat(from);
+    const entry = await this.source(from, to, options.ifMatch);
+    if ('alreadyApplied' in entry) return entry;
     await this.ensureAbsent(from, to);
+    const extension = extensionOf(from);
+    if (entry.kind === 'file' && extension && !extensionOf(to)) this.workspace.warn(kernelMessage('EXTENSION_DROPPED', { from, to, extension }));
     const moves = new Map(entry.kind === 'file' ? [[from, to]] : entry.files.map(file => [`${from}/${file}`, `${to}/${file}`]));
     const writes: WriteRequest[] = [], previous = new Map<string, FileSnapshot>(), unrewritten: UnrewrittenLink[] = [];
     let references = 0;
@@ -69,18 +87,23 @@ export class FileManager {
     return { dryRun: result.dryRun, from, to, kind: entry.kind, revision: entry.revision, renames: result.renames, changes: result.changes, links: { updated: references, files: writes.length, unrewritten } };
   }
 
-  /** Renames in place: `name` has no slash; a file keeps its extension when `name` omits it. */
+  /**
+   * Renames in place: `name` has no slash; a file keeps its extension when `name` omits it. A retry after the
+   * rename (the source is gone and `ifMatch` is given) treats the source as a file, like `move` reports it.
+   */
   // Reached through `context.app.fileManager` by the CLI and plugins.
   // fallow-ignore-next-line unused-class-member
   async rename(path: string, name: string, options: MoveOptions = {}) {
     path = vaultPath(path);
     ensure(typeof name === 'string' && name.length > 0 && !name.includes('/'), 'INVALID_MOVE', 'rename takes a new name without slashes; use move to change folders.');
-    const entry = await this.workspace.files.stat(path);
-    const basename = path.slice(path.lastIndexOf('/') + 1), dot = basename.lastIndexOf('.');
-    const extension = entry.kind === 'file' && dot > 0 ? basename.slice(dot) : '';
+    const entry = await this.workspace.files.stat(path).catch((error: unknown) => {
+      if (notFound(error) && options.ifMatch !== undefined) return undefined;
+      throw error;
+    });
+    const extension = (entry?.kind ?? 'file') === 'file' ? extensionOf(path) : '';
     const fullName = extension && !name.toLowerCase().endsWith(extension.toLowerCase()) ? name + extension : name;
     const folder = path.includes('/') ? path.slice(0, path.lastIndexOf('/') + 1) : '';
-    return this.move(path, folder + vaultPath(fullName), options);
+    return this.relocate(path, folder + vaultPath(fullName), options);
   }
 
   /**
@@ -90,7 +113,7 @@ export class FileManager {
   async delete(path: string, options: DeleteOptions = {}) {
     path = vaultPath(path);
     this.ensureMovable(path);
-    const entry = await this.workspace.files.stat(path);
+    const entry = await this.workspace.files.stat(path).catch(async (error: unknown) => { throw notFound(error) ? await this.missing(path, options) : error; });
     ensure(entry.kind === 'file' || options.recursive === true, 'INVALID_ARGUMENT', `${path} is a folder; pass --recursive to delete it with its files.`);
     ensure(options.permanent === true || !isInTrash(path), 'INVALID_ARGUMENT', `${path} is already in ${trashFolder}; pass --permanent to remove it.`);
     const brokenLinks = await this.brokenLinks(path, entry);
@@ -159,6 +182,12 @@ export class FileManager {
     }));
   }
 
+  /** The trash name of `path` for a given copy number, ignoring trash folders that are files on the way. */
+  private trashCandidate(path: string, kind: FileStat['kind'], copy: number): string {
+    const slash = path.lastIndexOf('/');
+    return `${trashFolder}/${path.slice(0, slash + 1)}${copyName(path.slice(slash + 1), kind, copy)}`;
+  }
+
   /**
    * `.trash/<path>`, or with ` 1`, ` 2`… before the extension when that name is taken, as Obsidian names trash copies.
    * A trash folder on the way that is a file (an extensionless file trashed earlier) is passed by such a name too.
@@ -181,6 +210,42 @@ export class FileManager {
       try { await this.workspace.files.read(`${folder}/${candidate}`); }
       catch (error) { if (notFound(error) || (error instanceof AppError && error.code === 'INVALID_PATH')) return candidate; throw error; }
     }
+  }
+
+
+  private async isFolder(path: string): Promise<boolean> {
+    try { return (await this.workspace.files.stat(path)).kind === 'folder'; }
+    catch (error) { if (notFound(error)) return false; throw error; }
+  }
+
+  /** The move's source, or the result of a move that already happened: the source is gone and `to` has `ifMatch`. */
+  private async source(from: string, to: string, ifMatch: string | undefined) {
+    try { return await this.workspace.files.stat(from); }
+    catch (error) {
+      if (!notFound(error) || ifMatch === undefined) throw error;
+      const moved = await this.workspace.files.stat(to).catch((failure: unknown) => { if (notFound(failure)) return undefined; throw failure; });
+      if (moved?.revision !== ifMatch) throw error;
+      return { dryRun: this.workspace.dryRun, from, to, kind: moved.kind, revision: moved.revision, renames: [], changes: [], links: { updated: 0, files: 0, unrewritten: [] as UnrewrittenLink[] }, alreadyApplied: true as const };
+    }
+  }
+
+  /**
+   * NOT_FOUND for a delete whose path is gone. When `ifMatch` names the revision of an entry in `.trash` under the
+   * name this delete would have given it, details report `alreadyDeleted` and that `trashPath`: an earlier identical
+   * delete (or another one) moved it there. The code stays NOT_FOUND, so a mistyped path never reads as success.
+   */
+  private async missing(path: string, options: DeleteOptions): Promise<Error> {
+    const message = `File or folder not found: ${path}`;
+    if (options.ifMatch === undefined || options.permanent === true || isInTrash(path)) return forgeError('NOT_FOUND', message, { path });
+    for (const kind of extensionOf(path) ? ['file', 'folder'] as const : ['file'] as const) {
+      for (let copy = 0; ; copy++) {
+        const candidate = this.trashCandidate(path, kind, copy);
+        const stat = await this.workspace.files.stat(candidate).catch((error: unknown) => { if (notFound(error)) return undefined; throw error; });
+        if (stat === undefined) break;
+        if (stat.revision === options.ifMatch) return forgeError('NOT_FOUND', `${message}; it is already in the trash at ${candidate}.`, { path, alreadyDeleted: true, trashPath: candidate });
+      }
+    }
+    return forgeError('NOT_FOUND', message, { path });
   }
 
   private async ensureAbsent(from: string, to: string): Promise<void> {

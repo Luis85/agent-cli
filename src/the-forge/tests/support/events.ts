@@ -15,3 +15,12 @@ export function committedFileEvents<Event extends { id: string; payload?: unknow
 export function englishWarning(warning: string | KernelMessage): string {
   return typeof warning === 'string' ? warning : renderKernelMessage(warning);
 }
+
+/**
+ * Whether a CLI response is a repeat that found its own result: it succeeded, published no `vault.*` record and
+ * reports every change it lists as `unchanged`.
+ */
+export function unchangedRepeat(response: { status: number | null; body: { ok: boolean; events: Array<{ id: string; payload?: unknown }>; data?: { changes?: Array<{ operation: string }> } } }): boolean {
+  return response.status === 0 && response.body.ok && committedEvents(response.body.events).length === 0
+    && (response.body.data?.changes ?? []).every(change => change.operation === 'unchanged');
+}

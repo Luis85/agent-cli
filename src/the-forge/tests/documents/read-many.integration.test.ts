@@ -83,8 +83,13 @@ describe('bounded read-many file inspection', () => {
     await expect(run(['valid.txt', 'missing.md', 'never.txt'])).rejects.toMatchObject({ code: 'NOT_FOUND', details: { index: 1, path: 'missing.md' } });
     expect(events.history.filter(event => event.id === 'workspace.file-open')).toHaveLength(1);
   });
+  it('returns a note whose frontmatter does not parse with its issue, as read does', async () => {
+    await writeFile(join(root, 'bad.md'), '---\nvalue: [\n---\n');
+    const inspected = await single.run(['bad.md'], {}, context) as { document: unknown };
+    expect(inspected.document).toMatchObject({ kind: 'markdown', properties: null, issue: { code: 'INVALID_YAML' } });
+    expect(await run(['bad.md'])).toMatchObject({ files: [{ path: 'bad.md', document: inspected.document }] });
+  });
   it.each([
-    ['bad.md', '---\nvalue: [\n---\n', 'INVALID_YAML'],
     ['bad.canvas', '{"nodes":', 'INVALID_CANVAS'],
     ['bad.base', 'views: [', 'INVALID_YAML'],
   ])('preserves the existing read error for %s with bundle location', async (path, content, code) => {

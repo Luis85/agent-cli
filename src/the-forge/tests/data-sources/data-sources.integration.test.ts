@@ -97,6 +97,8 @@ describe('workspace data-source library lifecycle', () => {
     const revisions = { 'src/products.ts': adapter.revision, 'fixtures/products.json': fixture.revision };
     await library(false, renderer).generate('sources', { ...options, revisions });
     expect(new TextDecoder().decode((await files.read('src/products.ts')).bytes)).toBe(content);
+    expect((await library(false, renderer).generate('sources', { ...options, revisions })).changes.map(change => change.operation)).toEqual(['unchanged', 'unchanged']);
+    content = 'export const version = 3;\n';
     await expect(library(false, renderer).generate('sources', { ...options, revisions })).rejects.toMatchObject({ code: 'CONFLICT' });
     expect(await files.read('fixtures/products.json')).toEqual(fixture);
   });

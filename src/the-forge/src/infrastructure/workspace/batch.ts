@@ -5,15 +5,18 @@ import { dirname, join, relative } from 'node:path';
 import { forgeError, ensure } from '../../domain/shared/errors.ts';
 import { kernelMessage, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
 import { temporaryPrefix, type FileChange, type FileRename, type GuardRequest, type RemoveRequest, type RenameRequest, type WriteRequest } from '../../domain/documents/file.ts';
-import { revisionConflict, type RevisionConflict } from '../../domain/documents/write-plan.ts';
+import { conflictMessage, revisionConflict, sameBytes, type RevisionConflict } from '../../domain/documents/write-plan.ts';
 import type { BatchResult, FileBatch } from '../../application/workspace/ports.ts';
 import { snapshotBatch } from '../../application/workspace/batch-plan.ts';
 import { ensureNotHeld, linkUnsupported } from './lock.ts';
 import { retryTransient } from './retry.ts';
 
 export interface StoredFile { bytes: Buffer; mode: number; revision: string }
-/** A write and where its temporary file is staged: next to `target`, or inside the folder a rename moves there. */
-export interface FilePlan { write: WriteRequest; target: string; before?: StoredFile; stagingDirectory?: string }
+/**
+ * A write and where its temporary file is staged: next to `target`, or inside the folder a rename moves there.
+ * `unchanged` writes carry the stored bytes and are skipped; `alreadyApplied` marks one whose guard did not match.
+ */
+export interface FilePlan { write: WriteRequest; target: string; before?: StoredFile; stagingDirectory?: string; unchanged?: boolean; alreadyApplied?: boolean }
 /** A folder entry that is neither a regular file nor a folder Forge walks: a symlink (with its target), a `node_modules` folder or another special file. */
 export interface SpecialEntry { path: string; kind: 'symlink' | 'node_modules' | 'other'; target?: string }
 /**
@@ -124,11 +127,15 @@ export class Transaction {
     const removes = await this.planRemoves(conflicts);
     // The first conflict keeps single-file details flat; multi-step batches also list every conflicting path.
     const [conflict] = conflicts, steps = renames.length + writes.length + removes.length;
-    const message = steps === 1 && removes.length === 1 ? `File changed; read again before removing: ${conflict?.path}`
-      : `Existing files require their current --if-match revision: ${conflicts.map(item => item.path).join(', ')}`;
-    ensure(conflict === undefined, 'CONFLICT', message, conflict && { ...conflict, ...(steps > 1 ? { conflicts } : {}) });
-    if (!dryRun) {
-      try { await this.apply(renames, writes, removes); }
+    if (conflict !== undefined) {
+      const message = steps === 1 && removes.length === 1 ? `File changed; read again before removing: ${conflict.path}`
+        : conflictMessage(conflict) + (conflicts.length > 1 ? ` Conflicting paths: ${conflicts.map(item => item.path).join(', ')}.` : '');
+      throw forgeError('CONFLICT', message, { ...conflict, ...(steps > 1 ? { conflicts } : {}) });
+    }
+    const pending = writes.filter(plan => !plan.unchanged);
+    if (dryRun) this.folders.push(...await this.plannedFolders(renames, pending));
+    else {
+      try { await this.apply(renames, pending, removes); }
       catch (error) { await this.rollback(); throw error; }
       await this.finalize();
     }
@@ -173,7 +180,7 @@ export class Transaction {
     const plans: RenamePlan[] = [];
     for (const request of this.renames) {
       const entry = await this.entry(request.from);
-      if (!entry) throw forgeError('NOT_FOUND', `File or folder not found: ${request.from}`);
+      if (!entry) throw forgeError('NOT_FOUND', `File or folder not found: ${request.from}`, { path: request.from });
       if (entryRevision(entry) !== request.expectedRevision) conflicts.push(revisionConflict(request.from, request.expectedRevision, entryRevision(entry)));
       const source = await this.host.resolvePath(request.from, true), target = await this.host.resolvePath(request.to, true);
       await this.ensureOutside(request, source);
@@ -211,8 +218,13 @@ export class Transaction {
     for (const write of this.writes) {
       const target = await this.host.resolvePath(write.path);
       const before = await this.host.stored(this.origin(write.path));
-      if (write.expectedRevision !== before?.revision) conflicts.push(revisionConflict(write.path, write.expectedRevision, before?.revision));
-      plans.push({ write, target, before });
+      // A write of the stored bytes changes nothing: it is reported unchanged whatever its guard expected.
+      const guarded = write.expectedRevision === before?.revision;
+      if (before !== undefined && sameBytes(before.bytes, write.bytes)) plans.push({ write, target, before, unchanged: true, alreadyApplied: !guarded });
+      else {
+        if (!guarded) conflicts.push(revisionConflict(write.path, write.expectedRevision, before?.revision));
+        plans.push({ write, target, before });
+      }
     }
     return plans;
   }
@@ -221,7 +233,7 @@ export class Transaction {
     const plans: RemovePlan[] = [];
     for (const request of this.removes) {
       const entry = await this.entry(request.path);
-      if (!entry) throw forgeError('NOT_FOUND', `File not found: ${request.path}`);
+      if (!entry) throw forgeError('NOT_FOUND', `File not found: ${request.path}`, { path: request.path });
       // Permanent removal is limited to what the result can report and the revision fully covers.
       const special = entry.kind === 'folder' ? entry.snapshot.special : [];
       ensure(special.length === 0, 'PROTECTED_PATH', `Folder ${request.path} contains symlinks, node_modules or special files; Forge permanently removes only regular files and folders. Move it to the trash instead, or remove those entries first.`, { path: request.path, entries: special.slice(0, 20).map(item => ({ path: `${request.path}/${item.path}`, kind: item.kind })) });
@@ -231,6 +243,33 @@ export class Transaction {
       plans.push({ request, target: await this.host.resolvePath(request.path, true), entry });
     }
     return plans;
+  }
+
+  /**
+   * The folders a commit of these steps creates, in the order `apply` creates them: the parents of rename
+   * destinations and of writes outside moved folders against the current state, then the folders that writes into
+   * moved folders need once those folders arrived with their subfolders.
+   */
+  private async plannedFolders(renames: readonly RenamePlan[], writes: readonly FilePlan[]): Promise<string[]> {
+    const created: string[] = [];
+    const present = async (folder: string) => created.includes(folder) || (await exists(join(this.host.root, folder)))?.isDirectory() === true;
+    const add = async (path: string, isPresent: (folder: string) => Promise<boolean>) => {
+      const parts = path.split('/');
+      for (let index = 1; index < parts.length; index++) {
+        const folder = parts.slice(0, index).join('/');
+        if (!await isPresent(folder)) created.push(folder);
+      }
+    };
+    const carrier = (path: string) => renames.find(rename => rename.entry.kind === 'folder' && path.startsWith(`${rename.request.to}/`));
+    const arrived = async (folder: string) => {
+      const rename = renames.find(plan => plan.entry.kind === 'folder' && inside(folder, plan.request.to));
+      if (rename === undefined || rename.entry.kind !== 'folder') return present(folder);
+      return created.includes(folder) || folder === rename.request.to || rename.entry.snapshot.folders.includes(folder.slice(rename.request.to.length + 1));
+    };
+    for (const plan of renames) await add(plan.request.to, present);
+    for (const plan of writes) if (!carrier(plan.write.path)) await add(plan.write.path, present);
+    for (const plan of writes) if (carrier(plan.write.path)) await add(plan.write.path, arrived);
+    return created;
   }
 
   private async makeParents(path: string): Promise<void> {
@@ -406,7 +445,10 @@ export class Transaction {
       ].sort((a, b) => (a.to < b.to ? -1 : a.to > b.to ? 1 : 0));
       return [{ from, to, kind: 'folder' }, ...descendants];
     });
-    const written = writes.map(({ write, before }): FileChange => ({ path: write.path, revision: this.host.revision(write.bytes), operation: before === undefined ? 'created' : 'updated', bytes: write.bytes.length }));
+    const written = writes.map(({ write, before, unchanged, alreadyApplied }): FileChange => ({
+      path: write.path, revision: this.host.revision(write.bytes), operation: unchanged ? 'unchanged' : before === undefined ? 'created' : 'updated', bytes: write.bytes.length,
+      ...(alreadyApplied ? { alreadyApplied: true } : {}),
+    }));
     const removed = removes.flatMap(({ request: { path }, entry }): FileChange[] => entry.kind === 'file'
       ? [{ path, revision: entry.stored.revision, operation: 'deleted', bytes: entry.stored.bytes.length }]
       : entry.snapshot.files.map(file => ({ path: `${path}/${file.path}`, revision: file.revision, operation: 'deleted', bytes: file.bytes })));

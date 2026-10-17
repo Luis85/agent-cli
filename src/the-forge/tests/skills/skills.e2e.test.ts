@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
+import { unchangedRepeat } from '../support/events.ts';
 
 const fixture = portableCli();
 const cli = fixture.cli;
@@ -24,7 +25,7 @@ describe('the skills core plugin', () => {
     for (const root of ['.claude/skills', '.agents/skills']) {
       expect(await readFile(join(fixture.project, root, 'forge-workflow/SKILL.md'), 'utf8')).toBe((await cli(['skills', 'show', 'forge-workflow'])).body.data.content);
     }
-    expect((await cli(['skills', 'install'])).body.error.code).toBe('CONFLICT');
+    expect(unchangedRepeat(await cli(['skills', 'install']))).toBe(true);
     await rm(join(fixture.project, '.agents'), { recursive: true, force: true });
     expect((await cli(['skills', 'install', '--target', 'agents'])).status).toBe(0);
     expect(await readFile(join(fixture.project, '.agents/skills/forge-vault/SKILL.md'), 'utf8')).toContain('name: forge-vault');

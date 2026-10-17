@@ -144,8 +144,9 @@ describe('guarded batches with renames and removals', () => {
     await put({ 'a.md': 'A', 'b.md': 'B' });
     const batch = { renames: [{ from: 'a.md', to: 'x/a.md', expectedRevision: rev('A') }], removes: [{ path: 'b.md', expectedRevision: rev('B') }] };
     const preview = await files.commit(batch, true);
-    expect(preview).toMatchObject({ renames: [{ from: 'a.md', to: 'x/a.md' }], changes: [{ path: 'b.md', operation: 'deleted' }], folders: [] });
+    expect(preview).toMatchObject({ renames: [{ from: 'a.md', to: 'x/a.md' }], changes: [{ path: 'b.md', operation: 'deleted' }], folders: ['x'] });
     expect(await walk()).toEqual(['a.md', 'b.md']);
+    expect(await files.commit(batch, false)).toEqual(preview);
   });
 
   it('maps project-relative batches and results through a scoped repository', async () => {

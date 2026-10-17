@@ -1,9 +1,9 @@
-import { ensure, summarizeError, errorMessage } from '../../domain/shared/errors.ts';
+import { forgeError, summarizeError, errorMessage } from '../../domain/shared/errors.ts';
 import { isInTrash, isStructured, isTextContent, isTextLike, type WriteRequest, type FileChange, type FileRename, type FileSnapshot, type PlannedChange } from '../../domain/documents/file.ts';
-import { revisionConflict, snapshotWriteRequests } from '../../domain/documents/write-plan.ts';
+import { conflictMessage, revisionConflict, sameBytes, snapshotWriteRequests } from '../../domain/documents/write-plan.ts';
 import { unifiedDiff } from '../../domain/documents/diff.ts';
 import { snapshotBatch } from './batch-plan.ts';
-import type { FileRepository, DocumentCodec, CommitObserver, FileBatch, BatchResult } from './ports.ts';
+import type { FileRepository, DocumentCodec, CommitObserver, CommittedChange, FileBatch, BatchResult } from './ports.ts';
 import type { EventBus } from '../plugins/events.ts';
 import { publishHostEvent, type HostEventMap } from '../plugins/host-events.ts';
 import { kernelMessage, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
@@ -53,11 +53,12 @@ export class Workspace {
   }
   // CLI handlers and external plugins call this through the typed CommandContext workspace.
   // A successful read is Obsidian's file-open: it emits `workspace.file-open` with the scoped path.
+  // The document is inspected tolerantly: undecodable bytes and invalid frontmatter are returned, not refused.
   async read(path: string, options: ReadOptions = {}) {
     return this.observe('read', [path], async () => {
       const file = await this.files.read(path);
       options.beforeParse?.(file.bytes.length);
-      const result = { path, revision: file.revision, bytes: file.bytes.length, document: this.codec.inspect(path, file.bytes) };
+      const result = { path, revision: file.revision, bytes: file.bytes.length, document: this.codec.inspect(path, file.bytes, { tolerant: true }) };
       await publishHostEvent(this.events, 'workspace.file-open', { path });
       return result;
     }, result => ({ bytes: result.bytes }));
@@ -83,6 +84,7 @@ export class Workspace {
     return Promise.all(changes.map(async change => {
       const request = requests.find(candidate => candidate.path === change.path);
       const after = request && isTextLike(change.path) ? utf8(change.path, request.bytes) : undefined;
+      if (change.operation === 'unchanged') return { ...change, diff: '' };
       if (after === undefined || change.operation === 'deleted') return { ...change, diff: null };
       if (change.operation === 'created') return { ...change, diff: unifiedDiff({ path: change.path, before: '', after, created: true }) };
       const snapshot = previous.get(change.path) ?? await this.files.read(change.path);
@@ -119,14 +121,15 @@ export class Workspace {
     }, changeSummary);
   }
   /**
-   * Dry runs emit one `workspace.quick-preview` per planned file change. Commits emit `vault.create` for each new
+   * Unchanged writes publish nothing. Dry runs emit one `workspace.quick-preview` per planned file change. Commits emit `vault.create` for each new
    * folder (parent before child), one `vault.rename` per moved folder or file, one `vault.*` record per file change
    * in batch order, then `vault.delete` per removed folder (child before parent), and finally run the commit
    * observer. Renames into a `trash` destination are reported after the other renames: each moved file, then each
    * moved folder (child before parent), as `vault.delete`.
    */
   private async committed(result: BatchResult, trash: readonly string[] = []): Promise<void> {
-    const { renames, changes, folders, removedFolders } = result;
+    const { renames, folders, removedFolders } = result;
+    const changes = result.changes.filter((change): change is CommittedChange => change.operation !== 'unchanged');
     if (this.dryRun) {
       for (const { path, operation, bytes } of changes) await publishHostEvent(this.events, 'workspace.quick-preview', { path, operation, bytes });
       return;
@@ -148,16 +151,26 @@ export class Workspace {
     try { await this.events.emit(id, payload); }
     catch (error) { this.warn(kernelMessage('VAULT_NOTIFICATION_FAILED', { path, diagnostic: errorMessage(error) })); }
   }
-  private warn(message: KernelMessage): void {
+  /** Records a nonfatal diagnostic of this invocation; a failing sink never changes the outcome. */
+  warn(message: KernelMessage): void {
     try { this.events.warn(message); }
     catch { /* A failed diagnostic sink cannot turn committed persistence into failure. */ }
   }
   // CLI handlers and external plugins use this guarded editing API through CommandContext.
-  // Dry-run edits always include a unified diff of the transformed file.
+  // Dry-run edits always include a unified diff of the transformed file. An edit that changes no byte is reported
+  // `unchanged` and publishes nothing. On a stale revision `transform` runs once on the current content: when it
+  // changes nothing there, the CONFLICT carries `alreadyApplied: true` (the change is present, but the file may
+  // also hold edits the caller has not seen, so nothing is reported as applied).
   async edit(path: string, revision: string, transform: (bytes: Uint8Array) => Uint8Array) {
     return this.observe('edit', [path], async () => {
       const file = await this.files.read(path);
-      ensure(file.revision === revision, 'CONFLICT', `File changed; read again before editing: ${path}`, revisionConflict(path, revision, file.revision));
+      if (file.revision !== revision) {
+        let applied = false;
+        try { applied = sameBytes(transform(Uint8Array.from(file.bytes)), file.bytes); }
+        catch { /* The request does not apply to the current content. */ }
+        const conflict = revisionConflict(path, revision, file.revision);
+        throw forgeError('CONFLICT', conflictMessage(conflict, applied), { ...conflict, ...(applied ? { alreadyApplied: true } : {}) });
+      }
       return this.guardedWrite([{ path, bytes: transform(Uint8Array.from(file.bytes)), expectedRevision: revision }], new Map([[path, file]]));
     }, changeSummary);
   }
