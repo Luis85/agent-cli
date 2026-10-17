@@ -22,21 +22,27 @@ function jsonRecord(value: unknown): Record<string, unknown> | undefined {
   } catch { return undefined; }
 }
 
-/** A plugin's own warning shape: `{code, message, details?}` with an UPPER_SNAKE_CASE code that is not a host code. */
+/**
+ * A plugin's own warning shape: `{code, message, details?}` with a string message. It keeps an UPPER_SNAKE_CASE code
+ * that is not a host code, with details that are a JSON record. Otherwise it reads PLUGIN_WARNING with the same text,
+ * the rejected code in `details.requestedCode`, and its details only when they are a JSON record.
+ */
 function codedWarning(value: unknown): Warning | undefined {
   try {
-    if (!isRecord(value) || Object.getPrototypeOf(value) !== Object.prototype) return undefined;
+    if (!isRecord(value) || Object.getPrototypeOf(value) !== Object.prototype || !Object.hasOwn(value, 'code')) return undefined;
     const { code, message, details } = value;
-    if (typeof code !== 'string' || !warningCode.test(code) || Object.hasOwn(kernelMessages, code) || typeof message !== 'string') return undefined;
+    if (typeof message !== 'string') return undefined;
     const copied = details === undefined ? {} : jsonRecord(details);
-    return copied === undefined ? undefined : { code, message, ...(Object.keys(copied).length > 0 ? { details: copied } : {}) };
+    const own = copied !== undefined && typeof code === 'string' && warningCode.test(code) && !Object.hasOwn(kernelMessages, code);
+    const kept = own ? copied : { ...copied, ...(typeof code === 'string' ? { requestedCode: code } : {}) };
+    return { code: own ? code : pluginWarningCode, message, ...(Object.keys(kept).length > 0 ? { details: kept } : {}) };
   } catch { return undefined; }
 }
 
 /**
- * The warning a plugin raised, captured when it was raised: a `{code, message, details?}` record keeps its code, text
- * and JSON details; any other value becomes its text (see `warningText`) under PLUGIN_WARNING. `details.plugin` names
- * the plugin when the warning arrived through its own event channel.
+ * The warning a plugin raised, captured when it was raised: a `{code, message, details?}` record keeps its text, and
+ * its code and JSON details where valid (see `codedWarning`); any other value becomes its text (see `warningText`)
+ * under PLUGIN_WARNING. `details.plugin` names the plugin when the warning arrived through its own event channel.
  */
 export function pluginWarning(value: unknown, plugin?: string): Warning {
   const coded = codedWarning(value);

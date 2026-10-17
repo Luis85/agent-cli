@@ -87,8 +87,8 @@ describe('plugin warnings', () => {
   it('keeps a plugin warning\'s own code and JSON details, and refuses host codes and malformed details', async () => {
     const result = await cli(['warner.run', 'coded']);
     expect(result.body.warnings).toEqual([{ code: 'WARNER_STALE', message: 'Two notes are stale.', details: { notes: ['a.md', 'b.md'], plugin: 'warner' } }]);
-    expect((await cli(['warner.run', 'hostCode'])).body.warnings).toEqual([{ code: 'PLUGIN_WARNING', message: '{"code":"CWD_OUTSIDE_WORKSPACE","message":"Forged"}', details: { plugin: 'warner' } }]);
-    expect((await cli(['warner.run', 'badDetails'])).body.warnings[0]).toMatchObject({ code: 'PLUGIN_WARNING', details: { plugin: 'warner' } });
+    expect((await cli(['warner.run', 'hostCode'])).body.warnings).toEqual([{ code: 'PLUGIN_WARNING', message: 'Forged', details: { requestedCode: 'CWD_OUTSIDE_WORKSPACE', plugin: 'warner' } }]);
+    expect((await cli(['warner.run', 'badDetails'])).body.warnings).toEqual([{ code: 'PLUGIN_WARNING', message: 'Listed', details: { requestedCode: 'WARNER_STALE', plugin: 'warner' } }]);
   });
 
   it('reports values a plugin hands the host warning sink directly as PLUGIN_WARNING text, without crashing', async () => {

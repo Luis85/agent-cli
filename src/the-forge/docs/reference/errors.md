@@ -257,7 +257,7 @@ Bundled [core plugins](plugins.md#core-and-user-plugins) register their own code
 
 ## Warnings
 
-A nonfatal problem never changes `ok` or the exit status; it is one entry of the envelope's `warnings`: `{code, message, details?}`. Match `code`, never the `message`, which follows `--lang`. `details` holds the values the message names, as given; a value that is itself a message, such as a reason, is a nested `{code, message, details?}`. A plugin warning keeps the code its plugin gave it (`context.events.warn({code, message, details})`), or reads `PLUGIN_WARNING` when the plugin passed text; `details.plugin` names the plugin when it warned through its own `context.events`. A plugin cannot raise a host warning code.
+A nonfatal problem never changes `ok` or the exit status; it is one entry of the envelope's `warnings`: `{code, message, details?}`. Match `code`, never the `message`, which follows `--lang`. `details` holds the values the message names, as given; a value that is itself a message, such as a reason, is a nested `{code, message, details?}`. A plugin warning keeps the code its plugin gave it (`context.events.warn({code, message, details})`), or reads `PLUGIN_WARNING` when the plugin passed text; `details.plugin` names the plugin when it warned through its own `context.events`. A plugin cannot raise a host warning code: a `{code, message, details?}` record whose code is a host code or not UPPER_SNAKE_CASE, or whose `details` is not a JSON object, reads `PLUGIN_WARNING` with the plugin's `message`, the rejected code in `details.requestedCode` and only valid details. Plugin warning codes are not namespaced by plugin id, so match `code` together with `details.plugin`.
 
 Reads and filters an agent could misread:
 
