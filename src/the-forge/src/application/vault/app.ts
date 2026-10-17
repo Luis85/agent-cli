@@ -1,5 +1,6 @@
 import { ensure } from '../../domain/shared/errors.ts';
-import { fileKind, type FileChange } from '../../domain/documents/file.ts';
+import { fileKind, isTextContent, type FileChange } from '../../domain/documents/file.ts';
+import { decodeText } from '../documents/text-edit.ts';
 import type { CachedMetadata } from '../../domain/metadata/cache.ts';
 import type { Workspace } from '../workspace/workspace.ts';
 import type { LinkCounts, MetadataIndex } from '../metadata/ports.ts';
@@ -21,12 +22,12 @@ type WorkspaceEvents = { 'file-open': HostEventMap['workspace.file-open']; 'quic
  * does not update links and `trash`/`delete` do not check them; use `app.fileManager` for that.
  */
 export interface VaultFacade {
-  /** UTF-8 text of a file. */
+  /** UTF-8 text of a file; other bytes are INVALID_ENCODING, so text never silently loses bytes. */
   read(path: string): Promise<string>;
   /** Creates a new file; an existing file is a CONFLICT. */
   create(path: string, data: string | Uint8Array): Promise<FileChange>;
   modify(path: string, data: string | Uint8Array, options?: Guard): Promise<FileChange>;
-  /** Atomic read-modify-write of UTF-8 text; returns the new text. */
+  /** Atomic read-modify-write of UTF-8 text; returns the new text. Bytes that are not text fail with INVALID_ENCODING. */
   process(path: string, fn: (data: string) => string | Promise<string>, options?: Guard): Promise<string>;
   append(path: string, data: string, options?: Guard): Promise<FileChange>;
   trash(path: string, options?: Guard): ReturnType<FileManager['delete']>;
@@ -59,7 +60,12 @@ export interface App { vault: VaultFacade; metadataCache: MetadataCacheFacade; f
 export interface AppScope { workspace: Workspace; metadata: MetadataIndex; events: EventChannel; project: ProjectInfo | null }
 
 const encode = (data: string | Uint8Array) => (typeof data === 'string' ? new TextEncoder().encode(data) : data);
-const decode = (bytes: Uint8Array) => new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes);
+/** The file's UTF-8 text, as edit reads it: invalid UTF-8, and NUL in a text file, are INVALID_ENCODING. */
+function decode(path: string, bytes: Uint8Array): string {
+  const text = decodeText(bytes);
+  ensure(isTextContent(path, text), 'INVALID_ENCODING', 'Text file edits require UTF-8 without NUL characters; use write for UTF-16 or binary content.');
+  return text;
+}
 const copy = <Value>(value: Value): Value => structuredClone(value);
 const listen = (events: EventChannel, prefix: string) => (name: string, callback: (payload: never) => void | Promise<void>): Unsubscribe => {
   ensure(typeof name === 'string', 'INVALID_ARGUMENT', 'Event names are strings.');
@@ -75,17 +81,17 @@ export function createApp({ workspace, metadata, events, project }: AppScope): A
   };
   const files = async () => (await metadata.load()).files().slice();
   const vault: VaultFacade = {
-    read: async path => decode((await workspace.files.read(path)).bytes),
+    read: async path => decode(path, (await workspace.files.read(path)).bytes),
     create: (path, data) => single(workspace.write([{ path, bytes: encode(data) }])),
     modify: async (path, data, options) => single(workspace.write([{ path, bytes: encode(data), expectedRevision: await revision(path, options) }])),
     async process(path, fn, options = {}) {
       const snapshot = await workspace.files.read(path);
-      const text = await fn(decode(snapshot.bytes));
+      const text = await fn(decode(path, snapshot.bytes));
       ensure(typeof text === 'string', 'INVALID_ARGUMENT', 'vault.process needs a function returning text.');
       await workspace.edit(path, options.ifMatch ?? snapshot.revision, () => encode(text));
       return text;
     },
-    append: async (path, data, options) => single(workspace.edit(path, await revision(path, options), bytes => encode(decode(bytes) + data))),
+    append: async (path, data, options) => single(workspace.edit(path, await revision(path, options), bytes => encode(decode(path, bytes) + data))),
     trash: (path, options = {}) => fileManager.delete(path, { ...options, recursive: true, allowBrokenLinks: true }),
     delete: (path, options = {}) => fileManager.delete(path, { ...options, permanent: true, allowBrokenLinks: true }),
     rename: (path, newPath, options = {}) => fileManager.move(path, newPath, { ...options, updateLinks: false }),

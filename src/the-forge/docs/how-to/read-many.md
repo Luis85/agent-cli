@@ -27,8 +27,11 @@ for an individual file.
 
 The entire path list is checked before reading. Duplicate canonical path strings
 are refused; case-distinct names retain the same filesystem semantics as `read`.
-Paths containing `./`, traversal, empty segments or backslashes are invalid
-instead of being silently normalized. Symlink traversal remains forbidden.
+A leading `./`, backslash separators and absolute paths inside the scope root
+are first rewritten to the relative POSIX path, as for every file argument (see
+the [write contract](../reference/cli.md#write-contract)). Traversal, empty
+segments and absolute paths outside the scope are invalid, and the error names
+the argument's position in `details.index`. Symlink traversal remains forbidden.
 
 A missing, unsafe or invalid document, or exceeding the byte limit, fails the
 whole command. No partial `data.files` payload is returned. Per-file failures keep

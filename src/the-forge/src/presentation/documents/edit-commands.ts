@@ -57,7 +57,7 @@ export function editCommand(): Command {
   return {
     id: 'edit', description: 'Edit Markdown or UTF-8 text in place: literal replacements, an append, or a section or block edit.',
     usage: 'edit <note.md|text-file> --if-match sha256 (--find text --replace text | --edits json|@file|- | --append --content text | (--section "A > B" [--section-line n] | --block id) (--replace text | --append --content text | --prepend --content text))',
-    scope: 'project', discovery: false, mutating: true, args: [{ name: 'path', description: 'Vault path relative to the command scope.', required: true }], errors: editErrors, output: editOutput,
+    scope: 'project', discovery: false, mutating: true, args: [{ name: 'path', description: 'Vault path relative to the command scope.', required: true, path: true }], errors: editErrors, output: editOutput,
     options: {
       'if-match': option.string('SHA-256 revision the file must still have (from read).', { required: true }),
       find: option.string('Exact literal text that must occur once.'),
@@ -85,7 +85,7 @@ export function applyCommand(): Command {
     // Destructive: write, edit and delete replace or remove content. Not idempotent: an operation without ifMatch,
     // such as an append, applies again on a repeat; only a plan whose every operation carries ifMatch fails instead.
     scope: 'project', projectOption: 'project', discovery: false, mutating: true, destructive: true, idempotent: false, errors: applyErrors, output: applyOutput,
-    args: [{ name: 'plan', description: 'Plan file in the command scope, or - to read the plan from standard input.', required: true, schema: applyPlanSchema }],
+    args: [{ name: 'plan', description: 'Plan file in the command scope, or - to read the plan from standard input.', required: true, schema: applyPlanSchema, path: true }],
     options: { project: option.string('Use this project instead of the selected project.') },
     async run(args, _flags, context) {
       arity(args, 1);

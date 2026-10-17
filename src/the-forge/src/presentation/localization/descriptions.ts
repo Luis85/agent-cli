@@ -15,6 +15,7 @@ export const germanDescriptions: Record<string, string> = {
   'Validate and preview writes without changing files.': 'Schreibvorgänge prüfen und als Vorschau zeigen, ohne Dateien zu ändern.',
   'Write even when settings.dryRun is true.': 'Auch dann schreiben, wenn settings.dryRun true ist.',
   'Skip loading user plugins; core plugins stay. Must precede the command.': 'Benutzer-Plugins nicht laden; Kern-Plugins bleiben aktiv. Muss vor dem Befehl stehen.',
+  'Milliseconds (0 to 600000, default 0) a write waits for another Forge writer\'s lock while WORKSPACE_BUSY is retryable.': 'Millisekunden (0 bis 600000, Standard 0), die ein Schreibvorgang auf die Sperre eines anderen Forge-Schreibvorgangs wartet, solange WORKSPACE_BUSY wiederholbar ist.',
   'Describe the command instead of running it.': 'Den Befehl beschreiben, statt ihn auszuführen.',
   'Report the Forge version; used without a command.': 'Die Forge-Version melden; ohne Befehl verwenden.',
   // Discovery and project commands.

@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
-import { lockName } from '../../src/infrastructure/workspace/lock.ts';
+import { writerLockName as lockName } from '../../src/domain/documents/file.ts';
 import { ScopedFiles } from '../../src/application/workspace/scoped-files.ts';
 import { StagedFiles } from '../../src/application/documents/staged-files.ts';
 import { Workspace } from '../../src/application/workspace/workspace.ts';

@@ -30,13 +30,16 @@ export type CommandFlags = Record<string, string | boolean>;
 /**
  * `schema` describes the JSON document a string option or argument holds or names, such as `apply`'s plan; `help`
  * and `schema` publish it with the option or argument. `list` makes a string option with an `enum` a comma-separated
- * list of its values (`read --parts body`); its input schema is a `pattern` instead of the `enum`.
+ * list of its values (`read --parts body`); its input schema is a `pattern` instead of the `enum`. `path` marks a
+ * string option or argument that names a file or folder in the command scope: the host accepts `\` separators, a
+ * leading `./` and an absolute path inside the scope root, passes the command the relative POSIX path and refuses
+ * any other invalid path with INVALID_PATH naming the option or argument.
  */
 export interface CommandOption {
   type: 'string' | 'boolean'; description: string;
-  enum?: readonly string[]; list?: boolean; default?: string | boolean; required?: boolean; schema?: JsonSchema;
+  enum?: readonly string[]; list?: boolean; default?: string | boolean; required?: boolean; schema?: JsonSchema; path?: boolean;
 }
-export interface CommandArgument { name: string; description: string; required?: boolean; enum?: readonly string[]; variadic?: boolean; schema?: JsonSchema }
+export interface CommandArgument { name: string; description: string; required?: boolean; enum?: readonly string[]; variadic?: boolean; schema?: JsonSchema; path?: boolean }
 const documentSchema = (value: unknown) => value === undefined || schemaIssues(value).length === 0;
 export interface CommandMode {
   scope?: CommandScope; discovery?: boolean; mutating?: boolean; projectOption?: string;
@@ -246,7 +249,7 @@ export function commandAnnotations(command: CommandMetadata) {
   };
 }
 
-const reservedOptions = ['root', 'lang', 'events', 'json', 'no-json', 'dry-run', 'no-dry-run', 'no-plugins', 'help', 'version'];
+const reservedOptions = ['root', 'lang', 'events', 'json', 'no-json', 'dry-run', 'no-dry-run', 'no-plugins', 'wait', 'help', 'version'];
 const flag = /^[a-z][a-z0-9-]*$/;
 const text = (value: unknown) => typeof value === 'string' && value.trim().length > 0;
 function validateOptions(options: Record<string, unknown>, shared: Readonly<Record<string, unknown>> = {}): void {
@@ -258,6 +261,7 @@ function validateOptions(options: Record<string, unknown>, shared: Readonly<Reco
     ensure(schema.default === undefined || typeof schema.default === schema.type, 'INVALID_PLUGIN', `Command option ${key} default must match its type.`);
     ensure(schema.required === undefined || typeof schema.required === 'boolean', 'INVALID_PLUGIN', `Command option ${key} required must be a boolean.`);
     ensure(documentSchema(schema.schema) && (schema.schema === undefined || schema.type === 'string'), 'INVALID_PLUGIN', `Command option ${key} schema must be a supported JSON Schema on a string option.`);
+    ensure(schema.path === undefined || (typeof schema.path === 'boolean' && schema.type === 'string'), 'INVALID_PLUGIN', `Command option ${key} path must be a boolean on a string option.`);
   }
 }
 function validateMode(mode: Record<string, unknown>, where: string, options: CommandMetadata['options']): void {
@@ -276,7 +280,7 @@ export function validateCommandMetadata(command: Record<string, unknown>): void 
   validateOptions(options);
   validateMode(command, where, options as CommandMetadata['options']);
   ensure(command.args === undefined || (Array.isArray(command.args) && command.args.every((arg: unknown, index, all) => isRecord(arg) && text(arg.name) && text(arg.description)
-    && (arg.variadic === undefined || (arg.variadic === true && index === all.length - 1)) && documentSchema(arg.schema))), 'INVALID_PLUGIN', `${where} args must list named, described arguments with supported schemas; only the last may be variadic.`);
+    && (arg.variadic === undefined || (arg.variadic === true && index === all.length - 1)) && documentSchema(arg.schema) && (arg.path === undefined || typeof arg.path === 'boolean'))), 'INVALID_PLUGIN', `${where} args must list named, described arguments with supported schemas and boolean path flags; only the last may be variadic.`);
   ensure(command.actions === undefined || isRecord(command.actions), 'INVALID_PLUGIN', `${where} actions must be an object.`);
   for (const [id, action] of Object.entries((command.actions ?? {}) as Record<string, unknown>)) {
     ensure(isRecord(action) && text(action.description) && (action.usage === undefined || text(action.usage)), 'INVALID_PLUGIN', `${where} action ${id} requires a description.`);

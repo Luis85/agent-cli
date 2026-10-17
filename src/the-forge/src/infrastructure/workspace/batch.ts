@@ -4,11 +4,11 @@ import { link, lstat, mkdir, rename, rm, rmdir, unlink } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path';
 import { forgeError, ensure } from '../../domain/shared/errors.ts';
 import { kernelMessage, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
-import type { FileChange, FileRename, GuardRequest, RemoveRequest, RenameRequest, WriteRequest } from '../../domain/documents/file.ts';
+import { temporaryPrefix, type FileChange, type FileRename, type GuardRequest, type RemoveRequest, type RenameRequest, type WriteRequest } from '../../domain/documents/file.ts';
 import { revisionConflict, type RevisionConflict } from '../../domain/documents/write-plan.ts';
 import type { BatchResult, FileBatch } from '../../application/workspace/ports.ts';
 import { snapshotBatch } from '../../application/workspace/batch-plan.ts';
-import { linkUnsupported } from './lock.ts';
+import { ensureNotHeld, linkUnsupported } from './lock.ts';
 import { retryTransient } from './retry.ts';
 
 export interface StoredFile { bytes: Buffer; mode: number; revision: string }
@@ -18,9 +18,10 @@ export interface FilePlan { write: WriteRequest; target: string; before?: Stored
 export interface SpecialEntry { path: string; kind: 'symlink' | 'node_modules' | 'other'; target?: string }
 /**
  * A folder's revision and contents; paths are relative to the folder. `special` lists symlinks, `node_modules`
- * folders (never read) and other special files; `git` reports a nested `.git` entry.
+ * folders (never read) and other special files; `git` reports a nested `.git` entry and `locks` the writer locks
+ * of nested roots (`--root` inside this one, a project's plugin scope), which the revision does not cover.
  */
-export interface FolderSnapshot { revision: string; files: Array<{ path: string; revision: string; bytes: number }>; folders: string[]; special: SpecialEntry[]; git: boolean }
+export interface FolderSnapshot { revision: string; files: Array<{ path: string; revision: string; bytes: number }>; folders: string[]; special: SpecialEntry[]; git: boolean; locks: string[] }
 type Entry = { kind: 'file'; stored: StoredFile } | { kind: 'folder'; snapshot: FolderSnapshot };
 interface RenamePlan { request: RenameRequest; source: string; target: string; entry: Entry; caseOnly: boolean }
 interface RemovePlan { request: RemoveRequest; target: string; entry: Entry; temp?: string }
@@ -40,7 +41,7 @@ export interface BatchHost {
 }
 
 const missing = (error: unknown) => (error as NodeJS.ErrnoException).code === 'ENOENT';
-const temporary = (target: string) => join(dirname(target), `.agent-cli-tmp-${randomUUID()}`);
+const temporary = (target: string) => join(dirname(target), `${temporaryPrefix}${randomUUID()}`);
 const inside = (path: string, folder: string) => path === folder || path.startsWith(`${folder}/`);
 const entryRevision = (entry: Entry) => entry.kind === 'file' ? entry.stored.revision : entry.snapshot.revision;
 
@@ -149,12 +150,23 @@ export class Transaction {
     const target = await this.host.resolvePath(path, true);
     const info = await exists(target);
     if (!info) return undefined;
+    // An entry that vanishes while it is read was removed concurrently and counts as missing.
     if ((await lstat(target)).isDirectory()) {
-      const snapshot = (await this.host.folder(path))!;
-      ensure(!protectGit || !snapshot.git, 'PROTECTED_PATH', `Folder ${path} contains a Git repository; Forge never moves or removes .git.`);
-      return { kind: 'folder', snapshot };
+      const snapshot = await this.host.folder(path);
+      if (snapshot && protectGit) await this.ensureMovable(path, target, snapshot);
+      return snapshot && { kind: 'folder', snapshot };
     }
-    return { kind: 'file', stored: (await this.host.stored(path))! };
+    const stored = await this.host.stored(path);
+    return stored && { kind: 'file', stored };
+  }
+
+  /**
+   * A folder that is moved or removed holds no Git repository and no writer lock of a nested root whose holder may
+   * still run: moving or deleting the lock would let that writer and a new one write at once.
+   */
+  private async ensureMovable(path: string, target: string, snapshot: FolderSnapshot): Promise<void> {
+    ensure(!snapshot.git, 'PROTECTED_PATH', `Folder ${path} contains a Git repository; Forge never moves or removes .git.`);
+    for (const lock of snapshot.locks) await ensureNotHeld(join(target, lock), `${path}/${lock}`);
   }
 
   private async planRenames(conflicts: RevisionConflict[]): Promise<RenamePlan[]> {
@@ -164,10 +176,18 @@ export class Transaction {
       if (!entry) throw forgeError('NOT_FOUND', `File or folder not found: ${request.from}`);
       if (entryRevision(entry) !== request.expectedRevision) conflicts.push(revisionConflict(request.from, request.expectedRevision, entryRevision(entry)));
       const source = await this.host.resolvePath(request.from, true), target = await this.host.resolvePath(request.to, true);
+      await this.ensureOutside(request, source);
       const caseOnly = await this.caseOnly(request, source, target);
       plans.push({ request, source, target, entry, caseOnly });
     }
     return plans;
+  }
+
+  /** A destination inside the source under another letter case is the source's own subfolder on case-insensitive filesystems. */
+  private async ensureOutside(request: RenameRequest, source: string): Promise<void> {
+    if (!request.to.toLowerCase().startsWith(`${request.from.toLowerCase()}/`)) return;
+    const alias = await exists(join(this.host.root, request.to.slice(0, request.from.length))), original = await lstat(source);
+    ensure(alias?.ino !== original.ino || alias.dev !== original.dev, 'INVALID_MOVE', `Cannot move ${request.from} into itself: ${request.to}`, { path: request.to, from: request.from });
   }
 
   /** A destination that exists is refused, unless it is the source itself under another letter case (case-insensitive filesystems). */
@@ -229,7 +249,7 @@ export class Transaction {
   private async verify(path: string, entry: Entry, expected: string): Promise<void> {
     if (entry.kind === 'file') { await this.host.assertRevision(path, expected); return; }
     const snapshot = await this.host.folder(path);
-    ensure(!snapshot?.git, 'PROTECTED_PATH', `Folder ${path} contains a Git repository; Forge never moves or removes .git.`);
+    if (snapshot) await this.ensureMovable(path, await this.host.resolvePath(path, true), snapshot);
     const current = snapshot?.revision;
     ensure(current === expected, 'CONFLICT', `Folder changed; read again before modifying: ${path}`, revisionConflict(path, expected, current));
   }
@@ -302,7 +322,12 @@ export class Transaction {
     const occupied = () => forgeError('DESTINATION_EXISTS', `Destination already exists: ${plan.request.to}`, { path: plan.request.to, from: plan.request.from });
     if (plan.entry.kind === 'file' && await this.linkInPlace(source, target, occupied)) return;
     if (await exists(target)) throw occupied();
-    await retryTransient(() => rename(source, target));
+    try { await retryTransient(() => rename(source, target)); }
+    catch (error) {
+      // The filesystem refuses a folder moved into itself, for example under another letter case.
+      if ((error as NodeJS.ErrnoException).code === 'EINVAL') throw forgeError('INVALID_MOVE', `Cannot move ${plan.request.from} into itself: ${plan.request.to}`, { path: plan.request.to, from: plan.request.from });
+      throw error;
+    }
   }
 
   /** Moves a file by hard link and unlink; false when the filesystem has no hard links. */

@@ -1,6 +1,7 @@
 import { ensure, isRecord } from '../../domain/shared/errors.ts';
 import { fileKinds, fileKind } from '../../domain/documents/file.ts';
 import { pathGlob } from '../../domain/documents/path-glob.ts';
+import { base64Bytes } from '../../domain/documents/base64.ts';
 import { Pager } from '../../domain/shared/paging.ts';
 import type { Command, CommandContext } from '../../application/plugins/registry.ts';
 import { arity, integer, parseJson, readInputBytes, value } from '../../application/plugins/command-input.ts';
@@ -12,21 +13,17 @@ import { listOutput, readOutput, validateOutput } from './output.ts';
 async function content(flags: Record<string, string | boolean>, context: CommandContext): Promise<Uint8Array> {
   const bytes = await readInputBytes(flags, context, 'Choose exactly one of --content, --from, or --stdin.');
   const encoding = value(flags, 'encoding') ?? 'utf8';
-  if (encoding === 'base64') {
-    const text = Buffer.from(bytes).toString('utf8').trim();
-    ensure(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(text), 'INVALID_ENCODING', 'Invalid base64 input.');
-    return Buffer.from(text, 'base64');
-  }
-  return bytes;
+  // Base64 is ASCII: the text decoder replaces other bytes, which the base64 check then refuses.
+  return encoding === 'base64' ? base64Bytes(new TextDecoder().decode(bytes), 'Invalid base64 input.') : bytes;
 }
 const contentOptions = {
   content: option.string('Literal content.'),
-  from: option.string('Copy the bytes of another file in the same scope.'),
+  from: option.string('Copy the bytes of another file in the same scope.', { path: true }),
   stdin: option.boolean('Read the content from piped standard input.'),
   encoding: option.string('Decode --content, --from or --stdin input; base64 writes binary content.', { enum: ['utf8', 'base64'], default: 'utf8' }),
 };
 const ifMatch = (required = false) => option.string('SHA-256 revision the file must still have (from read).', { required });
-const pathArgument = (description = 'Vault path relative to the command scope.') => ({ name: 'path', description, required: true });
+const pathArgument = (description = 'Vault path relative to the command scope.') => ({ name: 'path', description, required: true, path: true });
 const reading = { scope: 'project', discovery: false, mutating: false } as const;
 const writing = { scope: 'project', discovery: false, mutating: true } as const;
 const readParts = ['body'];
