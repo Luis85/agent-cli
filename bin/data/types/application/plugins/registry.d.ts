@@ -124,11 +124,16 @@ export interface PluginContributions {
 export interface Plugin extends PluginContributions {
     manifest: PluginManifest;
 }
-export declare function validatePluginManifest(value: unknown, origin?: PluginOrigin): asserts value is PluginManifest;
+/** Validates a manifest, including that its `minAppVersion` is at most `appVersion`, the running Forge version. */
+export declare function validatePluginManifest(value: unknown, appVersion: string, origin?: PluginOrigin): asserts value is PluginManifest;
 export declare class Registry {
     private readonly skillFrontmatter;
-    /** `skillFrontmatter` reads the frontmatter of contributed SKILL.md files for their specification checks. */
-    constructor(skillFrontmatter: SkillFrontmatterReader);
+    readonly appVersion: string;
+    /**
+     * `skillFrontmatter` reads the frontmatter of contributed SKILL.md files for their specification checks;
+     * `appVersion` is the running Forge version that plugin manifests' `minAppVersion` must not exceed.
+     */
+    constructor(skillFrontmatter: SkillFrontmatterReader, appVersion: string);
     readonly commands: Map<string, Command<CommandContext>>;
     readonly generators: Map<string, Generator<CommandContext>>;
     readonly skills: Map<string, Skill>;
@@ -168,7 +173,10 @@ export declare class Registry {
     recordMissing(pluginId: string, manifestPath: string, events: EventBus): void;
     /** Why a disabled core plugin contributes nothing. */
     disabledReason(pluginId: string): KernelMessage | undefined;
-    /** A registered command, including one of an unavailable plugin; any other id fails with UNKNOWN_COMMAND. */
+    /**
+     * A registered command, including one of an unavailable plugin; any other id fails with UNKNOWN_COMMAND, whose
+     * `details` `{command, suggestions}` suggest registered commands spelled alike or doing what the id names elsewhere.
+     */
     resolveCommand(commandId: string): Command;
     /**
      * Validates `plugins.settings` after registration and returns the effective sections. A plugin with an invalid

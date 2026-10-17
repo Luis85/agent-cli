@@ -22,6 +22,7 @@ export declare const kernelMessages: {
     readonly PLUGIN_STATE_IGNORED: "Ignored invalid {path}; plugins with activation hooks are treated as newly enabled.";
     readonly PLUGIN_STATE_UNSAVED: "Could not record plugin activation state in {path}: {diagnostic}";
     readonly SETUP_TEMPLATES_UNAVAILABLE: "The templates core plugin is disabled or unavailable; setup did not install templates into bin/templates.";
+    readonly CWD_OUTSIDE_WORKSPACE: "The working directory {cwd} is outside the workspace root {workspaceRoot}; relative paths resolve against the workspace root (context.root), not the working directory. Pass --root or set FORGE_ROOT to use another workspace.";
     readonly METADATA_CACHE_UNSAVED: "The metadata cache could not be saved to {file}, so the next command reads and parses the vault again: {diagnostic}";
     readonly LOCK_RECOVERED: "Removed the stale lock {path} of pid {pid} on {host} (since {since}{command}): {reason}. Inspect what that run left unfinished (for example git status or backlog sync status).";
     readonly LOCK_HOLDER_COMMAND: ", command {command}";
@@ -42,6 +43,9 @@ export declare const kernelMessages: {
     readonly LAYOUT_CALLBACK_FAILED: "Layout ready: {diagnostic}";
     readonly QUIT_TASK_FAILED: "Quit task: {diagnostic}";
     readonly PLUGIN_CLEANUP_FAILED: "Plugin cleanup: {diagnostic}";
+    readonly PATH_MATCHED_NOTHING: "{option} {pattern} matched no file in this scope. Paths are relative to context.root and case-sensitive, and a folder path without glob characters matches everything below it; run list to see the existing paths.";
+    readonly READ_TRUNCATED: "{path} was truncated to lines {start}-{end} of {total} ({returned} of {bytes} bytes); continue with --lines {next}-, or raise --max-bytes.";
+    readonly READ_BYTES_TRUNCATED: "{path} was truncated to the first {returned} of {bytes} bytes; raise --max-bytes to read the rest.";
 };
 export type KernelMessageCode = keyof typeof kernelMessages;
 /** A host message by code; a parameter may itself be a message, rendered in the same language. */

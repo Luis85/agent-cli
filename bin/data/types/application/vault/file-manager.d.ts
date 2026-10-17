@@ -143,10 +143,15 @@ export declare class FileManager {
     }>;
     /** Links from outside `path` that resolve to it or into it. */
     private brokenLinks;
-    /** `.trash/<path>`, or with ` 1`, ` 2`… before the extension when that name is taken, as Obsidian names trash copies. */
+    /**
+     * `.trash/<path>`, or with ` 1`, ` 2`… before the extension when that name is taken, as Obsidian names trash copies.
+     * A trash folder on the way that is a file (an extensionless file trashed earlier) is passed by such a name too.
+     */
     private trashDestination;
+    /** The first copy name of `name` in `folder` that is a folder or free; reading tells a file from a folder without walking it. */
+    private trashFolderName;
     private ensureAbsent;
-    /** Protect case-insensitive names and Windows trailing-dot/space aliases of the reserved roots. */
+    /** Protect every alias of the reserved roots: letter case, Windows trailing dots, spaces and short names, HFS+ ignorable code points. */
     private ensureMovable;
 }
 export {};

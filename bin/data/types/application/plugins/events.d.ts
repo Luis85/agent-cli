@@ -28,7 +28,7 @@ export interface EventChannel {
     onAny(listener: (record: EventRecord) => void | Promise<void>): () => void;
     replay(listener: (record: EventRecord) => void | Promise<void>): Promise<void>;
     emit(id: string, payload: unknown): Promise<void>;
-    warn(message: string): void;
+    warn(message: string | KernelMessage): void;
     /** Like Obsidian's `workspace.onLayoutReady`: runs now when plugins are active, otherwise once they are. */
     onLayoutReady(callback: Callback): void;
     /** A best-effort task that runs after `workspace.quit`, before plugins unload. */

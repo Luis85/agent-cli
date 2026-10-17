@@ -1,12 +1,12 @@
 "use strict";
+const promises = require("node:fs/promises");
+const path$3 = require("node:path");
 const childProcess = require("node:child_process");
 const node_http = require("node:http");
-const promises$1 = require("node:fs/promises");
-const path$3 = require("node:path");
 const node_crypto = require("node:crypto");
 const fs = require("node:fs");
 const node_os = require("node:os");
-const promises = require("node:timers/promises");
+const promises$1 = require("node:timers/promises");
 const node_async_hooks = require("node:async_hooks");
 const require$$0 = require("process");
 const require$$0$1 = require("buffer");
@@ -87,7 +87,11 @@ const errorCatalog = {
   SECTION_NOT_FOUND: entry("input", "No heading matches the --section path, or no block has the --block id.", 'Read the note and copy a heading path from error.details.headings (segments joined with " > ") or a block id from error.details.blocks.'),
   AMBIGUOUS_SECTION: entry("input", "The --section path matches several headings, or the --block id occurs more than once.", "Add ancestor headings to the path (Parent > Heading) until one of error.details.candidates remains, or pass a candidate's line as --section-line (sectionLine in an apply plan); give each block a unique id."),
   INVALID_PLAN: entry("input", "The apply plan or write batch is invalid: it does not match the plan schema, or its steps have duplicate or overlapping paths.", "Fix the operation named in error.details.operation (see error.details.issues and the plan schema in help apply); write each path once and do not reuse a path that the same plan moves or deletes."),
-  WORKSPACE_BUSY: entry("busy", "Another Forge writer holds the workspace lock or a backlog sync lock.", 'error.details.stale says why the lock stays (a lock whose holder provably no longer runs is removed automatically with a warning). "active": the holder runs, or another running writer is removing the stale lock; wait and retry. "unknown": Forge cannot verify the holder (another host, pid namespace or boot, or an unreadable lock), so error.retryable is false; confirm in error.details.lock that it no longer runs, inspect its unfinished changes, then delete the file named in error.details.path (relative to the workspace root) and retry. "stale": the holder provably no longer runs but removing the lock failed, so error.retryable is false; confirm no Forge process uses it, then delete that file and retry.', true),
+  WORKSPACE_BUSY: { ...entry("busy", "Another Forge writer holds the workspace lock or a backlog sync lock.", 'error.details.stale says why the lock stays (a lock whose holder provably no longer runs is removed automatically with a warning). "active": the holder runs, or another running writer is removing the stale lock; wait and retry. "unknown": Forge cannot verify the holder (another host, pid namespace or boot, or an unreadable lock), so error.retryable is false; confirm in error.details.lock that it no longer runs, inspect its unfinished changes, then delete the file named in error.details.path (relative to the workspace root) and retry. "stale": the holder provably no longer runs but removing the lock failed, so error.retryable is false; confirm no Forge process uses it, then delete that file and retry.', true), variants: { detail: "stale", hints: {
+    active: "The holder runs, or another running writer is removing a stale lock: retry after error.details.retryAfterMs milliseconds, or rerun with --wait <ms> to wait for the lock.",
+    unknown: "Forge cannot verify the holder (another host, pid namespace or boot, or an unreadable lock) and never removes its lock, so waiting does not help: confirm in error.details.lock that it no longer runs, inspect its unfinished changes, then delete the file named in error.details.path (relative to the workspace root) and retry.",
+    stale: "The holder provably no longer runs, but removing its lock failed: confirm no Forge process uses it, then delete the file named in error.details.path (relative to the workspace root) and retry."
+  } } },
   DESTINATION_EXISTS: entry("conflict", "The move or rename destination already exists.", "Choose a destination that does not exist (error.details.path), or move or delete the existing file first; Forge never overwrites a destination."),
   PROTECTED_PATH: entry("input", "The path is protected from moves and deletion.", "Forge never moves or deletes .obsidian, .forge or, at workspace scope, bin (in any letter case), nor a folder holding a .git repository; it permanently deletes only folders without symlinks, node_modules or special files, so move such a folder to the trash instead. The scope root and .git paths are refused as INVALID_PATH."),
   INVALID_MOVE: entry("input", "The move or rename is not possible.", "Use a destination that differs from the source and is not inside it; rename takes a new name without slashes."),
@@ -103,11 +107,13 @@ const errorCatalog = {
   INVALID_BASE_QUERY: entry("input", "The Bases query is invalid.", "Check the view, context and expressions named in the message."),
   INVALID_BASE_EXPRESSION: entry("input", "A Bases expression cannot be parsed.", "Fix the expression named in the message."),
   BASE_EVALUATION_ERROR: entry("input", "A Bases expression failed while evaluating a file.", "Check the view, file and expression named in the message."),
+  BASE_TIMEOUT: entry("input", "A Bases query exceeded its expression evaluation time budget.", "Simplify the expressions of the .base file named in the message (avoid nested regular-expression quantifiers such as (a+)+) or narrow its filters."),
   BASE_VIEW_NOT_FOUND: entry("input", "The requested Bases view does not exist.", "Run bases inspect <file.base> and pass an existing --view."),
   BASE_CONTEXT_NOT_FOUND: entry("input", "The context file is not an indexed vault file.", "Pass an existing vault file to --context."),
   INVALID_BASE_PROPERTY_TYPES: entry("input", "The Obsidian property type registry is invalid.", "Fix .obsidian/types.json so it is a JSON object of property types."),
   UNSUPPORTED_BASE_PROPERTY_TYPE: entry("input", "An Obsidian property type is not supported.", "Use a supported type in .obsidian/types.json."),
   // Configuration, setup and projects
+  INVALID_ROOT: entry("not-found", "The workspace root does not exist or is not a directory.", "Pass --root (or set FORGE_ROOT) to the existing workspace directory that contains bin/; --root wins over FORGE_ROOT."),
   INVALID_CONFIG: entry("input", "The configuration is invalid or unreadable.", "Fix bin/config.json at the location named in the message, then run config."),
   INVALID_SETUP: entry("input", "Setup cannot complete with the current distribution files.", "Repair the bin path named in the message, then run setup again."),
   INVALID_PROJECT: entry("input", "The project metadata is invalid.", "Fix .forge/project.json in the project directory."),
@@ -234,6 +240,111 @@ function ensure(condition, code2, message2, details) {
   if (!condition) throw forgeError(code2, message2, details);
 }
 const isRecord$1 = (value2) => value2 !== null && typeof value2 === "object" && !Array.isArray(value2);
+async function standardInput() {
+  ensure(!process.stdin.isTTY, "INPUT_REQUIRED", "--stdin needs piped input.");
+  const chunks = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks);
+}
+async function workingDirectoryOutside(root, cwd) {
+  const canonical2 = await promises.realpath(cwd).catch(() => cwd);
+  const path2 = path$3.relative(root, canonical2);
+  const inside2 = path2 === "" || !path$3.isAbsolute(path2) && path2 !== ".." && !path2.startsWith(`..${path$3.sep}`);
+  return inside2 ? void 0 : canonical2;
+}
+const writerLockName = ".agent-cli.lock";
+const temporaryPrefix = ".agent-cli-tmp-";
+const ignorable = /[\u200b-\u200f\u202a-\u202e\u2060-\u2063\ufeff]/g;
+const canonicalName = (segment2) => segment2.replace(ignorable, "").toLowerCase().replace(/[. ]+$/, "");
+function shortAlias(canonical2, name2) {
+  const long = name2.replace(/^\.+/, ""), dot = long.lastIndexOf(".");
+  const base2 = (dot > 0 ? long.slice(0, dot) : long).replace(/[. ]/g, "").slice(0, 6);
+  const tilde = canonical2.lastIndexOf("~"), extension2 = canonical2.indexOf(".", tilde);
+  const number2 = canonical2.slice(tilde + 1, extension2 < 0 ? void 0 : extension2);
+  return tilde > 0 && canonical2.slice(0, tilde) === base2 && /^\d+$/.test(number2);
+}
+function aliasesName(segment2, name2) {
+  const canonical2 = canonicalName(segment2);
+  return canonical2 === name2 || shortAlias(canonical2, name2);
+}
+function reservedPathSegment(segment2) {
+  if (aliasesName(segment2, ".git")) return "git";
+  if (aliasesName(segment2, writerLockName) || canonicalName(segment2).startsWith(temporaryPrefix)) return "internal";
+  return void 0;
+}
+function vaultPath(input) {
+  ensure(typeof input === "string" && input.length > 0 && !/[\x00-\x1f\x7f\\:]/.test(input), "INVALID_PATH", "Use a nonempty, relative POSIX path.");
+  const parts = input.split("/");
+  ensure(parts.every((p) => canonicalName(p) !== ""), "INVALID_PATH", "Absolute paths, empty segments and traversal are forbidden.");
+  ensure(!parts.some((p) => reservedPathSegment(p) !== void 0), "INVALID_PATH", "Reserved workspace path.");
+  return input;
+}
+const trashFolder = ".trash";
+const isInTrash = (path2) => path2.toLowerCase() === trashFolder || path2.toLowerCase().startsWith(`${trashFolder}/`);
+function ensureSeparateDirectories(source2, destination2) {
+  vaultPath(source2);
+  vaultPath(destination2);
+  ensure(source2 !== destination2 && !source2.startsWith(`${destination2}/`) && !destination2.startsWith(`${source2}/`), "INVALID_PATH", "Import and export directories must be separate; neither may contain the other.");
+}
+const nativeFormats = {
+  markdown: ["md"],
+  canvas: ["canvas"],
+  base: ["base"],
+  image: ["avif", "bmp", "gif", "jpeg", "jpg", "png", "svg", "webp"],
+  audio: ["flac", "m4a", "mp3", "ogg", "wav", "webm", "3gp"],
+  video: ["mkv", "mov", "mp4", "ogv", "webm"],
+  pdf: ["pdf"]
+};
+const textExtensions = [
+  "ts",
+  "tsx",
+  "mts",
+  "cts",
+  "js",
+  "jsx",
+  "mjs",
+  "cjs",
+  "json",
+  "jsonc",
+  "yaml",
+  "yml",
+  "toml",
+  "ini",
+  "css",
+  "scss",
+  "less",
+  "html",
+  "htm",
+  "xml",
+  "vue",
+  "svelte",
+  "txt",
+  "log",
+  "csv",
+  "tsv",
+  "sh",
+  "ps1",
+  "psm1",
+  "psd1",
+  "py",
+  "sql"
+];
+const textFilenames = ["Dockerfile", "Containerfile"];
+const fileKinds = [...Object.keys(nativeFormats), "text", "attachment"];
+function fileKind(path2) {
+  const basename2 = path2.slice(path2.lastIndexOf("/") + 1).toLowerCase();
+  const dot = basename2.lastIndexOf(".");
+  const ext = dot < 0 ? "" : basename2.slice(dot + 1);
+  const native = Object.entries(nativeFormats).find(([, extensions]) => extensions.includes(ext))?.[0];
+  const namedText = textFilenames.some((name2) => {
+    const lower = name2.toLowerCase();
+    return basename2 === lower || basename2.startsWith(`${lower}.`) && /^[^.]/.test(basename2.slice(lower.length + 1));
+  });
+  return native ?? (textExtensions.includes(ext) || namedText ? "text" : "attachment");
+}
+const isTextContent = (path2, text2) => fileKind(path2) !== "text" || !text2.includes("\0");
+const isStructured = (path2) => ["markdown", "canvas", "base"].includes(fileKind(path2));
+const isTextLike = (path2) => isStructured(path2) || fileKind(path2) === "text";
 const name = "@luis85/forge";
 const version$1 = "0.1.0";
 const description$2 = "The Forge: portable tools for high-quality AI-assisted TypeScript engineering";
@@ -335,6 +446,7 @@ const kernelMessages = {
   PLUGIN_STATE_IGNORED: "Ignored invalid {path}; plugins with activation hooks are treated as newly enabled.",
   PLUGIN_STATE_UNSAVED: "Could not record plugin activation state in {path}: {diagnostic}",
   SETUP_TEMPLATES_UNAVAILABLE: "The templates core plugin is disabled or unavailable; setup did not install templates into bin/templates.",
+  CWD_OUTSIDE_WORKSPACE: "The working directory {cwd} is outside the workspace root {workspaceRoot}; relative paths resolve against the workspace root (context.root), not the working directory. Pass --root or set FORGE_ROOT to use another workspace.",
   METADATA_CACHE_UNSAVED: "The metadata cache could not be saved to {file}, so the next command reads and parses the vault again: {diagnostic}",
   // Writer and sync locks: a stale lock an acquisition removed, and a lock its writer could not release cleanly.
   LOCK_RECOVERED: "Removed the stale lock {path} of pid {pid} on {host} (since {since}{command}): {reason}. Inspect what that run left unfinished (for example git status or backlog sync status).",
@@ -356,7 +468,11 @@ const kernelMessages = {
   HOST_NOTIFICATION_FAILED: "Host notification {event}: {diagnostic}",
   LAYOUT_CALLBACK_FAILED: "Layout ready: {diagnostic}",
   QUIT_TASK_FAILED: "Quit task: {diagnostic}",
-  PLUGIN_CLEANUP_FAILED: "Plugin cleanup: {diagnostic}"
+  PLUGIN_CLEANUP_FAILED: "Plugin cleanup: {diagnostic}",
+  // Read results an agent could misread: a path filter that selected nothing, and content cut at the read limit.
+  PATH_MATCHED_NOTHING: "{option} {pattern} matched no file in this scope. Paths are relative to context.root and case-sensitive, and a folder path without glob characters matches everything below it; run list to see the existing paths.",
+  READ_TRUNCATED: "{path} was truncated to lines {start}-{end} of {total} ({returned} of {bytes} bytes); continue with --lines {next}-, or raise --max-bytes.",
+  READ_BYTES_TRUNCATED: "{path} was truncated to the first {returned} of {bytes} bytes; raise --max-bytes to read the rest."
 };
 const hostMessages = /* @__PURE__ */ new WeakSet();
 function kernelMessage(code2, params = {}) {
@@ -397,7 +513,7 @@ const lockedFileCodes = ["EPERM", "EACCES", "EBUSY"];
 const lockedFileDelays = [10, 20, 40, 80, 160, 320];
 const errorCode$2 = (error2) => error2 !== null && typeof error2 === "object" ? error2.code : void 0;
 async function retryTransient(operation2, options2 = {}) {
-  const { codes = lockedFileCodes, delays = lockedFileDelays, sleep = promises.setTimeout } = options2;
+  const { codes = lockedFileCodes, delays = lockedFileDelays, sleep = promises$1.setTimeout } = options2;
   for (let attempt = 0; ; attempt++) {
     try {
       return await operation2();
@@ -416,14 +532,14 @@ const errorCode$1 = (error2) => error2.code ?? "";
 let identity$2;
 function hostIdentity() {
   identity$2 ??= (async () => {
-    const pidNamespace = await promises$1.readlink("/proc/self/ns/pid").catch(() => void 0);
-    const bootId = (await promises$1.readFile("/proc/sys/kernel/random/boot_id", "utf8").catch(() => void 0))?.trim();
+    const pidNamespace = await promises.readlink("/proc/self/ns/pid").catch(() => void 0);
+    const bootId = (await promises.readFile("/proc/sys/kernel/random/boot_id", "utf8").catch(() => void 0))?.trim();
     return { ...text$n(pidNamespace) ? { pidNamespace } : {}, ...text$n(bootId) ? { bootId } : {} };
   })();
   return identity$2;
 }
 async function processStart(pid) {
-  const stat = await promises$1.readFile(`/proc/${pid}/stat`, "utf8").catch(() => void 0);
+  const stat = await promises.readFile(`/proc/${pid}/stat`, "utf8").catch(() => void 0);
   const fields2 = stat?.slice(stat.lastIndexOf(")") + 2).split(" ");
   const start2 = fields2?.[19];
   return start2 !== void 0 && /^\d+$/.test(start2) ? start2 : void 0;
@@ -456,10 +572,10 @@ function parseHolder(content2) {
 async function readLock(path2) {
   try {
     return await retryTransient(async () => {
-      const entry2 = await promises$1.lstat(path2);
+      const entry2 = await promises.lstat(path2);
       if (!entry2.isFile()) return { content: null, young: false };
       const young = Date.now() - entry2.mtimeMs < writingWindowMs;
-      const handle = await promises$1.open(path2, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+      const handle = await promises.open(path2, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
       try {
         const buffer = Buffer.alloc(4096);
         const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
@@ -510,7 +626,6 @@ async function inspectLock(path2) {
   const start2 = lock.processStart === void 0 ? void 0 : await processStart(lock.pid);
   return start2 !== void 0 && start2 !== lock.processStart ? stale("reused-pid") : { lock, stale: "active" };
 }
-const lockName = ".agent-cli.lock";
 const staleReasons = {
   "dead-process": "LOCK_STALE_DEAD_PROCESS",
   "reused-pid": "LOCK_STALE_REUSED_PID",
@@ -523,7 +638,7 @@ function recoveredLockMessage({ path: path2, holder, reason }) {
 const linkUnsupported = /* @__PURE__ */ new Set(["ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EXDEV", "EPERM", "EACCES", "EMLINK"]);
 const deniedCodes = /* @__PURE__ */ new Set(["EPERM", "EACCES"]);
 const acquireAttempts = 3;
-const temporaryName = (path2, kind2) => path$3.join(path$3.dirname(path2), `.agent-cli-tmp-${kind2}-${node_crypto.randomUUID()}`);
+const temporaryName = (path2, kind2) => path$3.join(path$3.dirname(path2), `${temporaryPrefix}${kind2}-${node_crypto.randomUUID()}`);
 function ownerDetails(owner) {
   try {
     const { command: command2, operationId } = owner();
@@ -532,7 +647,7 @@ function ownerDetails(owner) {
     return {};
   }
 }
-async function acquireLock(path2, owner, display = lockName, recovered = () => {
+async function acquireLock(path2, owner, display = writerLockName, recovered = () => {
 }) {
   const token = node_crypto.randomUUID();
   const record2 = { ...await ownHolder(), ...ownerDetails(owner), forgeVersion: metadata$2.version, token };
@@ -558,6 +673,20 @@ async function acquireLock(path2, owner, display = lockName, recovered = () => {
     breaker2 = outcome.guard;
   }
 }
+const retryAfterMs = 250;
+async function acquireLockWithin(waitMs, ...lock) {
+  const started = Date.now();
+  for (let pause = 25; ; pause = Math.min(pause * 2, retryAfterMs)) {
+    try {
+      return await acquireLock(...lock);
+    } catch (error2) {
+      if (!(error2 instanceof AppError) || error2.code !== "WORKSPACE_BUSY" || error2.retryable !== true || waitMs <= 0) throw error2;
+      const waited = Date.now() - started, remaining = waitMs - waited;
+      if (remaining <= 0) throw locatedError(error2, "", { waitedMs: waited });
+      await new Promise((resolve2) => setTimeout(resolve2, Math.min(pause, remaining)));
+    }
+  }
+}
 async function createHeld(path2, content2, token) {
   heldTokens.add(token);
   let created = false;
@@ -572,25 +701,25 @@ async function create(path2, content2) {
   const temporary2 = temporaryName(path2, "lock");
   try {
     await writeDurably(temporary2, content2);
-    await retryTransient(() => promises$1.link(temporary2, path2), { codes: ["EBUSY"] });
+    await retryTransient(() => promises.link(temporary2, path2), { codes: ["EBUSY"] });
     return true;
   } catch (error2) {
     if (errorCode$1(error2) === "EEXIST") return false;
     if (!linkUnsupported.has(errorCode$1(error2))) throw error2;
   } finally {
-    await retryTransient(() => promises$1.rm(temporary2, { force: true })).catch(() => {
+    await retryTransient(() => promises.rm(temporary2, { force: true })).catch(() => {
     });
   }
   return createExclusively(path2, content2);
 }
-const guardName = (path2) => `.agent-cli-tmp-break-${path$3.basename(path2)}`;
+const guardName = (path2) => `${temporaryPrefix}break-${path$3.basename(path2)}`;
 const guardPath = (path2) => path$3.join(path$3.dirname(path2), guardName(path2));
 const guardDisplay = (display) => `${display.slice(0, display.lastIndexOf("/") + 1)}${guardName(display)}`;
 async function removeUnchanged(path2, expected) {
-  const current = await promises$1.readFile(path2, "utf8").catch(() => null);
+  const current = await promises.readFile(path2, "utf8").catch(() => null);
   if (current !== expected) return false;
   try {
-    await retryTransient(() => promises$1.unlink(path2));
+    await retryTransient(() => promises.unlink(path2));
     return true;
   } catch (error2) {
     if (errorCode$1(error2) === "ENOENT") return false;
@@ -622,12 +751,12 @@ async function record$6(handle, content2) {
   }
 }
 async function writeDurably(path2, content2) {
-  await record$6(await retryTransient(() => promises$1.open(path2, "wx")), content2);
+  await record$6(await retryTransient(() => promises.open(path2, "wx")), content2);
 }
 async function createExclusively(path2, content2) {
   let handle;
   try {
-    handle = await retryTransient(() => promises$1.open(path2, "wx"));
+    handle = await retryTransient(() => promises.open(path2, "wx"));
   } catch (error2) {
     if (errorCode$1(error2) === "EEXIST" || deniedCodes.has(errorCode$1(error2))) return false;
     throw error2;
@@ -635,7 +764,7 @@ async function createExclusively(path2, content2) {
   try {
     await record$6(handle, content2);
   } catch (error2) {
-    await retryTransient(() => promises$1.rm(path2, { force: true })).catch(() => {
+    await retryTransient(() => promises.rm(path2, { force: true })).catch(() => {
     });
     throw error2;
   }
@@ -645,38 +774,42 @@ async function releaseLock(path2, token) {
   try {
     let content2;
     try {
-      content2 = await retryTransient(() => promises$1.readFile(path2, "utf8"));
+      content2 = await retryTransient(() => promises.readFile(path2, "utf8"));
     } catch (error2) {
       if (errorCode$1(error2) === "ENOENT") return "missing";
       throw error2;
     }
     if (tokenOf(content2) !== token) return "foreign";
-    await retryTransient(() => promises$1.unlink(path2));
+    await retryTransient(() => promises.unlink(path2));
     return "released";
   } finally {
     heldTokens.delete(token);
   }
 }
+async function ensureNotHeld(path2, display) {
+  const found = await inspectLock(path2);
+  if (found.missing !== true && found.stale !== "stale") throw busy(display, found);
+}
 const describeHolder = (lock) => lock ? ` (pid ${lock.pid} on ${lock.hostname} since ${lock.startedAt}${lock.command ? `, command ${lock.command}` : ""})` : "";
 function busy(display, inspection, failure2) {
   const { lock, stale, reason } = inspection;
   const holder = describeHolder(lock);
-  const details = { lock, stale, path: display, ...reason ? { reason } : {} };
+  const details = { lock, stale, path: display, ...reason ? { reason } : {}, ...stale === "active" ? { retryAfterMs } : {} };
   const message2 = stale === "active" ? `Lock ${display} is held${holder} by a running Forge process or one still writing it. Wait for it to finish and retry.` : stale === "stale" ? `Lock ${display}${holder} is stale (${reason}), but ${failure2 ?? "it could not be removed"}. Confirm no Forge process uses it, delete ${display} and retry.` : `Lock ${display} exists${holder}; Forge cannot tell whether its holder still runs (another host, pid namespace or boot, or an unreadable lock), so it never removes it. Verify the holder in error.details.lock; once it no longer runs, inspect its unfinished changes (for example git status), delete ${display} and retry.`;
   return forgeError("WORKSPACE_BUSY", message2, details, void 0, stale === "active");
 }
 function recovering(display, inspection, breaker2) {
   const { lock, reason } = inspection;
-  const details = { lock, stale: "active", path: display, ...reason ? { reason } : {}, ...breaker2?.lock ? { breaker: breaker2.lock } : {} };
+  const details = { lock, stale: "active", path: display, ...reason ? { reason } : {}, ...breaker2?.lock ? { breaker: breaker2.lock } : {}, retryAfterMs };
   return forgeError("WORKSPACE_BUSY", `Lock ${display}${describeHolder(lock)} is stale (${reason}), and another Forge process${describeHolder(breaker2?.lock ?? null)} is removing it. Retry in a moment.`, details, void 0, true);
 }
 const missing$3 = (error2) => error2.code === "ENOENT";
 const invalid$1 = () => forgeError("SERVER_STATE_INVALID", "Server state is unsafe or invalid. Inspect .forge/server.json and its permissions.");
 async function stateDirectory(root, create2 = false) {
   const path2 = path$3.join(root, ".forge");
-  if (create2) await promises$1.mkdir(path2, { recursive: true, mode: 448 });
+  if (create2) await promises.mkdir(path2, { recursive: true, mode: 448 });
   try {
-    const info = await promises$1.lstat(path2);
+    const info = await promises.lstat(path2);
     if (!info.isDirectory() || info.isSymbolicLink()) throw invalid$1();
   } catch (error2) {
     if (!missing$3(error2)) throw error2;
@@ -687,8 +820,8 @@ async function readState$1(root) {
   const path2 = path$3.join(await stateDirectory(root), "server.json");
   let handle;
   try {
-    if (!(await promises$1.lstat(path2)).isFile()) throw invalid$1();
-    handle = await promises$1.open(path2, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+    if (!(await promises.lstat(path2)).isFile()) throw invalid$1();
+    handle = await promises.open(path2, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
     const info = await handle.stat();
     if (!info.isFile() || info.size > 64 * 1024 || process.platform !== "win32" && ((info.mode & 63) !== 0 || info.uid !== process.getuid?.())) throw invalid$1();
     const value2 = JSON.parse(await handle.readFile("utf8"));
@@ -709,8 +842,8 @@ async function ensureStateIgnored(root) {
   let mode = 420;
   let handle;
   try {
-    if (!(await promises$1.lstat(path2)).isFile()) throw invalid$1();
-    handle = await promises$1.open(path2, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+    if (!(await promises.lstat(path2)).isFile()) throw invalid$1();
+    handle = await promises.open(path2, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
     const info = await handle.stat();
     if (!info.isFile() || info.size > 1024 * 1024) throw invalid$1();
     original = await handle.readFile();
@@ -721,35 +854,35 @@ async function ensureStateIgnored(root) {
     await handle?.close();
   }
   const lines2 = original.toString("utf8").trimEnd().split(/\r?\n/);
-  const entries2 = ["/server.json", "/server.lock", "/.server-*.tmp", "/.agent-cli-tmp-*"];
+  const entries2 = ["/server.json", "/server.lock", "/.server-*.tmp", `/${temporaryPrefix}*`];
   if (entries2.every((entry2, index2) => lines2.at(index2 - entries2.length) === entry2)) return;
   const newline = original.includes(Buffer.from("\r\n")) ? "\r\n" : "\n";
   const separator = original.length && original.at(-1) !== 10 ? newline : "";
   const bytes = Buffer.concat([original, Buffer.from(separator + entries2.join(newline) + newline)]);
   const temporary2 = path$3.join(directory, `.server-${node_crypto.randomUUID()}.tmp`);
-  const target = await promises$1.open(temporary2, "wx", mode);
+  const target = await promises.open(temporary2, "wx", mode);
   try {
     await target.writeFile(bytes);
     await target.sync();
     await target.close();
-    await promises$1.rename(temporary2, path2);
+    await promises.rename(temporary2, path2);
   } finally {
     await target.close();
-    await promises$1.unlink(temporary2).catch(() => void 0);
+    await promises.unlink(temporary2).catch(() => void 0);
   }
 }
 async function removeState(root, instanceId) {
   const state2 = await readState$1(root);
-  if (state2?.instanceId === instanceId) await promises$1.unlink(path$3.join(root, ".forge/server.json")).catch((error2) => {
+  if (state2?.instanceId === instanceId) await promises.unlink(path$3.join(root, ".forge/server.json")).catch((error2) => {
     if (!missing$3(error2)) throw error2;
   });
 }
 async function withServerLock(root, action2) {
   const path2 = path$3.join(await stateDirectory(root, true), "server.lock");
-  const deadline = Date.now() + 1e4;
+  const deadline2 = Date.now() + 1e4;
   let token;
   while (true) {
-    const info = await promises$1.lstat(path2).catch((error2) => {
+    const info = await promises.lstat(path2).catch((error2) => {
       if (missing$3(error2)) return null;
       throw error2;
     });
@@ -759,7 +892,7 @@ async function withServerLock(root, action2) {
       break;
     } catch (error2) {
       if (!(error2 instanceof AppError) || error2.code !== "WORKSPACE_BUSY") throw error2;
-      if (Date.now() >= deadline) throw forgeError("SERVER_BUSY", "Another server lifecycle command holds the startup lock. Retry shortly.");
+      if (Date.now() >= deadline2) throw forgeError("SERVER_BUSY", "Another server lifecycle command holds the startup lock. Retry shortly.");
       await new Promise((resolve2) => setTimeout(resolve2, 75));
     }
   }
@@ -778,15 +911,15 @@ function hasUnsafePathCharacters(value2) {
 async function discoverWebviews(distributionPath) {
   const root = path$3.join(distributionPath, "webviews");
   try {
-    if ((await promises$1.lstat(root)).isSymbolicLink()) return [];
+    if ((await promises.lstat(root)).isSymbolicLink()) return [];
     const assets = [];
-    for (const entry2 of await promises$1.readdir(root, { withFileTypes: true })) {
+    for (const entry2 of await promises.readdir(root, { withFileTypes: true })) {
       if (!entry2.isDirectory() || !/^[a-z][a-z0-9-]*$/.test(entry2.name)) continue;
       const directory = path$3.join(root, entry2.name);
       const manifestPath2 = path$3.join(directory, "manifest.json");
       try {
-        if (!(await promises$1.lstat(manifestPath2)).isFile()) continue;
-        const manifest = JSON.parse(await promises$1.readFile(manifestPath2, "utf8"));
+        if (!(await promises.lstat(manifestPath2)).isFile()) continue;
+        const manifest = JSON.parse(await promises.readFile(manifestPath2, "utf8"));
         if (!manifest || typeof manifest !== "object" || !("id" in manifest) || manifest.id !== entry2.name || !("name" in manifest) || typeof manifest.name !== "string" || !manifest.name.trim() || !("entry" in manifest) || manifest.entry !== "index.html") continue;
         const asset = { id: entry2.name, name: manifest.name, directory };
         if (await readAsset([asset], `/views/${entry2.name}/`)) assets.push(asset);
@@ -827,21 +960,21 @@ async function readAsset(assets, pathname) {
   const parts = segments2.filter((segment2) => segment2 !== "");
   if (parts.some((part) => part.startsWith(".") || hasUnsafePathCharacters(part)) || parts[0]?.toLowerCase() === "manifest.json") return void 0;
   try {
-    if ((await promises$1.lstat(asset.directory)).isSymbolicLink()) return void 0;
-    const root = await promises$1.realpath(asset.directory);
+    if ((await promises.lstat(asset.directory)).isSymbolicLink()) return void 0;
+    const root = await promises.realpath(asset.directory);
     let target = root;
     for (const part of parts) {
       target = path$3.join(target, part);
-      if ((await promises$1.lstat(target)).isSymbolicLink()) return void 0;
+      if ((await promises.lstat(target)).isSymbolicLink()) return void 0;
     }
-    const resolved = await promises$1.realpath(target);
-    const relative = path$3.relative(root, resolved);
-    if (relative.startsWith("..") || path$3.isAbsolute(relative) || !(await promises$1.lstat(resolved)).isFile()) return void 0;
-    const extension2 = path$3.extname(resolved).toLowerCase();
+    const resolved2 = await promises.realpath(target);
+    const relative = path$3.relative(root, resolved2);
+    if (relative.startsWith("..") || path$3.isAbsolute(relative) || !(await promises.lstat(resolved2)).isFile()) return void 0;
+    const extension2 = path$3.extname(resolved2).toLowerCase();
     const contentType = mimeTypes[extension2];
     if (!contentType) return void 0;
     return {
-      bytes: await promises$1.readFile(resolved),
+      bytes: await promises.readFile(resolved2),
       contentType,
       // A filename cannot prove content addressing. Revalidate local assets so
       // repackaging a view never leaves the browser using a stale script or style.
@@ -851,6 +984,9 @@ async function readAsset(assets, pathname) {
     if (missingAsset(error2)) return void 0;
     throw error2;
   }
+}
+function viewToken(serverToken, viewId) {
+  return node_crypto.createHmac("sha256", serverToken).update(`forge-view:${viewId}`).digest("hex");
 }
 function serverInfo(state2) {
   return {
@@ -909,11 +1045,12 @@ function processAlive(pid) {
 function running(state2, webview) {
   const selected2 = webview ? state2.webviews.find((view) => view.id === webview) : void 0;
   if (webview && !selected2) throw forgeError("INVALID_ARGUMENT", `Webview '${webview}' is not installed.`);
+  const origin = `http://127.0.0.1:${state2.port}`;
   return {
     running: true,
     stale: false,
     server: serverInfo(state2),
-    url: `http://127.0.0.1:${state2.port}${selected2?.path ?? "/"}#token=${state2.token}`,
+    url: selected2 ? `${origin}${selected2.path}#token=${viewToken(state2.token, selected2.id)}` : `${origin}/`,
     webviews: state2.webviews
   };
 }
@@ -923,19 +1060,19 @@ class NodeServerController {
   }
   options;
   async root() {
-    return promises$1.realpath(this.options.workspaceRoot);
+    return promises.realpath(this.options.workspaceRoot);
   }
   async status() {
     const state2 = await readState$1(await this.root());
     if (state2 && await healthy(state2)) return running(state2);
-    const assets = await discoverWebviews(await promises$1.realpath(this.options.distributionPath));
+    const assets = await discoverWebviews(await promises.realpath(this.options.distributionPath));
     return { ...stopped(Boolean(state2)), webviews: assets.map((asset) => ({ id: asset.id, name: asset.name, path: `/views/${asset.id}/` })) };
   }
   async start(options2) {
     const port = options2.port ?? 0;
     if (!Number.isInteger(port) || port < 0 || port > 65535) throw forgeError("INVALID_ARGUMENT", "Port must be an integer from 0 to 65535.");
     const workspaceRoot = await this.root();
-    const distributionPath = await promises$1.realpath(this.options.distributionPath);
+    const distributionPath = await promises.realpath(this.options.distributionPath);
     const assets = await discoverWebviews(distributionPath);
     if (options2.webview && !assets.some((asset) => asset.id === options2.webview)) throw forgeError("INVALID_ARGUMENT", `Webview '${options2.webview}' is not installed.`);
     const existing = await readState$1(workspaceRoot);
@@ -946,7 +1083,7 @@ class NodeServerController {
       if (latest && await healthy(latest)) return { ...running(latest, options2.webview), changed: false };
       const entry2 = path$3.join(distributionPath, "forge-server.cjs");
       try {
-        await promises$1.access(entry2);
+        await promises.access(entry2);
       } catch {
         throw forgeError("SERVER_START_FAILED", "The server runtime is missing. Rebuild or reinstall the Forge distribution.");
       }
@@ -1000,9 +1137,9 @@ class NodeServerController {
       try {
         const response = await callDaemon(state2, "POST", "/api/shutdown", 2e3);
         if (!succeeded(response.status)) throw new Error("Shutdown rejected.");
-        const deadline = Date.now() + 5e3;
+        const deadline2 = Date.now() + 5e3;
         while (process.platform === "win32" ? processAlive(state2.pid) : await healthy(state2)) {
-          if (Date.now() >= deadline) throw new Error("Shutdown timed out.");
+          if (Date.now() >= deadline2) throw new Error("Shutdown timed out.");
           await new Promise((resolve2) => setTimeout(resolve2, 75));
         }
         await removeState(workspaceRoot, state2.instanceId);
@@ -1199,18 +1336,18 @@ class EventBus {
 }
 const hostEventNamespaces = ["command", "operation", "vault", "metadataCache", "workspace", "plugin"];
 const text$m = (value2) => typeof value2 === "string" && value2.length > 0;
-const count$3 = (value2) => Number.isSafeInteger(value2) && Number(value2) >= 0;
+const count$4 = (value2) => Number.isSafeInteger(value2) && Number(value2) >= 0;
 const status$1 = (value2) => Number.isSafeInteger(value2);
 const empty$1 = (value2) => Object.keys(value2).length === 0;
-const operation$3 = (value2) => count$3(value2.operationId) && Number(value2.operationId) > 0 && typeof value2.dryRun === "boolean";
+const operation$3 = (value2) => count$4(value2.operationId) && Number(value2.operationId) > 0 && typeof value2.dryRun === "boolean";
 const error$3 = (value2) => isRecord$1(value2) && text$m(value2.code) && status$1(value2.exitCode);
 const command = (value2) => operation$3(value2) && text$m(value2.command) && text$m(value2.root) && text$m(value2.workspaceRoot);
 const workspace = (value2) => operation$3(value2) && ["read", "write", "edit", "remove", "move", "delete", "apply"].includes(String(value2.operation)) && (value2.root === null || text$m(value2.root)) && Array.isArray(value2.paths) && value2.paths.every(text$m);
 const plugin = (value2) => text$m(value2.pluginId);
 const changeOperations = ["created", "updated", "deleted"];
-const change$1 = (value2) => isRecord$1(value2) && text$m(value2.path) && text$m(value2.revision) && count$3(value2.bytes) && changeOperations.includes(String(value2.operation));
+const change$1 = (value2) => isRecord$1(value2) && text$m(value2.path) && text$m(value2.revision) && count$4(value2.bytes) && changeOperations.includes(String(value2.operation));
 const moved = (value2) => isRecord$1(value2) && text$m(value2.from) && text$m(value2.to) && ["file", "folder"].includes(String(value2.kind));
-const project$1 = (value2) => value2 === null || text$m(value2);
+const project$2 = (value2) => value2 === null || text$m(value2);
 const vault$1 = (expected, kinds) => (value2) => value2.operation === expected && kinds.includes(String(value2.kind)) && (value2.kind === "file" ? change$1(value2) && Object.keys(value2).length === 5 : text$m(value2.path) && Object.keys(value2).length === 3);
 const rename$1 = (value2) => text$m(value2.path) && text$m(value2.oldPath) && value2.path !== value2.oldPath && (value2.kind === "file" ? value2.revision === void 0 || text$m(value2.revision) : value2.kind === "folder" && value2.revision === void 0);
 function definition$2(id2, description2, validate2) {
@@ -1221,7 +1358,7 @@ const hostEventDefinitions = [
   definition$2("command.succeeded", "A routed command returned successfully.", command),
   definition$2("command.failed", "A routed command failed; error codes contain no command input.", (value2) => command(value2) && error$3(value2.error)),
   definition$2("operation.started", "A guarded workspace operation started, including previews.", workspace),
-  definition$2("operation.succeeded", "A guarded workspace operation completed, including previews.", (value2) => workspace(value2) && (value2.bytes === void 0 || count$3(value2.bytes)) && (value2.changes === void 0 || Array.isArray(value2.changes) && value2.changes.every(change$1)) && (value2.renames === void 0 || Array.isArray(value2.renames) && value2.renames.every(moved))),
+  definition$2("operation.succeeded", "A guarded workspace operation completed, including previews.", (value2) => workspace(value2) && (value2.bytes === void 0 || count$4(value2.bytes)) && (value2.changes === void 0 || Array.isArray(value2.changes) && value2.changes.every(change$1)) && (value2.renames === void 0 || Array.isArray(value2.renames) && value2.renames.every(moved))),
   definition$2("operation.failed", "A guarded workspace operation failed.", (value2) => workspace(value2) && error$3(value2.error)),
   definition$2("vault.create", "A file or folder was created by a committed write.", vault$1("created", ["file", "folder"])),
   definition$2("vault.modify", "An existing file was replaced by a committed write.", vault$1("updated", ["file"])),
@@ -1232,10 +1369,10 @@ const hostEventDefinitions = [
   definition$2("metadataCache.resolve", "A file's resolved and unresolved links were updated.", (value2) => text$m(value2.path) && Object.keys(value2).length === 1),
   definition$2("metadataCache.resolved", "Link resolution finished for a committed batch.", empty$1),
   definition$2("workspace.file-open", "A command read a file through the workspace read path.", (value2) => text$m(value2.path) && Object.keys(value2).length === 1),
-  definition$2("workspace.quick-preview", "A dry run previewed a planned file change without writing it.", (value2) => text$m(value2.path) && changeOperations.includes(String(value2.operation)) && count$3(value2.bytes) && Object.keys(value2).length === 3),
+  definition$2("workspace.quick-preview", "A dry run previewed a planned file change without writing it.", (value2) => text$m(value2.path) && changeOperations.includes(String(value2.operation)) && count$4(value2.bytes) && Object.keys(value2).length === 3),
   definition$2("workspace.layout-ready", "Plugins are active and the command is about to run.", empty$1),
   definition$2("workspace.quit", "The invocation is ending; best-effort quit tasks follow before plugins unload.", empty$1),
-  definition$2("workspace.project-change", "project open or project close committed a different project selection.", (value2) => project$1(value2.from) && project$1(value2.to) && value2.from !== value2.to && Object.keys(value2).length === 2),
+  definition$2("workspace.project-change", "project open or project close committed a different project selection.", (value2) => project$2(value2.from) && project$2(value2.to) && value2.from !== value2.to && Object.keys(value2).length === 2),
   definition$2("plugin.registered", "A plugin passed atomic contribution registration.", plugin),
   definition$2("plugin.activating", "A registered plugin is about to run its activation hook.", plugin),
   definition$2("plugin.activated", "A plugin activation hook completed successfully.", plugin),
@@ -1419,85 +1556,6 @@ class NodeEventScope {
     }
   }
 }
-function reservedPathSegment(segment2) {
-  const name2 = segment2.toLowerCase().replace(/[. ]+$/, "");
-  if (name2 === ".git") return "git";
-  if (name2 === ".agent-cli.lock" || name2.startsWith(".agent-cli-tmp-")) return "internal";
-  return void 0;
-}
-function vaultPath(input) {
-  ensure(typeof input === "string" && input.length > 0 && !/[\x00-\x1f\x7f\\:]/.test(input), "INVALID_PATH", "Use a nonempty, relative POSIX path.");
-  const parts = input.split("/");
-  ensure(parts.every((p) => p && p !== "." && p !== ".."), "INVALID_PATH", "Absolute paths, empty segments and traversal are forbidden.");
-  ensure(!parts.some((p) => reservedPathSegment(p) !== void 0), "INVALID_PATH", "Reserved workspace path.");
-  return input;
-}
-const trashFolder = ".trash";
-const isInTrash = (path2) => path2.toLowerCase() === trashFolder || path2.toLowerCase().startsWith(`${trashFolder}/`);
-function ensureSeparateDirectories(source2, destination2) {
-  vaultPath(source2);
-  vaultPath(destination2);
-  ensure(source2 !== destination2 && !source2.startsWith(`${destination2}/`) && !destination2.startsWith(`${source2}/`), "INVALID_PATH", "Import and export directories must be separate; neither may contain the other.");
-}
-const nativeFormats = {
-  markdown: ["md"],
-  canvas: ["canvas"],
-  base: ["base"],
-  image: ["avif", "bmp", "gif", "jpeg", "jpg", "png", "svg", "webp"],
-  audio: ["flac", "m4a", "mp3", "ogg", "wav", "webm", "3gp"],
-  video: ["mkv", "mov", "mp4", "ogv", "webm"],
-  pdf: ["pdf"]
-};
-const textExtensions = [
-  "ts",
-  "tsx",
-  "mts",
-  "cts",
-  "js",
-  "jsx",
-  "mjs",
-  "cjs",
-  "json",
-  "jsonc",
-  "yaml",
-  "yml",
-  "toml",
-  "ini",
-  "css",
-  "scss",
-  "less",
-  "html",
-  "htm",
-  "xml",
-  "vue",
-  "svelte",
-  "txt",
-  "log",
-  "csv",
-  "tsv",
-  "sh",
-  "ps1",
-  "psm1",
-  "psd1",
-  "py",
-  "sql"
-];
-const textFilenames = ["Dockerfile", "Containerfile"];
-const fileKinds = [...Object.keys(nativeFormats), "text", "attachment"];
-function fileKind(path2) {
-  const basename2 = path2.slice(path2.lastIndexOf("/") + 1).toLowerCase();
-  const dot = basename2.lastIndexOf(".");
-  const ext = dot < 0 ? "" : basename2.slice(dot + 1);
-  const native = Object.entries(nativeFormats).find(([, extensions]) => extensions.includes(ext))?.[0];
-  const namedText = textFilenames.some((name2) => {
-    const lower = name2.toLowerCase();
-    return basename2 === lower || basename2.startsWith(`${lower}.`) && /^[^.]/.test(basename2.slice(lower.length + 1));
-  });
-  return native ?? (textExtensions.includes(ext) || namedText ? "text" : "attachment");
-}
-const isTextContent = (path2, text2) => fileKind(path2) !== "text" || !text2.includes("\0");
-const isStructured = (path2) => ["markdown", "canvas", "base"].includes(fileKind(path2));
-const isTextLike = (path2) => isStructured(path2) || fileKind(path2) === "text";
 function snapshotWriteRequests(writes) {
   ensure(Array.isArray(writes) && Array.from(writes).every((write) => isRecord$1(write) && typeof write.path === "string" && write.bytes instanceof Uint8Array && (write.expectedRevision === void 0 || typeof write.expectedRevision === "string")), "INVALID_PLAN", "Write plans must contain file requests with Uint8Array bytes.");
   return writes.map((write) => ({ path: vaultPath(write.path), bytes: Uint8Array.from(write.bytes), expectedRevision: write.expectedRevision }));
@@ -1616,7 +1674,7 @@ function snapshotBatch(batch) {
 const vaultEvents = { created: "vault.create", updated: "vault.modify", deleted: "vault.delete" };
 const changeSummary = (result) => ({
   changes: result.changes.map(({ path: path2, revision: revision2, operation: operation2, bytes }) => ({ path: path2, revision: revision2, operation: operation2, bytes })),
-  bytes: result.changes.reduce((total, change2) => total + change2.bytes, 0),
+  bytes: result.changes.reduce((total2, change2) => total2 + change2.bytes, 0),
   ...result.renames ? { renames: result.renames.map(({ from, to, kind: kind2 }) => ({ from, to, kind: kind2 })) } : {}
 });
 const into = (path2, folder) => path2 === folder || path2.startsWith(`${folder}/`);
@@ -1872,8 +1930,9 @@ function pluginEvents(bus, pluginId) {
     once: (id2, listener) => bus.once(id2, listener),
     onAny: (listener) => bus.onAny(listener),
     replay: (listener) => bus.replay(listener),
-    // Plugins are plain JavaScript and may pass any value; it is reported as text, never as a host message.
-    warn: (message2) => bus.warn(warningText(message2)),
+    // Plugins are plain JavaScript and may pass any value; it is reported as text. Only a message the host created
+    // with kernelMessage (which core plugins import from the kernel domain) renders from the host catalog.
+    warn: (message2) => bus.warn(isKernelMessage(message2) ? message2 : warningText(message2)),
     onLayoutReady: (callback) => bus.onLayoutReady(callback),
     onQuit: (task2) => bus.onQuit(task2),
     async emit(id2, payload2) {
@@ -1887,7 +1946,7 @@ function pluginEvents(bus, pluginId) {
 const jsonSchemaDialect = "https://json-schema.org/draft/2020-12/schema";
 const types$2 = ["object", "array", "string", "number", "integer", "boolean", "null"];
 const record$5 = (value2) => value2 !== null && typeof value2 === "object" && !Array.isArray(value2);
-const count$2 = (value2) => Number.isSafeInteger(value2) && Number(value2) >= 0;
+const count$3 = (value2) => Number.isSafeInteger(value2) && Number(value2) >= 0;
 const keywords = {
   $schema: (value2, path2) => value2 === jsonSchemaDialect ? [] : [`${path2}.$schema must be ${jsonSchemaDialect}`],
   title: (value2, path2) => typeof value2 === "string" ? [] : [`${path2}.title must be a string`],
@@ -1898,10 +1957,10 @@ const keywords = {
   additionalProperties: (value2, path2) => typeof value2 === "boolean" ? [] : schemaIssues(value2, `${path2}.additionalProperties`),
   items: (value2, path2) => schemaIssues(value2, `${path2}.items`),
   prefixItems: (value2, path2) => Array.isArray(value2) ? value2.flatMap((schema2, index2) => schemaIssues(schema2, `${path2}.prefixItems[${index2}]`)) : [`${path2}.prefixItems must be an array`],
-  minItems: (value2, path2) => count$2(value2) ? [] : [`${path2}.minItems must be a nonnegative integer`],
-  maxItems: (value2, path2) => count$2(value2) ? [] : [`${path2}.maxItems must be a nonnegative integer`],
-  minLength: (value2, path2) => count$2(value2) ? [] : [`${path2}.minLength must be a nonnegative integer`],
-  maxLength: (value2, path2) => count$2(value2) ? [] : [`${path2}.maxLength must be a nonnegative integer`],
+  minItems: (value2, path2) => count$3(value2) ? [] : [`${path2}.minItems must be a nonnegative integer`],
+  maxItems: (value2, path2) => count$3(value2) ? [] : [`${path2}.maxItems must be a nonnegative integer`],
+  minLength: (value2, path2) => count$3(value2) ? [] : [`${path2}.minLength must be a nonnegative integer`],
+  maxLength: (value2, path2) => count$3(value2) ? [] : [`${path2}.maxLength must be a nonnegative integer`],
   minimum: (value2, path2) => Number.isFinite(value2) ? [] : [`${path2}.minimum must be a number`],
   maximum: (value2, path2) => Number.isFinite(value2) ? [] : [`${path2}.maximum must be a number`],
   enum: (value2, path2) => Array.isArray(value2) && value2.length > 0 ? [] : [`${path2}.enum must be a nonempty array`],
@@ -1957,7 +2016,7 @@ function oneOf$1(branches, value2, at, issues2) {
   const matching = outcomes.filter((outcome) => outcome.issues.length === 0);
   if (matching.length === 1) return matching[0].value;
   if (matching.length > 1) issues2.push(`${at}: matches ${matching.length} schemas of oneOf; exactly one must match`);
-  else issues2.push(...outcomes.reduce((closest, outcome) => closer(outcome.issues, closest.issues) ? outcome : closest).issues);
+  else issues2.push(...outcomes.reduce((closest2, outcome) => closer(outcome.issues, closest2.issues) ? outcome : closest2).issues);
   return value2;
 }
 function validateJsonValue(schema2, value2, path2) {
@@ -2004,6 +2063,78 @@ function validateJsonValue(schema2, value2, path2) {
   const completed2 = visit2(schema2, value2 === void 0 && schema2.default !== void 0 ? copy$1(schema2.default) : value2, path2);
   return { value: completed2, issues: issues2 };
 }
+const commandSynonyms = {
+  ls: ["list"],
+  dir: ["list"],
+  cat: ["read"],
+  show: ["read"],
+  view: ["read"],
+  get: ["read"],
+  head: ["read"],
+  grep: ["search"],
+  find: ["search"],
+  rg: ["search"],
+  mv: ["move"],
+  ren: ["rename"],
+  rm: ["delete"],
+  del: ["delete"],
+  remove: ["delete"],
+  unlink: ["delete"],
+  touch: ["create"],
+  new: ["create"],
+  cp: ["read", "create"],
+  copy: ["read", "create"],
+  info: ["stat"],
+  version: ["--version"]
+};
+const optionSynonyms = {
+  v: ["--version"],
+  preview: ["--dry-run"],
+  "what-if": ["--dry-run"],
+  simulate: ["--dry-run"],
+  noop: ["--dry-run"],
+  force: ["--if-match"],
+  f: ["--if-match"],
+  yes: ["--if-match"],
+  y: ["--if-match"],
+  overwrite: ["--if-match"]
+};
+const forceOptions = ["--force", "-f", "--yes", "-y", "--overwrite"];
+const copyCommands = ["cp", "copy"];
+const maximumSuggestions = 3;
+function editDistance$1(a, b) {
+  const rows = Array.from({ length: a.length + 1 }, (_, i) => Array.from({ length: b.length + 1 }, (_2, j) => i === 0 ? j : j === 0 ? i : 0));
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      let cost = Math.min(rows[i - 1][j] + 1, rows[i][j - 1] + 1, rows[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) cost = Math.min(cost, rows[i - 2][j - 2] + 1);
+      rows[i][j] = cost;
+    }
+  }
+  return rows[a.length][b.length];
+}
+function closest(input, candidates2) {
+  const wanted = input.toLowerCase(), limit = Math.max(1, Math.floor(wanted.length / 3));
+  return candidates2.map((candidate, order2) => ({ candidate, order: order2, score: wanted.length >= 2 && candidate.toLowerCase().startsWith(wanted) ? 0 : editDistance$1(wanted, candidate.toLowerCase()) })).filter((entry2) => entry2.score <= limit).sort((a, b) => a.score - b.score || a.order - b.order).slice(0, maximumSuggestions).map((entry2) => entry2.candidate);
+}
+function merged(synonyms, spelled, accepted2) {
+  return [.../* @__PURE__ */ new Set([...synonyms ?? [], ...spelled])].filter(accepted2).slice(0, maximumSuggestions);
+}
+function commandSuggestions(id2, ids) {
+  const known2 = new Set(ids);
+  const synonyms = Object.hasOwn(commandSynonyms, id2.toLowerCase()) ? commandSynonyms[id2.toLowerCase()] : void 0;
+  return merged(synonyms, closest(id2, ids), (suggestion2) => known2.has(suggestion2) || suggestion2 === "--version");
+}
+function actionSuggestions(action2, actions2) {
+  return closest(action2, actions2);
+}
+function optionSuggestions(token, accepts) {
+  const name2 = token.replace(/^-+/, "").split("=")[0];
+  const flags = accepts.map((option2) => `--${option2}`), known2 = new Set(flags);
+  const key = name2.toLowerCase();
+  const synonyms = Object.hasOwn(optionSynonyms, key) ? optionSynonyms[key] : void 0;
+  return merged(synonyms, closest(name2, accepts).map((option2) => `--${option2}`), (suggestion2) => known2.has(suggestion2));
+}
 const unknownActionCodes = ["UNKNOWN_GENERATOR", "INVALID_ARGUMENT"];
 const documentSchema = (value2) => value2 === void 0 || schemaIssues(value2).length === 0;
 const option$1 = {
@@ -2035,10 +2166,12 @@ function hasActionOptions(command2) {
 function ensureKnownAction(command2, args) {
   const action2 = args[0];
   if (command2.unknownAction === void 0 || action2 === void 0 || action2.startsWith("-")) return;
-  if (command2.actions === void 0 || !Object.hasOwn(command2.actions, action2)) unknownAction(command2.unknownAction, action2);
+  if (command2.actions === void 0 || !Object.hasOwn(command2.actions, action2)) unknownAction(command2.unknownAction, command2, action2);
 }
-function unknownAction(code2, action2) {
-  throw forgeError(code2, action2);
+function unknownAction(code2, command2, action2) {
+  const allowed = Object.keys(command2.actions ?? {}), suggestions2 = actionSuggestions(action2, allowed);
+  const message2 = code2 === "UNKNOWN_GENERATOR" ? `Unknown generator ${action2}. Generators: ${allowed.join(", ")}.` : `Unknown ${command2.id} action ${action2}. Actions: ${allowed.join(", ")}.`;
+  throw forgeError(code2, message2, { [code2 === "UNKNOWN_GENERATOR" ? "generator" : "action"]: action2, allowed, suggestions: suggestions2 });
 }
 function optionTypes(options2) {
   return Object.fromEntries(Object.entries(options2 ?? {}).map(([key, schema2]) => [key, schema2.type]));
@@ -2155,7 +2288,7 @@ function commandAnnotations(command2) {
     })) } : {}
   };
 }
-const reservedOptions = ["root", "lang", "events", "json", "no-json", "dry-run", "no-dry-run", "no-plugins", "help", "version"];
+const reservedOptions = ["root", "lang", "events", "json", "no-json", "dry-run", "no-dry-run", "no-plugins", "wait", "help", "version"];
 const flag$1 = /^[a-z][a-z0-9-]*$/;
 const text$l = (value2) => typeof value2 === "string" && value2.trim().length > 0;
 function validateOptions(options2, shared = {}) {
@@ -2167,6 +2300,7 @@ function validateOptions(options2, shared = {}) {
     ensure(schema2.default === void 0 || typeof schema2.default === schema2.type, "INVALID_PLUGIN", `Command option ${key} default must match its type.`);
     ensure(schema2.required === void 0 || typeof schema2.required === "boolean", "INVALID_PLUGIN", `Command option ${key} required must be a boolean.`);
     ensure(documentSchema(schema2.schema) && (schema2.schema === void 0 || schema2.type === "string"), "INVALID_PLUGIN", `Command option ${key} schema must be a supported JSON Schema on a string option.`);
+    ensure(schema2.path === void 0 || typeof schema2.path === "boolean" && schema2.type === "string", "INVALID_PLUGIN", `Command option ${key} path must be a boolean on a string option.`);
   }
 }
 function validateMode(mode, where2, options2) {
@@ -2182,7 +2316,7 @@ function validateCommandMetadata(command2) {
   const options2 = command2.options ?? {};
   validateOptions(options2);
   validateMode(command2, where2, options2);
-  ensure(command2.args === void 0 || Array.isArray(command2.args) && command2.args.every((arg, index2, all2) => isRecord$1(arg) && text$l(arg.name) && text$l(arg.description) && (arg.variadic === void 0 || arg.variadic === true && index2 === all2.length - 1) && documentSchema(arg.schema)), "INVALID_PLUGIN", `${where2} args must list named, described arguments with supported schemas; only the last may be variadic.`);
+  ensure(command2.args === void 0 || Array.isArray(command2.args) && command2.args.every((arg, index2, all2) => isRecord$1(arg) && text$l(arg.name) && text$l(arg.description) && (arg.variadic === void 0 || arg.variadic === true && index2 === all2.length - 1) && documentSchema(arg.schema) && (arg.path === void 0 || typeof arg.path === "boolean")), "INVALID_PLUGIN", `${where2} args must list named, described arguments with supported schemas and boolean path flags; only the last may be variadic.`);
   ensure(command2.actions === void 0 || isRecord$1(command2.actions), "INVALID_PLUGIN", `${where2} actions must be an object.`);
   for (const [id2, action2] of Object.entries(command2.actions ?? {})) {
     ensure(isRecord$1(action2) && text$l(action2.description) && (action2.usage === void 0 || text$l(action2.usage)), "INVALID_PLUGIN", `${where2} action ${id2} requires a description.`);
@@ -2192,6 +2326,7 @@ function validateCommandMetadata(command2) {
   }
   ensure(command2.defaultAction === void 0 || typeof command2.defaultAction === "string" && isRecord$1(command2.actions) && Object.hasOwn(command2.actions, command2.defaultAction), "INVALID_PLUGIN", `${where2} defaultAction must name a declared action.`);
   ensure(command2.unknownAction === void 0 || unknownActionCodes.includes(command2.unknownAction) && isRecord$1(command2.actions), "INVALID_PLUGIN", `${where2} unknownAction must be ${unknownActionCodes.join(" or ")} for a command with actions.`);
+  ensure(command2.examples === void 0 || Array.isArray(command2.examples) && command2.examples.length >= 1 && command2.examples.length <= 3 && command2.examples.every((example) => typeof example === "string" && (example === command2.id || example.startsWith(`${String(command2.id)} `))), "INVALID_PLUGIN", `${where2} examples must list one to three invocations that start with the command id.`);
   ensure(command2.errors === void 0 || Array.isArray(command2.errors) && command2.errors.every((code2) => typeof code2 === "string" && /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code2)), "INVALID_PLUGIN", `${where2} errors must list UPPER_SNAKE_CASE codes.`);
 }
 const languages = ["en", "de"];
@@ -2603,12 +2738,17 @@ const globalOptions = {
   "dry-run": "boolean",
   "no-dry-run": "boolean",
   "no-plugins": "boolean",
+  wait: "string",
   help: "boolean",
   version: "boolean"
 };
+const maximumWaitMs = 6e5;
+function requiredOptionMessage(key) {
+  return key === "if-match" ? "--if-match is required: pass the current revision, data.revision from read or stat (a move, rename or delete dry run reports it too)." : `--${key} is required.`;
+}
 function value$2(flags, key, required2 = false) {
   const result = flags[key];
-  ensure(!required2 || typeof result === "string", "MISSING_ARGUMENT", `--${key} is required.`);
+  if (required2 && typeof result !== "string") throw forgeError("MISSING_ARGUMENT", requiredOptionMessage(key), { option: key });
   return typeof result === "string" ? result : void 0;
 }
 function integer$2(flags, key, minimum = 0) {
@@ -2617,8 +2757,14 @@ function integer$2(flags, key, minimum = 0) {
   ensure(/^\d+$/.test(text2) && Number.isSafeInteger(Number(text2)) && Number(text2) >= minimum, "INVALID_ARGUMENT", `--${key} must be an integer of at least ${minimum}.`);
   return Number(text2);
 }
+function waitBudget(flags) {
+  const wait = integer$2(flags, "wait") ?? 0;
+  ensure(wait <= maximumWaitMs, "INVALID_ARGUMENT", `--wait must be at most ${maximumWaitMs} milliseconds.`);
+  return wait;
+}
 function arity(args, min, max = min) {
-  ensure(args.length >= min && args.length <= max, "INVALID_ARGUMENT", `Expected ${min === max ? min : `${min}–${max}`} positional arguments.`);
+  const expected = `${min === max ? min : `${min}–${max}`} positional argument${max === 1 ? "" : "s"}`;
+  ensure(args.length >= min && args.length <= max, "INVALID_ARGUMENT", `Expected ${expected}, got ${args.length}.`, { minimum: min, maximum: max, received: args.length });
 }
 async function readInputBytes(flags, context, message2) {
   const from = value$2(flags, "from"), content2 = value$2(flags, "content");
@@ -2627,7 +2773,7 @@ async function readInputBytes(flags, context, message2) {
 }
 function parseJson(text2) {
   try {
-    return JSON.parse(text2);
+    return JSON.parse(text2.startsWith("\uFEFF") ? text2.slice(1) : text2);
   } catch {
     throw forgeError("INVALID_JSON", "Expected valid JSON input.");
   }
@@ -2668,24 +2814,28 @@ function generationOutputPath(path2, project2) {
   return project2 ? `${project2.directory}/${relative}` : relative;
 }
 const hostGeneratorOptions = ["out", "plan", "plan-out", "check", "revisions-from"];
-const appVersion = [0, 1, 0];
-function validatePluginManifest(value2, origin = "user") {
+function validatePluginManifest(value2, appVersion, origin = "user") {
   ensure(isRecord$1(value2) && typeof value2.id === "string" && /^[a-z][a-z0-9-]*$/.test(value2.id), "INVALID_PLUGIN", "Plugin manifest requires a lowercase kebab-case id.");
   ensurePluginNamespace(value2.id);
   ensure(origin === "core" ? value2.core === true : value2.core === void 0, "PLUGIN_NAMESPACE", origin === "core" ? `Bundled plugin ${value2.id} must declare core: true.` : `Plugin ${value2.id} cannot declare core; only bundled core plugins are core plugins.`);
   for (const key of ["name", "description", "author"]) ensure(typeof value2[key] === "string" && value2[key].trim().length > 0, "INVALID_PLUGIN", `Plugin manifest requires ${key}.`);
   for (const key of ["version", "minAppVersion"]) ensure(typeof value2[key] === "string" && /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value2[key]), "INVALID_PLUGIN", `Plugin manifest requires a numeric ${key}.`);
-  const minimum = value2.minAppVersion.split(".").map(Number);
-  const firstDifference = minimum.findIndex((part, index2) => part !== appVersion[index2]);
-  ensure(firstDifference === -1 || minimum[firstDifference] < appVersion[firstDifference], "INCOMPATIBLE_PLUGIN", `Plugin ${value2.id} requires agent-cli ${value2.minAppVersion} or newer.`);
+  const minimum = value2.minAppVersion.split(".").map(Number), running2 = appVersion.split(".").map(Number);
+  const firstDifference = minimum.findIndex((part, index2) => part !== running2[index2]);
+  ensure(firstDifference === -1 || minimum[firstDifference] < running2[firstDifference], "INCOMPATIBLE_PLUGIN", `Plugin ${value2.id} requires The Forge ${value2.minAppVersion} or newer; this is ${appVersion}.`);
 }
 const availabilityErrors = (errors2 = []) => errors2.includes("PLUGIN_UNAVAILABLE") ? errors2 : [...errors2, "PLUGIN_UNAVAILABLE"];
 class Registry {
-  /** `skillFrontmatter` reads the frontmatter of contributed SKILL.md files for their specification checks. */
-  constructor(skillFrontmatter2) {
+  /**
+   * `skillFrontmatter` reads the frontmatter of contributed SKILL.md files for their specification checks;
+   * `appVersion` is the running Forge version that plugin manifests' `minAppVersion` must not exceed.
+   */
+  constructor(skillFrontmatter2, appVersion) {
     this.skillFrontmatter = skillFrontmatter2;
+    this.appVersion = appVersion;
   }
   skillFrontmatter;
+  appVersion;
   commands = /* @__PURE__ */ new Map();
   generators = /* @__PURE__ */ new Map();
   skills = /* @__PURE__ */ new Map();
@@ -2716,7 +2866,7 @@ class Registry {
   register(plugin2, events2, origin = "user") {
     ensure(this.state === "registering", "PLUGIN_LIFECYCLE", "Plugins must register before activation.");
     ensure(isRecord$1(plugin2), "INVALID_PLUGIN", "Plugin must export an object or class.");
-    validatePluginManifest(plugin2.manifest, origin);
+    validatePluginManifest(plugin2.manifest, this.appVersion, origin);
     const pluginId = plugin2.manifest.id;
     ensure(!this.origins.has(pluginId) && !this.disabled.some((manifest) => manifest.id === pluginId), "DUPLICATE_PLUGIN", pluginId);
     validateContributions(plugin2, pluginId, origin, this.skillFrontmatter);
@@ -2743,7 +2893,7 @@ class Registry {
   }
   /** A bundled core plugin listed in `plugins.disabled`: it contributes nothing and `plugins` lists it with `reason`. */
   disable(manifest, reason) {
-    validatePluginManifest(manifest, "core");
+    validatePluginManifest(manifest, this.appVersion, "core");
     ensure(!this.origins.has(manifest.id) && !this.disabled.some((entry2) => entry2.id === manifest.id), "DUPLICATE_PLUGIN", manifest.id);
     this.disabled.push(manifest);
     this.disabledReasons.set(manifest.id, reason);
@@ -2761,10 +2911,13 @@ class Registry {
   disabledReason(pluginId) {
     return this.disabledReasons.get(pluginId);
   }
-  /** A registered command, including one of an unavailable plugin; any other id fails with UNKNOWN_COMMAND. */
+  /**
+   * A registered command, including one of an unavailable plugin; any other id fails with UNKNOWN_COMMAND, whose
+   * `details` `{command, suggestions}` suggest registered commands spelled alike or doing what the id names elsewhere.
+   */
   resolveCommand(commandId) {
     const command2 = this.commands.get(commandId);
-    ensure(command2, "UNKNOWN_COMMAND", `Unknown command ${commandId}. Run help or schema.`);
+    ensure(command2, "UNKNOWN_COMMAND", `Unknown command ${commandId}. Run help or schema.`, { command: commandId, suggestions: commandSuggestions(commandId, [...this.commands.keys()]) });
     return command2;
   }
   /**
@@ -10752,12 +10905,12 @@ ${document2.toString({ lineWidth: 0 })}`);
   }
 };
 const missing$2 = (error2) => error2.code === "ENOENT";
-const temporary = (target) => path$3.join(path$3.dirname(target), `.agent-cli-tmp-${node_crypto.randomUUID()}`);
+const temporary = (target) => path$3.join(path$3.dirname(target), `${temporaryPrefix}${node_crypto.randomUUID()}`);
 const inside$1 = (path2, folder) => path2 === folder || path2.startsWith(`${folder}/`);
 const entryRevision = (entry2) => entry2.kind === "file" ? entry2.stored.revision : entry2.snapshot.revision;
 async function exists(target) {
   try {
-    return await promises$1.lstat(target);
+    return await promises.lstat(target);
   } catch (error2) {
     if (missing$2(error2)) return void 0;
     throw error2;
@@ -10846,12 +10999,21 @@ class Transaction {
     const target = await this.host.resolvePath(path2, true);
     const info = await exists(target);
     if (!info) return void 0;
-    if ((await promises$1.lstat(target)).isDirectory()) {
+    if ((await promises.lstat(target)).isDirectory()) {
       const snapshot = await this.host.folder(path2);
-      ensure(!protectGit || !snapshot.git, "PROTECTED_PATH", `Folder ${path2} contains a Git repository; Forge never moves or removes .git.`);
-      return { kind: "folder", snapshot };
+      if (snapshot && protectGit) await this.ensureMovable(path2, target, snapshot);
+      return snapshot && { kind: "folder", snapshot };
     }
-    return { kind: "file", stored: await this.host.stored(path2) };
+    const stored = await this.host.stored(path2);
+    return stored && { kind: "file", stored };
+  }
+  /**
+   * A folder that is moved or removed holds no Git repository and no writer lock of a nested root whose holder may
+   * still run: moving or deleting the lock would let that writer and a new one write at once.
+   */
+  async ensureMovable(path2, target, snapshot) {
+    ensure(!snapshot.git, "PROTECTED_PATH", `Folder ${path2} contains a Git repository; Forge never moves or removes .git.`);
+    for (const lock of snapshot.locks) await ensureNotHeld(path$3.join(target, lock), `${path2}/${lock}`);
   }
   async planRenames(conflicts2) {
     const plans = [];
@@ -10860,16 +11022,23 @@ class Transaction {
       if (!entry2) throw forgeError("NOT_FOUND", `File or folder not found: ${request.from}`);
       if (entryRevision(entry2) !== request.expectedRevision) conflicts2.push(revisionConflict(request.from, request.expectedRevision, entryRevision(entry2)));
       const source2 = await this.host.resolvePath(request.from, true), target = await this.host.resolvePath(request.to, true);
+      await this.ensureOutside(request, source2);
       const caseOnly = await this.caseOnly(request, source2, target);
       plans.push({ request, source: source2, target, entry: entry2, caseOnly });
     }
     return plans;
   }
+  /** A destination inside the source under another letter case is the source's own subfolder on case-insensitive filesystems. */
+  async ensureOutside(request, source2) {
+    if (!request.to.toLowerCase().startsWith(`${request.from.toLowerCase()}/`)) return;
+    const alias = await exists(path$3.join(this.host.root, request.to.slice(0, request.from.length))), original = await promises.lstat(source2);
+    ensure(alias?.ino !== original.ino || alias.dev !== original.dev, "INVALID_MOVE", `Cannot move ${request.from} into itself: ${request.to}`, { path: request.to, from: request.from });
+  }
   /** A destination that exists is refused, unless it is the source itself under another letter case (case-insensitive filesystems). */
   async caseOnly(request, source2, target) {
     const existing = await exists(target);
     if (!existing) return false;
-    const original = await promises$1.lstat(source2);
+    const original = await promises.lstat(source2);
     const same2 = request.from.toLowerCase() === request.to.toLowerCase() && existing.ino === original.ino && existing.dev === original.dev;
     ensure(same2, "DESTINATION_EXISTS", `Destination already exists: ${request.to}`, { path: request.to, from: request.from });
     return true;
@@ -10909,7 +11078,7 @@ class Transaction {
     for (const [index2, part] of parts.slice(0, -1).entries()) {
       directory = path$3.join(directory, part);
       try {
-        await promises$1.mkdir(directory);
+        await promises.mkdir(directory);
         this.createdDirectories.push(directory);
         this.folders.push(parts.slice(0, index2 + 1).join("/"));
         this.touched.add(path$3.dirname(directory));
@@ -10925,7 +11094,7 @@ class Transaction {
       return;
     }
     const snapshot = await this.host.folder(path2);
-    ensure(!snapshot?.git, "PROTECTED_PATH", `Folder ${path2} contains a Git repository; Forge never moves or removes .git.`);
+    if (snapshot) await this.ensureMovable(path2, await this.host.resolvePath(path2, true), snapshot);
     const current = snapshot?.revision;
     ensure(current === expected, "CONFLICT", `Folder changed; read again before modifying: ${path2}`, revisionConflict(path2, expected, current));
   }
@@ -10970,7 +11139,7 @@ class Transaction {
     for (const plan of removes) {
       await this.verify(plan.request.path, plan.entry, plan.request.expectedRevision);
       const temp = temporary(plan.target);
-      await retryTransient(() => promises$1.rename(plan.target, temp));
+      await retryTransient(() => promises.rename(plan.target, temp));
       plan.temp = temp;
       this.committedRemoves.push(plan);
       this.touched.add(path$3.dirname(plan.target));
@@ -10987,11 +11156,11 @@ class Transaction {
   async move(plan, source2, target) {
     if (plan.caseOnly) {
       const temp = temporary(source2);
-      await retryTransient(() => promises$1.rename(source2, temp));
+      await retryTransient(() => promises.rename(source2, temp));
       try {
-        await retryTransient(() => promises$1.rename(temp, target));
+        await retryTransient(() => promises.rename(temp, target));
       } catch (error2) {
-        await retryTransient(() => promises$1.rename(temp, source2)).catch(() => {
+        await retryTransient(() => promises.rename(temp, source2)).catch(() => {
         });
         throw error2;
       }
@@ -11000,12 +11169,17 @@ class Transaction {
     const occupied = () => forgeError("DESTINATION_EXISTS", `Destination already exists: ${plan.request.to}`, { path: plan.request.to, from: plan.request.from });
     if (plan.entry.kind === "file" && await this.linkInPlace(source2, target, occupied)) return;
     if (await exists(target)) throw occupied();
-    await retryTransient(() => promises$1.rename(source2, target));
+    try {
+      await retryTransient(() => promises.rename(source2, target));
+    } catch (error2) {
+      if (error2.code === "EINVAL") throw forgeError("INVALID_MOVE", `Cannot move ${plan.request.from} into itself: ${plan.request.to}`, { path: plan.request.to, from: plan.request.from });
+      throw error2;
+    }
   }
   /** Moves a file by hard link and unlink; false when the filesystem has no hard links. */
   async linkInPlace(source2, target, occupied) {
     try {
-      await retryTransient(() => promises$1.link(source2, target), { codes: ["EBUSY"] });
+      await retryTransient(() => promises.link(source2, target), { codes: ["EBUSY"] });
     } catch (error2) {
       const code2 = error2.code ?? "";
       if (code2 === "EEXIST") throw occupied();
@@ -11013,9 +11187,9 @@ class Transaction {
       throw error2;
     }
     try {
-      await retryTransient(() => promises$1.unlink(source2));
+      await retryTransient(() => promises.unlink(source2));
     } catch (error2) {
-      await retryTransient(() => promises$1.unlink(target)).catch(() => {
+      await retryTransient(() => promises.unlink(target)).catch(() => {
       });
       throw error2;
     }
@@ -11025,7 +11199,7 @@ class Transaction {
   async finalize() {
     for (const plan of this.committedRemoves) {
       try {
-        await retryTransient(() => promises$1.rm(plan.temp, { recursive: true, force: true }));
+        await retryTransient(() => promises.rm(plan.temp, { recursive: true, force: true }));
       } catch (error2) {
         this.host.warn(kernelMessage("REMOVAL_TEMPORARY_LEFT", { path: plan.request.path, temporary: plan.temp, diagnostic: String(error2) }));
       }
@@ -11038,13 +11212,13 @@ class Transaction {
     }
   }
   async rollback() {
-    for (const index2 of this.staged.keys()) if (this.staged[index2]) await retryTransient(() => promises$1.rm(this.stagedAt(index2), { force: true })).catch(() => {
+    for (const index2 of this.staged.keys()) if (this.staged[index2]) await retryTransient(() => promises.rm(this.stagedAt(index2), { force: true })).catch(() => {
     });
     const failures = [];
     for (const plan of this.committedRemoves.reverse()) {
       try {
         ensure(!await exists(plan.target), "ROLLBACK_FAILED", plan.target);
-        await retryTransient(() => promises$1.rename(plan.temp, plan.target));
+        await retryTransient(() => promises.rename(plan.temp, plan.target));
       } catch {
         failures.push(plan.target);
       }
@@ -11055,7 +11229,7 @@ class Transaction {
         if (entry2.before) await this.host.replace(entry2.target, entry2.before.bytes, entry2.before.mode, verify);
         else {
           await verify();
-          await retryTransient(() => promises$1.rm(entry2.target));
+          await retryTransient(() => promises.rm(entry2.target));
         }
       } catch {
         failures.push(entry2.target);
@@ -11084,7 +11258,7 @@ class Transaction {
   async removeCreatedDirectories() {
     for (const directory of [...this.createdDirectories].reverse()) {
       try {
-        await retryTransient(() => promises$1.rmdir(directory));
+        await retryTransient(() => promises.rmdir(directory));
         this.touched.delete(directory);
       } catch {
       }
@@ -11107,7 +11281,7 @@ class Transaction {
 }
 const unsupported$1 = /* @__PURE__ */ new Set(["EISDIR", "EPERM", "EINVAL"]);
 const isUnsupported = (error2) => unsupported$1.has(String(error2?.code));
-async function syncDirectory(path2, openDirectory = (directory) => promises$1.open(directory, "r")) {
+async function syncDirectory(path2, openDirectory = (directory) => promises.open(directory, "r")) {
   let handle;
   try {
     handle = await openDirectory(path2);
@@ -11125,25 +11299,49 @@ async function syncDirectory(path2, openDirectory = (directory) => promises$1.op
 }
 const revisionOf = (bytes) => node_crypto.createHash("sha256").update(bytes).digest("hex");
 const missing$1 = (error2) => error2.code === "ENOENT";
+const unusablePath = /* @__PURE__ */ new Set(["ENAMETOOLONG", "ENOTDIR", "ELOOP"]);
+function pathFailure(error2, path2) {
+  const code2 = error2.code ?? "";
+  return unusablePath.has(code2) ? forgeError("INVALID_PATH", `Path cannot be used on this filesystem (${code2}): ${path2}`, { path: path2, reason: code2 }) : error2;
+}
+function entryName(name2, folder) {
+  const decoded2 = name2.toString("utf8");
+  ensure(Buffer.from(decoded2, "utf8").equals(name2), "INVALID_PATH", `Folder ${folder} holds an entry whose name is not valid UTF-8: ${decoded2}`, { path: folder, entry: decoded2 });
+  return decoded2;
+}
+const commitQueues = /* @__PURE__ */ new Map();
+function queued(lock, task2) {
+  const run2 = (commitQueues.get(lock) ?? Promise.resolve()).then(task2);
+  const tail = run2.catch(() => {
+  });
+  commitQueues.set(lock, tail);
+  void tail.then(() => {
+    if (commitQueues.get(lock) === tail) commitQueues.delete(lock);
+  });
+  return run2;
+}
 const cacheFolder = ".forge/cache";
 const unlisted = (name2, path2) => reservedPathSegment(name2) !== void 0 || name2.toLowerCase() === "node_modules" || path2.toLowerCase() === cacheFolder;
 const stagingConcurrency = 8;
 class NodeFiles {
-  constructor(root, warning2, owner) {
+  constructor(root, warning2, owner, wait) {
     this.root = root;
     this.warning = warning2;
     this.owner = owner;
+    this.wait = wait;
   }
   root;
   warning;
   owner;
+  wait;
   /**
    * `warn` receives coded diagnostics, such as a stale writer lock a commit removed or a lock it could not release;
-   * `owner` names the invocation recorded in the writer lock. Composition code supplies both.
+   * `owner` names the invocation recorded in the writer lock and `wait` how many milliseconds a commit may wait for
+   * another process's writer lock (`--wait`). Composition code supplies them.
    */
   static async at(root, warn = () => {
-  }, owner = () => ({})) {
-    return new NodeFiles(await promises$1.realpath(path$3.resolve(root)), warn, owner);
+  }, owner = () => ({}), wait = () => 0) {
+    return new NodeFiles(await promises.realpath(path$3.resolve(root)), warn, owner, wait);
   }
   /** The absolute path, refusing symlinks and parents that are not folders; the final segment may be a folder only when `allowFolder` is set. */
   async resolvePath(path2, allowFolder = false) {
@@ -11152,28 +11350,28 @@ class NodeFiles {
     for (const [index2, part] of parts.entries()) {
       current = path$3.join(current, part);
       try {
-        const info = await promises$1.lstat(current);
+        const info = await promises.lstat(current);
         ensure(!info.isSymbolicLink(), "UNSAFE_PATH", `Symlinks are not supported: ${path2}`);
         ensure(index2 === parts.length - 1 ? info.isFile() || allowFolder && info.isDirectory() : info.isDirectory(), "INVALID_PATH", `Not a regular file path: ${path2}`);
       } catch (error2) {
-        if (!missing$1(error2)) throw error2;
+        if (!missing$1(error2)) throw pathFailure(error2, path2);
       }
     }
     return current;
   }
   async read(path2) {
     try {
-      const bytes = await promises$1.readFile(await this.resolvePath(path2));
+      const bytes = await promises.readFile(await this.resolvePath(path2));
       return { path: path2, bytes, revision: revisionOf(bytes) };
     } catch (error2) {
       if (missing$1(error2)) throw forgeError("NOT_FOUND", `File not found: ${path2}`);
-      throw error2;
+      throw pathFailure(error2, path2);
     }
   }
   async list() {
     const result = [];
     const walk2 = async (directory, prefix) => {
-      for (const entry2 of await promises$1.readdir(directory, { withFileTypes: true })) {
+      for (const entry2 of await promises.readdir(directory, { withFileTypes: true })) {
         if (unlisted(entry2.name, prefix + entry2.name)) continue;
         const path2 = prefix + entry2.name;
         if (entry2.isDirectory()) await walk2(path$3.join(directory, entry2.name), path2 + "/");
@@ -11187,11 +11385,11 @@ class NodeFiles {
   async stored(path2) {
     const target = await this.resolvePath(path2);
     try {
-      const mode = (await promises$1.lstat(target)).mode & 4095;
-      const bytes = await promises$1.readFile(target);
+      const mode = (await promises.lstat(target)).mode & 4095;
+      const bytes = await promises.readFile(target);
       return { bytes, mode, revision: revisionOf(bytes) };
     } catch (error2) {
-      if (!missing$1(error2)) throw error2;
+      if (!missing$1(error2)) throw pathFailure(error2, path2);
       return void 0;
     }
   }
@@ -11211,59 +11409,77 @@ class NodeFiles {
     const { changes: changes2, folders: folders2 } = await this.commit({ writes: requests }, dryRun2);
     return { changes: changes2, folders: folders2 };
   }
+  /**
+   * Runs a batch under the writer lock. Commits of this process queue for the lock; another process's lock is waited
+   * for up to the `wait` budget while it stays retryable, then fails with WORKSPACE_BUSY.
+   */
   async commit(batch, dryRun2) {
     ensure(batch !== null && typeof batch === "object", "INVALID_PLAN", "A batch must be an object.");
     const transaction = new Transaction(this, batch);
-    const lock = path$3.join(this.root, lockName);
-    let token;
-    try {
-      if (!dryRun2) token = await acquireLock(lock, this.owner, lockName, (recovered) => this.report(recovered));
-      return await transaction.run(dryRun2);
-    } finally {
-      if (token !== void 0) await this.cleanupLock(lock, token);
-    }
+    if (dryRun2) return transaction.run(true);
+    const lock = path$3.join(this.root, writerLockName);
+    return queued(lock, async () => {
+      const token = await acquireLockWithin(this.wait(), lock, this.owner, writerLockName, (recovered) => this.report(recovered));
+      try {
+        return await transaction.run(false);
+      } finally {
+        await this.cleanupLock(lock, token);
+      }
+    });
   }
   async stat(path2) {
     path2 = vaultPath(path2);
     const target = await this.resolvePath(path2, true);
     let info;
     try {
-      info = await promises$1.lstat(target);
+      info = await promises.lstat(target);
     } catch (error2) {
       if (missing$1(error2)) throw forgeError("NOT_FOUND", `File or folder not found: ${path2}`);
-      throw error2;
+      throw pathFailure(error2, path2);
     }
+    const gone = () => forgeError("NOT_FOUND", `File or folder not found: ${path2}`);
     if (info.isDirectory()) {
-      const { revision: revision2, files, folders: folders2 } = await this.folder(path2);
-      return { path: path2, kind: "folder", revision: revision2, files: files.map((file) => file.path), folders: folders2 };
+      const snapshot = await this.folder(path2);
+      if (!snapshot) throw gone();
+      return { path: path2, kind: "folder", revision: snapshot.revision, files: snapshot.files.map((file) => file.path), folders: snapshot.folders };
     }
     const stored = await this.stored(path2);
+    if (!stored) throw gone();
     return { path: path2, kind: "file", revision: stored.revision, bytes: stored.bytes.length };
   }
   /**
    * @internal Batch step: the folder's revision and contents. The revision covers every file's path and revision,
    * every subfolder (empty ones too) and each special entry by path and kind: symlinks with their target,
-   * `node_modules` folders without reading them, and other special files. Git and Forge's internal files are skipped.
+   * `node_modules` folders without reading them, and other special files. Git and Forge's internal files are skipped;
+   * writer locks of nested roots are listed in `locks`.
+   * Undefined when the folder is missing; an entry that vanishes during the walk is a CONFLICT and an entry name that
+   * is not valid UTF-8 is INVALID_PATH.
    */
   async folder(path2) {
-    const files = [], folders2 = [], special = [];
-    let git = false;
+    const files = [], folders2 = [], special = [], locks = [];
+    let git = false, entered = false;
     const walk2 = async (directory, prefix) => {
-      for (const entry2 of await promises$1.readdir(directory, { withFileTypes: true })) {
-        const reserved2 = reservedPathSegment(entry2.name);
+      const entries2 = await promises.readdir(directory, { withFileTypes: true, encoding: "buffer" });
+      entered = true;
+      for (const entry2 of entries2) {
+        const name2 = entryName(entry2.name, `${path2}/${prefix}`.replace(/\/$/, ""));
+        const reserved2 = reservedPathSegment(name2);
         if (reserved2 === "git") {
           git = true;
           continue;
         }
-        if (reserved2 === "internal") continue;
-        const relative = prefix + entry2.name, absolute = path$3.join(directory, entry2.name);
-        if (entry2.isSymbolicLink()) special.push({ path: relative, kind: "symlink", target: await promises$1.readlink(absolute) });
-        else if (entry2.isDirectory() && entry2.name.toLowerCase() === "node_modules") special.push({ path: relative, kind: "node_modules" });
+        if (reserved2 === "internal") {
+          if (aliasesName(name2, writerLockName)) locks.push(prefix + name2);
+          continue;
+        }
+        const relative = prefix + name2, absolute = path$3.join(directory, name2);
+        if (entry2.isSymbolicLink()) special.push({ path: relative, kind: "symlink", target: await promises.readlink(absolute) });
+        else if (entry2.isDirectory() && name2.toLowerCase() === "node_modules") special.push({ path: relative, kind: "node_modules" });
         else if (entry2.isDirectory()) {
           folders2.push(relative);
           await walk2(absolute, relative + "/");
         } else if (entry2.isFile()) {
-          const bytes = await promises$1.readFile(absolute);
+          const bytes = await promises.readFile(absolute);
           files.push({ path: relative, revision: revisionOf(bytes), bytes: bytes.length });
         } else special.push({ path: relative, kind: "other" });
       }
@@ -11271,8 +11487,9 @@ class NodeFiles {
     try {
       await walk2(await this.resolvePath(path2, true), "");
     } catch (error2) {
-      if (missing$1(error2)) return void 0;
-      throw error2;
+      if (missing$1(error2) && !entered) return void 0;
+      if (!missing$1(error2) && error2.code !== "ENOTDIR") throw error2;
+      throw forgeError("CONFLICT", `Folder changed while Forge read it; read it again: ${path2}`, { path: path2 });
     }
     const order2 = (a, b) => a < b ? -1 : a > b ? 1 : 0;
     files.sort((a, b) => order2(a.path, b.path));
@@ -11285,7 +11502,7 @@ class NodeFiles {
 `);
     for (const entry2 of special) digest.update(`${entry2.path}\0${entry2.kind}${entry2.target === void 0 ? "" : `\0${entry2.target}`}
 `);
-    return { revision: digest.digest("hex"), files, folders: folders2, special, git };
+    return { revision: digest.digest("hex"), files, folders: folders2, special, git, locks: locks.sort(order2) };
   }
   /** @internal */
   revision(bytes) {
@@ -11305,10 +11522,10 @@ class NodeFiles {
     let warning2;
     try {
       const outcome = await this.releaseLock(lock, token);
-      if (outcome === "foreign") warning2 = kernelMessage("LOCK_LEFT_FOREIGN", { lock: lockName });
-      else if (outcome === "missing") warning2 = kernelMessage("LOCK_REMOVED_BY_OTHER", { lock: lockName });
+      if (outcome === "foreign") warning2 = kernelMessage("LOCK_LEFT_FOREIGN", { lock: writerLockName });
+      else if (outcome === "missing") warning2 = kernelMessage("LOCK_REMOVED_BY_OTHER", { lock: writerLockName });
     } catch (error2) {
-      warning2 = kernelMessage("LOCK_UNREMOVABLE", { lock: lockName, diagnostic: errorMessage(error2) });
+      warning2 = kernelMessage("LOCK_UNREMOVABLE", { lock: writerLockName, diagnostic: errorMessage(error2) });
     }
     if (warning2 !== void 0) this.warn(warning2);
   }
@@ -11339,8 +11556,8 @@ class NodeFiles {
   }
   /** Write a temporary file for `target`, in its folder unless `directory` is given, whose data is durable before any rename publishes it. */
   async stage(target, bytes, mode, directory = path$3.dirname(target)) {
-    const temp = path$3.join(directory, `.agent-cli-tmp-${node_crypto.randomUUID()}`);
-    const handle = await promises$1.open(temp, "wx", mode ?? 438);
+    const temp = path$3.join(directory, `${temporaryPrefix}${node_crypto.randomUUID()}`);
+    const handle = await promises.open(temp, "wx", mode ?? 438);
     try {
       try {
         await handle.writeFile(bytes);
@@ -11350,7 +11567,7 @@ class NodeFiles {
         await handle.close();
       }
     } catch (error2) {
-      await retryTransient(() => promises$1.rm(temp, { force: true })).catch(() => {
+      await retryTransient(() => promises.rm(temp, { force: true })).catch(() => {
       });
       throw error2;
     }
@@ -11363,10 +11580,10 @@ class NodeFiles {
     let renamed = false;
     try {
       await verify?.();
-      await retryTransient(() => promises$1.rename(temp, target));
+      await retryTransient(() => promises.rename(temp, target));
       renamed = true;
     } finally {
-      if (!renamed) await retryTransient(() => promises$1.rm(temp, { force: true })).catch(() => {
+      if (!renamed) await retryTransient(() => promises.rm(temp, { force: true })).catch(() => {
       });
     }
   }
@@ -11397,18 +11614,18 @@ function nodeFileDates(root) {
   let files;
   const folders2 = /* @__PURE__ */ new Map();
   const folder = (path2) => {
-    let checked = folders2.get(path2);
-    if (checked === void 0) {
-      checked = (files ??= NodeFiles.at(root)).then(async (repository) => {
+    let checked2 = folders2.get(path2);
+    if (checked2 === void 0) {
+      checked2 = (files ??= NodeFiles.at(root)).then(async (repository) => {
         if (path2 === "") return repository.root;
         const absolute = await repository.resolvePath(path2, true);
-        const info = await promises$1.lstat(absolute).catch(() => null);
+        const info = await promises.lstat(absolute).catch(() => null);
         ensure(info === null || info.isDirectory(), "INVALID_PATH", `Not a regular file path: ${path2}`);
         return absolute;
       });
-      folders2.set(path2, checked);
+      folders2.set(path2, checked2);
     }
-    return checked;
+    return checked2;
   };
   return async (path2) => {
     const name2 = vaultPath(path2).slice(path2.lastIndexOf("/") + 1);
@@ -11719,7 +11936,7 @@ class ObsidianDocuments {
     return replaceInYamlStrings(yaml, yamlDocument(yaml), replacements);
   }
 }
-async function readManifest(path2, files) {
+async function readManifest(path2, files, appVersion) {
   const text2 = new TextDecoder("utf-8", { fatal: true }).decode((await files.read(path2)).bytes);
   let value2;
   try {
@@ -11727,7 +11944,7 @@ async function readManifest(path2, files) {
   } catch {
     throw forgeError("INVALID_PLUGIN", `Invalid JSON in plugin manifest: ${path2}`);
   }
-  validatePluginManifest(value2);
+  validatePluginManifest(value2, appVersion);
   return value2;
 }
 async function loadModule(directory, files) {
@@ -11750,7 +11967,7 @@ async function loadModule(directory, files) {
   );
   return loaded.default;
 }
-async function installedPlugins(directory, enabled2, skipped, files, warn) {
+async function installedPlugins(directory, enabled2, skipped, files, appVersion, warn) {
   let folder;
   try {
     folder = await files.stat(directory);
@@ -11763,7 +11980,7 @@ async function installedPlugins(directory, enabled2, skipped, files, warn) {
   const installed = [];
   for (const id2 of ids) {
     try {
-      const manifest = await readManifest(`${directory}/${id2}/manifest.json`, files);
+      const manifest = await readManifest(`${directory}/${id2}/manifest.json`, files, appVersion);
       ensure(manifest.id === id2, "INVALID_PLUGIN", `Manifest id must match plugin directory ${id2}.`);
       installed.push({ manifest, skipped: skipped && enabled2.includes(id2) });
     } catch (error2) {
@@ -11779,7 +11996,7 @@ async function loadEnabledPlugins(directory, ids, files, registry2, events2) {
     const path2 = `${directory}/${id2}/manifest.json`;
     let manifest;
     try {
-      manifest = await readManifest(path2, files);
+      manifest = await readManifest(path2, files, registry2.appVersion);
     } catch (error2) {
       if (!(error2 instanceof AppError) || error2.code !== "NOT_FOUND") throw error2;
       registry2.recordMissing(id2, path2, events2);
@@ -11807,13 +12024,13 @@ async function recordMissingPlugins(directory, ids, files, registry2, events2) {
 }
 function mergeStrings(created, extra) {
   if (!extra) return created;
-  const merged = { ...created };
+  const merged2 = { ...created };
   for (const language2 of Object.keys(extra)) {
-    const table = { ...merged[language2] };
+    const table = { ...merged2[language2] };
     for (const [kind2, entries2] of Object.entries(extra[language2] ?? {})) Object.assign(table, { [kind2]: { ...table[kind2], ...entries2 } });
-    merged[language2] = table;
+    merged2[language2] = table;
   }
-  return merged;
+  return merged2;
 }
 function registerCorePlugins(registry2, events2, plugins, host, disabled) {
   const ids = plugins.map((plugin2) => plugin2.manifest.id);
@@ -16407,8 +16624,8 @@ function requireMoment() {
         if (!this.isValid()) {
           return this.localeData().invalidDate();
         }
-        var seconds2 = abs(this._milliseconds) / 1e3, days2 = abs(this._days), months2 = abs(this._months), minutes2, hours2, years2, s, total = this.asSeconds(), totalSign, ymSign, daysSign, hmsSign;
-        if (!total) {
+        var seconds2 = abs(this._milliseconds) / 1e3, days2 = abs(this._days), months2 = abs(this._months), minutes2, hours2, years2, s, total2 = this.asSeconds(), totalSign, ymSign, daysSign, hmsSign;
+        if (!total2) {
           return "P0D";
         }
         minutes2 = absFloor(seconds2 / 60);
@@ -16418,10 +16635,10 @@ function requireMoment() {
         years2 = absFloor(months2 / 12);
         months2 %= 12;
         s = seconds2 ? seconds2.toFixed(3).replace(/\.?0+$/, "") : "";
-        totalSign = total < 0 ? "-" : "";
-        ymSign = sign(this._months) !== sign(total) ? "-" : "";
-        daysSign = sign(this._days) !== sign(total) ? "-" : "";
-        hmsSign = sign(this._milliseconds) !== sign(total) ? "-" : "";
+        totalSign = total2 < 0 ? "-" : "";
+        ymSign = sign(this._months) !== sign(total2) ? "-" : "";
+        daysSign = sign(this._days) !== sign(total2) ? "-" : "";
+        hmsSign = sign(this._milliseconds) !== sign(total2) ? "-" : "";
         return totalSign + "P" + (years2 ? ymSign + years2 + "Y" : "") + (months2 ? ymSign + months2 + "M" : "") + (days2 ? daysSign + days2 + "D" : "") + (hours2 || minutes2 || seconds2 ? "T" : "") + (hours2 ? hmsSign + hours2 + "H" : "") + (minutes2 ? hmsSign + minutes2 + "M" : "") + (seconds2 ? hmsSign + s + "S" : "");
       }
       var proto = Duration.prototype;
@@ -17463,16 +17680,16 @@ class Evaluator {
   }
   fileFromTarget(target) {
     const parsed2 = parseLinkText(target);
-    const resolved = this.resolveLinkPath(parsed2.target);
-    if (resolved === null)
+    const resolved2 = this.resolveLinkPath(parsed2.target);
+    if (resolved2 === null)
       return nullValue();
-    return this.fileObject({ path: resolved ?? stripLinkSubpath(parsed2.target) });
+    return this.fileObject({ path: resolved2 ?? stripLinkSubpath(parsed2.target) });
   }
   fileFromLink(link2) {
-    const resolved = link2.resolvedPath ?? this.resolveLinkPath(link2.path);
-    if (resolved === null)
+    const resolved2 = link2.resolvedPath ?? this.resolveLinkPath(link2.path);
+    if (resolved2 === null)
       return nullValue();
-    return this.fileObject({ path: resolved ?? stripLinkSubpath(link2.path) });
+    return this.fileObject({ path: resolved2 ?? stripLinkSubpath(link2.path) });
   }
   resolveLinkPath(target) {
     const parsed2 = parseLinkText(target);
@@ -17549,14 +17766,14 @@ class Evaluator {
     return JSON.stringify(toPlain(left)) === JSON.stringify(toPlain(right));
   }
   linkIdentity(link2) {
-    const resolved = this.linkResolvedPath(link2);
-    if (resolved !== null)
-      return `file:${resolved}`;
+    const resolved2 = this.linkResolvedPath(link2);
+    if (resolved2 !== null)
+      return `file:${resolved2}`;
     return `link:${link2.path}`;
   }
   linkResolvedPath(link2) {
-    const resolved = link2.resolvedPath ?? this.resolveLinkPath(link2.path);
-    return resolved === void 0 ? stripLinkSubpath(link2.path) : resolved;
+    const resolved2 = link2.resolvedPath ?? this.resolveLinkPath(link2.path);
+    return resolved2 === void 0 ? stripLinkSubpath(link2.path) : resolved2;
   }
   uniqueKey(value2) {
     return value2.type === "Link" ? stringifyValue(value2) : JSON.stringify(toPlain(value2));
@@ -18035,13 +18252,13 @@ function joinPath(folder, target) {
   return target.endsWith("/") ? `${joined}/` : joined;
 }
 function union$1(first, second) {
-  const merged = [];
+  const merged2 = [];
   let a = 0, b = 0;
   while (a < first.length || b < second.length) {
     const next = b >= second.length || a < first.length && first[a] <= second[b] ? first[a++] : second[b++];
-    if (merged.at(-1) !== next) merged.push(next);
+    if (merged2.at(-1) !== next) merged2.push(next);
   }
-  return merged;
+  return merged2;
 }
 function lookup(index2, keys, spelling) {
   const plain = keys.get(spelling.toLowerCase()), markdown = keys.get(`${spelling}.md`.toLowerCase());
@@ -18302,6 +18519,28 @@ function ordering(value2) {
   diagnostics(expression2.diagnostics, property);
   return { property, direction: value2.direction, expression: expression2 };
 }
+const defaultBaseTimeoutMs = 3e4;
+function vmEvaluationBudget(path2, milliseconds) {
+  const context = node_vm.createContext({ task: void 0 }), script = new node_vm.Script("task()");
+  let spent = 0;
+  const timeout2 = () => forgeError("BASE_TIMEOUT", `${path2}: the query exceeded its ${milliseconds} ms evaluation budget.`, { path: path2, timeoutMs: milliseconds });
+  return {
+    run(task2) {
+      if (spent >= milliseconds) throw timeout2();
+      const started = performance.now();
+      context.task = task2;
+      try {
+        return script.runInContext(context, { timeout: Math.max(1, Math.ceil(milliseconds - spent)) });
+      } catch (error2) {
+        if (error2?.code === "ERR_SCRIPT_EXECUTION_TIMEOUT") throw timeout2();
+        throw error2;
+      } finally {
+        context.task = void 0;
+        spent += performance.now() - started;
+      }
+    }
+  };
+}
 const strict = { throwOnError: true };
 const collator = new Intl.Collator(void 0, { numeric: true, sensitivity: "base" });
 function compare$1(a, b) {
@@ -18325,18 +18564,21 @@ function positions(groupOrder) {
 class NodeBasesQueryEngine {
   /**
    * `files` is the command scope's repository, `metadata` supplies the invocation's kernel metadata cache built from
-   * the same root, and `dates` reads a file's size and filesystem dates in that root.
+   * the same root, and `dates` reads a file's size and filesystem dates in that root. `timeoutMs` bounds the
+   * evaluation time of one query over all its files; exceeding it fails with BASE_TIMEOUT.
    */
-  constructor(files, codec, metadata2, dates) {
+  constructor(files, codec, metadata2, dates, timeoutMs = defaultBaseTimeoutMs) {
     this.files = files;
     this.codec = codec;
     this.metadata = metadata2;
     this.dates = dates;
+    this.timeoutMs = timeoutMs;
   }
   files;
   codec;
   metadata;
   dates;
+  timeoutMs;
   capabilities() {
     return {
       engine: "obsidian-bases-expression",
@@ -18352,7 +18594,8 @@ class NodeBasesQueryEngine {
         "Links resolve by path through the kernel metadata cache; an ambiguous link path resolves to the closest candidate with a warning, and alias-only links stay unresolved.",
         "A note that cannot be parsed is indexed without properties, links or tags and reported in warnings.",
         "Rows sort by typed values with host-locale natural string collation; equal keys use file path.",
-        "The filesystem is indexed once per invocation and metadata state, without a transactional snapshot or live refresh."
+        "The filesystem is indexed once per invocation and metadata state, without a transactional snapshot or live refresh.",
+        `Expression evaluation of one query is bounded to ${this.timeoutMs} ms over all files and fails with BASE_TIMEOUT beyond it.`
       ]
     };
   }
@@ -18383,45 +18626,51 @@ class NodeBasesQueryEngine {
     const compiledFormulaByName = new Map(Object.entries(formulaAsts).map(([name2, ast]) => [name2, compileExpression(ast)]));
     const groupPositions = groupOrder && positions(groupOrder);
     const rows = [];
-    for (const { file, context } of new BaseRowContexts(indexed2, { thisFile, formulas: formulaAsts, propertyTypes: propertyTypes2, objects, now: /* @__PURE__ */ new Date() }).rows()) {
-      try {
-        const evaluating = /* @__PURE__ */ new Set();
-        let evaluationError;
-        context.functions = { [internalFormula]: (name2) => {
-          const key = stringifyValue(name2);
-          if (evaluating.has(key)) return errorValue(`Circular formula reference: ${key}`);
-          const formula = compiledFormulaByName.get(key);
-          if (!formula) return nullValue();
-          evaluating.add(key);
+    const contexts = new BaseRowContexts(indexed2, { thisFile, formulas: formulaAsts, propertyTypes: propertyTypes2, objects, now: /* @__PURE__ */ new Date() });
+    vmEvaluationBudget(path2, this.timeoutMs).run(() => {
+      for (const { file, context } of contexts.rows()) {
+        const row = (() => {
           try {
-            return formula.evaluateValue(context, strict);
-          } finally {
-            evaluating.delete(key);
+            const evaluating = /* @__PURE__ */ new Set();
+            let evaluationError;
+            context.functions = { [internalFormula]: (name2) => {
+              const key = stringifyValue(name2);
+              if (evaluating.has(key)) return errorValue(`Circular formula reference: ${key}`);
+              const formula = compiledFormulaByName.get(key);
+              if (!formula) return nullValue();
+              evaluating.add(key);
+              try {
+                return formula.evaluateValue(context, strict);
+              } finally {
+                evaluating.delete(key);
+              }
+            }, [internalTag]: (receiver, ...tags2) => {
+              if (receiver.type !== "File") return errorValue("hasTag requires a file.");
+              const normalized = receiver.value.tags.map((tag) => tag.replace(/^#/, "").toLocaleLowerCase());
+              return boolValue(tags2.some((tag) => {
+                const needle = stringifyValue(tag).replace(/^#/, "").toLocaleLowerCase();
+                return normalized.some((value2) => value2 === needle || value2.startsWith(needle + "/"));
+              }));
+            }, [internalGuard]: (value2) => {
+              if (value2.type === "Error") evaluationError ??= value2.value.message;
+              return value2;
+            } };
+            const matches2 = globalFilter(context) && viewFilter(context);
+            ensure(evaluationError === void 0, "BASE_EVALUATION_ERROR", evaluationError ?? "Expression evaluation failed.");
+            if (!matches2) return void 0;
+            const group = grouping?.expression.evaluateValue(context, strict);
+            const groupIndex = groupPositions && (groupPositions.size === 0 ? -1 : groupPositions.get(groupIdentity(group && toPlain(group))) ?? -1);
+            if (groupIndex === -1) return void 0;
+            const sort = sorts.map((item) => item.expression.evaluateValue(context, strict));
+            ensure(evaluationError === void 0, "BASE_EVALUATION_ERROR", evaluationError ?? "Expression evaluation failed.");
+            return { path: file.path, sort, group, groupIndex };
+          } catch (error2) {
+            throw forgeError("BASE_EVALUATION_ERROR", `${path2}, view ${String(view.name)}, file ${file.path}: ${errorMessage(error2)}`);
           }
-        }, [internalTag]: (receiver, ...tags2) => {
-          if (receiver.type !== "File") return errorValue("hasTag requires a file.");
-          const normalized = receiver.value.tags.map((tag) => tag.replace(/^#/, "").toLocaleLowerCase());
-          return boolValue(tags2.some((tag) => {
-            const needle = stringifyValue(tag).replace(/^#/, "").toLocaleLowerCase();
-            return normalized.some((value2) => value2 === needle || value2.startsWith(needle + "/"));
-          }));
-        }, [internalGuard]: (value2) => {
-          if (value2.type === "Error") evaluationError ??= value2.value.message;
-          return value2;
-        } };
-        const matches2 = globalFilter(context) && viewFilter(context);
-        ensure(evaluationError === void 0, "BASE_EVALUATION_ERROR", evaluationError ?? "Expression evaluation failed.");
-        if (!matches2) continue;
-        const group = grouping?.expression.evaluateValue(context, strict);
-        const groupIndex = groupPositions && (groupPositions.size === 0 ? -1 : groupPositions.get(groupIdentity(group && toPlain(group))) ?? -1);
-        if (groupIndex === -1) continue;
-        const sort = sorts.map((item) => item.expression.evaluateValue(context, strict));
-        ensure(evaluationError === void 0, "BASE_EVALUATION_ERROR", evaluationError ?? "Expression evaluation failed.");
-        rows.push({ path: file.path, sort, group, groupIndex });
-      } catch (error2) {
-        throw forgeError("BASE_EVALUATION_ERROR", `${path2}, view ${String(view.name)}, file ${file.path}: ${errorMessage(error2)}`);
+        })();
+        if (row) rows.push(row);
       }
-    }
+    });
     rows.sort((a, b) => {
       if (grouping && a.group && b.group) {
         const comparison = groupOrder ? a.groupIndex - b.groupIndex : compare$1(a.group, b.group) * (grouping.direction === "DESC" ? -1 : 1);
@@ -18434,7 +18683,7 @@ class NodeBasesQueryEngine {
       return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
     });
     const limit = Math.min(options2.limit ?? Infinity, typeof view.limit === "number" ? view.limit : Infinity);
-    return { path: path2, view: String(view.name), context: contextPath, total: rows.length, files: rows.slice(0, limit).map((row) => row.path), warnings, compatibility: this.capabilities() };
+    return { path: path2, view: String(view.name), context: contextPath, total: rows.length, files: rows.slice(0, limit).map((row) => row.path), warnings };
   }
 }
 const germanIndexMessages = {
@@ -18470,7 +18719,7 @@ function basesCommand(service) {
       context: option$1.string("Note used as this file in query expressions."),
       limit: option$1.string("Maximum number of rows for query.")
     },
-    errors: ["NOT_FOUND", "INVALID_BASE", "INVALID_BASE_QUERY", "INVALID_BASE_EXPRESSION", "BASE_EVALUATION_ERROR", "BASE_VIEW_NOT_FOUND", "BASE_CONTEXT_NOT_FOUND", "INVALID_BASE_PROPERTY_TYPES", "UNSUPPORTED_BASE_PROPERTY_TYPE"],
+    errors: ["NOT_FOUND", "INVALID_BASE", "INVALID_BASE_QUERY", "INVALID_BASE_EXPRESSION", "BASE_EVALUATION_ERROR", "BASE_TIMEOUT", "BASE_VIEW_NOT_FOUND", "BASE_CONTEXT_NOT_FOUND", "INVALID_BASE_PROPERTY_TYPES", "UNSUPPORTED_BASE_PROPERTY_TYPE"],
     async run(args, flags, context) {
       const action2 = args[0] ?? "list";
       for (const key of Object.keys(flags)) ensure(action2 === "query" || !queryOptions.includes(key), "INVALID_ARGUMENT", `--${key} is not supported by bases ${action2}.`);
@@ -18591,9 +18840,9 @@ const basesPlugin = {
     };
   }
 };
-const workflow = "---\nname: forge-workflow\ndescription: Drive the portable Forge CLI (node bin/forge.js) safely. Discover commands and their JSON Schema contract with schema, select projects, preview with --dry-run, guard writes with --if-match revisions and recover from CONFLICT and other error codes. Use when a workspace has bin/forge.js, when starting any Forge task, or when a Forge command fails.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\nTo bootstrap another project, download a pinned GitHub release rather than copying the source checkout's saved selection. Follow `bin/data/docs/how-to/install.md`: download the trusted release's `install-forge.mjs`, execute it with `--version` and `--workspace`, check its exit status and JSON `ok`, then preview `project create` and verify `project current`. The installer verifies the archive checksum, installs generic defaults and runs setup; it refuses an existing `bin/`. Upgrades preserve configuration, plugins, templates and project selection through a separately reviewed change.\n\nFor self-upgrades, run `update check --json`, review a pinned `update apply --release-version <version> --if-match <revision> --dry-run --json`, then apply with the same version and revision. Upgrades preserve local configuration, project selection, installed plugins, templates and custom webviews. A conflict requires new inspection. Check the next `--version` and `project current`, and restart any running server. See `bin/data/docs/reference/updates.md`.\n\n1. Locate the complete `bin` distribution: `forge.js`, `forge-runtime.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/forge.js config --json` to confirm the projects path, defaults, enabled plugins and their effective `plugins.settings.<plugin-id>` sections, then use `node bin/forge.js help --json` to discover the installed command catalog if needed. For a known task, start with `help <command>` and request `schema <command> --json` for its machine-readable contract. Reserve the complete `schema --json` for discovering the entire API; do not load it again on every task. `schema <command>` returns one command's contract: its JSON Schema 2020-12 `inputSchema`, its `outputSchema` (or `annotations.actions.<action>.outputSchema`) for `data`, the error codes it can report, and `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `scope`); `data.envelope` is the response schema. Prefer read-only commands for discovery and treat `destructiveHint: true` commands as needing a reviewed `--dry-run` first. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/forge.js --root <workspace> schema --json`. The selected workspace always uses its own `bin/config.json`; the same routing rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Keep shared selection fixed while parallel agents use file commands: checking the context does not lock it for the next invocation. Coordinate selection changes first; use separate workspaces when agents need different selections. Only commands that declare `--project` support a per-invocation target. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` (document commands include a unified `diff` per text file) and generator `preview` before applying. Edit only what changes: `edit --section \"A > B\"` or `--block <id>` for one part of a note, `edit --edits <list>` for several replacements in one file. When several files must change together (a move plus edits and property changes), write one plan for `apply <plan.json|->` and review `apply --dry-run`: it commits as one guarded batch or not at all. The plan's JSON Schema is the `contentSchema` of `apply`'s argument in `schema apply`. `apply` reports `idempotentHint: false`: an operation without `ifMatch` applies again on a repeat, so give each operation the `ifMatch` from your reads.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A `CONFLICT` reports `error.details.currentRevision`: reread and reconcile; never blindly retry with the new revision. `NO_MATCH` means `--find` text is absent and `AMBIGUOUS_EDIT` that it matches several lines (`details.lines`); with `--edits`, `details.edit` names the failing entry. `SECTION_NOT_FOUND` lists the note's `details.headings` or `details.blocks`, and `AMBIGUOUS_SECTION` its `details.candidates`: add an ancestor heading or pass a candidate's line as `--section-line`. An `apply` failure adds `details.operation`, the index of the failing operation, and `INVALID_PLAN` lists `details.issues`. Validation failures write nothing. On `ROLLBACK_FAILED`, inspect every reported path and the actual saved contents before doing more work; recovery could not restore every file.\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. On failure follow `error.hint`; only `error.retryable: true` permits an unchanged retry (for example `WORKSPACE_BUSY` or `SERVER_BUSY`); inspect `server status` before repeating `SERVER_STOP_FAILED`. `schema` lists every code at `data.errors`. The envelope's `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`; new parent folders appear as `kind: \"folder\"` records); reads and dry runs return `[]`. Use `--events all` on the original invocation when you need lifecycle records, or `--events none`. History is invocation-local; never rerun a mutation just to obtain more events. Warnings may report failed notification listeners after a successful write; inspect committed events and read back before considering any repeat.\n6. Read back the result and validate documents; after vault changes run `vault check --strict` and fix each error finding by its `hint` until it passes (`VAULT_CHECK_FAILED` lists them in `error.details.findings`). For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory's manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/forge.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a visual workspace overview, the agent may offer to start the read-only admin view. Once startup is authorized, run `node bin/forge.js server start --webview admin --json` and share `data.url` locally; the CLI never prompts or opens a browser. `server status` is read-only discovery, `server start` reuses an existing workspace server, and `server stop` ends it. Start/stop support `--dry-run`; a preview never starts or stops a process. These commands always use workspace scope and preserve project selection. Treat the launch URL as local session access information because its fragment contains a bearer token; retrieve a fresh link after restart. Use `help server`, `schema server --json` and `bin/data/docs/reference/server.md` for the lifecycle contract. The view inspects state and cannot change configuration.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying. Templates and `make document` come from the bundled `templates` core plugin, and the project and code scaffolds from `scaffolds`; when `plugins` lists one as disabled, its commands and generators are unknown, `setup` skips the templates with a warning and `project create`/`project component` fail with `PLUGIN_UNAVAILABLE`.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured folders and default framework in `plugins.settings.ui` (`framework`, `components`, `interactions`, `output`, `stories` and their import/export folders; `config --json` shows the effective values). The `ui` core plugin owns `components`, `interactions`, `make ui` and `make stories`; the `data-sources` core plugin owns `data-sources` and `make data-source`, with its folders in `plugins.settings.data-sources`. Feature folders never live under `paths`, which holds only `projects`. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project's framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor agent definitions, follow the forge-agents skill: definitions are docker-agent YAML in `agents/*.yaml`, `agents validate` checks them, and `agents generate --target claude` (with `--plan`, `--check` or `--revisions-from`) maintains `.claude/agents/`; never hand-edit generated agents.\n\nFor agent skills, `skills list` names the skills of the enabled plugins, `skills show <id>` returns one `SKILL.md`, and `skills install [--target both|claude|agents | --out <directory>]` writes them into the selected project's `.claude/skills` and `.agents/skills`; existing files are refused, so a repeat never overwrites an edited skill.\n\nFor native Claude Code configuration, use the `claude` command instead of hand-written JSON. `claude capabilities` lists the supported hook events, handler types, plugin components and runtime operations. `claude hooks inspect` returns the settings document (`--scope project|local|user|plugin`, default `project`) with its `revision`; `claude hooks check` validates it without running handlers; `hooks add <event> --stdin`, `set`, `remove <event> [--index n]`, `enable`, `disable` and `configure` edit it and need `--if-match <revision>` once the file exists. `claude agents list|inspect|create|update|remove|enable|disable|export` manages `.claude/agents/*.md`. `claude plugins create|inspect|manifest|check|asset|write-asset|remove-asset <directory>` authors a plugin folder without running Claude. `claude plugins list|details|install|update|uninstall|enable|disable|validate|configure|prune|init|tag|test|eval`, `claude marketplaces add|list|remove|update` and `claude runtime version|doctor|install|update` run the installed `claude` executable (`--claude-bin`, `--timeout`) and can change the user's Claude Code installation: preview them with `--dry-run`, keep `--scope project` unless the user asks otherwise, never pass `--scope user` without their consent, and expect `idempotentHint: false`. Hooks and plugins run commands; review them like code.\n\nAdd `--lang de` for German descriptions, hints, warnings and findings; commands, options, ids, codes and JSON keys stay the same, so match codes rather than message text.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values '{\"owner\":\"Team\"}' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n\nFor a self-contained browser prototype, use the `forge-webviews` skill and `project create <id> --type webview`. Build and test inside that independent project; `node bin/forge.js webview inspect --project <id>` reports publication state, `webview publish --dry-run` previews the build-output changes, and `server start --webview <id>` returns the packaged preview URL.\n\nFor on-demand webpage screenshots or illustrated flow documentation, follow `forge-browser`. Discover `schema browser`; screenshot and tutorial dry runs validate without launching a browser. Tutorials execute explicit reviewed JSON plans from JSON, Markdown or Canvas, then write guarded document folders.\n";
-const vault = '---\nname: forge-vault\ndescription: Read, search, link-check, create and edit Obsidian Markdown notes, frontmatter properties, Canvas, Bases and attachments through Forge with revision guards, link-preserving moves and trash deletes. Use when working with notes, wikilinks, backlinks, tags, .canvas or .base files, or any vault file edit in a Forge workspace.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nRun `node bin/forge.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nFor parallel work, use `read <path> --project <id>`, `read-many <paths...> --project <id>`, `stat <path> --project <id>` and `apply <plan.json|-> --project <id>` to target each invocation without changing saved selection. Keep the same explicit project for reads, preview and apply, and verify `context.root`. An `ifMatch` hash binds file bytes, not project identity; unknown targets fail without fallback. A plan filename and its operations resolve inside the named project. Writes in different projects still share the workspace writer lock, so an overlapping write may fail with `WORKSPACE_BUSY`; retry while `error.retryable` is true. Other file commands still follow saved selection unless their help declares `--project`.\n\nUse `read-many` for 1–32 explicit paths, at most 8 MiB aggregate raw bytes, returning ordered `data.files` with normal read documents/revisions and `data.bytes`. Any failure rejects the whole bundle; per-file failures identify `details.index` and `details.path`. Reads are sequential, not an atomic snapshot. The cap is not a hard memory bound and JSON/base64 output can be larger; split large reads. No `--parts` option is offered; use single-file `read --parts body` when needed.\n\nUse `stat <path>` to obtain a file\'s raw revision and byte count or a folder\'s revision and descendant counts without returning content or parsing structured documents. This also works when `read` fails on malformed frontmatter. The command hashes whole files and walks folders; it is not a cheap filesystem stat or validation. `stat <path> --project <id>` targets one project without changing selection; later mutations must use the same scope, and only commands whose help declares `--project` accept it. See `bin/data/docs/how-to/inspect-file-metadata.md`.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append; see precise edits below for sections, blocks and several replacements. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar, plus files named `Dockerfile` or `Containerfile` in any case, also with a suffix such as `Dockerfile.release`; see `formats` `textFilenames`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 or content with NUL characters reads as base64 and cannot be edited; edits cannot introduce NUL characters.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nPrecise edits change only what you address, in memory, with one guarded write:\n- Section: `edit notes/plan.md --section "Plan > Risks" --append --content "- Staffing" --if-match <revision>`; also `--prepend --content` or `--replace <text>`. The path lists headings outermost first, separated by ` > `; the section runs to the next heading of the same or a higher level, its heading line and the blank lines around its content stay. `SECTION_NOT_FOUND` lists `details.headings`; `AMBIGUOUS_SECTION` lists `details.candidates`: add an ancestor heading, or pass the candidate\'s `line` as `--section-line <n>` (`sectionLine` in a plan), the only way to pick between headings with the same full path. Write a ` > ` inside a heading as ` \\> `.\n- Block: `edit notes/plan.md --block ship --replace "New text" --if-match <revision>` addresses `^ship`; replacing keeps the marker so block links keep working. A list item or task keeps its indentation, marker and checkbox and its nested items: pass only the new text, or start it with a marker (`- [x] Done`) to change the checkbox. `--append`/`--prepend --content` add a separate block (blank lines around it) next to a paragraph or section; next to a list item the content must start with a list marker and becomes sibling items, else `INVALID_INPUT`.\n- Several literal replacements: `edit <file> --edits \'[{"find":"a","replace":"b"},{"find":"x","replace":"y","all":true}]\' --if-match <revision>` (or `--edits @edits.json`, `--edits -`). They apply in order; a failure names `details.edit` and writes nothing.\n- Several files as one unit: write a plan `{"version":1,"operations":[...]}` with `write`, `edit` (`edits`, `append`, or `section`/`block` with `replace`/`append`/`prepend`), `frontmatter` (`set`, `unset`), `move` (`from`, `to`) and `delete` (to `.trash`) operations, each with an optional `ifMatch` from your reads, and run `apply plan.json --dry-run`, then `apply plan.json` (or pipe it to `apply -`). Operations see the effects of earlier ones (edit a note after moving it by its new path); the plan commits as one batch or not at all. A failure keeps its code and adds `details.operation`; `INVALID_PLAN` lists schema `details.issues`. `help apply` shows the plan\'s JSON Schema, and `schema apply` publishes it as the argument\'s `contentSchema` with the result\'s `outputSchema`. Split a plan that writes to a path it also moves or deletes.\n\nFind before you edit: `search "release plan"` returns `data.hits` (`path`, 1-based `line` and `column`, `match`, `snippet`, `revision`) in path, line and column order, plus `total`. Narrow with `--path "notes/**"`, `--kind markdown`, `--tag project`, `--property status=active`, `--in body` (skip frontmatter) or `--skip-code`; add `--context 2` for surrounding lines. Exclude generated files before they are read with `--exclude "**/{dist,coverage}/**"` (one root-relative glob, brace alternatives allowed); exclusion wins over `--path`. Search does not interpret `.gitignore`, and pagination requires the same exclusion filter. Literal matching ignores case unless `--case-sensitive`; `--regex` takes a JavaScript regular expression matched per line. A hit\'s `revision` is the `--if-match` for an `edit` of that file. Pages hold 100 hits: repeat the same command with `--cursor <nextCursor>` until `nextCursor` is absent. `SEARCH_TIMEOUT` means the expression backtracks too much: simplify it or search literally. `list --path "notes/**" --kind markdown` lists files the same way.\n\nCheck the link graph before restructuring: `links back notes/plan.md` lists every file that links to it (`source`, 1-based `line`/`column`, `original`); `links out notes/plan.md` lists its own links with `status` and `target`. `links unresolved --path "notes/**"` reports broken links with `reason` `missing`, or `ambiguous` with `candidates` (use a longer link path that names one candidate). `links orphans` lists notes nothing links to and `links deadends` notes that link nowhere; list deliberate entry notes in `plugins.settings.links.roots`. Every report has `issues`: files whose metadata could not be parsed, whose links are missing from the report, so fix those first.\n\nVerify the vault before you finish: `vault check` returns `data.findings` (`rule`, `severity` `error`/`warning`/`info`, `path`, 1-based `line`/`column` or `null`, `message`, `hint`, and for a missing target `suggestion`, the closest existing file) in path and line order, plus `summary` counts. Rules: `unresolved-link`, `unresolved-embed`, `ambiguous-link`, `unresolved-anchor` (a missing `#Heading` or `#^block`), `invalid-frontmatter`, `invalid-canvas`, `invalid-base`, `property-type-mismatch` (against `.obsidian/types.json`, else the type most notes use), `duplicate-block-id`, `empty-file` and `orphan-attachment`. Narrow with `--path "notes/**"` and `--rule unresolved-link,invalid-frontmatter`. `vault check --strict` fails with `VAULT_CHECK_FAILED` (exit 2) while an `error` finding remains and lists them in `error.details.findings`: fix each by its `hint` and run it again until it passes. Before setting a property, run `vault properties --name <property>` to see its inferred and declared type, so values keep one type; `vault tags --sort count` lists tags with their files (nested tags count for their parents). Rule severities and ignore globs live in `plugins.settings.vault-check`.\n\nMove, rename and delete with the link-aware commands, never by writing a copy and removing the original:\n- Move or rename: `move notes/plan.md specs/plan.md --dry-run` (or `rename notes/plan.md Roadmap --dry-run`; a file keeps its extension) returns `data.revision` and a `diff` for every file whose links change: wikilinks and embeds keep `#Heading`, `#^block` and `|display` text, relative Markdown links are recomputed, frontmatter links and Canvas `file` nodes follow. Review `data.links.unrewritten`, then repeat without `--dry-run` and with `--if-match <revision>`. One batch commits the move and every rewritten file. `DESTINATION_EXISTS` means the target exists: Forge never overwrites it. A folder moves the same way; its `--if-match` is the folder revision the dry run reports.\n- Delete: `delete notes/scratch.md --if-match <revision>` moves the file to `.trash/` (numbered ` 1`, ` 2`… if taken); `--permanent` removes it; a folder needs `--recursive`. `HAS_BACKLINKS` lists the files still linking to it in `details.backlinks` (`source`, 1-based `line`, `original`): rewrite or remove those links first, or move the note instead. Pass `--allow-broken-links` only when broken links are intended. `.obsidian`, `.forge` and, at workspace scope, `bin` are protected in any letter case (`PROTECTED_PATH`). `--permanent` also refuses folders holding symlinks or `node_modules` (`PROTECTED_PATH`): trash them instead. `data.deleted` lists every removed file (`kind: "file"`) and folder (`kind: "folder"`).\n\nMarkdown `read` returns `content` and `properties`; add `--parts body` only when you need the body separately. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nForge removes a lock whose holder provably no longer runs (same host, container and boot; pid gone or reused; or written before the last restart) by itself and returns a warning: then inspect the interrupted changes with `git status` and read-back before continuing. On `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command, and on Linux pidNamespace, bootId and processStart), `path` the lock file and `stale` is `active`, `unknown` or `stale`. Wait and retry while it is `active` (`retryable: true`), also when `details.breaker` shows another writer removing a stale lock; never delete an `active` lock. `unknown` (`retryable: false`) covers another host, container or boot and unreadable locks: do not retry in a loop and never delete the lock blindly; delete the file in `details.path` only after verifying that the recorded pid on the recorded host and container is not a running Forge writer and inspecting its changes, then retry. `stale` (`retryable: false`) means the holder provably no longer runs but Forge could not remove the file: confirm no Forge process uses it, then delete the file in `details.path` and retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n\nFor documents explaining a webpage, UI problem or workflow with screenshots, follow `forge-browser` to capture and inspect evidence. Embed the actual saved PNG relative to the Markdown note, cite the clean source URL and capture metadata, and keep the guarded document-editing loop above.\n';
-const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript projects with Forge scaffolds (project create, project component, make entity, make use-case, make form, make plugin) and prove them with acceptance tests and quality gates. Use when adding domain or application code, forms or Forge plugins, or when running npm run check in a Forge-managed project.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. When several agents share a workspace, keep selection stable and use `read`, `read-many`, `stat` and `apply` with `--project <id>` for each read/preview/write. Writes in different projects still share the workspace writer lock and may return retryable `WORKSPACE_BUSY`. Bundle up to 32 explicit paths and 8 MiB raw bytes with `read-many`; revisions remain individual reads. Other commands only support an explicit target when their help declares it. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/forge.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`. These code generators belong to the bundled `scaffolds` core plugin and `make document` to `templates`; `plugins` shows whether they are enabled.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills, events and services under the plugin ID and error codes under its UPPER_SNAKE_CASE prefix. Declare each command's metadata (`scope`, `mutating`, described `options` and `args`, `errors`, and `destructive` or `idempotent` where the derived hints are wrong) so `help`, `schema` and the invocation policy describe it; declare `output`, the JSON Schema of `data`, on the command or per action, and `schema` on a string option or argument that holds or names a JSON document; declare settings as a JSON Schema read from `plugins.settings.<id>` via `context.settings`, German text in `strings.de` (descriptions of commands, actions, options, arguments and settings, the manifest name and description, error summaries and hints, and messages read with `context.t`), and shared capabilities through `provides`/`requires` instead of imports. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures; use `onUserEnable(context)` for idempotent one-time setup after enabling (it runs at least once, not exactly once) and `context.events.onLayoutReady`/`onQuit` for work that needs active plugins or invocation-end cleanup. Plugins may emit only `<plugin-id>.*` events; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`) and other plugins' events (such as `claude.*`) fail with `EVENT_OWNERSHIP`. To run the installed Claude Code CLI, require the `claude.lifecycle` service of the `claude` core plugin. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. Each project owns its CI: author GitHub workflows in the project's `src/infrastructure/workflows/<concern>/*.yml`, then run `node bin/forge.js workflows sync --dry-run`, review, and `workflows sync` from the workspace to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints. Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ from their sources.\n8. For changes to The Forge itself, work in its project directory (`src/the-forge` in the source checkout): run `npm ci`, iterate with `npm run check:fast` (including `check:contracts`), update docs and skills, then run `npm run check` and commit the rebuilt workspace executable and packaged assets with the source. `npm run check` also replays every agent evaluation task in `evals/tasks` with the reference driver; when you add an agent-facing command, add or extend an evaluation task with reference steps and deterministic checks, respecting the suite budget in `docs/how-to/evaluate-agents.md`, and validate it with `npm run eval -- --task <id>`. Preserve existing acceptance checks when extending a task. Measure an agent with the opt-in `npm run eval -- --driver claude`. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Use `npm run check:contracts` to diagnose source command/schema, localization, reference-doc and evaluation-budget failures without a built distribution; keep its seven selected suites source-only and the evaluation suite at most 35 tasks. Portable help and artifact behavior still require the full gate after build. Mutation testing, which measures how well unit tests detect injected faults in selected domain code, runs in CI only and is not part of `check`; run the focused `npm run mutate -- --mutate <file>` form from `docs/how-to/develop-and-test.md` locally only to investigate a file's surviving mutants. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n\nFor an independent browser prototype, follow `forge-webviews`: `project create <id> --type webview` scaffolds Vue/Nuxt UI with local fixtures and Playwright; `webview publish` maintains built assets and `server start --webview <id>` manages the local preview. Library component generators do not target webview projects.\n";
+const workflow = "---\nname: forge-workflow\ndescription: Drive the portable Forge CLI (node bin/forge.js) safely. Discover commands and their JSON Schema contract with schema, select projects, preview with --dry-run, guard writes with --if-match revisions and recover from CONFLICT and other error codes. Use when a workspace has bin/forge.js, when starting any Forge task, or when a Forge command fails.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\nTo bootstrap another project, download a pinned GitHub release rather than copying the source checkout's saved selection. Follow `bin/data/docs/how-to/install.md`: download the trusted release's `install-forge.mjs`, execute it with `--version` and `--workspace`, check its exit status and JSON `ok`, then preview `project create` and verify `project current`. The installer verifies the archive checksum, installs generic defaults and runs setup; it refuses an existing `bin/`. Upgrades preserve configuration, plugins, templates and project selection through a separately reviewed change.\n\nFor self-upgrades, run `update check --json`, review a pinned `update apply --release-version <version> --if-match <revision> --dry-run --json`, then apply with the same version and revision. Upgrades preserve local configuration, project selection, installed plugins, templates and custom webviews. A conflict requires new inspection. Check the next `--version` and `project current`, and restart any running server. See `bin/data/docs/reference/updates.md`.\n\n1. Locate the complete `bin` distribution: `forge.js`, `forge-runtime.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/forge.js config --json` to confirm the projects path, defaults, enabled plugins and their effective `plugins.settings.<plugin-id>` sections, then use `node bin/forge.js help --json` to discover the installed command catalog if needed. For a known task, start with `help <command>` and request `schema <command> --json` for its machine-readable contract. `schema --json` alone is a compact index of command ids; reserve the complete `schema --all --json` for discovering the entire API, and do not load it again on every task. `schema <command>` returns one command's contract: its JSON Schema 2020-12 `inputSchema`, its `outputSchema` (or `annotations.actions.<action>.outputSchema`) for `data`, the error codes it can report, and `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `scope`); `data.envelope` is the response schema. Prefer read-only commands for discovery and treat `destructiveHint: true` commands as needing a reviewed `--dry-run` first. If the bundle is elsewhere, use its absolute path. Select another workspace with `--root` (`node bin/forge.js --root <workspace> schema --json`) or, without it, the `FORGE_ROOT` environment variable; relative paths resolve against that workspace root, not your working directory, and a response warns when the working directory is outside it. The selected workspace always uses its own `bin/config.json`; `--root`, `--no-plugins`, dry-run and formatting flags may appear on either side of the command. A flag after a value-taking option is never its value: write a literal value that starts with `-` as `--key=value`.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Keep shared selection fixed while parallel agents use file commands: checking the context does not lock it for the next invocation. Coordinate selection changes first; use separate workspaces when agents need different selections. Only commands that declare `--project` support a per-invocation target. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` (document commands include a unified `diff` per text file) and generator `preview` before applying. Edit only what changes: `edit --section \"A > B\"` or `--block <id>` for one part of a note, `edit --edits <list>` for several replacements in one file. When several files must change together (a move plus edits and property changes), write one plan for `apply <plan.json|->` and review `apply --dry-run`: it commits as one guarded batch or not at all. The plan's JSON Schema is the `contentSchema` of `apply`'s argument in `schema apply`. `apply` reports `idempotentHint: false`: an operation without `ifMatch` applies again on a repeat, so give each operation the `ifMatch` from your reads.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A `CONFLICT` reports `error.details.currentRevision`: reread and reconcile; never blindly retry with the new revision. `NO_MATCH` means `--find` text is absent and `AMBIGUOUS_EDIT` that it matches several lines (`details.lines`); with `--edits`, `details.edit` names the failing entry. `SECTION_NOT_FOUND` lists the note's `details.headings` or `details.blocks`, and `AMBIGUOUS_SECTION` its `details.candidates`: add an ancestor heading or pass a candidate's line as `--section-line`. An `apply` failure adds `details.operation`, the index of the failing operation, and `INVALID_PLAN` lists `details.issues`. Validation failures write nothing. On `ROLLBACK_FAILED`, inspect every reported path and the actual saved contents before doing more work; recovery could not restore every file.\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. On failure follow `error.hint`; only `error.retryable: true` permits an unchanged retry (for example `WORKSPACE_BUSY` or `SERVER_BUSY`); inspect `server status` before repeating `SERVER_STOP_FAILED`. `schema --all` lists every code at `data.errors`. The envelope's `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`; new parent folders appear as `kind: \"folder\"` records); reads and dry runs return `[]`. Use `--events all` on the original invocation when you need lifecycle records, or `--events none`. History is invocation-local; never rerun a mutation just to obtain more events. Warnings may report failed notification listeners after a successful write; inspect committed events and read back before considering any repeat.\n6. Read back the result and validate documents; after vault changes run `vault check --strict` and fix each error finding by its `hint` until it passes (`VAULT_CHECK_FAILED` lists them in `error.details.findings`). For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory's manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/forge.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a visual workspace overview, the agent may offer to start the read-only admin view. Once startup is authorized, run `node bin/forge.js server start --webview admin --json` and share `data.url` locally; the CLI never prompts or opens a browser. `server status` is read-only discovery, `server start` reuses an existing workspace server, and `server stop` ends it. Start/stop support `--dry-run`; a preview never starts or stops a process. These commands always use workspace scope and preserve project selection. Treat the launch URL as local session access information because its fragment contains a bearer token; retrieve a fresh link after restart. Use `help server`, `schema server --json` and `bin/data/docs/reference/server.md` for the lifecycle contract. The view inspects state and cannot change configuration.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying. Templates and `make document` come from the bundled `templates` core plugin, and the project and code scaffolds from `scaffolds`; when `plugins` lists one as disabled, its commands and generators are unknown, `setup` skips the templates with a warning and `project create`/`project component` fail with `PLUGIN_UNAVAILABLE`.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured folders and default framework in `plugins.settings.ui` (`framework`, `components`, `interactions`, `output`, `stories` and their import/export folders; `config --json` shows the effective values). The `ui` core plugin owns `components`, `interactions`, `make ui` and `make stories`; the `data-sources` core plugin owns `data-sources` and `make data-source`, with its folders in `plugins.settings.data-sources`. Feature folders never live under `paths`, which holds only `projects`. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project's framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor agent definitions, follow the forge-agents skill: definitions are docker-agent YAML in `agents/*.yaml`, `agents validate` checks them, and `agents generate --target claude` (with `--plan`, `--check` or `--revisions-from`) maintains `.claude/agents/`; never hand-edit generated agents.\n\nFor agent skills, `skills list` names the skills of the enabled plugins, `skills show <id>` returns one `SKILL.md`, and `skills install [--target both|claude|agents | --out <directory>]` writes them into the selected project's `.claude/skills` and `.agents/skills`; existing files are refused, so a repeat never overwrites an edited skill.\n\nFor native Claude Code configuration, use the `claude` command instead of hand-written JSON. `claude capabilities` lists the supported hook events, handler types, plugin components and runtime operations. `claude hooks inspect` returns the settings document (`--scope project|local|user|plugin`, default `project`) with its `revision`; `claude hooks check` validates it without running handlers; `hooks add <event> --stdin`, `set`, `remove <event> [--index n]`, `enable`, `disable` and `configure` edit it and need `--if-match <revision>` once the file exists. `claude agents list|inspect|create|update|remove|enable|disable|export` manages `.claude/agents/*.md`. `claude plugins create|inspect|manifest|check|asset|write-asset|remove-asset <directory>` authors a plugin folder without running Claude. `claude plugins list|details|install|update|uninstall|enable|disable|validate|configure|prune|init|tag|test|eval`, `claude marketplaces add|list|remove|update` and `claude runtime version|doctor|install|update` run the installed `claude` executable (`--claude-bin`, `--timeout`) and can change the user's Claude Code installation: preview them with `--dry-run`, keep `--scope project` unless the user asks otherwise, never pass `--scope user` without their consent, and expect `idempotentHint: false`. Hooks and plugins run commands; review them like code.\n\nAdd `--lang de` for German descriptions, hints, warnings and findings; commands, options, ids, codes and JSON keys stay the same, so match codes rather than message text.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values '{\"owner\":\"Team\"}' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n\nFor a self-contained browser prototype, use the `forge-webviews` skill and `project create <id> --type webview`. Build and test inside that independent project; `node bin/forge.js webview inspect --project <id>` reports publication state, `webview publish --dry-run` previews the build-output changes, and `server start --webview <id>` returns the packaged preview URL.\n\nFor on-demand webpage screenshots or illustrated flow documentation, follow `forge-browser`. Discover `schema browser`; screenshot and tutorial dry runs validate without launching a browser. Tutorials execute explicit reviewed JSON plans from JSON, Markdown or Canvas, then write guarded document folders.\n";
+const vault = '---\nname: forge-vault\ndescription: Read, search, link-check, create and edit Obsidian Markdown notes, frontmatter properties, Canvas, Bases and attachments through Forge with revision guards, link-preserving moves and trash deletes. Use when working with notes, wikilinks, backlinks, tags, .canvas or .base files, or any vault file edit in a Forge workspace.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nRun `node bin/forge.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. A leading `./`, `\\` separators and absolute paths inside the scope root are accepted and reported as the relative path; symlinks, traversal, paths outside the scope and Git internals are rejected with `INVALID_PATH`, whose `details` name the argument or option and may give a `suggestion`.\n\nFor parallel work, use `read <path> --project <id>`, `read-many <paths...> --project <id>`, `stat <path> --project <id>` and `apply <plan.json|-> --project <id>` to target each invocation without changing saved selection. Keep the same explicit project for reads, preview and apply, and verify `context.root`. An `ifMatch` hash binds file bytes, not project identity; unknown targets fail without fallback. A plan filename and its operations resolve inside the named project. Writes in different projects still share the workspace writer lock, so an overlapping write may fail with `WORKSPACE_BUSY`; retry while `error.retryable` is true. Other file commands still follow saved selection unless their help declares `--project`.\n\nUse `read-many` for 1–32 explicit paths, each counting at most `--max-bytes` toward an 8 MiB aggregate limit, returning ordered `data.files` with normal read documents/revisions and `data.bytes`. Any failure rejects the whole bundle; per-file failures identify `details.index` and `details.path`. Reads are sequential, not an atomic snapshot. The cap is not a hard memory bound and JSON/base64 output can be larger; split large reads. No `--parts` option is offered; use single-file `read --parts body` when needed.\n\nUse `stat <path>` to obtain a file\'s raw revision and byte count or a folder\'s revision and descendant counts without returning content or parsing structured documents. This also works when `read` fails on malformed frontmatter. The command hashes whole files and walks folders; it is not a cheap filesystem stat or validation. `stat <path> --project <id>` targets one project without changing selection; later mutations must use the same scope, and only commands whose help declares `--project` accept it. See `bin/data/docs/how-to/inspect-file-metadata.md`.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append; see precise edits below for sections, blocks and several replacements. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar, plus files named `Dockerfile` or `Containerfile` in any case, also with a suffix such as `Dockerfile.release`; see `formats` `textFilenames`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 or content with NUL characters reads as base64 and cannot be edited; edits cannot introduce NUL characters.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nPrecise edits change only what you address, in memory, with one guarded write:\n- Section: `edit notes/plan.md --section "Plan > Risks" --append --content "- Staffing" --if-match <revision>`; also `--prepend --content` or `--replace <text>`. The path lists headings outermost first, separated by ` > `; the section runs to the next heading of the same or a higher level, its heading line and the blank lines around its content stay. `SECTION_NOT_FOUND` lists `details.headings`; `AMBIGUOUS_SECTION` lists `details.candidates`: add an ancestor heading, or pass the candidate\'s `line` as `--section-line <n>` (`sectionLine` in a plan), the only way to pick between headings with the same full path. Write a ` > ` inside a heading as ` \\> `.\n- Block: `edit notes/plan.md --block ship --replace "New text" --if-match <revision>` addresses `^ship`; replacing keeps the marker so block links keep working. A list item or task keeps its indentation, marker and checkbox and its nested items: pass only the new text, or start it with a marker (`- [x] Done`) to change the checkbox. `--append`/`--prepend --content` add a separate block (blank lines around it) next to a paragraph or section; next to a list item the content must start with a list marker and becomes sibling items, else `INVALID_INPUT`.\n- Several literal replacements: `edit <file> --edits \'[{"find":"a","replace":"b"},{"find":"x","replace":"y","all":true}]\' --if-match <revision>` (or `--edits @edits.json`, `--edits -`). They apply in order; a failure names `details.edit` and writes nothing.\n- Several files as one unit: write a plan `{"version":1,"operations":[...]}` with `write`, `edit` (`edits`, `append`, or `section`/`block` with `replace`/`append`/`prepend`), `frontmatter` (`set`, `unset`), `move` (`from`, `to`) and `delete` (to `.trash`) operations, each with an optional `ifMatch` from your reads, and run `apply plan.json --dry-run`, then `apply plan.json` (or pipe it to `apply -`). Operations see the effects of earlier ones (edit a note after moving it by its new path); the plan commits as one batch or not at all. A failure keeps its code and adds `details.operation`; `INVALID_PLAN` lists schema `details.issues`. `help apply` shows the plan\'s JSON Schema, and `schema apply` publishes it as the argument\'s `contentSchema` with the result\'s `outputSchema`. Split a plan that writes to a path it also moves or deletes.\n\nFind before you edit: `search "release plan"` returns `data.hits` (`path`, 1-based `line` and `column`, `match`, `snippet`, `revision`) in path, line and column order, plus `total`. Narrow with `--path "notes/**"`, `--kind markdown`, `--tag project`, `--property status=active`, `--in body` (skip frontmatter) or `--skip-code`; add `--context 2` for surrounding lines. Exclude generated files before they are read with `--exclude "**/{dist,coverage}/**"` (one root-relative glob, brace alternatives allowed); exclusion wins over `--path`. Search does not interpret `.gitignore`, and pagination requires the same exclusion filter. Literal matching ignores case unless `--case-sensitive`; `--regex` takes a JavaScript regular expression matched per line. A hit\'s `revision` is the `--if-match` for an `edit` of that file. Pages hold 100 hits: repeat the same command with `--cursor <nextCursor>` until `nextCursor` is absent. `SEARCH_TIMEOUT` means the expression backtracks too much: simplify it or search literally. `list --path notes --kind markdown` lists files the same way (a plain folder path selects everything below it; `list --tag`/`--property` find notes without a pattern), 500 per page with `total`; `search --files-only` or `--count` return only the files or counts. A `--path` that matches nothing adds a warning.\n\nCheck the link graph before restructuring: `links back notes/plan.md` lists every file that links to it (`source`, 1-based `line`/`column`, `original`); `links out notes/plan.md` lists its own links with `status` and `target`. `links unresolved --path "notes/**"` reports broken links with `reason` `missing`, or `ambiguous` with `candidates` (use a longer link path that names one candidate). `links orphans` lists notes nothing links to and `links deadends` notes that link nowhere; list deliberate entry notes in `plugins.settings.links.roots`. Every report has `issues`: files whose metadata could not be parsed, whose links are missing from the report, so fix those first.\n\nVerify the vault before you finish: `vault check` returns `data.findings` (`rule`, `severity` `error`/`warning`/`info`, `path`, 1-based `line`/`column` or `null`, `message`, `hint`, and for a missing target `suggestion`, the closest existing file) in path and line order, plus `summary` counts. Rules: `unresolved-link`, `unresolved-embed`, `ambiguous-link`, `unresolved-anchor` (a missing `#Heading` or `#^block`), `invalid-frontmatter`, `invalid-canvas`, `invalid-base`, `property-type-mismatch` (against `.obsidian/types.json`, else the type most notes use), `duplicate-block-id`, `empty-file` and `orphan-attachment`. Narrow with `--path "notes/**"` and `--rule unresolved-link,invalid-frontmatter`. `vault check --strict` fails with `VAULT_CHECK_FAILED` (exit 2) while an `error` finding remains and lists them in `error.details.findings`: fix each by its `hint` and run it again until it passes. Before setting a property, run `vault properties --name <property>` to see its inferred and declared type, so values keep one type; `vault tags --sort count` lists tags with their files (nested tags count for their parents). Rule severities and ignore globs live in `plugins.settings.vault-check`.\n\nMove, rename and delete with the link-aware commands, never by writing a copy and removing the original:\n- Move or rename: `move notes/plan.md specs/plan.md --dry-run` (or `rename notes/plan.md Roadmap --dry-run`; a file keeps its extension) returns `data.revision` and a `diff` for every file whose links change: wikilinks and embeds keep `#Heading`, `#^block` and `|display` text, relative Markdown links are recomputed, frontmatter links and Canvas `file` nodes follow. Review `data.links.unrewritten`, then repeat without `--dry-run` and with `--if-match <revision>`. One batch commits the move and every rewritten file. `DESTINATION_EXISTS` means the target exists: Forge never overwrites it. A folder moves the same way; its `--if-match` is the folder revision the dry run reports.\n- Delete: `delete notes/scratch.md --if-match <revision>` moves the file to `.trash/` (numbered ` 1`, ` 2`… if taken); `--permanent` removes it; a folder needs `--recursive`. `HAS_BACKLINKS` lists the files still linking to it in `details.backlinks` (`source`, 1-based `line`, `original`): rewrite or remove those links first, or move the note instead. Pass `--allow-broken-links` only when broken links are intended. `.obsidian`, `.forge` and, at workspace scope, `bin` are protected in any letter case (`PROTECTED_PATH`). `--permanent` also refuses folders holding symlinks or `node_modules` (`PROTECTED_PATH`): trash them instead. `data.deleted` lists every removed file (`kind: "file"`) and folder (`kind: "folder"`).\n\nMarkdown `read` returns `content` and `properties`; `--parts properties` returns only the frontmatter and `--parts body` only the body. Content beyond 256 KiB (`--max-bytes`) is cut with `truncated: true`, `lines` and a warning; read further with `--lines <start>-<end>` (1-based, inclusive), the line numbers `search` hits report. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nForge removes a lock whose holder provably no longer runs (same host, container and boot; pid gone or reused; or written before the last restart) by itself and returns a warning: then inspect the interrupted changes with `git status` and read-back before continuing. On `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command, and on Linux pidNamespace, bootId and processStart), `path` the lock file and `stale` is `active`, `unknown` or `stale`. Wait `details.retryAfterMs` and retry while it is `active` (`retryable: true`), also when `details.breaker` shows another writer removing a stale lock, or rerun with the global `--wait <ms>` so the write waits for the lock itself; never delete an `active` lock. `unknown` (`retryable: false`) covers another host, container or boot and unreadable locks: do not retry in a loop and never delete the lock blindly; delete the file in `details.path` only after verifying that the recorded pid on the recorded host and container is not a running Forge writer and inspecting its changes, then retry. `stale` (`retryable: false`) means the holder provably no longer runs but Forge could not remove the file: confirm no Forge process uses it, then delete the file in `details.path` and retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n\nFor documents explaining a webpage, UI problem or workflow with screenshots, follow `forge-browser` to capture and inspect evidence. Embed the actual saved PNG relative to the Markdown note, cite the clean source URL and capture metadata, and keep the guarded document-editing loop above.\n';
+const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript projects with Forge scaffolds (project create, project component, make entity, make use-case, make form, make plugin) and prove them with acceptance tests and quality gates. Use when adding domain or application code, forms or Forge plugins, or when running npm run check in a Forge-managed project.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. When several agents share a workspace, keep selection stable and use `read`, `read-many`, `stat` and `apply` with `--project <id>` for each read/preview/write. Writes in different projects still share the workspace writer lock and may return retryable `WORKSPACE_BUSY`. Bundle up to 32 explicit paths and 8 MiB raw bytes with `read-many`; revisions remain individual reads. Other commands only support an explicit target when their help declares it. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/forge.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --dry-run` (use cases default to `src/application`). These code generators belong to the bundled `scaffolds` core plugin and `make document` to `templates`; `plugins` shows whether they are enabled.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills, events and services under the plugin ID and error codes under its UPPER_SNAKE_CASE prefix. Declare each command's metadata (`scope`, `mutating`, described `options` and `args`, `errors`, and `destructive` or `idempotent` where the derived hints are wrong) so `help`, `schema` and the invocation policy describe it; declare `output`, the JSON Schema of `data`, on the command or per action, and `schema` on a string option or argument that holds or names a JSON document; declare settings as a JSON Schema read from `plugins.settings.<id>` via `context.settings`, German text in `strings.de` (descriptions of commands, actions, options, arguments and settings, the manifest name and description, error summaries and hints, and messages read with `context.t`), and shared capabilities through `provides`/`requires` instead of imports. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures; use `onUserEnable(context)` for idempotent one-time setup after enabling (it runs at least once, not exactly once) and `context.events.onLayoutReady`/`onQuit` for work that needs active plugins or invocation-end cleanup. Plugins may emit only `<plugin-id>.*` events; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`) and other plugins' events (such as `claude.*`) fail with `EVENT_OWNERSHIP`. To run the installed Claude Code CLI, require the `claude.lifecycle` service of the `claude` core plugin. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. Each project owns its CI: author GitHub workflows in the project's `src/infrastructure/workflows/<concern>/*.yml`, then run `node bin/forge.js workflows sync --dry-run`, review, and `workflows sync` from the workspace to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints. Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ from their sources.\n8. For changes to The Forge itself, work in its project directory (`src/the-forge` in the source checkout): run `npm ci`, iterate with `npm run check:fast` (including `check:contracts`), update docs and skills, then run `npm run check` and commit the rebuilt workspace executable and packaged assets with the source. `npm run check` also replays every agent evaluation task in `evals/tasks` with the reference driver; when you add an agent-facing command, add or extend an evaluation task with reference steps and deterministic checks, respecting the suite budget in `docs/how-to/evaluate-agents.md`, and validate it with `npm run eval -- --task <id>`. Preserve existing acceptance checks when extending a task. Measure an agent with the opt-in `npm run eval -- --driver claude`. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Use `npm run check:contracts` to diagnose source command/schema, localization, reference-doc and evaluation-budget failures without a built distribution; keep its seven selected suites source-only and the evaluation suite at most 35 tasks. Portable help and artifact behavior still require the full gate after build. Mutation testing, which measures how well unit tests detect injected faults in selected domain code, runs in CI only and is not part of `check`; run the focused `npm run mutate -- --mutate <file>` form from `docs/how-to/develop-and-test.md` locally only to investigate a file's surviving mutants. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n\nFor an independent browser prototype, follow `forge-webviews`: `project create <id> --type webview` scaffolds Vue/Nuxt UI with local fixtures and Playwright; `webview publish` maintains built assets and `server start --webview <id>` manages the local preview. Library component generators do not target webview projects.\n";
 const bundledSkills = [
   { id: "forge-workflow", content: workflow },
   { id: "forge-vault", content: vault },
@@ -18775,14 +19024,14 @@ function expand(tokens, fail2) {
         results = results.map((result) => [...result, token]);
         continue;
       }
-      const alternatives = [];
+      const alternatives2 = [];
       for (; ; ) {
-        alternatives.push(...sequence());
-        if (alternatives.length > maxGlobExpansions) fail2(`expands to more than ${maxGlobExpansions} alternatives.`);
+        alternatives2.push(...sequence());
+        if (alternatives2.length > maxGlobExpansions) fail2(`expands to more than ${maxGlobExpansions} alternatives.`);
         const next = tokens[position2++];
         if (next.kind === "close") break;
       }
-      results = product(results, alternatives);
+      results = product(results, alternatives2);
     }
     return results;
   };
@@ -18856,11 +19105,61 @@ function pathGlob(pattern2, option2 = "--path") {
     throw forgeError("INVALID_ARGUMENT", `${option2} ${message2}`);
   };
   ensure(pattern2.length > 0 && pattern2.length <= maxGlobLength, "INVALID_ARGUMENT", `${option2} must be a glob of 1 to ${maxGlobLength} characters.`);
-  const alternatives = expand(tokenize(characters(pattern2.replace(/^\.\//, "")), fail2), fail2).map(segments);
+  const alternatives2 = expand(tokenize(characters(pattern2.replace(/^\.\//, "")), fail2), fail2).map(segments);
   return (path2) => {
     const parts = path2.split("/").map(characters);
-    return alternatives.some((alternative) => pathMatches(alternative, parts));
+    return alternatives2.some((alternative) => pathMatches(alternative, parts));
   };
+}
+const globSyntax = /[*?[\]{}\\]/;
+function pathFilter(pattern2, option2 = "--path") {
+  if (globSyntax.test(pattern2)) return pathGlob(pattern2, option2);
+  ensure(pattern2.length > 0 && pattern2.length <= maxGlobLength, "INVALID_ARGUMENT", `${option2} must be a glob of 1 to ${maxGlobLength} characters.`);
+  const literal2 = pattern2.replace(/^\.\//, "").replace(/\/+$/, "");
+  if (literal2 === "" || literal2 === ".") return () => true;
+  return (path2) => path2 === literal2 || path2.startsWith(`${literal2}/`);
+}
+function recordingFilter(filter) {
+  let matched2 = false;
+  return {
+    matches: (path2) => {
+      const result = filter(path2);
+      if (result) matched2 = true;
+      return result;
+    },
+    matched: () => matched2
+  };
+}
+function propertyFilter(text2) {
+  const equals = text2.indexOf("=");
+  const key = (equals < 0 ? text2 : text2.slice(0, equals)).trim();
+  if (!key) return void 0;
+  return equals < 0 ? { key } : { key, value: text2.slice(equals + 1) };
+}
+const scalarText = (value2) => typeof value2 === "string" || typeof value2 === "number" || typeof value2 === "boolean" ? String(value2) : void 0;
+function metadataMatches(cache, query) {
+  if (query.tag !== void 0) {
+    const needle = query.tag.replace(/^#/, "").toLowerCase();
+    const tags2 = allTags(cache).map((tag) => tag.replace(/^#/, "").toLowerCase());
+    if (!tags2.some((tag) => tag === needle || tag.startsWith(`${needle}/`))) return false;
+  }
+  if (query.property !== void 0) {
+    const frontmatter = cache?.frontmatter;
+    if (!frontmatter || !Object.hasOwn(frontmatter, query.property.key)) return false;
+    const value2 = frontmatter[query.property.key];
+    if (value2 === null || value2 === void 0) return false;
+    if (query.property.value !== void 0) {
+      const values2 = Array.isArray(value2) ? value2 : [value2];
+      if (!values2.some((item) => scalarText(item) === query.property.value)) return false;
+    }
+  }
+  return true;
+}
+function noteFilters(tag, property) {
+  ensure(tag === void 0 || tag.replace(/^#/, "").length > 0, "INVALID_ARGUMENT", "--tag must name a tag.");
+  const filter = property === void 0 ? void 0 : propertyFilter(property);
+  ensure(property === void 0 || filter, "INVALID_ARGUMENT", "--property must be key or key=value with a nonempty key.");
+  return { ...tag === void 0 ? {} : { tag }, ...filter === void 0 ? {} : { property: filter } };
 }
 const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 function base64url$1(bytes) {
@@ -18944,31 +19243,6 @@ const maxPatternLength = 1e3;
 const maxContextLines = 50;
 function searchError(code2, message2, details) {
   return Object.assign(new Error(message2), { code: code2, ...details ? { details } : {} });
-}
-function propertyFilter(text2) {
-  const equals = text2.indexOf("=");
-  const key = (equals < 0 ? text2 : text2.slice(0, equals)).trim();
-  if (!key) return void 0;
-  return equals < 0 ? { key } : { key, value: text2.slice(equals + 1) };
-}
-const scalarText = (value2) => typeof value2 === "string" || typeof value2 === "number" || typeof value2 === "boolean" ? String(value2) : void 0;
-function metadataMatches(cache, query) {
-  if (query.tag !== void 0) {
-    const needle = query.tag.replace(/^#/, "").toLowerCase();
-    const tags2 = allTags(cache).map((tag) => tag.replace(/^#/, "").toLowerCase());
-    if (!tags2.some((tag) => tag === needle || tag.startsWith(`${needle}/`))) return false;
-  }
-  if (query.property !== void 0) {
-    const frontmatter = cache?.frontmatter;
-    if (!frontmatter || !Object.hasOwn(frontmatter, query.property.key)) return false;
-    const value2 = frontmatter[query.property.key];
-    if (value2 === null || value2 === void 0) return false;
-    if (query.property.value !== void 0) {
-      const values2 = Array.isArray(value2) ? value2 : [value2];
-      if (!values2.some((item) => scalarText(item) === query.property.value)) return false;
-    }
-  }
-  return true;
 }
 const syntax = /[.*+?^${}()|[\]\\/]/g;
 const snippetRadius = 80;
@@ -19058,15 +19332,14 @@ function completed({ lines: lines2, revision: revision2, ...hit }, context) {
     revision: revision2
   };
 }
-async function searchFiles(sources, query, page) {
+async function scanFiles(sources, query, visit2) {
   const expression2 = searchExpression(query);
-  const { context: _context, ...ordering2 } = query;
-  const pager = new Pager(page, { command: "search", ...ordering2 }, (hit) => [hit.path, hit.line, hit.column]);
-  const inPath = query.path === void 0 ? () => true : pathGlob(query.path);
-  const excluded = query.exclude === void 0 ? () => false : pathGlob(query.exclude, "--exclude");
+  const inPath = recordingFilter(query.path === void 0 ? () => true : pathFilter(query.path));
+  const excluded = query.exclude === void 0 ? () => false : pathFilter(query.exclude, "--exclude");
   const kinds = query.kind ? [query.kind] : searchKinds;
   const listed = await sources.paths();
-  const candidates2 = sources.budget.run(() => listed.filter((path2) => kinds.includes(fileKind(path2)) && inPath(path2) && !excluded(path2)));
+  const candidates2 = sources.budget.run(() => listed.filter((path2) => inPath.matches(path2) && kinds.includes(fileKind(path2)) && !excluded(path2)));
+  if (query.path !== void 0 && !inPath.matched()) sources.warn(kernelMessage("PATH_MATCHED_NOTHING", { option: "--path", pattern: query.path }));
   const filtered2 = query.tag !== void 0 || query.property !== void 0;
   for (let start2 = 0; start2 < candidates2.length; start2 += batchSize) {
     const batch = await Promise.all(candidates2.slice(start2, start2 + batchSize).map((path2) => readExisting(sources.files, path2)));
@@ -19081,14 +19354,30 @@ async function searchFiles(sources, query, page) {
       const metadata2 = filtered2 || query.skipCode ? await sources.parse(file) : null;
       if (filtered2 && !metadataMatches(metadata2, query)) continue;
       const code2 = query.skipCode ? codeLines(metadata2) : void 0;
-      for (const hit of hits) {
-        if (code2?.has(hit.line)) continue;
-        pager.offer({ path: file.path, line: hit.line + 1, column: hit.column + 1, match: hit.match, revision: file.revision, lines: lines2 });
-      }
+      const kept = code2 === void 0 ? hits : hits.filter((hit) => !code2.has(hit.line));
+      if (kept.length > 0) visit2(file, lines2, kept);
     }
   }
+}
+async function searchFiles(sources, query, page) {
+  const { context: _context, ...ordering2 } = query;
+  const pager = new Pager(page, { command: "search", ...ordering2 }, (hit) => [hit.path, hit.line, hit.column]);
+  await scanFiles(sources, query, (file, lines2, hits) => {
+    for (const hit of hits) pager.offer({ path: file.path, line: hit.line + 1, column: hit.column + 1, match: hit.match, revision: file.revision, lines: lines2 });
+  });
   const nextCursor = pager.nextCursor();
   return { hits: pager.items.map((hit) => completed(hit, query.context)), total: pager.total, ...nextCursor === void 0 ? {} : { nextCursor } };
+}
+async function searchMatchingFiles(sources, query, page) {
+  const { context: _context, ...ordering2 } = query;
+  const pager = new Pager(page, { command: "search", output: "files", ...ordering2 }, (file) => [file.path]);
+  let total2 = 0;
+  await scanFiles(sources, query, (file, _lines, hits) => {
+    total2 += hits.length;
+    pager.offer({ path: file.path, revision: file.revision, hits: hits.length });
+  });
+  const nextCursor = pager.nextCursor();
+  return { files: pager.items, total: total2, fileCount: pager.total, ...nextCursor === void 0 ? {} : { nextCursor } };
 }
 function vmSearchBudget(milliseconds) {
   const context = node_vm.createContext({ task: void 0 }), script = new node_vm.Script("task()");
@@ -19114,34 +19403,54 @@ function vmSearchBudget(milliseconds) {
 const defaultSearchLimit = 100;
 const text$i = { type: "string" };
 const lines = { type: "array", items: text$i };
-const output$1 = {
-  type: "object",
-  required: ["hits", "total"],
-  properties: {
-    hits: { type: "array", items: {
-      type: "object",
-      required: ["path", "line", "column", "match", "snippet", "revision"],
-      properties: {
-        path: text$i,
-        line: { type: "integer", minimum: 1 },
-        column: { type: "integer", minimum: 1 },
-        match: text$i,
-        snippet: text$i,
-        before: lines,
-        after: lines,
-        revision: text$i
-      }
-    } },
-    total: { type: "integer", minimum: 0 },
-    nextCursor: text$i
-  }
-};
+const count$2 = { type: "integer", minimum: 0 };
+const total = { ...count$2, description: "Every hit of the query, across all pages." };
+const fileCount = { ...count$2, description: "Every file with hits, across all pages." };
+const output$1 = { type: "object", oneOf: [
+  {
+    title: "hits",
+    type: "object",
+    required: ["hits", "total"],
+    properties: {
+      hits: { type: "array", items: {
+        type: "object",
+        required: ["path", "line", "column", "match", "snippet", "revision"],
+        properties: {
+          path: text$i,
+          line: { type: "integer", minimum: 1 },
+          column: { type: "integer", minimum: 1 },
+          match: text$i,
+          snippet: text$i,
+          before: lines,
+          after: lines,
+          revision: text$i
+        }
+      } },
+      total,
+      nextCursor: text$i
+    }
+  },
+  {
+    title: "files (--files-only)",
+    type: "object",
+    required: ["files", "total", "fileCount"],
+    properties: {
+      files: { type: "array", items: { type: "object", required: ["path", "revision", "hits"], properties: { path: text$i, revision: text$i, hits: { type: "integer", minimum: 1 } } } },
+      total,
+      fileCount,
+      nextCursor: text$i
+    }
+  },
+  { title: "count (--count)", type: "object", required: ["total", "fileCount"], properties: { total, fileCount } }
+] };
 function searchCommand(service) {
   return {
     id: "search",
     description: "Search text files for a literal or regular-expression pattern and return hits with line, column, snippet and revision.",
-    usage: "search <pattern> [--regex] [--case-sensitive] [--in body|frontmatter|all] [--skip-code] [--kind markdown|canvas|base|text] [--path glob] [--exclude glob] [--tag tag] [--property key[=value]] [--context lines] [--limit count] [--cursor token]",
+    examples: ['search "open question" --path "notes/**"', 'search "^- \\[ \\]" --regex --kind markdown'],
+    usage: "search <pattern> [--regex] [--case-sensitive] [--in body|frontmatter|all] [--skip-code] [--kind markdown|canvas|base|text] [--path glob] [--exclude glob] [--tag tag] [--property key[=value]] [--context lines] [--files-only | --count] [--limit count] [--cursor token] [--project id]",
     scope: "project",
+    projectOption: "project",
     discovery: false,
     mutating: false,
     args: [{ name: "pattern", description: "Literal text, or a JavaScript regular expression with --regex. Use -- before a pattern that starts with -.", required: true }],
@@ -19151,25 +19460,29 @@ function searchCommand(service) {
       in: option$1.string("Markdown lines to read: the body after frontmatter, the frontmatter, or both.", { enum: searchScopes, default: "all" }),
       "skip-code": option$1.boolean("Skip fenced and indented code blocks in Markdown."),
       kind: option$1.string("Only files of this text kind.", { enum: searchKinds }),
-      path: option$1.string("Only files whose root-relative path matches this glob."),
-      exclude: option$1.string("Skip files whose root-relative path matches this glob; use braces for alternatives."),
+      path: option$1.string("Only files whose root-relative path matches this glob, or that are this file or below this folder."),
+      exclude: option$1.string("Skip files whose root-relative path matches this glob, or that are this file or below this folder; use braces for alternatives."),
       tag: option$1.string("Only notes with this tag or a nested tag below it."),
       property: option$1.string("Only notes whose frontmatter has key (not null), or key=value."),
       context: option$1.string(`Lines of context before and after each hit (0–${maxContextLines}).`, { default: "0" }),
-      limit: option$1.string("Maximum hits per page; a truncated page returns nextCursor.", { default: String(defaultSearchLimit) }),
-      cursor: option$1.string("Continue after the page that returned this nextCursor, with the same pattern and filters.")
+      limit: option$1.string("Maximum hits, or files with --files-only, per page; a truncated page returns nextCursor.", { default: String(defaultSearchLimit) }),
+      cursor: option$1.string("Continue after the page that returned this nextCursor, with the same pattern and filters."),
+      "files-only": option$1.boolean("Return the files with hits and their hit counts instead of the hits."),
+      count: option$1.boolean("Return only the number of hits and of files with hits."),
+      project: option$1.string("Use this project instead of the selected project.")
     },
     output: output$1,
     errors: ["INVALID_SEARCH_PATTERN", "SEARCH_TIMEOUT"],
     async run(args, flags, context) {
       arity(args, 1);
-      const scope2 = value$2(flags, "in") ?? "all", kind2 = value$2(flags, "kind"), property = value$2(flags, "property");
-      const filter = property === void 0 ? void 0 : propertyFilter(property);
-      ensure(property === void 0 || filter, "INVALID_ARGUMENT", "--property must be key or key=value with a nonempty key.");
+      const scope2 = value$2(flags, "in") ?? "all", kind2 = value$2(flags, "kind");
+      const filters = noteFilters(value$2(flags, "tag"), value$2(flags, "property"));
       const contextLines = integer$2(flags, "context") ?? 0;
       ensure(contextLines <= maxContextLines, "INVALID_ARGUMENT", `--context must be at most ${maxContextLines}.`);
-      const tag = value$2(flags, "tag");
-      ensure(tag === void 0 || tag.replace(/^#/, "").length > 0, "INVALID_ARGUMENT", "--tag must name a tag.");
+      const files = flags["files-only"] === true, counting = flags.count === true;
+      ensure(!(files && counting), "INVALID_ARGUMENT", "Choose one of --files-only and --count.");
+      ensure(!counting || flags.limit === void 0 && flags.cursor === void 0, "INVALID_ARGUMENT", "--count returns no page; omit --limit and --cursor.");
+      ensure(!(files || counting) || flags.context === void 0, "INVALID_ARGUMENT", "--context applies only to hits; omit it with --files-only or --count.");
       const query = {
         pattern: args[0],
         regex: flags.regex === true,
@@ -19180,11 +19493,15 @@ function searchCommand(service) {
         ...kind2 === void 0 ? {} : { kind: kind2 },
         ...value$2(flags, "path") === void 0 ? {} : { path: value$2(flags, "path") },
         ...value$2(flags, "exclude") === void 0 ? {} : { exclude: value$2(flags, "exclude") },
-        ...tag === void 0 ? {} : { tag },
-        ...filter === void 0 ? {} : { property: filter }
+        ...filters
       };
-      const cursor = value$2(flags, "cursor");
-      return service(context)(query, { limit: integer$2(flags, "limit", 1) ?? defaultSearchLimit, ...cursor === void 0 ? {} : { cursor } });
+      const search2 = service(context), cursor = value$2(flags, "cursor");
+      if (counting) {
+        const { total: total2, fileCount: fileCount2 } = await search2.files(query, {});
+        return { total: total2, fileCount: fileCount2 };
+      }
+      const page = { limit: integer$2(flags, "limit", 1) ?? defaultSearchLimit, ...cursor === void 0 ? {} : { cursor } };
+      return files ? search2.files(query, page) : search2.hits(query, page);
     }
   };
 }
@@ -19197,12 +19514,14 @@ const searchStrings = {
       "Markdown lines to read: the body after frontmatter, the frontmatter, or both.": "Zu lesende Markdown-Zeilen: der Inhalt nach dem Frontmatter, das Frontmatter oder beides.",
       "Skip fenced and indented code blocks in Markdown.": "Umzäunte und eingerückte Codeblöcke in Markdown überspringen.",
       "Only files of this text kind.": "Nur Dateien dieser Textart.",
-      "Only files whose root-relative path matches this glob.": "Nur Dateien, deren Pfad relativ zum Stammverzeichnis diesem Glob entspricht.",
-      "Skip files whose root-relative path matches this glob; use braces for alternatives.": "Dateien überspringen, deren Pfad relativ zum Stammverzeichnis diesem Glob entspricht; geschweifte Klammern für Alternativen verwenden.",
+      "Only files whose root-relative path matches this glob, or that are this file or below this folder.": "Nur Dateien, deren Pfad relativ zum Stammverzeichnis diesem Glob entspricht oder die diese Datei sind oder unter diesem Ordner liegen.",
+      "Skip files whose root-relative path matches this glob, or that are this file or below this folder; use braces for alternatives.": "Dateien überspringen, deren Pfad relativ zum Stammverzeichnis diesem Glob entspricht oder die diese Datei sind oder unter diesem Ordner liegen; geschweifte Klammern für Alternativen verwenden.",
       "Only notes with this tag or a nested tag below it.": "Nur Notizen mit diesem Tag oder einem darunter verschachtelten Tag.",
       "Only notes whose frontmatter has key (not null), or key=value.": "Nur Notizen, deren Frontmatter key (nicht null) oder key=value enthält.",
       "Lines of context before and after each hit (0–50).": "Kontextzeilen vor und nach jedem Treffer (0–50).",
-      "Maximum hits per page; a truncated page returns nextCursor.": "Höchstzahl der Treffer je Seite; eine gekürzte Seite liefert nextCursor.",
+      "Maximum hits, or files with --files-only, per page; a truncated page returns nextCursor.": "Höchstzahl der Treffer, mit --files-only der Dateien, je Seite; eine gekürzte Seite liefert nextCursor.",
+      "Return the files with hits and their hit counts instead of the hits.": "Statt der Treffer die Dateien mit Treffern und deren Trefferzahl liefern.",
+      "Return only the number of hits and of files with hits.": "Nur die Zahl der Treffer und der Dateien mit Treffern liefern.",
       "Continue after the page that returned this nextCursor, with the same pattern and filters.": "Nach der Seite fortfahren, die diesen nextCursor geliefert hat, mit demselben Muster und denselben Filtern.",
       "Literal text, or a JavaScript regular expression with --regex. Use -- before a pattern that starts with -.": "Wörtlicher Text oder mit --regex ein regulärer JavaScript-Ausdruck. Setzen Sie -- vor ein Muster, das mit - beginnt.",
       "Milliseconds one search may spend matching before it fails with SEARCH_TIMEOUT.": "Millisekunden, die eine Suche für den Abgleich aufwenden darf, bevor sie mit SEARCH_TIMEOUT fehlschlägt."
@@ -19222,12 +19541,16 @@ const searchPlugin = {
   },
   strings: searchStrings,
   create: () => ({
-    commands: [searchCommand((context) => (query, page) => searchFiles({
-      files: context.workspace.files,
-      paths: () => context.metadata.vaultFiles(),
-      parse: (file) => context.metadata.parseFile(file),
-      budget: vmSearchBudget(Number(context.settings?.timeoutMs ?? defaultTimeoutMs))
-    }, query, page))],
+    commands: [searchCommand((context) => {
+      const sources = () => ({
+        files: context.workspace.files,
+        paths: () => context.metadata.vaultFiles(),
+        parse: (file) => context.metadata.parseFile(file),
+        budget: vmSearchBudget(Number(context.settings?.timeoutMs ?? defaultTimeoutMs)),
+        warn: (message2) => context.events.warn(message2)
+      });
+      return { hits: (query, page) => searchFiles(sources(), query, page), files: (query, page) => searchMatchingFiles(sources(), query, page) };
+    })],
     settings: {
       type: "object",
       additionalProperties: false,
@@ -19312,7 +19635,7 @@ function location(item) {
 }
 function linkEntry(source2, item) {
   const { kind: kind2, reference, resolution } = item;
-  const resolved = resolution.status === "resolved" ? { target: resolution.path, via: resolution.via } : resolution.status === "unresolved" ? { reason: resolution.reason, ...resolution.reason === "ambiguous" ? { candidates: resolution.candidates } : {} } : {};
+  const resolved2 = resolution.status === "resolved" ? { target: resolution.path, via: resolution.via } : resolution.status === "unresolved" ? { reason: resolution.reason, ...resolution.reason === "ambiguous" ? { candidates: resolution.candidates } : {} } : {};
   return {
     source: source2,
     kind: kind2,
@@ -19321,7 +19644,7 @@ function linkEntry(source2, item) {
     link: reference.link,
     ...reference.displayText === void 0 ? {} : { displayText: reference.displayText },
     status: resolution.status,
-    ...resolved
+    ...resolved2
   };
 }
 const outbound = (source2, { resolution }) => resolution.status !== "external" && !(resolution.status === "resolved" && resolution.path === source2);
@@ -19343,11 +19666,11 @@ function unresolvedLinks(cache, include) {
   return { links: links2, issues: cache.issues() };
 }
 function orphanNotes(cache, include, root) {
-  const files = cache.files().filter((path2) => isNote(path2) && include(path2) && !root(path2) && cache.backlinks(path2).length === 0);
+  const files = cache.files().filter((path2) => include(path2) && isNote(path2) && !root(path2) && cache.backlinks(path2).length === 0);
   return { files, issues: cache.issues() };
 }
 function deadendNotes(cache, include) {
-  const files = cache.files().filter((path2) => isNote(path2) && include(path2) && cache.getFileCache(path2) !== null && !cache.references(path2).some((reference) => outbound(path2, reference)));
+  const files = cache.files().filter((path2) => include(path2) && isNote(path2) && cache.getFileCache(path2) !== null && !cache.references(path2).some((reference) => outbound(path2, reference)));
   return { files, issues: cache.issues() };
 }
 const actions$5 = ["out", "back", "unresolved", "orphans", "deadends"];
@@ -19356,8 +19679,9 @@ function linksCommand(service) {
   return {
     id: "links",
     description: "Report outgoing links, backlinks, unresolved links, orphans and dead ends from the metadata cache.",
-    usage: "links out <note> | back <note> | unresolved [--path glob] | orphans [--path glob] | deadends [--path glob]",
+    usage: "links out <note> | back <note> | unresolved [--path glob] | orphans [--path glob] | deadends [--path glob] [--project id]",
     scope: "project",
+    projectOption: "project",
     discovery: false,
     mutating: false,
     actions: {
@@ -19371,7 +19695,10 @@ function linksCommand(service) {
       { name: "action", description: "out, back, unresolved, orphans or deadends.", required: true, enum: actions$5 },
       { name: "note", description: "The vault path of the file for out and back." }
     ],
-    options: { path: option$1.string("For unresolved, orphans and deadends: only files whose root-relative path matches this glob.") },
+    options: {
+      path: option$1.string("For unresolved, orphans and deadends: only files whose root-relative path matches this glob, or that are this file or below this folder."),
+      project: option$1.string("Use this project instead of the selected project.")
+    },
     errors: ["NOT_FOUND"],
     async run(args, flags, context) {
       const action2 = args[0];
@@ -19385,12 +19712,17 @@ function linksCommand(service) {
       }
       arity(args, 1);
       const glob = value$2(flags, "path");
-      const include = glob === void 0 ? () => true : pathGlob(glob);
+      const filter = recordingFilter(glob === void 0 ? () => true : pathFilter(glob)), include = filter.matches;
       const cache = await links2.cache();
-      if (action2 === "unresolved") return unresolvedLinks(cache, include);
-      if (action2 === "deadends") return deadendNotes(cache, include);
-      const roots = links2.roots().map((root) => pathGlob(root, "plugins.settings.links.roots"));
-      return orphanNotes(cache, include, (path2) => roots.some((root) => root(path2)));
+      const report2 = () => {
+        if (action2 === "unresolved") return unresolvedLinks(cache, include);
+        if (action2 === "deadends") return deadendNotes(cache, include);
+        const roots = links2.roots().map((root) => pathGlob(root, "plugins.settings.links.roots"));
+        return orphanNotes(cache, include, (path2) => roots.some((root) => root(path2)));
+      };
+      const result = report2();
+      if (glob !== void 0 && !filter.matched()) context.events.warn(kernelMessage("PATH_MATCHED_NOTHING", { option: "--path", pattern: glob }));
+      return result;
     }
   };
 }
@@ -19398,7 +19730,7 @@ const linksStrings = {
   de: {
     manifest: { name: "Linkberichte", description: "Ausgehende Links, Backlinks, nicht aufgelöste Links, verwaiste Notizen und Sackgassen aus dem Metadaten-Cache melden." },
     descriptions: {
-      "For unresolved, orphans and deadends: only files whose root-relative path matches this glob.": "Für unresolved, orphans und deadends: nur Dateien, deren Pfad relativ zum Stammverzeichnis diesem Glob entspricht.",
+      "For unresolved, orphans and deadends: only files whose root-relative path matches this glob, or that are this file or below this folder.": "Für unresolved, orphans und deadends: nur Dateien, deren Pfad relativ zum Stammverzeichnis diesem Glob entspricht oder die diese Datei sind oder unter diesem Ordner liegen.",
       "out, back, unresolved, orphans or deadends.": "out, back, unresolved, orphans oder deadends.",
       "The vault path of the file for out and back.": "Der Vault-Pfad der Datei für out und back.",
       "Path globs of entry notes, such as an index or home note, that links orphans never reports.": "Pfad-Globs von Einstiegsnotizen wie einer Index- oder Startnotiz, die links orphans nie meldet."
@@ -19617,23 +19949,23 @@ async function baseDetections(path2, bases) {
     params: { code: issue2.code, reason: firstLine(issue2.message), view: issue2.view ?? "" }
   }));
 }
-function decoded$2(text2) {
+function decoded$3(text2) {
   try {
     return decodeURIComponent(text2);
   } catch {
     return text2;
   }
 }
-const comparable = (text2) => decoded$2(text2).normalize("NFC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+const comparable$1 = (text2) => decoded$3(text2).normalize("NFC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 const headingSets = /* @__PURE__ */ new WeakMap();
 function headingsOf(cache) {
   let headings = headingSets.get(cache);
-  if (headings === void 0) headingSets.set(cache, headings = new Set((cache.headings ?? []).map((item) => comparable(item.heading))));
+  if (headings === void 0) headingSets.set(cache, headings = new Set((cache.headings ?? []).map((item) => comparable$1(item.heading))));
   return headings;
 }
 function hasHeading(cache, segment2) {
   const headings = headingsOf(cache);
-  const wanted = comparable(segment2);
+  const wanted = comparable$1(segment2);
   if (headings.has(wanted)) return true;
   const repeated = / \d+$/.exec(wanted);
   return repeated !== null && headings.has(wanted.slice(0, repeated.index));
@@ -19642,7 +19974,7 @@ function missingAnchor(subpath, cache) {
   const segments2 = subpath.split("#").filter((segment2) => segment2.length > 0);
   const last = segments2.at(-1);
   if (last === void 0) return null;
-  if (last.startsWith("^")) return Object.hasOwn(cache.blocks ?? {}, decoded$2(last.slice(1)).toLowerCase()) ? null : `#${last}`;
+  if (last.startsWith("^")) return Object.hasOwn(cache.blocks ?? {}, decoded$3(last.slice(1)).toLowerCase()) ? null : `#${last}`;
   const missing2 = segments2.find((segment2) => !hasHeading(cache, segment2));
   return missing2 === void 0 ? null : `#${missing2}`;
 }
@@ -19737,8 +20069,8 @@ function referenceDetections(cache, path2, runs, locator2, suggest) {
     const { resolution, reference } = item;
     const variant = item.kind === "frontmatter" ? ".frontmatter" : item.kind === "canvas" ? ".canvas" : "";
     const params = { original: reference.original, link: reference.link, at: where(item) };
-    const report2 = (rule2, message2, extra = {}, suggestion) => {
-      const detection = { rule: rule2, path: path2, line: null, column: null, message: message2, params: { ...params, ...extra }, ...suggestion === void 0 ? {} : { suggestion } };
+    const report2 = (rule2, message2, extra = {}, suggestion2) => {
+      const detection = { rule: rule2, path: path2, line: null, column: null, message: message2, params: { ...params, ...extra }, ...suggestion2 === void 0 ? {} : { suggestion: suggestion2 } };
       detections.push(detection);
       if (item.kind === "link" || item.kind === "embed") Object.assign(detection, { line: item.reference.position.start.line + 1, column: item.reference.position.start.col + 1 });
       else if (item.kind === "frontmatter") located2.push(locator2.locate(path2, source2, item.reference.key, item.reference.original).then((location2) => {
@@ -19863,13 +20195,13 @@ async function checkVault(sources, request) {
   const cache = await sources.cache();
   const scope2 = cache.files().filter((path2) => !request.ignored(path2));
   const report2 = (path2) => !request.ignored(path2) && request.include(path2);
-  const checked = scope2.filter(report2);
+  const checked2 = scope2.filter(report2);
   const locator2 = new FrontmatterLocator(sources), suggest = suggestions(cache.files());
   const detections = [];
   const add = (detection) => {
     if (runs(detection.rule)) detections.push(detection);
   };
-  for (const path2 of checked) {
+  for (const path2 of checked2) {
     const references = referenceDetections(cache, path2, runs, locator2, suggest);
     (Array.isArray(references) ? references : await references).forEach(add);
     const parsed2 = cache.getFileCache(path2);
@@ -19880,7 +20212,7 @@ async function checkVault(sources, request) {
   }
   for (const issue2 of cache.issues()) if (report2(issue2.path)) add(issueDetection(issue2));
   if (runs("property-type-mismatch")) (await propertyDetections(cache, scope2, report2, await readTypeRegistry(sources), locator2)).forEach(add);
-  return { detections, files: checked.length, rules: ruleIds.filter(runs), skipped };
+  return { detections, files: checked2.length, rules: ruleIds.filter(runs), skipped };
 }
 async function scoped(sources, scope2) {
   const cache = await sources.cache();
@@ -20071,7 +20403,7 @@ function selectedRules(text2) {
 function localized(service, severity2) {
   return (detection) => {
     const hint = fill(service.t(`${detection.rule}.hint`), detection.params);
-    const suggestion = detection.suggestion === void 0 ? "" : ` ${fill(service.t("suggestion"), { suggestion: detection.suggestion })}`;
+    const suggestion2 = detection.suggestion === void 0 ? "" : ` ${fill(service.t("suggestion"), { suggestion: detection.suggestion })}`;
     return {
       rule: detection.rule,
       severity: severity2(detection.rule),
@@ -20079,7 +20411,7 @@ function localized(service, severity2) {
       line: detection.line,
       column: detection.column,
       message: fill(service.t(detection.message), detection.params),
-      hint: hint + suggestion,
+      hint: hint + suggestion2,
       ...detection.suggestion === void 0 ? {} : { suggestion: detection.suggestion }
     };
   };
@@ -20105,8 +20437,9 @@ function vaultCommand(service) {
   return {
     id: "vault",
     description: "Check the vault for broken links, invalid files and inconsistent properties, and inventory its tags and properties.",
-    usage: "vault [check] [--path glob] [--rule id[,id…]] [--strict] | tags [--path glob] [--sort name|count] | properties [--path glob] [--name property]",
+    usage: "vault [check] [--path glob] [--rule id[,id…]] [--strict] | tags [--path glob] [--sort name|count] | properties [--path glob] [--name property] [--project id]",
     scope: "project",
+    projectOption: "project",
     discovery: false,
     mutating: false,
     defaultAction: "check",
@@ -20135,37 +20468,45 @@ function vaultCommand(service) {
       }
     },
     args: [{ name: "action", description: "check (default), tags or properties.", enum: actions$4 }],
-    options: { path: option$1.string("Only files whose root-relative path matches this glob.") },
+    options: {
+      path: option$1.string("Only files whose root-relative path matches this glob, or that are this file or below this folder."),
+      project: option$1.string("Use this project instead of the selected project.")
+    },
     errors: ["VAULT_CHECK_FAILED"],
     async run(args, flags, context) {
       arity(args, 0, 1);
       const action2 = args[0] ?? "check";
       ensure(actions$4.includes(action2), "INVALID_ARGUMENT", `Use vault ${actions$4.join(", vault ")}.`);
       const vault2 = service(context);
-      const glob = value$2(flags, "path"), include = glob === void 0 ? () => true : pathGlob(glob);
+      const glob = value$2(flags, "path"), filter = recordingFilter(glob === void 0 ? () => true : pathFilter(glob));
       const ignores = vault2.ignore.map((pattern2) => pathGlob(pattern2, "plugins.settings.vault-check.ignore"));
-      const scope2 = { include, ignored: (path2) => ignores.some((ignored) => ignored(path2)) };
-      if (action2 === "tags") {
-        const sort = value$2(flags, "sort") ?? "name";
-        return vaultTags(vault2.sources, scope2, sort);
-      }
-      if (action2 === "properties") {
-        const name2 = value$2(flags, "name");
-        ensure(name2 === void 0 || name2.trim().length > 0, "INVALID_ARGUMENT", "--name must name a property.");
-        return vaultProperties(vault2.sources, scope2, name2);
-      }
-      const settings2 = effectiveSeverities(vault2.rules);
-      const report2 = await checkVault(vault2.sources, { ...scope2, severities: settings2, selected: selectedRules(value$2(flags, "rule")) });
-      return checkResult(report2, vault2, settings2, flags.strict === true);
+      const scope2 = { include: filter.matches, ignored: (path2) => ignores.some((ignored) => ignored(path2)) };
+      const result = await inventory(vault2, scope2, action2, flags);
+      if (glob !== void 0 && !filter.matched()) context.events.warn(kernelMessage("PATH_MATCHED_NOTHING", { option: "--path", pattern: glob }));
+      return result;
     }
   };
+}
+async function inventory(vault2, scope2, action2, flags) {
+  if (action2 === "tags") {
+    const sort = value$2(flags, "sort") ?? "name";
+    return vaultTags(vault2.sources, scope2, sort);
+  }
+  if (action2 === "properties") {
+    const name2 = value$2(flags, "name");
+    ensure(name2 === void 0 || name2.trim().length > 0, "INVALID_ARGUMENT", "--name must name a property.");
+    return vaultProperties(vault2.sources, scope2, name2);
+  }
+  const settings2 = effectiveSeverities(vault2.rules);
+  const report2 = await checkVault(vault2.sources, { ...scope2, severities: settings2, selected: selectedRules(value$2(flags, "rule")) });
+  return checkResult(report2, vault2, settings2, flags.strict === true);
 }
 const vaultCheckStrings = {
   de: {
     manifest: { name: "Vault-Prüfung", description: "Den Vault auf defekte Links, ungültige Dateien und uneinheitliche Eigenschaften prüfen und seine Tags und Eigenschaften auflisten." },
     descriptions: {
       "check (default), tags or properties.": "check (Standard), tags oder properties.",
-      "Only files whose root-relative path matches this glob.": "Nur Dateien, deren Pfad relativ zum Stammverzeichnis diesem Glob entspricht.",
+      "Only files whose root-relative path matches this glob, or that are this file or below this folder.": "Nur Dateien, deren Pfad relativ zum Stammverzeichnis diesem Glob entspricht oder die diese Datei sind oder unter diesem Ordner liegen.",
       "Only these comma-separated rules: unresolved-link, unresolved-embed, ambiguous-link, unresolved-anchor, invalid-frontmatter, invalid-canvas, invalid-base, property-type-mismatch, duplicate-block-id, empty-file, orphan-attachment.": "Nur diese kommagetrennten Regeln: unresolved-link, unresolved-embed, ambiguous-link, unresolved-anchor, invalid-frontmatter, invalid-canvas, invalid-base, property-type-mismatch, duplicate-block-id, empty-file, orphan-attachment.",
       "Fail with VAULT_CHECK_FAILED when any finding has error severity.": "Mit VAULT_CHECK_FAILED fehlschlagen, wenn ein Befund den Schweregrad error hat.",
       "Order by tag name or by file count, most used first.": "Nach Tag-Name oder nach Dateianzahl sortieren, die häufigsten zuerst.",
@@ -20404,7 +20745,7 @@ function domainPattern(pattern2) {
   if (pattern2.includes("*") && !/^\*\.[^*]+$/.test(pattern2)) return "'*' is only allowed as a leading '*.' wildcard, e.g. '*.example.com'.";
   return void 0;
 }
-function loopback(host) {
+function loopback$1(host) {
   const name2 = host.replace(/^\[|\]$/g, "").toLowerCase();
   return name2 === "localhost" || name2 === "::1" || /^127(?:\.\d{1,3}){3}$/.test(name2);
 }
@@ -20422,7 +20763,7 @@ function oauth(remote, at) {
       url2 = void 0;
     }
     if (!url2 || !["http:", "https:"].includes(url2.protocol)) return [diagnostic("error", "invalid-toolset", `${where2}/callbackRedirectURL`, "oauth callbackRedirectURL must be an absolute http or https URL.")];
-    if (url2.protocol === "http:" && !loopback(url2.hostname)) return [diagnostic("error", "invalid-toolset", `${where2}/callbackRedirectURL`, "oauth callbackRedirectURL must use https for non-loopback hosts.")];
+    if (url2.protocol === "http:" && !loopback$1(url2.hostname)) return [diagnostic("error", "invalid-toolset", `${where2}/callbackRedirectURL`, "oauth callbackRedirectURL must use https for non-loopback hosts.")];
   }
   return [];
 }
@@ -20840,10 +21181,10 @@ class AgentDefinitions {
     } catch {
       return { path: path2, revision: snapshot.revision, text: "", diagnostics: [diagnostic("error", "encoding", "", say("encoding"))], instructions: {} };
     }
-    const checked = this.check(text2);
+    const checked2 = this.check(text2);
     const instructions2 = {}, missing2 = [];
-    if (checked.config && !hasErrors(checked.diagnostics)) {
-      for (const [name2, agent] of agentEntries(checked.config)) {
+    if (checked2.config && !hasErrors(checked2.diagnostics)) {
+      for (const [name2, agent] of agentEntries(checked2.config)) {
         const files = instructionFiles(agent);
         if (files.length === 0) continue;
         const parts = [];
@@ -20853,13 +21194,13 @@ class AgentDefinitions {
             parts.push(decoder$4.decode((await this.files.read(vaultPath(`${parent(path2)}${localPath(file)}`))).bytes));
           } catch (error2) {
             const reason = error2 instanceof AppError && error2.code === "NOT_FOUND" ? "does not exist" : `cannot be read: ${errorMessage(error2).replace(/\.$/, "")}`;
-            missing2.push({ ...diagnostic("error", "instruction-file-missing", at, `instruction_file "${file}" ${reason}.`), ...checked.locate(at) });
+            missing2.push({ ...diagnostic("error", "instruction-file-missing", at, `instruction_file "${file}" ${reason}.`), ...checked2.locate(at) });
           }
         }
         instructions2[name2] = parts.join("\n\n");
       }
     }
-    return { path: path2, revision: snapshot.revision, text: text2, ...checked.config ? { config: checked.config } : {}, diagnostics: [...checked.diagnostics, ...missing2].sort(byPosition), instructions: instructions2 };
+    return { path: path2, revision: snapshot.revision, text: text2, ...checked2.config ? { config: checked2.config } : {}, diagnostics: [...checked2.diagnostics, ...missing2].sort(byPosition), instructions: instructions2 };
   }
   /** Every definition file with its agents, the default agent and diagnostic counts. */
   async list() {
@@ -21400,12 +21741,12 @@ class AgentAuthoring {
       ensure(ifMatch2 === void 0, "CONFLICT", `${path2} does not exist; omit --if-match to create it.`, revisionConflict(path2, ifMatch2, null));
       text2 = this.ports.codec.render({ version: this.ports.schema.configVersion, agents: Object.fromEntries(entries2) });
     }
-    const checked = this.definitions.check(text2);
-    if (hasErrors(checked.diagnostics)) {
-      throw agentError("INVALID_AGENT_DEFINITION", `Adding ${names2.join(", ")} would leave ${path2} invalid; see details.files[].diagnostics.`, { files: [{ path: path2, diagnostics: checked.diagnostics }] });
+    const checked2 = this.definitions.check(text2);
+    if (hasErrors(checked2.diagnostics)) {
+      throw agentError("INVALID_AGENT_DEFINITION", `Adding ${names2.join(", ")} would leave ${path2} invalid; see details.files[].diagnostics.`, { files: [{ path: path2, diagnostics: checked2.diagnostics }] });
     }
     const result = await this.workspace.write([{ path: path2, bytes: new TextEncoder().encode(text2), ...current ? { expectedRevision: current.revision } : {} }], { diff: true });
-    return { path: path2, agent: name2, agents: names2, created: !current, diagnostics: [...extra, ...checked.diagnostics.map((entry2) => ({ ...entry2, path: path2 }))], ...result };
+    return { path: path2, agent: name2, agents: names2, created: !current, diagnostics: [...extra, ...checked2.diagnostics.map((entry2) => ({ ...entry2, path: path2 }))], ...result };
   }
 }
 class GenerationService {
@@ -21687,11 +22028,11 @@ function resolvedToolsets(config2, name2, agent) {
     const ref2 = toolset.ref;
     if (toolset.type !== "mcp" || typeof ref2 !== "string" || ref2.startsWith("docker:") || !isObject$1(record$4(config2.mcps)[ref2])) return { toolset, at };
     const definition2 = record$4(record$4(config2.mcps)[ref2]);
-    const merged = { ...definition2, name: ref2, ...Object.fromEntries(Object.entries(toolset).filter(([key, value2]) => key !== "ref" && value2 !== void 0 && value2 !== "" && !(Array.isArray(value2) && value2.length === 0))) };
-    if (isObject$1(definition2.env) || isObject$1(toolset.env)) merged.env = { ...record$4(definition2.env), ...record$4(toolset.env) };
-    if (typeof definition2.ref === "string") merged.ref = definition2.ref;
-    else delete merged.ref;
-    return { toolset: merged, at };
+    const merged2 = { ...definition2, name: ref2, ...Object.fromEntries(Object.entries(toolset).filter(([key, value2]) => key !== "ref" && value2 !== void 0 && value2 !== "" && !(Array.isArray(value2) && value2.length === 0))) };
+    if (isObject$1(definition2.env) || isObject$1(toolset.env)) merged2.env = { ...record$4(definition2.env), ...record$4(toolset.env) };
+    if (typeof definition2.ref === "string") merged2.ref = definition2.ref;
+    else delete merged2.ref;
+    return { toolset: merged2, at };
   });
 }
 function pathRules(entry2) {
@@ -22018,9 +22359,42 @@ const permissionTools = {
 };
 const unmappedTools = ["create_directory", "remove_directory", "next_task", "delete_task", "add_dependency", "remove_dependency", "think"];
 const knownTools = [...Object.keys(permissionTools), ...unmappedTools];
+const wrappers = /* @__PURE__ */ new Set(["env", "xargs", "sudo", "doas", "su", "eval", "exec", "nohup", "time", "timeout", "nice", "command", "builtin", "npx", "bunx", "pnpx"]);
+const interpreters = /* @__PURE__ */ new Set([
+  "sh",
+  "bash",
+  "zsh",
+  "dash",
+  "ksh",
+  "fish",
+  "csh",
+  "tcsh",
+  "pwsh",
+  "powershell",
+  "cmd",
+  "node",
+  "deno",
+  "bun",
+  "python",
+  "perl",
+  "ruby",
+  "php",
+  "osascript"
+]);
+function broadCommand(pattern2) {
+  if (pattern2.trim() === "") return true;
+  const wildcard = pattern2.indexOf("*");
+  if (wildcard === -1) return false;
+  const words = pattern2.slice(0, wildcard).trim().replace(/:$/, "").split(/\s+/).filter(Boolean);
+  if (words.length === 0) return true;
+  const program = words[0].split(/[\\/]/).pop().toLowerCase().replace(/\.exe$/, "").replace(/[\d.]+$/, "");
+  if (wrappers.has(program)) return true;
+  return interpreters.has(program) && words.slice(1).every((word) => word.startsWith("-"));
+}
 function isBroadRule(rule2) {
   if (["Bash", "Edit", "Write", "NotebookEdit", "WebFetch"].includes(rule2)) return true;
-  if (/^Bash\([\s*]*\)$/.test(rule2)) return true;
+  const bash = /^Bash\((.*)\)$/s.exec(rule2);
+  if (bash) return broadCommand(bash[1]);
   return /^mcp__[^_]+(?:_[^_]+)*(?:__\*)?$/.test(rule2);
 }
 const globSource = (glob) => `^${glob.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replaceAll("*", ".*")}$`;
@@ -22297,16 +22671,16 @@ function mergeSettings(text2, settings2, manifest, coverage = { files: null }) {
     throw conflict(`${path2} already sets agent to ${JSON.stringify(current.agent)}, which Forge did not generate; remove it to let Forge set ${settings2.agent}.`, { path: path2, agent: current.agent });
   }
   const existing = ruleLists(path2, permissions), previous2 = manifest.settings.permissions ?? {};
-  const merged = { ...permissions }, owned = {}, revoked = [];
+  const merged2 = { ...permissions }, owned = {}, revoked = [];
   for (const list2 of permissionLists) {
     const result = reconcileRules(list2, existing[list2] ?? [], previous2[list2] ?? [], settings2.permissions[list2], coverage);
     owned[list2] = result.owned;
     revoked.push(...result.revoked);
-    if (result.rules.length > 0) merged[list2] = result.rules;
-    else delete merged[list2];
+    if (result.rules.length > 0) merged2[list2] = result.rules;
+    else delete merged2[list2];
   }
-  const next = { ...current, permissions: merged, ...settings2.agent === void 0 ? {} : { agent: settings2.agent } };
-  if (Object.keys(merged).length === 0 && (current.permissions === void 0 || revoked.length > 0)) delete next.permissions;
+  const next = { ...current, permissions: merged2, ...settings2.agent === void 0 ? {} : { agent: settings2.agent } };
+  if (Object.keys(merged2).length === 0 && (current.permissions === void 0 || revoked.length > 0)) delete next.permissions;
   return { text: json$7(next, text2), owned: nonEmpty$1(owned), revoked };
 }
 function nextManifest(previous2, text2, files, written) {
@@ -22373,8 +22747,8 @@ class AgentGeneration {
     }
     const markdown = [...generated.agents, ...generated.skills];
     const writes = markdown.map((file) => ({ path: file.path, bytes: encode$2(this.render(file)) }));
-    const merged = project2 ? this.projectWrites(project2, generated, await this.coverage(request, sources, project2.manifest)) : { writes: [], revoked: [] };
-    writes.push(...merged.writes);
+    const merged2 = project2 ? this.projectWrites(project2, generated, await this.coverage(request, sources, project2.manifest)) : { writes: [], revoked: [] };
+    writes.push(...merged2.writes);
     const generation = new GenerationService(this.workspace);
     const plan = await generation.plan(writes, request.mode === "plan" ? request.manifestPath : void 0);
     const generatedMarkdown = new Set(markdown.map((file) => file.path));
@@ -22386,7 +22760,7 @@ class AgentGeneration {
       skills: generated.skills.map((skill) => skill.path),
       files: outputs.map(({ path: path2, status: status2 }) => ({ path: path2, status: status2 })),
       stale,
-      diagnostics: [...generated.diagnostics, ...merged.revoked.map(revocation)]
+      diagnostics: [...generated.diagnostics, ...merged2.revoked.map(revocation)]
     };
     if (request.mode === "check") {
       const drift = outputs.filter((output2) => output2.status !== "unchanged").map(({ path: path2, status: status2 }) => ({ path: path2, status: status2 }));
@@ -24390,8 +24764,8 @@ function requireCode() {
         compositeRule: true
       }, schValid);
       gen.assign(valid2, (0, codegen_1._)`${valid2} || ${schValid}`);
-      const merged = cxt.mergeValidEvaluated(schCxt, schValid);
-      if (!merged)
+      const merged2 = cxt.mergeValidEvaluated(schCxt, schValid);
+      if (!merged2)
         gen.if((0, codegen_1.not)(valid2));
     }));
     cxt.result(valid2, () => cxt.reset(), () => cxt.error(true));
@@ -26416,17 +26790,17 @@ function requireFastUri() {
     if (baseMalformed || relativeMalformed || baseMalformedPercentEncoding || relativeMalformedPercentEncoding || baseMalformedSchemeSpecific || relativeMalformedSchemeSpecific || baseMalformedHost || relativeMalformedHost || baseMalformedScheme || relativeMalformedScheme) {
       throw new Error(baseParsed.error || relativeParsed.error || "URI is malformed.");
     }
-    const resolved = resolveComponent(baseParsed, relativeParsed, schemelessOptions, true);
-    const resolvedSchemeHandler = getSchemeHandler(options2 && options2.scheme || resolved.scheme);
-    const resolvedHost = resolved.host;
+    const resolved2 = resolveComponent(baseParsed, relativeParsed, schemelessOptions, true);
+    const resolvedSchemeHandler = getSchemeHandler(options2 && options2.scheme || resolved2.scheme);
+    const resolvedHost = resolved2.host;
     const resolvedHostIsIP = resolvedHost !== void 0 && resolvedHost !== "" && (isIPv4(resolvedHost) || normalizeIPv6(resolvedHost).isIPV6);
-    canonicalizeHost(resolved, options2 || {}, resolvedSchemeHandler, resolvedHostIsIP);
+    canonicalizeHost(resolved2, options2 || {}, resolvedSchemeHandler, resolvedHostIsIP);
     const encodedASCIIHost = resolvedHost && resolvedHost.indexOf("%") !== -1 && !new RegExp("\\P{ASCII}", "u").test(resolvedHost);
-    if (resolved.error && !encodedASCIIHost) {
-      throw new Error(resolved.error);
+    if (resolved2.error && !encodedASCIIHost) {
+      throw new Error(resolved2.error);
     }
     schemelessOptions.skipEscape = true;
-    return serialize2(resolved, schemelessOptions);
+    return serialize2(resolved2, schemelessOptions);
   }
   function resolveComponent(base2, relative, options2, skipNormalization) {
     const target = {};
@@ -29380,7 +29754,7 @@ ${body}`;
   }
 };
 const sha256Digest = (text2) => node_crypto.createHash("sha256").update(text2, "utf8").digest("hex");
-const content$5 = '---\nname: forge-agents\ndescription: Maintain docker-agent definitions in agents/*.yaml and validate, create, import and generate Claude Code agents, skills and MCP settings from them with drift checks. Use when editing agent teams, generating .claude/agents, or when agents validate or agents generate --check reports problems.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nAgent definitions are [docker-agent](https://github.com/docker/docker-agent) YAML files in the scope\'s `agents/` folder (`plugins.settings.agents.directory`). One file is a team: `agents.<name>` entries with `model`, `description`, `instruction`, `toolsets`, `sub_agents` and `commands`, plus shared `models`, `mcps` and `toolsets`. The YAML file is the source of truth; generated `.claude/agents/*.md` files are outputs. Never edit a generated agent by hand: change the definition and regenerate.\n\nInspect before changing anything:\n- `agents list` returns each file\'s `revision`, `agents` (`name`, `description`, `model`, `subAgents`), `default` agent (`root`, else the first) and error/warning counts.\n- `agents inspect team.yaml` returns the parsed `config` and `diagnostics`; `agents inspect team.yaml#reviewer` returns one agent\'s `definition` and resolved `instruction`.\n- `agents validate [team.yaml]` checks the vendored docker-agent JSON Schema and docker-agent\'s semantic rules (references, models, toolsets, `force_handoff` cycles, `instruction` vs `instruction_file`, version `"16"`, `16` or absent). `instruction_file` paths are relative to the definition file and must stay in its folder or below (`./prompt.md` and `prompts/../x.md` are fine, `../x.md` is not). Errors fail with `INVALID_AGENT_DEFINITION`; `details.files[].diagnostics` give `severity`, `code`, JSON `pointer`, 1-based `line`/`column` and `message`.\n\nAuthor agents:\n- `agents create reviewer --file team.yaml --description "Reviews changes" --instruction "..." --toolset filesystem,shell --if-match <revision> --dry-run` adds an agent to an existing team file without touching its other lines or comments; omit `--if-match` for a new file. `--model` defaults to `plugins.settings.agents.defaultModel`. `--from-template basic|team|mcp` starts from a bundled template instead of `--toolset` (`team` adds `<name>-researcher` and `<name>-writer`). MCP, LSP, API and similar toolsets need settings: edit the YAML with `edit agents/team.yaml --find … --replace … --if-match <revision>`, then `agents validate`.\n- `agents import code-reviewer --from claude --file team.yaml` converts `.claude/agents/code-reviewer.md` into a docker-agent agent. The conversion is approximate: read every diagnostic (`fidelity` `A` approximated, `U` dropped) and fix the YAML.\n- `create` and `import` write only `.yaml`/`.yml` files directly in the definitions folder; other paths fail with `INVALID_PATH`.\n\nGenerate Claude Code agents:\n- `agents generate --target claude --plan` reports every output with `status` `missing`, `changed`, `hand-edited` or `unchanged` and the mapping `diagnostics` (each with `fidelity` and a JSON `pointer` into the definition). Review warnings: models other than Anthropic become `inherit`; unsupported toolsets, delegation settings and filesystem `allow_list`/fetch `allowed_domains` limits (`restriction-unsupported`) are dropped.\n- `agents generate --target claude` writes new files. Existing outputs are never overwritten silently: run `--plan-out review.json`, review, then `--revisions-from review.json`.\n- Nothing that runs commands or grants permissions is written without an opt-in: `--mcp inline` (agent frontmatter) or `--mcp project` (`.mcp.json`) writes MCP servers (default `--mcp none`, reported as `mcp-not-generated`); `--hooks` writes hooks (else `hooks-not-generated`); `--settings` merges permission rules and the main agent into `.claude/settings.json`, and allow rules for a whole tool (`Bash`, `Bash(*)`, `Edit`, `Write`, `WebFetch`, every tool of an MCP server) also need `--allow-broad-permissions` (else `broad-permission` errors). Before opting in, read every `executes-command` (full command line) and `grants-permission` (exact rule) diagnostic of the plan.\n- `--commands` writes `/commands` as `.claude/skills/<name>/SKILL.md`; `--model-style alias` emits `sonnet`/`opus`/`haiku`/`fable`. Agents without a Claude tool get `tools: []`, never every tool.\n- Merges change only entries Forge wrote, recorded in `.claude/forge-generated.json`, and keep the files\' indentation and key order. With `--settings`, permission rules Forge added are recorded too, with the definitions that grant them, and removed once none of them grants the rule (a `revokes-permission` warning; a `--file` or `--agent` run never removes a rule another definition grants, but every run removes the rules of a renamed or deleted definition file); rules already in the file stay. A server name or main agent you set yourself fails with `AGENT_MERGE_CONFLICT`; `--rename-conflicts` (with `--mcp project`) gives the generated server a numbered name instead. Pass the same options to `--check`.\n- `agents generate --target claude --check` exits 5 with `AGENT_DRIFT` when outputs are `missing`, `changed` (definition, instruction file or options changed), `hand-edited` (output no longer matches what Forge recorded) or `stale` (generated from a definition that no longer defines it). Run it in CI after changing definitions.\n\nGenerated files carry `x-forge-source: {path, agent, sourceHash, optionsHash, outputHash}` provenance and pass Forge\'s Claude agent validation (`claude agents inspect <name>`). A docker-agent → Claude → docker-agent round trip is lossy; the YAML file keeps everything Claude cannot represent.\n';
+const content$5 = '---\nname: forge-agents\ndescription: Maintain docker-agent definitions in agents/*.yaml and validate, create, import and generate Claude Code agents, skills and MCP settings from them with drift checks. Use when editing agent teams, generating .claude/agents, or when agents validate or agents generate --check reports problems.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nAgent definitions are [docker-agent](https://github.com/docker/docker-agent) YAML files in the scope\'s `agents/` folder (`plugins.settings.agents.directory`). One file is a team: `agents.<name>` entries with `model`, `description`, `instruction`, `toolsets`, `sub_agents` and `commands`, plus shared `models`, `mcps` and `toolsets`. The YAML file is the source of truth; generated `.claude/agents/*.md` files are outputs. Never edit a generated agent by hand: change the definition and regenerate.\n\nInspect before changing anything:\n- `agents list` returns each file\'s `revision`, `agents` (`name`, `description`, `model`, `subAgents`), `default` agent (`root`, else the first) and error/warning counts.\n- `agents inspect team.yaml` returns the parsed `config` and `diagnostics`; `agents inspect team.yaml#reviewer` returns one agent\'s `definition` and resolved `instruction`.\n- `agents validate [team.yaml]` checks the vendored docker-agent JSON Schema and docker-agent\'s semantic rules (references, models, toolsets, `force_handoff` cycles, `instruction` vs `instruction_file`, version `"16"`, `16` or absent). `instruction_file` paths are relative to the definition file and must stay in its folder or below (`./prompt.md` and `prompts/../x.md` are fine, `../x.md` is not). Errors fail with `INVALID_AGENT_DEFINITION`; `details.files[].diagnostics` give `severity`, `code`, JSON `pointer`, 1-based `line`/`column` and `message`.\n\nAuthor agents:\n- `agents create reviewer --file team.yaml --description "Reviews changes" --instruction "..." --toolset filesystem,shell --if-match <revision> --dry-run` adds an agent to an existing team file without touching its other lines or comments; omit `--if-match` for a new file. `--model` defaults to `plugins.settings.agents.defaultModel`. `--from-template basic|team|mcp` starts from a bundled template instead of `--toolset` (`team` adds `<name>-researcher` and `<name>-writer`). MCP, LSP, API and similar toolsets need settings: edit the YAML with `edit agents/team.yaml --find … --replace … --if-match <revision>`, then `agents validate`.\n- `agents import code-reviewer --from claude --file team.yaml` converts `.claude/agents/code-reviewer.md` into a docker-agent agent. The conversion is approximate: read every diagnostic (`fidelity` `A` approximated, `U` dropped) and fix the YAML.\n- `create` and `import` write only `.yaml`/`.yml` files directly in the definitions folder; other paths fail with `INVALID_PATH`.\n\nGenerate Claude Code agents:\n- `agents generate --target claude --plan` reports every output with `status` `missing`, `changed`, `hand-edited` or `unchanged` and the mapping `diagnostics` (each with `fidelity` and a JSON `pointer` into the definition). Review warnings: models other than Anthropic become `inherit`; unsupported toolsets, delegation settings and filesystem `allow_list`/fetch `allowed_domains` limits (`restriction-unsupported`) are dropped.\n- `agents generate --target claude` writes new files. Existing outputs are never overwritten silently: run `--plan-out review.json`, review, then `--revisions-from review.json`.\n- Nothing that runs commands or grants permissions is written without an opt-in: `--mcp inline` (agent frontmatter) or `--mcp project` (`.mcp.json`) writes MCP servers (default `--mcp none`, reported as `mcp-not-generated`); `--hooks` writes hooks (else `hooks-not-generated`); `--settings` merges permission rules and the main agent into `.claude/settings.json`, and allow rules for a whole tool (`Bash`, `Bash(*)` and command-wide rules such as `Bash(:*)`, `Bash(sh -c *)` or `Bash(env *)`, `Edit`, `Write`, `WebFetch`, every tool of an MCP server) also need `--allow-broad-permissions` (else `broad-permission` errors). Before opting in, read every `executes-command` (full command line) and `grants-permission` (exact rule) diagnostic of the plan.\n- `--commands` writes `/commands` as `.claude/skills/<name>/SKILL.md`; `--model-style alias` emits `sonnet`/`opus`/`haiku`/`fable`. Agents without a Claude tool get `tools: []`, never every tool.\n- Merges change only entries Forge wrote, recorded in `.claude/forge-generated.json`, and keep the files\' indentation and key order. With `--settings`, permission rules Forge added are recorded too, with the definitions that grant them, and removed once none of them grants the rule (a `revokes-permission` warning; a `--file` or `--agent` run never removes a rule another definition grants, but every run removes the rules of a renamed or deleted definition file); rules already in the file stay. A server name or main agent you set yourself fails with `AGENT_MERGE_CONFLICT`; `--rename-conflicts` (with `--mcp project`) gives the generated server a numbered name instead. Pass the same options to `--check`.\n- `agents generate --target claude --check` exits 5 with `AGENT_DRIFT` when outputs are `missing`, `changed` (definition, instruction file or options changed), `hand-edited` (output no longer matches what Forge recorded) or `stale` (generated from a definition that no longer defines it). Run it in CI after changing definitions.\n\nGenerated files carry `x-forge-source: {path, agent, sourceHash, optionsHash, outputHash}` provenance and pass Forge\'s Claude agent validation (`claude agents inspect <name>`). A docker-agent → Claude → docker-agent round trip is lossy; the YAML file keeps everything Claude cannot represent.\n';
 const agentsSkill = { id: "forge-agents", content: content$5 };
 const germanAgentMessages = {
   toolFilterNone: "Der Werkzeugfilter {filter} wird durch keine Claude-Werkzeuge angenähert.",
@@ -29806,7 +30180,7 @@ function renameEntries(state2, from, to, kind2) {
 function pathOfRemote(state2, id2) {
   return Object.entries(state2.items).find(([, entry2]) => entry2.id === id2)?.[0] ?? null;
 }
-const encoder$2 = new TextEncoder(), decoder$1 = new TextDecoder();
+const encoder$3 = new TextEncoder(), decoder$1 = new TextDecoder();
 const SAVE_ATTEMPTS = 3;
 async function readState(workspace2, connection) {
   try {
@@ -29821,7 +30195,7 @@ async function readState(workspace2, connection) {
 function stateWrite$1(stored) {
   const text2 = serializeState(stored.state);
   if (text2 === stored.text || stored.text === null && Object.keys(stored.state.items).length === 0) return null;
-  return { path: statePath(stored.state.connection), bytes: encoder$2.encode(text2), ...stored.revision === null ? {} : { expectedRevision: stored.revision } };
+  return { path: statePath(stored.state.connection), bytes: encoder$3.encode(text2), ...stored.revision === null ? {} : { expectedRevision: stored.revision } };
 }
 const conflictOn = (error2, path2) => error2 instanceof AppError && error2.code === "CONFLICT" && error2.details?.path === path2;
 class SyncStore {
@@ -31411,8 +31785,8 @@ function findItem(session, reference, model2 = session.model) {
   const text2 = reference.trim();
   const direct = model2.byPath.get(text2) ?? model2.byPath.get(`${text2}.md`);
   if (direct) return direct;
-  const resolved = session.cache.getFirstLinkpathDest(text2.replace(/^\[\[|\]\]$/g, ""), session.base.path);
-  if (resolved !== null && model2.byPath.has(resolved)) return model2.byPath.get(resolved);
+  const resolved2 = session.cache.getFirstLinkpathDest(text2.replace(/^\[\[|\]\]$/g, ""), session.base.path);
+  if (resolved2 !== null && model2.byPath.has(resolved2)) return model2.byPath.get(resolved2);
   const byTitle = [...model2.byPath.values()].filter((item) => item.title.toLowerCase() === text2.toLowerCase());
   const id2 = /^#?(\d+)$/.exec(text2);
   const byId2 = id2 ? [...model2.byPath.values()].filter((item) => item.pblId === Number(id2[1])) : [];
@@ -31421,7 +31795,7 @@ function findItem(session, reference, model2 = session.model) {
   if (matches2.length > 1) throw backlogError("BACKLOG_AMBIGUOUS", `${reference} names ${matches2.length} backlog items; pass a vault path.`, { reference, candidates: matches2.map((item) => item.path) });
   throw backlogError("BACKLOG_NOT_FOUND", `${reference} is not an item of ${session.base.path} › ${session.view.name}.`, { reference, base: session.base.path, view: session.view.name });
 }
-const encoder$1 = new TextEncoder();
+const encoder$2 = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 const json$6 = (value2) => JSON.stringify(value2);
 const messages = {
@@ -31456,7 +31830,7 @@ async function planNoteEdits(session, edits, ifMatch2) {
     const text2 = decoder.decode(snapshot.bytes);
     const edited = Object.keys(changes2).length + removed.length === 0 ? text2 : session.ports.editFrontmatter(text2, after, changes2, removed);
     const next = body === void 0 ? edited : withBody(edited, body);
-    if (next !== text2) requests.push({ path: path2, bytes: encoder$1.encode(next), expectedRevision: snapshot.revision });
+    if (next !== text2) requests.push({ path: path2, bytes: encoder$2.encode(next), expectedRevision: snapshot.revision });
   }
   return requests;
 }
@@ -31481,7 +31855,7 @@ async function writeItems(session, writes, ifMatch2) {
   return editNotes(session, writes.map((write) => itemEdit(session, write)), ifMatch2);
 }
 async function createNotes(session, files) {
-  return session.context.workspace.write(files.map((file) => ({ path: file.path, bytes: encoder$1.encode(file.text) })), { diff: true });
+  return session.context.workspace.write(files.map((file) => ({ path: file.path, bytes: encoder$2.encode(file.text) })), { diff: true });
 }
 const newNoteText = (session, frontmatter) => noteText(session.ports.stringifyYaml(frontmatter));
 async function announce(session, result, id2, payload2) {
@@ -31724,10 +32098,10 @@ async function depend(session, reference, on, ifMatch2) {
 async function undepend(session, reference, on, ifMatch2) {
   bound(session.settings.dependsOnKey, "dependsOnProperty");
   const item = findItem(session, reference);
-  const resolved = session.cache.getFirstLinkpathDest(on.replace(/^\[\[|\]\]$/g, ""), session.base.path);
-  const delta = resolved !== null ? { removePath: resolved } : { removeRaw: on.trim() };
+  const resolved2 = session.cache.getFirstLinkpathDest(on.replace(/^\[\[|\]\]$/g, ""), session.base.path);
+  const delta = resolved2 !== null ? { removePath: resolved2 } : { removeRaw: on.trim() };
   const result = await writeItems(session, [{ path: item.path, dependsOn: delta }], ifMatch2);
-  return { ...result, item: { path: item.path, removed: result.changes.length > 0 ? resolved ?? on.trim() : null } };
+  return { ...result, item: { path: item.path, removed: result.changes.length > 0 ? resolved2 ?? on.trim() : null } };
 }
 async function assignIteration(session, reference, iterationRef, ifMatch2) {
   bound(session.settings.iterationKey, "iterationProperty");
@@ -32732,21 +33106,21 @@ async function pushAll(context, bound2, plans, ids, report2, options2, live, sto
     if (wanted !== void 0) links2.push({ plan, wanted });
   }
   for (const { plan, wanted } of links2) {
-    const resolved = wanted.map(resolve2);
-    if (resolved.some((id2) => id2 === void 0)) {
+    const resolved2 = wanted.map(resolve2);
+    if (resolved2.some((id2) => id2 === void 0)) {
       plan.skipped.push({ path: plan.path, field: DEPENDENCIES, code: "unsynced-dependency", reason: syncMessages.predecessorNotCreated });
       continue;
     }
     options2.checkpoint?.();
     let result;
     try {
-      result = await guardedUpdate(run2, plan, { dependencies: resolved });
+      result = await guardedUpdate(run2, plan, { dependencies: resolved2 });
     } catch (error2) {
       await fail(run2, plan, error2);
       outcome.linkFailed.add(plan.path);
       continue;
     }
-    settleLinks(context, plan, result, resolved);
+    settleLinks(context, plan, result, resolved2);
     outcome.pushed.get(plan.path).add(DEPENDENCIES);
     const entry2 = [...report2.created, ...report2.updated].find((operation2) => operation2.path === plan.path);
     if (entry2) entry2.fields.push(DEPENDENCIES);
@@ -32792,17 +33166,17 @@ function resolvedLocal(context, plan) {
   if (values2.has(DEPENDENCIES)) values2.set(DEPENDENCIES, []);
   return values2;
 }
-function settleLinks(context, plan, result, resolved) {
+function settleLinks(context, plan, result, resolved2) {
   const before = plan.remoteValues;
   Object.assign(plan, { remote: result, remoteValues: remoteValues(context, result) });
   for (const [field2, value2] of plan.remoteValues) {
     if (field2 !== DEPENDENCIES && before.has(field2) && canonical(field2, before.get(field2)) !== canonical(field2, value2)) plan.remoteChanged.push(field2);
   }
-  plan.local.set(DEPENDENCIES, sortedIds(resolved));
+  plan.local.set(DEPENDENCIES, sortedIds(resolved2));
   const stored = plan.remoteValues.get(DEPENDENCIES);
-  if (stored !== void 0 && canonical(DEPENDENCIES, stored) !== canonical(DEPENDENCIES, resolved)) {
+  if (stored !== void 0 && canonical(DEPENDENCIES, stored) !== canonical(DEPENDENCIES, resolved2)) {
     plan.baseFrom.set(DEPENDENCIES, "remote");
-    plan.skipped.push({ path: plan.path, field: DEPENDENCIES, code: "server-kept", reason: fill$1(syncMessages.serverKept, { stored: canonical(DEPENDENCIES, stored), sent: canonical(DEPENDENCIES, resolved) }) });
+    plan.skipped.push({ path: plan.path, field: DEPENDENCIES, code: "server-kept", reason: fill$1(syncMessages.serverKept, { stored: canonical(DEPENDENCIES, stored), sent: canonical(DEPENDENCIES, resolved2) }) });
   }
 }
 const basename = (path2) => path2.slice(path2.lastIndexOf("/") + 1).replace(/\.md$/i, "");
@@ -33185,7 +33559,7 @@ function syncAction(rest, flags, context, services2, selection2) {
   ensure(fields2 === null || fields2.length > 0, "INVALID_ARGUMENT", "--field needs at least one field name.");
   return run2({ ...selection2, direction: "both", mode: "sync", resolve: { item: args[0], take, fields: fields2 } });
 }
-const selection = ["base", "view", "today"];
+const selection$1 = ["base", "view", "today"];
 const accepted = {
   init: ["folder"],
   list: ["context"],
@@ -33352,7 +33726,7 @@ function backlogCommand(ports2) {
   };
 }
 function only(flags, sub, keys) {
-  for (const key of Object.keys(flags)) ensure(!Object.hasOwn(options$1, key) || [...selection, ...keys].includes(key), "INVALID_ARGUMENT", `--${key} is not supported by ${sub}.`);
+  for (const key of Object.keys(flags)) ensure(!Object.hasOwn(options$1, key) || [...selection$1, ...keys].includes(key), "INVALID_ARGUMENT", `--${key} is not supported by ${sub}.`);
 }
 function iteration(session, rest, flags, ifMatch2) {
   const [sub, ...args] = rest;
@@ -34047,8 +34421,8 @@ function asText(value2) {
 }
 function renderYaml(source2, resolve2) {
   const tokens = placeholders(source2);
-  const resolved = tokens.map(resolve2);
-  const serializedValues = JSON.stringify(resolved);
+  const resolved2 = tokens.map(resolve2);
+  const serializedValues = JSON.stringify(resolved2);
   let prefix = "AGENTCLITEMPLATETOKEN";
   while (source2.includes(prefix) || serializedValues.includes(prefix)) prefix += "X";
   const sentinels = tokens.map((_, index2) => `${prefix}${index2}END`);
@@ -34068,7 +34442,7 @@ function renderYaml(source2, resolve2) {
     const exact2 = sentinels.indexOf(scalar2);
     if (exact2 >= 0) {
       consumed.add(exact2);
-      const replacement2 = document2.createNode(resolved[exact2]);
+      const replacement2 = document2.createNode(resolved2[exact2]);
       replacement2.comment = node2.comment;
       replacement2.commentBefore = node2.commentBefore;
       replacement2.spaceBefore = node2.spaceBefore;
@@ -34078,7 +34452,7 @@ function renderYaml(source2, resolve2) {
     node2.value = scalar2.replace(sentinelPattern, (_, index2) => {
       const position2 = Number(index2);
       consumed.add(position2);
-      return asText(resolved[position2]);
+      return asText(resolved2[position2]);
     });
   });
   ensure(consumed.size === tokens.length, "INVALID_TEMPLATE", "Placeholders in frontmatter are supported only in scalar values, not comments, tags or anchors.");
@@ -34389,6 +34763,22 @@ function names$1(name2, directory) {
   vaultPath(directory);
   return { name: name2, directory, file: name2.replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2").replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase() };
 }
+const pluginSource = (id2) => `let ready = false;
+
+export default {
+  commands: [{
+    id: '${id2}.hello', description: 'Describe this plugin', usage: '${id2}.hello',
+    scope: 'workspace', mutating: false, options: {}, errors: [],
+    run() { return { plugin: '${id2}', ready }; },
+  }],
+  strings: {
+    de: { commands: { '${id2}.hello': 'Dieses Plugin beschreiben' } },
+  },
+
+  onload() { ready = true; },
+  onunload() { ready = false; },
+};
+`;
 const scaffoldGenerators = [
   { id: "form", description: "Typed form definition with Zod validation and HTML preview in a Forge project.", directory: "src/presentation/forms", async generate({ name: input, directory: dir, context }) {
     ensure(context.project, "PROJECT_REQUIRED", "Open a Forge project with project open <name> before making a form.");
@@ -34429,7 +34819,7 @@ const scaffoldGenerators = [
 }
 `) }];
   } },
-  { id: "use-case", description: "Application use case with an injected repository port.", generate({ name: input, directory: dir }) {
+  { id: "use-case", description: "Application use case with an injected repository port.", directory: "src/application", generate({ name: input, directory: dir }) {
     const { name: name2, directory, file } = names$1(input, dir);
     return [{ path: `${directory}/${file}.ts`, bytes: encodeText$1(`export interface ${name2}Input { readonly id: string }
 export interface ${name2}Repository { exists(id: string): globalThis.Promise<boolean> }
@@ -34467,18 +34857,7 @@ export const ${name2}Event = {
     };
     return [
       { path: `${directory}/${file}/manifest.json`, bytes: encodeText$1(JSON.stringify(manifest, null, 2) + "\n") },
-      { path: `${directory}/${file}/main.mjs`, bytes: encodeText$1(`let ready = false;
-
-export default {
-  commands: [{
-    id: '${file}.hello', description: 'Describe this plugin', usage: '${file}.hello',
-    run() { return { plugin: '${file}', ready }; },
-  }],
-
-  onload() { ready = true; },
-  onunload() { ready = false; },
-};
-`) }
+      { path: `${directory}/${file}/main.mjs`, bytes: encodeText$1(pluginSource(file)) }
     ];
   } }
 ];
@@ -34890,6 +35269,16 @@ function isSafeNavigationUrl(value2) {
 }
 const uiVoidTags = new Set("area base br col embed hr img input link meta param source track wbr".split(" "));
 const uiBooleanAttributes = new Set("allowfullscreen async autofocus autoplay checked controls default defer disabled formnovalidate hidden inert ismap itemscope loop multiple muted nomodule novalidate open playsinline readonly required reversed selected".split(" "));
+const uiUnsafeTags = new Set("applet base embed frame frameset iframe object script".split(" "));
+const uiUnsafeAttributes = /* @__PURE__ */ new Set(["srcdoc"]);
+const uiUrlAttributes = new Set("action formaction href poster src".split(" "));
+const uiSafeUrlSchemes = ["http", "https", "mailto", "tel"];
+function uiSafeUrl(value2) {
+  let start2 = 0;
+  while (start2 < value2.length && value2.charCodeAt(start2) <= 32) start2++;
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(value2.slice(start2).replace(/[\t\n\r]/g, ""))?.[1]?.toLowerCase();
+  return scheme === void 0 || uiSafeUrlSchemes.includes(scheme);
+}
 function uiBindingParts(value2) {
   const parts = [];
   let last = 0;
@@ -37791,13 +38180,13 @@ function handleIntersectionResults(result, left, right) {
         result.issues.push(keyIssues.get(k));
     }
   }
-  const merged = mergeValues(left.value, right.value);
-  if (!merged.valid) {
+  const merged2 = mergeValues(left.value, right.value);
+  if (!merged2.valid) {
     if (aborted(result))
       return result;
-    throw new Error(`Unmergable intersection. Error path: ${JSON.stringify(merged.mergeErrorPath)}`);
+    throw new Error(`Unmergable intersection. Error path: ${JSON.stringify(merged2.mergeErrorPath)}`);
   }
-  result.value = merged.data;
+  result.value = merged2.data;
   return result;
 }
 const $ZodRecord = /* @__PURE__ */ $constructor("$ZodRecord", (inst, def) => {
@@ -39478,8 +39867,8 @@ function foldObjects(members2) {
         if (!parts.some((seen) => JSON.stringify(seen) === JSON.stringify(part)))
           parts.push(part);
       }
-      const merged = parts.length === 1 ? parts[0] : foldObjects(parts) ?? { allOf: parts };
-      assignProp(properties2, key, merged);
+      const merged2 = parts.length === 1 ? parts[0] : foldObjects(parts) ?? { allOf: parts };
+      assignProp(properties2, key, merged2);
     }
     for (const key of object2.required ?? [])
       required2.add(key);
@@ -41287,6 +41676,12 @@ const node$1 = lazy(() => union([
   strictObject({ tag: string$3().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/), attrs: record$2(attribute, value$1).optional(), text: string$3().optional(), children: array(node$1).optional(), interactions: array(id).min(1).refine((ids) => new Set(ids).size === ids.length, "Interaction attachments must be unique.").optional() }).superRefine((element2, context) => {
     if (element2.tag === "svg" || element2.tag === "math") context.addIssue({ code: "custom", message: "SVG and MathML namespaces are unsupported in portable definitions; use native components or image assets." });
     if (uiVoidTags.has(element2.tag) && (element2.text !== void 0 || element2.children?.length)) context.addIssue({ code: "custom", message: `Void element ${element2.tag} cannot have text or children.` });
+    if (uiUnsafeTags.has(element2.tag)) context.addIssue({ code: "custom", message: `Element ${element2.tag} runs scripts or embeds documents and is unsupported in portable definitions; use a native component.` });
+    for (const [name2, value2] of Object.entries(element2.attrs ?? {})) {
+      const key = name2.toLowerCase();
+      if (uiUnsafeAttributes.has(key)) context.addIssue({ code: "custom", path: ["attrs", name2], message: `Attribute ${name2} embeds a document and is unsupported in portable definitions.` });
+      if (uiUrlAttributes.has(key) && typeof value2 === "string" && uiBindings(value2).length === 0 && !uiSafeUrl(value2)) context.addIssue({ code: "custom", path: ["attrs", name2], message: `Attribute ${name2} must be a relative, http(s), mailto or tel URL.` });
+    }
   }),
   strictObject({ component: id, props: values.optional(), children: array(node$1).optional() }),
   strictObject({ slot: literal$1("children") })
@@ -41611,12 +42006,28 @@ ${ordered(definition2.props).map(([key, prop2]) => `  ${json$3(key)}${requiredPr
 export default function ${componentArtifact(definition2, "html").exportName}(input${hasRequiredProps(definition2) ? "" : "?"}: ${className(definition2)}Props, children?: ${childrenType}): HTMLElement | DocumentFragment;
 `;
 }
+const safeUrl = "_uiSafeUrl";
+const guardsUrl = (key, value2) => uiUrlAttributes.has(key.toLowerCase()) && uiBindings(value2).length > 0;
+const guardedUrl = (key, value2, rendered) => guardsUrl(key, value2) ? `${safeUrl}(${rendered})` : rendered;
+function safeUrlHelper(typescript) {
+  const signature = typescript ? `function ${safeUrl}(value: unknown): string | undefined {` : `/** @param {unknown} value @returns {string | undefined} */
+function ${safeUrl}(value) {`;
+  return `${signature}
+  if (value == null) return undefined;
+  const text = globalThis.String(value);
+  let start = 0;
+  while (start < text.length && text.charCodeAt(start) <= 32) start++;
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(text.slice(start).replace(/[\\t\\n\\r]/g, ''))?.[1]?.toLowerCase();
+  return scheme === undefined || ${json$3(uiSafeUrlSchemes)}.includes(scheme) ? text : undefined;
+}
+`;
+}
 function reactiveDomModule(definition2, interactions) {
   const references = componentDependencies(definition2.root);
   const aliases = new Map(references.map((id2, index2) => [id2, `UiChild_${index2}`]));
   const imports = references.map((id2) => `import ${aliases.get(id2)} from ${json$3(`./${id2}.js`)};`).join("\n");
   const prefix = interactionPrefix(definition2);
-  const used = { slot: false, component: false, element: false };
+  const used = { slot: false, component: false, element: false, urls: false };
   function nodeCode(node2) {
     if ("slot" in node2) {
       used.slot = true;
@@ -41628,14 +42039,15 @@ function reactiveDomModule(definition2, interactions) {
       return `component(${aliases.get(node2.component)}, () => ({${ordered(node2.props ?? {}).map(([key, value2]) => `${json$3(key)}: ${expression(value2)}`).join(", ")}}), ${children})`;
     }
     used.element = true;
+    used.urls ||= Object.entries(node2.attrs ?? {}).some(([key, value2]) => guardsUrl(key, value2));
     const listeners = groupElementInteractions(node2, interactions, prefix).map(({ event, handlers: handlers2 }) => `${json$3(event)}: [${handlers2.join(", ")}]`).join(", ");
-    return `element(${json$3(node2.tag)}, () => ({${ordered(node2.attrs ?? {}).map(([key, value2]) => `${json$3(key)}: ${expression(value2)}`).join(", ")}}), ${node2.text === void 0 ? "null" : `() => ${expression(node2.text)}`}, ${children}, {${listeners}})`;
+    return `element(${json$3(node2.tag)}, () => ({${ordered(node2.attrs ?? {}).map(([key, value2]) => `${json$3(key)}: ${guardedUrl(key, value2, expression(value2))}`).join(", ")}}), ${node2.text === void 0 ? "null" : `() => ${expression(node2.text)}`}, ${children}, {${listeners}})`;
   }
   const root = nodeCode(definition2.root);
   const handlers = renderInteractionHandlers(definition2, interactions, { typescript: false, prefix, commit: (next) => `Object.assign(_uiState, ${next}); refresh();` });
   const assignments = defaultAssignments(definition2);
   const usesState = root.includes("_uiState") || handlers.includes("_uiState");
-  return `${imports}${imports ? "\n\n" : ""}${domTypedefs(definition2)}${used.element ? `const booleanAttributes = new Set(${json$3([...uiBooleanAttributes].sort())});
+  return `${imports}${imports ? "\n\n" : ""}${domTypedefs(definition2)}${used.urls ? safeUrlHelper(false) : ""}${used.element ? `const booleanAttributes = new Set(${json$3([...uiBooleanAttributes].sort())});
 ` : ""}const updateProps = Symbol.for('forge.ui.updateProps');
 
 ${domFactory(definition2, "Create a live component; mounting and removal remain owned by the caller.", { props: true, children: used.slot })}
@@ -41720,6 +42132,7 @@ function staticMarkup(node2, props, definitions2, children = "", state2 = {}) {
   const attrs = ordered(node2.attrs ?? {}).map(([key, original]) => {
     const value2 = evaluate(original, props, state2);
     if (value2 == null || uiBooleanAttributes.has(key.toLowerCase()) && value2 === false) return "";
+    if (guardsUrl(key, original) && !uiSafeUrl(String(value2))) return "";
     return uiBooleanAttributes.has(key.toLowerCase()) && value2 === true ? ` ${key}` : ` ${key}="${html(value2)}"`;
   }).join("");
   return `<${node2.tag}${attrs}>${uiVoidTags.has(node2.tag) ? "" : `${node2.text === void 0 ? "" : html(evaluate(node2.text, props, state2))}${childMarkup}</${node2.tag}>`}`;
@@ -41729,7 +42142,7 @@ function domModule(definition2, definitions2, interactions = []) {
   const refs = componentDependencies(definition2.root);
   const aliases = new Map(refs.map((id2, index2) => [id2, `UiChild_${index2}`]));
   const imports = refs.map((id2) => `import ${aliases.get(id2)} from ${json$3(`./${definitions2.get(id2).id}.js`)};`).join("\n");
-  let slots = false;
+  let slots = false, urls = false;
   function nodeCode(node2) {
     if ("slot" in node2) {
       slots = true;
@@ -41737,12 +42150,13 @@ function domModule(definition2, definitions2, interactions = []) {
     }
     const children = `[${(node2.children ?? []).map(nodeCode).join(", ")}]`;
     if ("component" in node2) return `${aliases.get(node2.component)}({${ordered(node2.props ?? {}).map(([key, value2]) => `${json$3(key)}: ${expression(value2)}`).join(", ")}}, ${children})`;
-    return `element(${json$3(node2.tag)}, {${ordered(node2.attrs ?? {}).map(([key, value2]) => `${json$3(key)}: ${expression(value2)}`).join(", ")}}, ${node2.text === void 0 ? "null" : expression(node2.text)}, ${children})`;
+    urls ||= Object.entries(node2.attrs ?? {}).some(([key, value2]) => guardsUrl(key, value2));
+    return `element(${json$3(node2.tag)}, {${ordered(node2.attrs ?? {}).map(([key, value2]) => `${json$3(key)}: ${guardedUrl(key, value2, expression(value2))}`).join(", ")}}, ${node2.text === void 0 ? "null" : expression(node2.text)}, ${children})`;
   }
   const root = nodeCode(definition2.root), assignments = defaultAssignments(definition2);
   const usesProps = root.includes("props[") || assignments !== "";
   const elements = root.includes("element(");
-  return `${imports}${imports ? "\n\n" : ""}${domTypedefs(definition2)}${elements ? `const booleanAttributes = new Set(${json$3([...uiBooleanAttributes].sort())});
+  return `${imports}${imports ? "\n\n" : ""}${domTypedefs(definition2)}${urls ? safeUrlHelper(false) : ""}${elements ? `const booleanAttributes = new Set(${json$3([...uiBooleanAttributes].sort())});
 ` : ""}${slots ? domSlot : ""}${elements ? `/** @param {string} tag @param {Record<string, unknown>} attributes @param {unknown} text @param {readonly Node[]} children */
 function element(tag, attributes, text, children) {
   const result = document.createElement(tag);
@@ -41822,6 +42236,7 @@ function reactModule(definition2, definitions2, interactions = []) {
   let usesStyle = false;
   let usesAttributes = false;
   let usesControls = false;
+  let usesUrls = false;
   function nodeCode(node2) {
     if ("slot" in node2) {
       usesProps = true;
@@ -41847,8 +42262,10 @@ function reactModule(definition2, definitions2, interactions = []) {
       const isStyle = "tag" in node2 && key === "style";
       if (isStyle) usesStyle = true;
       const isAttribute = "tag" in node2 && !isStyle && !uiBooleanAttributes.has(key.toLowerCase());
-      if (isAttribute) usesAttributes = true;
-      const rendered = isStyle ? `css(${expression(value2, "props", state2)})` : isAttribute ? `attribute(${expression(value2, "props", state2)})` : expression(value2, "props", state2);
+      const isUrl2 = isAttribute && guardsUrl(key, value2);
+      if (isUrl2) usesUrls = true;
+      else if (isAttribute) usesAttributes = true;
+      const rendered = isStyle ? `css(${expression(value2, "props", state2)})` : isUrl2 ? `${safeUrl}(${expression(value2, "props", state2)})` : isAttribute ? `attribute(${expression(value2, "props", state2)})` : expression(value2, "props", state2);
       return [`${json$3("tag" in node2 ? reactNames[key] ?? key : key)}: ${rendered}`];
     });
     const events2 = groupElementInteractions(node2, interactions, prefix);
@@ -41866,7 +42283,7 @@ ${refs.map((id2) => `import ${aliases.get(id2)} from ${json$3(`./${definitions2.
 export interface ${className(definition2)}Props {
 ${propTypes}${propTypes ? "\n" : ""}  children?: _UiReactNode;
 }
-${usesStyle ? reactStyleHelper : ""}
+${usesStyle ? reactStyleHelper : ""}${usesUrls ? safeUrlHelper(true) : ""}
 ${usesControls ? `const ${prefix}ControlValues = new globalThis.WeakMap<HTMLElement, Record<string, unknown>>();
 ` : ""}${usesAttributes ? `function attribute(value: unknown): string | undefined {
   return value == null ? undefined : globalThis.String(value);
@@ -41892,27 +42309,34 @@ function vueModule(definition2, definitions2, interactions = []) {
   const interactive = Object.keys(definition2.state ?? {}).length > 0 || componentInteractions(definition2, interactions).length > 0;
   const refs = componentDependencies(definition2.root);
   const aliases = new Map(refs.map((id2, index2) => [id2, `UiChild_${index2}`]));
+  let urls = false;
   function nodeCode(node2) {
     if ("slot" in node2) return "<slot />";
     const tag = "tag" in node2 ? node2.tag : aliases.get(node2.component);
-    const attrs = ordered("tag" in node2 ? node2.attrs ?? {} : node2.props ?? {}).map(([key, value2]) => ` :${key}="${html(expression(value2, "props", state2))}"`).join("");
+    if ("tag" in node2) urls ||= Object.entries(node2.attrs ?? {}).some(([key, value2]) => guardsUrl(key, value2));
+    const attrs = ordered("tag" in node2 ? node2.attrs ?? {} : node2.props ?? {}).map(([key, value2]) => {
+      const rendered = expression(value2, "props", state2);
+      return ` :${key}="${html("tag" in node2 ? guardedUrl(key, value2, rendered) : rendered)}"`;
+    }).join("");
     const events2 = groupElementInteractions(node2, interactions, prefix).map(({ event, handlers }) => ` @${event}="${html(handlers.map((handler2) => `${handler2}($event)`).join("; "))}"`).join("");
     const text2 = "tag" in node2 && node2.text !== void 0 ? `{{ ${html(expression(node2.text, "props", state2))} }}` : "";
     return `<${tag}${attrs}${events2}>${"tag" in node2 && uiVoidTags.has(tag) ? "" : `${text2}${(node2.children ?? []).map(nodeCode).join("")}</${tag}>`}`;
   }
+  const template = nodeCode(definition2.root);
   return `<script setup lang="ts">${interactive ? `
 import { reactive as _uiReactive } from 'vue';` : ""}
 ${refs.map((id2) => `import ${aliases.get(id2)} from ${json$3(`./${definitions2.get(id2).id}.vue`)};`).join("\n")}
 const props = defineProps({
 ${ordered(definition2.props).map(([key, prop2]) => `  ${json$3(key)}: { type: ${prop2.type === "string" ? "String" : prop2.type === "number" ? "Number" : "Boolean"}, required: ${Boolean(prop2.required && prop2.default === void 0)}${prop2.default !== void 0 ? `, default: ${json$3(prop2.default)}` : prop2.type === "boolean" ? ", default: undefined" : ""} },`).join("\n")}
-});${interactive ? `
+});${urls ? `
+${safeUrlHelper(true).trimEnd()}` : ""}${interactive ? `
 const ${state2} = _uiReactive<${stateType(definition2)}>(${json$3(stateDefaults(definition2))});
 ${renderInteractionHandlers(definition2, interactions, { typescript: true, prefix, stateScope: state2, commit: (next) => `globalThis.Object.assign(${state2}, ${next});` })}
 ` : ""}
 <\/script>
 
 <template>
-  ${nodeCode(definition2.root)}
+  ${template}
 </template>
 `;
 }
@@ -41925,25 +42349,29 @@ function svelteModule(definition2, definitions2, interactions = []) {
   function svelteExpression(value2) {
     return expression(value2, "_uiProps", state2);
   }
+  let urls = false;
   function nodeCode(node2) {
     if ("slot" in node2) return "<slot />";
     const tag = "tag" in node2 ? node2.tag : aliases.get(node2.component);
-    const attrs = ordered("tag" in node2 ? node2.attrs ?? {} : node2.props ?? {}).map(([key, value2]) => ` ${key}={${svelteExpression(value2)}}`).join("");
+    if ("tag" in node2) urls ||= Object.entries(node2.attrs ?? {}).some(([key, value2]) => guardsUrl(key, value2));
+    const attrs = ordered("tag" in node2 ? node2.attrs ?? {} : node2.props ?? {}).map(([key, value2]) => ` ${key}={${"tag" in node2 ? guardedUrl(key, value2, svelteExpression(value2)) : svelteExpression(value2)}}`).join("");
     const events2 = groupElementInteractions(node2, interactions, prefix).map(({ event, handlers }) => ` on:${event}={(event) => { ${handlers.map((handler2) => `${handler2}(event);`).join(" ")} }}`).join("");
     const text2 = "tag" in node2 && node2.text !== void 0 ? `{${textExpression(node2.text, "_uiProps", state2)}}` : "";
     return `<${tag}${attrs}${events2}>${"tag" in node2 && uiVoidTags.has(tag) ? "" : `${text2}${(node2.children ?? []).map(nodeCode).join("")}</${tag}>`}`;
   }
+  const markup = nodeCode(definition2.root);
   return `<script lang="ts">
 ${refs.map((id2) => `  import ${aliases.get(id2)} from ${json$3(`./${definitions2.get(id2).id}.svelte`)};`).join("\n")}
 ${ordered(definition2.props).map(([key, prop2], index2) => `  let _uiProp${index2}: ${prop2.type}${prop2.required || prop2.default !== void 0 ? "" : " | undefined"}${prop2.default !== void 0 ? ` = ${json$3(prop2.default)}` : prop2.required ? "" : " = undefined"};
   export { _uiProp${index2} as ${key} };`).join("\n")}
-  $: _uiProps = {${ordered(definition2.props).map(([key], index2) => `${json$3(key)}: _uiProp${index2}`).join(", ")}};${interactive ? `
+  $: _uiProps = {${ordered(definition2.props).map(([key], index2) => `${json$3(key)}: _uiProp${index2}`).join(", ")}};${urls ? `
+${safeUrlHelper(true).trimEnd().split("\n").map((line) => `  ${line}`).join("\n")}` : ""}${interactive ? `
   let ${state2}: ${stateType(definition2)} = ${json$3(stateDefaults(definition2))};
 ${renderInteractionHandlers(definition2, interactions, { typescript: true, prefix, propsScope: "_uiProps", stateScope: state2, commit: (next) => `${state2} = { ...${next} };` })}
 ` : ""}
 <\/script>
 
-${nodeCode(definition2.root)}
+${markup}
 `;
 }
 function angularModule(definition2, definitions2, interactions = []) {
@@ -43192,7 +43620,7 @@ const claudeTarget = (openFiles) => async (context, flags) => {
     let root = directory;
     while (true) {
       try {
-        ensure((await promises$1.stat(root)).isDirectory(), "INVALID_PATH", `Not a directory: ${root}`);
+        ensure((await promises.stat(root)).isDirectory(), "INVALID_PATH", `Not a directory: ${root}`);
         break;
       } catch (error2) {
         if (error2.code !== "ENOENT") throw error2;
@@ -43254,7 +43682,7 @@ class NodeClaudeRuntime {
     );
     let directory;
     try {
-      directory = (await promises$1.stat(options2.cwd)).isDirectory();
+      directory = (await promises.stat(options2.cwd)).isDirectory();
     } catch (error2) {
       throw forgeError("CLAUDE_WORKING_DIRECTORY_UNAVAILABLE", `Cannot access Claude working directory: ${options2.cwd}`, { cause: errorMessage(error2) });
     }
@@ -44547,7 +44975,7 @@ const connectorSettings = {
         additionalProperties: true,
         properties: {
           platform: { type: "string", pattern: "^[a-z][a-z0-9-]*$", description: "The connector platform, for example azure-devops." },
-          tokenEnv: { type: "string", pattern: "^[A-Za-z_][A-Za-z0-9_]*$", description: "The environment variable holding the access token; the platform default when omitted. Its value is sent to the organization, so review both in shared configuration." },
+          tokenEnv: { type: "string", pattern: "^([A-Za-z_][A-Za-z0-9_]*_)?(PAT|TOKEN)$", description: "The environment variable holding the access token, named PAT, TOKEN or ending in _PAT or _TOKEN so a shared profile cannot pick an unrelated secret; the platform default when omitted. Its value is sent to the organization, so review both in shared configuration." },
           linkProperty: { type: "string", minLength: 1, description: "The frontmatter key that links a note to its remote item; the platform default when omitted." },
           effortProperty: { type: "string", minLength: 1, default: "effort", description: "The frontmatter key of the effort or story points." },
           areaProperty: { type: "string", minLength: 1, default: "area", description: "The frontmatter key of the area path; a note without it uses the connection's default area." },
@@ -44633,11 +45061,11 @@ class Hub {
   build(profile, connector) {
     const description2 = connector.describe();
     const path2 = `plugins.settings.connector.connections.${profile.id}`;
-    const checked = validateJsonValue(description2.connectionSchema, profile.specific, path2);
-    const issues2 = [...CONNECTION_ID.test(profile.id) ? [] : [`${path2}: connection ids are lowercase kebab-case`], ...checked.issues];
+    const checked2 = validateJsonValue(description2.connectionSchema, profile.specific, path2);
+    const issues2 = [...CONNECTION_ID.test(profile.id) ? [] : [`${path2}: connection ids are lowercase kebab-case`], ...checked2.issues];
     const tokenEnv = profile.tokenEnv ?? description2.defaults.tokenEnv;
     const environment = this.environment;
-    const settings2 = { ...isRecord$1(checked.value) ? checked.value : {}, platform: profile.platform, tokenEnv, mappings: profile.mappings };
+    const settings2 = { ...isRecord$1(checked2.value) ? checked2.value : {}, platform: profile.platform, tokenEnv, mappings: profile.mappings };
     const connection = {
       id: profile.id,
       platform: profile.platform,
@@ -44725,7 +45153,7 @@ const connectorStrings = {
       "The connection id (inspect, test).": "Die Verbindungs-ID (inspect, test).",
       "Connection profiles by id (lowercase kebab-case).": "Verbindungsprofile nach ID (kebab-case in Kleinbuchstaben).",
       "The connector platform, for example azure-devops.": "Die Connector-Plattform, zum Beispiel azure-devops.",
-      "The environment variable holding the access token; the platform default when omitted. Its value is sent to the organization, so review both in shared configuration.": "Die Umgebungsvariable mit dem Zugriffstoken; ohne Angabe der Standard der Plattform. Ihr Wert wird an die Organisation gesendet; prüfen Sie daher beide in gemeinsam genutzter Konfiguration.",
+      "The environment variable holding the access token, named PAT, TOKEN or ending in _PAT or _TOKEN so a shared profile cannot pick an unrelated secret; the platform default when omitted. Its value is sent to the organization, so review both in shared configuration.": "Die Umgebungsvariable mit dem Zugriffstoken, benannt PAT, TOKEN oder mit der Endung _PAT oder _TOKEN, damit ein gemeinsam genutztes Profil kein fremdes Geheimnis wählen kann; ohne Angabe der Standard der Plattform. Ihr Wert wird an die Organisation gesendet; prüfen Sie daher beide in gemeinsam genutzter Konfiguration.",
       "The frontmatter key that links a note to its remote item; the platform default when omitted.": "Der Frontmatter-Schlüssel, der eine Notiz mit ihrem entfernten Eintrag verknüpft; ohne Angabe der Standard der Plattform.",
       "The frontmatter key of the effort or story points.": "Der Frontmatter-Schlüssel des Aufwands oder der Story Points.",
       "The frontmatter key of the area path; a note without it uses the connection's default area.": "Der Frontmatter-Schlüssel des Bereichspfads; eine Notiz ohne ihn verwendet den Standardbereich der Verbindung.",
@@ -44860,12 +45288,12 @@ function fields(process2) {
   };
 }
 function processMapping(process2, overrides2 = {}) {
-  const resolved = fields(process2);
-  for (const [field2, reference] of Object.entries(overrides2.fields ?? {})) if (Object.hasOwn(resolved, field2)) resolved[field2] = reference.trim() === "" ? null : reference.trim();
+  const resolved2 = fields(process2);
+  for (const [field2, reference] of Object.entries(overrides2.fields ?? {})) if (Object.hasOwn(resolved2, field2)) resolved2[field2] = reference.trim() === "" ? null : reference.trim();
   return {
     types: { ...types[process2], ...overrides2.types },
     states: { ...states[process2], ...overrides2.states },
-    fields: resolved,
+    fields: resolved2,
     properties: { ...overrides2.properties }
   };
 }
@@ -45072,7 +45500,7 @@ function remoteItem(json2, context, url2) {
 }
 const connectorMessages = {
   description: "Work items of one Azure DevOps project through the Work Items REST API 7.1.",
-  unknownHost: "organization host {host} is neither dev.azure.com nor *.visualstudio.com; the token in {tokenEnv} is sent there (expected only for Azure DevOps Server)."
+  unknownHost: "organization host {host} is neither dev.azure.com nor *.visualstudio.com, so requests are refused and the token in {tokenEnv} is not sent; for Azure DevOps Server, list the host in the environment variable {variable}."
 };
 const API_VERSION = "7.1";
 const BATCH_SIZE = 200;
@@ -45098,15 +45526,40 @@ function withDefaults(connection, change2) {
   return { ...change2, ...change2.iteration === null ? { iteration: setting(connection, "project") } : {}, ...change2.area === null ? { area: defaultArea(connection) } : {} };
 }
 const knownHost = (host) => host === "dev.azure.com" || host.endsWith(".visualstudio.com");
+const loopback = (host) => ["localhost", "127.0.0.1", "[::1]"].includes(host);
+const decoded$2 = (value2) => {
+  try {
+    return decodeURIComponent(value2);
+  } catch {
+    return null;
+  }
+};
+const hostOf = (url2) => {
+  try {
+    return new URL(url2).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+};
+const ALLOWED_HOSTS_ENV = "FORGE_CONNECTOR_ALLOWED_HOSTS";
 class AzureDevOpsConnector {
-  /** `translations` render the self-description in other languages than English. */
-  constructor(http, translations = {}) {
+  /**
+   * `translations` render the self-description in other languages than English. `allowedHosts` lists the hosts
+   * besides Azure DevOps Services and loopback that may receive the token; the user sets them outside shared
+   * configuration, so a cloned repository's profile cannot send a token to a host of its choosing.
+   */
+  constructor(http, translations = {}, allowedHosts = () => []) {
     this.http = http;
     this.translations = translations;
+    this.allowedHosts = allowedHosts;
   }
   http;
   translations;
+  allowedHosts;
   id = "azure-devops";
+  trusted(host) {
+    return knownHost(host) || loopback(host) || this.allowedHosts().some((allowed) => allowed.toLowerCase() === host);
+  }
   describe(language2 = "en") {
     const text2 = this.translations[language2] ?? connectorMessages;
     return {
@@ -45124,13 +45577,8 @@ class AzureDevOpsConnector {
         ...setting(connection, "iterationRoot") ? { iterationRoot: setting(connection, "iterationRoot") } : {}
       }),
       warnings: (connection) => {
-        let host;
-        try {
-          host = new URL(organizationOf(connection)).hostname.toLowerCase();
-        } catch {
-          return [];
-        }
-        return knownHost(host) ? [] : [fill$1(text2.unknownHost, { host, tokenEnv: connection.tokenEnv })];
+        const host = hostOf(organizationOf(connection));
+        return host === null || this.trusted(host) ? [] : [fill$1(text2.unknownHost, { host, tokenEnv: connection.tokenEnv, variable: ALLOWED_HOSTS_ENV })];
       }
     };
   }
@@ -45146,13 +45594,9 @@ class AzureDevOpsConnector {
   idFromLink(connection, url2) {
     const match = /^(.*)\/_workitems\/edit\/(\d+)\/?$/i.exec(url2.trim());
     if (!match) return null;
-    const expected = `${organizationOf(connection)}/${setting(connection, "project")}`.toLowerCase();
-    let prefix;
-    try {
-      prefix = decodeURIComponent(match[1]).toLowerCase();
-    } catch {
-      return null;
-    }
+    const organization = decoded$2(organizationOf(connection)) ?? organizationOf(connection);
+    const expected = `${organization}/${setting(connection, "project")}`.toLowerCase();
+    const prefix = decoded$2(match[1])?.toLowerCase();
     return prefix === expected ? match[2] : null;
   }
   async test(connection) {
@@ -45221,6 +45665,13 @@ class AzureDevOpsConnector {
   /** One authenticated JSON request; failures are coded, carry the status and never the token. */
   async call(connection, method, url2, body, options2 = {}) {
     const contentType = options2.contentType ?? "application/json";
+    const host = hostOf(url2);
+    if (host === null || !this.trusted(host)) {
+      throw Object.assign(new Error(`Connection ${connection.id} targets the untrusted host ${host ?? url2}; no request was sent. Add the host to ${ALLOWED_HOSTS_ENV} to trust it.`), {
+        code: "CONNECTION_INVALID",
+        details: { connection: connection.id, host, issues: [`plugins.settings.connector.connections.${connection.id}.organization: host ${host ?? url2} is not trusted; list it in ${ALLOWED_HOSTS_ENV}`] }
+      });
+    }
     const token = connection.token();
     const clean = (text2) => redact(text2, [token]);
     let response;
@@ -45258,7 +45709,7 @@ const azureDevOpsStrings = {
 };
 const germanConnectorMessages = {
   description: "Work Items eines Azure-DevOps-Projekts über die REST-API 7.1 für Work Items.",
-  unknownHost: "Der Organisations-Host {host} ist weder dev.azure.com noch *.visualstudio.com; das Token aus {tokenEnv} wird dorthin gesendet (nur für Azure DevOps Server zu erwarten)."
+  unknownHost: "Der Organisations-Host {host} ist weder dev.azure.com noch *.visualstudio.com, daher werden Anfragen abgelehnt und das Token aus {tokenEnv} wird nicht gesendet; tragen Sie den Host für Azure DevOps Server in die Umgebungsvariable {variable} ein."
 };
 const azureDevOpsPlugin = {
   manifest: {
@@ -45272,7 +45723,8 @@ const azureDevOpsPlugin = {
   },
   strings: azureDevOpsStrings,
   create: (host) => {
-    const connector = new AzureDevOpsConnector(host.http, { de: germanConnectorMessages });
+    const allowedHosts = () => (host.environment(ALLOWED_HOSTS_ENV) ?? "").split(",").map((entry2) => entry2.trim()).filter(Boolean);
+    const connector = new AzureDevOpsConnector(host.http, { de: germanConnectorMessages }, allowedHosts);
     return {
       provides: { "connector-azure-devops.connector": connector },
       requires: ["connector.hub"],
@@ -45304,7 +45756,7 @@ class WebviewPublication {
   async plan(context) {
     const { project: project2, workspace: workspace2, environment } = context;
     ensure(project2, "PROJECT_REQUIRED", "Open a webview project before inspecting or publishing it.");
-    ensure(project2.type === "webview", "INVALID_ARGUMENT", "The selected project must have type webview.");
+    ensureWebview(project2.type === "webview", "WEBVIEW_PROJECT_REQUIRED", `Project ${project2.name} has type ${project2.type}; webview inspects and publishes only webview projects.`, { project: project2.name, type: project2.type });
     ensure(project2.name !== "admin", "INVALID_ARGUMENT", "The admin webview belongs to the Forge distribution and cannot be published here.");
     const id2 = project2.name, destination2 = `bin/webviews/${id2}`;
     const sourceStat = await optionalStat$1(workspace2, "dist");
@@ -45401,14 +45853,14 @@ const readWebviewAssets = async (root, relative) => {
   let parent2 = root;
   for (const segment2 of relative.split("/").slice(0, -1)) {
     parent2 = path$3.join(parent2, segment2);
-    const info2 = await promises$1.lstat(parent2).catch((error2) => {
+    const info2 = await promises.lstat(parent2).catch((error2) => {
       if (error2.code === "ENOENT") return null;
       throw error2;
     });
     if (!info2) return null;
     ensureWebview(info2.isDirectory() && !info2.isSymbolicLink(), "WEBVIEW_INVALID", `Webview assets require regular directories: ${relative}`);
   }
-  const info = await promises$1.lstat(directory).catch((error2) => {
+  const info = await promises.lstat(directory).catch((error2) => {
     if (error2.code === "ENOENT") return null;
     throw error2;
   });
@@ -45416,9 +45868,9 @@ const readWebviewAssets = async (root, relative) => {
   ensureWebview(info.isDirectory() && !info.isSymbolicLink(), "WEBVIEW_INVALID", "dist must be a regular directory.");
   const files = [], names2 = /* @__PURE__ */ new Set();
   async function walk2(parent22, prefix = "") {
-    const info2 = await promises$1.lstat(parent22);
+    const info2 = await promises.lstat(parent22);
     ensureWebview(info2.isDirectory() && !info2.isSymbolicLink(), "WEBVIEW_INVALID", `Webview assets require regular directories: ${prefix || relative}`);
-    for (const entry2 of await promises$1.readdir(parent22, { withFileTypes: true })) {
+    for (const entry2 of await promises.readdir(parent22, { withFileTypes: true })) {
       const path2 = vaultPath(`${prefix}${entry2.name}`), target = path$3.join(parent22, entry2.name);
       ensureWebview(!entry2.name.startsWith(".") && !/[. ]$/.test(entry2.name) && entry2.name.toLowerCase() !== "node_modules", "WEBVIEW_INVALID", `Build assets must not contain hidden or reserved names: ${path2}`);
       ensureWebview(!names2.has(path2.toLowerCase()), "WEBVIEW_INVALID", `Build assets must have unique case-insensitive paths: ${path2}`);
@@ -45429,7 +45881,7 @@ const readWebviewAssets = async (root, relative) => {
       }
       ensureWebview(entry2.isFile(), "WEBVIEW_INVALID", `Build assets must contain only regular files: ${path2}`);
       ensureWebview(/\.(?:html|js|css|json|svg|png|jpe?g|webp|ico|woff2?)$/i.test(path2) || path2 === "THIRD-PARTY-NOTICES.md" || path2.startsWith("licenses/"), "WEBVIEW_INVALID", `Unsupported static build asset: ${path2}`);
-      const handle = await promises$1.open(target, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0) | (fs.constants.O_NONBLOCK ?? 0));
+      const handle = await promises.open(target, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0) | (fs.constants.O_NONBLOCK ?? 0));
       try {
         ensureWebview((await handle.stat()).isFile(), "WEBVIEW_INVALID", `Build asset is not a regular file: ${path2}`);
         const bytes = await handle.readFile();
@@ -45501,7 +45953,7 @@ function webviewCommand(publication) {
         }
       }
     },
-    errors: ["PROJECT_REQUIRED", "INVALID_ARGUMENT", "WEBVIEW_INVALID", "WEBVIEW_BUILD_REQUIRED", "WEBVIEW_DRIFT", "CONFLICT", "UNSAFE_PATH", "INVALID_PATH", "NOT_FOUND"],
+    errors: ["PROJECT_REQUIRED", "INVALID_ARGUMENT", "WEBVIEW_INVALID", "WEBVIEW_BUILD_REQUIRED", "WEBVIEW_PROJECT_REQUIRED", "WEBVIEW_DRIFT", "CONFLICT", "UNSAFE_PATH", "INVALID_PATH", "NOT_FOUND"],
     async run(args, flags, context) {
       arity(args, 0, 1);
       if ((args[0] ?? "inspect") === "inspect") return publication.inspect(context);
@@ -45528,6 +45980,7 @@ const webviewsStrings = { de: {
   errors: {
     WEBVIEW_INVALID: { summary: "Der Webview-Build ist ungültig.", hint: "Prüfen Sie dist und manifest.json; verwenden Sie nur reguläre statische Dateien und die Projekt-ID." },
     WEBVIEW_BUILD_REQUIRED: { summary: "Der Webview-Build fehlt.", hint: "Führen Sie npm run build im ausgewählten Projekt aus und prüfen Sie danach webview inspect." },
+    WEBVIEW_PROJECT_REQUIRED: { summary: "Das Projekt ist kein Webview-Projekt.", hint: "Übergeben Sie --project <webview-id> oder führen Sie project open <webview-id> aus; project list zeigt den Typ jedes Projekts." },
     WEBVIEW_DRIFT: { summary: "Die installierte Webview weicht vom Build ab.", hint: "Prüfen Sie webview inspect und veröffentlichen Sie den geprüften Build; bestehende Ansichten benötigen --if-match." }
   }
 } };
@@ -45548,6 +46001,7 @@ const webviewsPlugin = {
     errors: [
       { code: "WEBVIEW_INVALID", category: "input", summary: "The webview build is invalid.", hint: "Inspect dist and manifest.json; use only regular static files and the matching project id." },
       { code: "WEBVIEW_BUILD_REQUIRED", category: "input", summary: "The webview build is missing.", hint: "Run npm run build in the selected project, then run webview inspect." },
+      { code: "WEBVIEW_PROJECT_REQUIRED", category: "input", summary: "The project is not a webview project.", hint: "Pass --project <webview-id>, or run project open <webview-id>; project list shows each project's type." },
       { code: "WEBVIEW_DRIFT", category: "drift", summary: "The installed webview differs from the build.", hint: "Run webview inspect and publish the reviewed build; replacing an installed view requires --if-match." }
     ]
   })
@@ -45559,6 +46013,24 @@ function ensureBrowser(condition, code2, message2, details) {
   if (!condition) throw browserError(code2, message2, details);
 }
 const execute$1 = node_util.promisify(childProcess.execFile);
+const maxTutorialMs = 15 * 6e4;
+function defaultSandbox() {
+  return process.platform === "linux" && process.getuid?.() === 0 ? "disabled-root" : "enabled";
+}
+function sandboxMode(disable2 = false) {
+  return disable2 ? "disabled-option" : defaultSandbox();
+}
+function tutorialDeadline(request) {
+  const operations2 = request.plan.steps.reduce((total2, step) => total2 + step.actions.length + Number(step.screenshot), 1);
+  return Math.min(maxTutorialMs, request.timeoutMs * operations2);
+}
+function deadline(milliseconds, failure2) {
+  let timer;
+  const expired = new Promise((_resolve, reject) => {
+    timer = setTimeout(() => reject(failure2()), Math.max(1, milliseconds));
+  });
+  return { expired, clear: () => clearTimeout(timer) };
+}
 function proxy() {
   const configured = process.env.HTTPS_PROXY ?? process.env.https_proxy ?? process.env.HTTP_PROXY ?? process.env.http_proxy;
   if (!configured) return void 0;
@@ -45570,7 +46042,7 @@ function proxy() {
     ...url2.password ? { password: decodeURIComponent(url2.password) } : {}
   };
 }
-function publicUrl$1(value2) {
+function publicUrl(value2) {
   const url2 = new URL(value2);
   ensureBrowser(["http:", "https:"].includes(url2.protocol), "BROWSER_CAPTURE_FAILED", "Browser navigation must remain on an HTTP or HTTPS page.");
   url2.hash = "";
@@ -45606,31 +46078,47 @@ function createBrowserRuntime(distributionPath) {
     const source2 = configured === void 0 ? "managed" : executablePath === void 0 ? "environment" : "explicit";
     let reason = "available";
     try {
-      if (!(await promises$1.stat(path2)).isFile()) reason = "not-file";
+      if (!(await promises.stat(path2)).isFile()) reason = "not-file";
     } catch (error2) {
       reason = reasonFor(error2.code);
     }
     if (reason === "available") {
       try {
-        await promises$1.access(path2, process.platform === "win32" ? fs.constants.F_OK : fs.constants.X_OK);
+        await promises.access(path2, process.platform === "win32" ? fs.constants.F_OK : fs.constants.X_OK);
       } catch (error2) {
         reason = reasonFor(error2.code, true);
       }
     }
     let version2;
     try {
-      version2 = JSON.parse(await promises$1.readFile(path$3.join(packageRoot, "package.json"), "utf8")).version;
+      version2 = JSON.parse(await promises.readFile(path$3.join(packageRoot, "package.json"), "utf8")).version;
     } catch {
       throw browserError("BROWSER_UNAVAILABLE", "The packaged browser runtime metadata is missing. Replace the complete Forge distribution.");
     }
-    return { available: reason === "available", executablePath: path2, source: source2, version: version2, verification: "executable-only", reason };
+    return {
+      available: reason === "available",
+      executablePath: path2,
+      source: source2,
+      version: version2,
+      verification: "executable-only",
+      reason,
+      sandbox: defaultSandbox()
+    };
   }
   async function session(options2) {
     const info = await status2(options2.executablePath);
     ensureBrowser(info.available, "BROWSER_UNAVAILABLE", "No usable Chromium executable was found. Run browser install or provide --browser-executable.");
     let browser;
+    const sandbox2 = sandboxMode(options2.disableSandbox);
     try {
-      browser = await (await playwright()).chromium.launch({ headless: true, channel: "chromium", executablePath: info.executablePath, timeout: options2.timeoutMs, proxy: proxy() });
+      browser = await (await playwright()).chromium.launch({
+        headless: true,
+        channel: "chromium",
+        executablePath: info.executablePath,
+        timeout: options2.timeoutMs,
+        proxy: proxy(),
+        chromiumSandbox: sandbox2 === "enabled"
+      });
       const context = await browser.newContext({ viewport: options2.viewport, deviceScaleFactor: 1, acceptDownloads: false, serviceWorkers: "block" });
       context.setDefaultTimeout(options2.timeoutMs);
       context.setDefaultNavigationTimeout(options2.timeoutMs);
@@ -45640,7 +46128,7 @@ function createBrowserRuntime(distributionPath) {
         return route.continue();
       });
       const page = await context.newPage();
-      return { browser, page };
+      return { browser, page, sandbox: sandbox2 };
     } catch (error2) {
       await browser?.close().catch(() => {
       });
@@ -45649,13 +46137,13 @@ function createBrowserRuntime(distributionPath) {
     }
   }
   async function navigate(page, url2) {
-    publicUrl$1(url2);
+    publicUrl(url2);
     await page.goto(url2, { waitUntil: "domcontentloaded" });
-    publicUrl$1(page.url());
+    publicUrl(page.url());
   }
-  async function capture(page, fullPage, timeout2) {
-    const url2 = publicUrl$1(page.url());
-    const bytes = await page.screenshot({ type: "png", fullPage, animations: "disabled", timeout: timeout2 });
+  async function capture(page, fullPage, timeout2, mask = []) {
+    const url2 = publicUrl(page.url());
+    const bytes = await page.screenshot({ type: "png", fullPage, animations: "disabled", timeout: timeout2, ...mask.length > 0 ? { mask } : {} });
     return { bytes, width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20), url: url2, title: await page.title(), capturedAt: (/* @__PURE__ */ new Date()).toISOString() };
   }
   return {
@@ -45680,22 +46168,23 @@ function createBrowserRuntime(distributionPath) {
     },
     async screenshot(request) {
       const started = Date.now();
-      const { browser, page } = await session(request);
-      let timer;
+      const { browser, page, sandbox: sandbox2 } = await session(request);
+      const total2 = deadline(
+        request.timeoutMs - (Date.now() - started),
+        () => browserError("BROWSER_CAPTURE_FAILED", "The screenshot exceeded its total timeout. Increase --timeout-ms or simplify the page readiness condition.")
+      );
       try {
         const operation2 = async () => {
           await navigate(page, request.url);
           if (request.waitForSelector) await page.locator(request.waitForSelector).waitFor({ state: "visible" });
           return capture(page, request.fullPage, request.timeoutMs);
         };
-        return await Promise.race([operation2(), new Promise((_resolve, reject) => {
-          timer = setTimeout(() => reject(browserError("BROWSER_CAPTURE_FAILED", "The screenshot exceeded its total timeout. Increase --timeout-ms or simplify the page readiness condition.")), Math.max(1, request.timeoutMs - (Date.now() - started)));
-        })]);
+        return { ...await Promise.race([operation2(), total2.expired]), sandbox: sandbox2 };
       } catch (error2) {
         if (error2 instanceof AppError) throw error2;
         throw browserError("BROWSER_CAPTURE_FAILED", "The page could not be captured. Check its address, readiness selector and timeout, then retry.");
       } finally {
-        clearTimeout(timer);
+        total2.clear();
         await browser.close().catch(() => {
         });
       }
@@ -45709,8 +46198,9 @@ function createBrowserRuntime(distributionPath) {
           values2.set(action2, value2);
         }
       }
-      const { browser, page } = await session(request);
+      const { browser, page, sandbox: sandbox2 } = await session(request);
       const screenshots = [];
+      const masked = [];
       let stepId;
       let popupOpened = false;
       page.on("popup", () => {
@@ -45725,7 +46215,12 @@ function createBrowserRuntime(distributionPath) {
         "Tutorials support one browser tab. This step opened another tab or popup; revise the flow to navigate in the current tab.",
         stepId ? { stepId } : {}
       );
-      try {
+      const total2 = deadline(tutorialDeadline(request), () => browserError(
+        "BROWSER_FLOW_FAILED",
+        "The tutorial exceeded its total time budget. Split it into shorter tutorials or lower the work per step.",
+        stepId ? { stepId } : {}
+      ));
+      const operation2 = async () => {
         if (request.plan.startUrl) await navigate(page, request.plan.startUrl);
         for (const step of request.plan.steps) {
           stepId = step.id;
@@ -45738,22 +46233,29 @@ function createBrowserRuntime(distributionPath) {
             }
             const target = locate(page, action2.locator);
             if (action2.type === "click") await target.click();
-            else if (action2.type === "fill") await target.fill(action2.value !== void 0 ? action2.value : values2.get(action2));
-            else if (action2.type === "select") await target.selectOption(action2.value);
+            else if (action2.type === "fill" && action2.value !== void 0) await target.fill(action2.value);
+            else if (action2.type === "fill") {
+              masked.push(target);
+              await target.fill(values2.get(action2));
+            } else if (action2.type === "select") await target.selectOption(action2.value);
             else if (action2.type === "check") await target.setChecked(action2.checked);
             else if (action2.type === "press") await target.press(action2.key);
             else await target.waitFor({ state: action2.state });
             ensureSinglePage();
           }
           ensureSinglePage();
-          if (step.screenshot) screenshots.push({ ...await capture(page, step.fullPage, request.timeoutMs), stepId: step.id });
+          if (step.screenshot) screenshots.push({ ...await capture(page, step.fullPage, request.timeoutMs, masked), stepId: step.id });
           ensureSinglePage();
         }
-        return { screenshots, browserVersion: browser.version() };
+        return { screenshots, browserVersion: browser.version(), sandbox: sandbox2 };
+      };
+      try {
+        return await Promise.race([operation2(), total2.expired]);
       } catch (error2) {
         if (error2 instanceof AppError && error2.code === "BROWSER_FLOW_FAILED") throw error2;
         throw browserError("BROWSER_FLOW_FAILED", "The tutorial could not complete. Inspect the failing step, locator and timeout before retrying.", stepId ? { stepId } : {});
       } finally {
+        total2.clear();
         await browser.close().catch(() => {
         });
       }
@@ -54246,11 +54748,12 @@ const tutorialBlocks = (source2) => {
   });
   return blocks;
 };
-const content$1 = "---\nname: forge-browser\ndescription: Capture webpage evidence and create illustrated walkthroughs with Forge browser commands, then explain observations in guarded Markdown documents. Use when documenting a UI problem or situation, taking on-demand screenshots, or turning a reviewed flow into a screenshot tutorial from JSON, Markdown or Canvas.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer, the complete Forge bin distribution and Chromium. Run browser status to inspect browser availability; browser install downloads the managed browser.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Identify the question, situation or workflow the document should explain. Read workspace/project AGENTS.md and inspect `project current`; verify `context.root` before writing. Discover `schema browser --json` for exact installed contracts. Use the command's `--project <id>` option when an explicit target avoids changing shared selection. Capture tools are independent of the webview scaffold and work with HTTP(S) pages.\n2. Run `node bin/forge.js browser status`. Its `verification: \"executable-only\"` checks the selected file without launching it; even `available: true` does not establish Chromium compatibility or working operating-system dependencies. `version` is the packaged Playwright version. Inspect `reason` and `nextStep` when unavailable; an explicit path takes precedence over `FORGE_BROWSER_EXECUTABLE`, then managed Chromium. Use `browser status --browser-executable /path/to/chromium` to inspect a known system installation. Use `browser install --dry-run` then `browser install` when the managed Chromium download is needed, or an available browser through `--browser-executable`. Browser installation is separate from project npm dependencies. Inspect/capture tasks do not require an approval ritual: proceed within the user's request. Running a tutorial can operate the target website; confirm that its intended actions fall within the user's authorization before executing a reviewed plan. Do not infer permission to submit purchases, upload files or make unrelated account changes from a request to document a page.\n3. For one image, choose a useful viewport and an explicit PNG destination. Preview `node bin/forge.js browser screenshot <url> --out docs/assets/problem.png --project <id> --dry-run`, then capture with the same options. Add `--full-page` for the complete page and `--wait-for-selector <selector>` when a known visible element indicates readiness. Dry runs do not launch a browser or visit the URL. Each capture uses a fresh browser context; saved browser logins and cookies are not inherited. Do not embed credentials in URLs or author secrets into a tutorial plan. Local launch fragments can carry access information: keep them out of published documents and logs.\n4. Capture creates a new file by default. To replace an existing image, read it through Forge and pass its current revision as `--if-match` to both preview and capture. Reread and reconcile a conflict; never substitute a newer revision blindly. Inspect the returned requested/final URLs, capture time and image dimensions; record the viewport from the request. A successful write proves that an image was saved, not that the expected page finished loading or the UI works correctly.\n5. Open the actual saved image using the agent's image inspection capability. Check whether it shows the intended state rather than a login, error, consent or loading screen. State what is visibly observed and separate hypotheses about the cause. Unexpected access or navigation requires adjusting the plan or documenting the limitation; never invent what the page should have shown. Use Playwright regression tests for assertions about application behavior; screenshots are evidence for the document.\n6. For a multi-step tutorial, translate the user's prose, Markdown or Canvas into an explicit supported flow before execution. Preserve the original brief; a separate plan file is appropriate. JSON sources contain the plan directly. Markdown must have exactly one fenced `forge-tutorial` JSON block; Canvas must have exactly one such block in a text node. The CLI parses that block, not the meaning of arbitrary prose, arrows or node positions. Keep a title, starting URL, clear step titles, observable instructions, supported actions and explicit screenshots. Use semantic locators when supported and avoid fragile selectors that merely happen to match today's layout.\n7. Run `browser validate <source> --out docs/manual` to inspect the normalized plan and destination state. Review every navigation, input and click against the user's intended flow, especially actions that submit data or change site state. Keep credentials and sensitive sample content out of plans and screenshots. When an authorized flow needs a secret input, use a supported `fill` action with `valueFromEnv` naming the environment variable rather than a literal credential; inspect the resulting image because this does not hide page content. Preview `browser tutorial <source> --out docs/manual --dry-run`; it does not visit the site. Execute the same reviewed command when within scope. An existing output folder requires validation's `data.revision` as `--if-match`; the guard covers the generated folder. Browser-side effects are separate from guarded file writes and cannot be rolled back by a document conflict.\n8. Review the generated `index.md`, `screenshots/` and `flow.json` as one document package. Inspect the actual screenshots, check image links and verify that captions explain the observed flow. Keep the input plan as the editable source; rerunning a tutorial replaces its generated output only with the inspected folder revision. Add authored analysis to a separate document or preserve it deliberately before regeneration.\n9. To explain a problem or situation, create or edit an ordinary Markdown note through `write`/`edit` with `--dry-run` and revisions. Use a descriptive relative embed such as `![Save action remains disabled](assets/problem.png)`, a clean source link, the capture's actual UTC timestamp and viewport, the observed result, the expected result when known, and the next useful verification. The returned `markdown` uses the image's scope-relative path; adjust it relative to the note's directory rather than copying it blindly into nested documents. Remove launch fragments from source citations and do not publish private URL parameters or secrets visible in the page.\n10. Read back and validate the document, check its relative links/embeds and resolve new broken links. Return accessible links or attachments for both the document and screenshots: a file path in a tool log is not a delivered picture. Report which states were captured and any unresolved limitations. See `bin/data/docs/how-to/capture-browser-evidence.md` and `bin/data/docs/reference/browser.md`; use `forge-webviews` for prototype implementation and `forge-vault` for guarded document editing.\n";
+const content$1 = "---\nname: forge-browser\ndescription: Capture webpage evidence and create illustrated walkthroughs with Forge browser commands, then explain observations in guarded Markdown documents. Use when documenting a UI problem or situation, taking on-demand screenshots, or turning a reviewed flow into a screenshot tutorial from JSON, Markdown or Canvas.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer, the complete Forge bin distribution and Chromium. Run browser status to inspect browser availability; browser install downloads the managed browser.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Identify the question, situation or workflow the document should explain. Read workspace/project AGENTS.md and inspect `project current`; verify `context.root` before writing. Discover `schema browser --json` for exact installed contracts. Use the command's `--project <id>` option when an explicit target avoids changing shared selection. Capture tools are independent of the webview scaffold and work with HTTP(S) pages.\n2. Run `node bin/forge.js browser status`. Its `verification: \"executable-only\"` checks the selected file without launching it; even `available: true` does not establish Chromium compatibility or working operating-system dependencies. `version` is the packaged Playwright version. Inspect `reason` and `nextStep` when unavailable; an explicit path takes precedence over `FORGE_BROWSER_EXECUTABLE`, then managed Chromium. Use `browser status --browser-executable /path/to/chromium` to inspect a known system installation. Use `browser install --dry-run` then `browser install` when the managed Chromium download is needed, or an available browser through `--browser-executable`. Browser installation is separate from project npm dependencies. Inspect/capture tasks do not require an approval ritual: proceed within the user's request. Running a tutorial can operate the target website; confirm that its intended actions fall within the user's authorization before executing a reviewed plan. Do not infer permission to submit purchases, upload files or make unrelated account changes from a request to document a page.\n3. For one image, choose a useful viewport and an explicit PNG destination. Preview `node bin/forge.js browser screenshot <url> --out docs/assets/problem.png --project <id> --dry-run`, then capture with the same options. Add `--full-page` for the complete page and `--wait-for-selector <selector>` when a known visible element indicates readiness. Dry runs do not launch a browser or visit the URL. Each capture uses a fresh browser context; saved browser logins and cookies are not inherited. Do not embed credentials in URLs or author secrets into a tutorial plan. Local launch fragments can carry access information: keep them out of published documents and logs.\n4. Capture creates a new file by default. To replace an existing image, read it through Forge and pass its current revision as `--if-match` to both preview and capture. Reread and reconcile a conflict; never substitute a newer revision blindly. Inspect the returned requested/final URLs, capture time and image dimensions; record the viewport from the request. A successful write proves that an image was saved, not that the expected page finished loading or the UI works correctly.\n5. Open the actual saved image using the agent's image inspection capability. Check whether it shows the intended state rather than a login, error, consent or loading screen. State what is visibly observed and separate hypotheses about the cause. Unexpected access or navigation requires adjusting the plan or documenting the limitation; never invent what the page should have shown. Use Playwright regression tests for assertions about application behavior; screenshots are evidence for the document.\n6. For a multi-step tutorial, translate the user's prose, Markdown or Canvas into an explicit supported flow before execution. Preserve the original brief; a separate plan file is appropriate. JSON sources contain the plan directly. Markdown must have exactly one fenced `forge-tutorial` JSON block; Canvas must have exactly one such block in a text node. The CLI parses that block, not the meaning of arbitrary prose, arrows or node positions. Keep a title, starting URL, clear step titles, observable instructions, supported actions and explicit screenshots. Use semantic locators when supported and avoid fragile selectors that merely happen to match today's layout.\n7. Run `browser validate <source> --out docs/manual` to inspect the normalized plan and destination state. Review every navigation, input and click against the user's intended flow, especially actions that submit data or change site state. Keep credentials and sensitive sample content out of plans and screenshots. When an authorized flow needs a secret input, use a supported `fill` action with `valueFromEnv` naming a `FORGE_TUTORIAL_*` environment variable (other names are rejected) rather than a literal credential; the filled control is masked in screenshots, but inspect the resulting image because other page content is not hidden. Preview `browser tutorial <source> --out docs/manual --dry-run`; it does not visit the site. Execute the same reviewed command when within scope. An existing output folder requires validation's `data.revision` as `--if-match`; the guard covers the generated folder. Browser-side effects are separate from guarded file writes and cannot be rolled back by a document conflict.\n8. Review the generated `index.md`, `screenshots/` and `flow.json` as one document package. Inspect the actual screenshots, check image links and verify that captions explain the observed flow. Keep the input plan as the editable source; rerunning a tutorial replaces its generated output only with the inspected folder revision. Add authored analysis to a separate document or preserve it deliberately before regeneration.\n9. To explain a problem or situation, create or edit an ordinary Markdown note through `write`/`edit` with `--dry-run` and revisions. Use a descriptive relative embed such as `![Save action remains disabled](assets/problem.png)`, a clean source link, the capture's actual UTC timestamp and viewport, the observed result, the expected result when known, and the next useful verification. The returned `markdown` uses the image's scope-relative path; adjust it relative to the note's directory rather than copying it blindly into nested documents. Remove launch fragments from source citations and do not publish private URL parameters or secrets visible in the page.\n10. Read back and validate the document, check its relative links/embeds and resolve new broken links. Return accessible links or attachments for both the document and screenshots: a file path in a tool log is not a delivered picture. Report which states were captured and any unresolved limitations. See `bin/data/docs/how-to/capture-browser-evidence.md` and `bin/data/docs/reference/browser.md`; use `forge-webviews` for prototype implementation and `forge-vault` for guarded document editing.\n";
 const browserSkill = { id: "forge-browser", content: content$1 };
 function reportedUrl(input) {
   const url2 = new URL(input);
   url2.hash = "";
+  url2.search = "";
   url2.username = "";
   url2.password = "";
   return url2.href;
@@ -54370,10 +54873,12 @@ class BrowserScreenshot {
       requestedUrl: plan.requestedUrl,
       finalUrl,
       capturedAt: new Date(image.capturedAt).toISOString(),
-      markdown: imageMarkdown(path2)
+      markdown: imageMarkdown(path2),
+      sandbox: image.sandbox
     };
   }
 }
+const tutorialEnvPrefix = "FORGE_TUTORIAL_";
 function valid(condition, message2) {
   ensureBrowser(condition, "BROWSER_FLOW_INVALID", message2);
 }
@@ -54423,7 +54928,7 @@ function action(value2) {
       valid(value2.value === void 0 !== (value2.valueFromEnv === void 0), "fill requires exactly one of value or valueFromEnv.");
       if (value2.valueFromEnv !== void 0) {
         const variable = text$6(value2.valueFromEnv, "Environment variable");
-        valid(/^[A-Za-z_][A-Za-z0-9_]*$/.test(variable), "valueFromEnv must name an environment variable.");
+        valid(new RegExp(`^${tutorialEnvPrefix}[A-Za-z0-9_]+$`).test(variable), `valueFromEnv must name an environment variable starting with ${tutorialEnvPrefix}.`);
         return { type: type2, locator: target, valueFromEnv: variable };
       }
       return { type: type2, locator: target, value: text$6(value2.value, "Fill value", true) };
@@ -54509,14 +55014,6 @@ async function optionalStat(context, path2) {
 function plannedFiles(plan) {
   return ["index.md", "flow.json", ...plan.steps.filter((step) => step.screenshot).map((step) => `screenshots/${step.id}.png`)];
 }
-function publicUrl(value2) {
-  const url2 = new URL(value2);
-  url2.hash = "";
-  url2.search = "";
-  url2.username = "";
-  url2.password = "";
-  return url2.href;
-}
 function heading(value2) {
   return value2.replaceAll("\r", " ").replaceAll("\n", " ").replaceAll("#", "\\#");
 }
@@ -54535,7 +55032,7 @@ function manual(plan, result) {
     if (image) lines2.push(
       imageMarkdown(`screenshots/${step.id}.png`, step.title),
       "",
-      `Page: <${publicUrl(image.url)}> · Captured: ${image.capturedAt} · ${image.width} × ${image.height}`,
+      `Page: <${reportedUrl(image.url)}> · Captured: ${image.capturedAt} · ${image.width} × ${image.height}`,
       ""
     );
   }
@@ -54598,11 +55095,17 @@ class BrowserTutorial {
     const guards = [{ path: source2, expectedRevision: snapshot.revision }, { path: out2, ...current ? { expectedRevision: current.revision } : {} }];
     if (context.workspace.dryRun) {
       await context.workspace.commit({ guards }, { operation: "apply" });
-      return { ...report2, dryRun: true, executed: false, changes: [], browserVersion: null };
+      return { ...report2, dryRun: true, executed: false, changes: [], browserVersion: null, sandbox: null };
     }
     const previous2 = /* @__PURE__ */ new Map();
     if (current?.kind === "folder") for (const path2 of current.files) previous2.set(path2, await context.workspace.files.read(`${out2}/${path2}`));
-    const captured = await this.runtime.flow({ plan, viewport: plan.viewport, timeoutMs, ...input.executablePath ? { executablePath: input.executablePath } : {} });
+    const captured = await this.runtime.flow({
+      plan,
+      viewport: plan.viewport,
+      timeoutMs,
+      ...input.executablePath ? { executablePath: input.executablePath } : {},
+      ...input.disableSandbox ? { disableSandbox: true } : {}
+    });
     const required2 = new Set(plan.steps.filter((step) => step.screenshot).map((step) => step.id));
     ensureBrowser(
       captured.screenshots.length === required2.size && captured.screenshots.every((image) => required2.delete(image.stepId) && image.bytes.length > 0),
@@ -54629,7 +55132,8 @@ class BrowserTutorial {
       dryRun: false,
       executed: true,
       changes: result.changes,
-      browserVersion: captured.browserVersion
+      browserVersion: captured.browserVersion,
+      sandbox: captured.sandbox
     };
   }
 }
@@ -54642,11 +55146,15 @@ function browserStatusView(status2, t) {
 const text$5 = { type: "string" };
 const integer = { type: "integer", minimum: 1 };
 const changes$1 = { type: "array", items: { type: "object" } };
+const sandbox = {
+  enum: ["enabled", "disabled-root", "disabled-option"],
+  description: "Chromium sandbox of this run: enabled, disabled-root (running as root on Linux) or disabled-option (--no-browser-sandbox)."
+};
 const viewport = { type: "object", additionalProperties: false, required: ["width", "height"], properties: { width: integer, height: integer } };
 const browserStatusSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["available", "executablePath", "source", "version", "verification", "reason", "nextStep"],
+  required: ["available", "executablePath", "source", "version", "verification", "reason", "sandbox", "nextStep"],
   properties: {
     available: { type: "boolean", description: "The selected path is a regular file accessible for execution (existence only on Windows); browser launch is unverified." },
     executablePath: { oneOf: [text$5, { type: "null" }] },
@@ -54654,6 +55162,7 @@ const browserStatusSchema = {
     version: { ...text$5, description: "Packaged Playwright runtime version, not the Chromium executable version." },
     verification: { const: "executable-only", description: "Filesystem checks only; no browser launch, compatibility or operating-system dependency check." },
     reason: { enum: ["available", "missing", "not-file", "not-executable", "inaccessible"] },
+    sandbox: { enum: ["enabled", "disabled-root"], description: "Chromium sandbox a launch without --no-browser-sandbox uses: disabled-root when running as root on Linux." },
     nextStep: { oneOf: [text$5, { type: "null" }], description: "Recovery guidance when unavailable; null when the filesystem check passed." }
   }
 };
@@ -54675,7 +55184,7 @@ const screenshotSchema = { oneOf: [
     captured: { const: false },
     changes: { type: "array", maxItems: 0 },
     plan: { type: "object", additionalProperties: false, required: ["requestedUrl", "out", "viewport", "fullPage", "timeoutMs"], properties: {
-      requestedUrl: { ...text$5, description: "Requested URL without its fragment." },
+      requestedUrl: { ...text$5, description: "Requested URL without its query, fragment or credentials." },
       out: text$5,
       viewport,
       fullPage: { type: "boolean" },
@@ -54686,7 +55195,7 @@ const screenshotSchema = { oneOf: [
   {
     type: "object",
     additionalProperties: false,
-    required: ["dryRun", "captured", "path", "revision", "bytes", "width", "height", "requestedUrl", "finalUrl", "capturedAt", "markdown", "changes"],
+    required: ["dryRun", "captured", "path", "revision", "bytes", "width", "height", "requestedUrl", "finalUrl", "capturedAt", "markdown", "sandbox", "changes"],
     properties: {
       dryRun: { const: false },
       captured: { const: true },
@@ -54696,7 +55205,8 @@ const screenshotSchema = { oneOf: [
       width: integer,
       height: integer,
       requestedUrl: text$5,
-      finalUrl: text$5,
+      finalUrl: { ...text$5, description: "Final page URL without its query, fragment or credentials." },
+      sandbox,
       capturedAt: { ...text$5, description: "Capture timestamp in UTC ISO 8601 form." },
       markdown: text$5,
       changes: changes$1
@@ -54720,13 +55230,21 @@ const tutorialValidationSchema = {
 const tutorialSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["source", "sourceRevision", "plan", "output", "revision", "files", "dryRun", "executed", "changes", "browserVersion"],
-  properties: { ...tutorialProperties, dryRun: { type: "boolean" }, executed: { type: "boolean" }, changes: changes$1, browserVersion: { oneOf: [text$5, { type: "null" }] } }
+  required: ["source", "sourceRevision", "plan", "output", "revision", "files", "dryRun", "executed", "changes", "browserVersion", "sandbox"],
+  properties: {
+    ...tutorialProperties,
+    dryRun: { type: "boolean" },
+    executed: { type: "boolean" },
+    changes: changes$1,
+    browserVersion: { oneOf: [text$5, { type: "null" }] },
+    sandbox: { oneOf: [sandbox, { type: "null" }] }
+  }
 };
-const project = option$1.string("Use this project instead of the selected project.");
+const project$1 = option$1.string("Use this project instead of the selected project.");
 const executable = option$1.string("Use this Chromium executable; otherwise use FORGE_BROWSER_EXECUTABLE or the installed managed browser.");
 const timeout = option$1.string("Browser operation timeout in milliseconds, from 1 to 120000.", { default: "30000" });
 const revision$1 = option$1.string("Current output revision from read (screenshot) or browser validate (tutorial); required before replacing existing output.");
+const noSandbox = option$1.boolean("Run Chromium without its operating-system sandbox; only for trusted pages where the sandbox cannot start.");
 const projectMode = { scope: "project", projectOption: "project", discovery: false };
 function browserCommand(runtime, blocks) {
   const screenshot = new BrowserScreenshot(runtime), tutorial = new BrowserTutorial(runtime, blocks);
@@ -54767,7 +55285,7 @@ function browserCommand(runtime, blocks) {
         output: screenshotSchema,
         usage: "browser screenshot <url> --out <image.png> [--width <pixels>] [--height <pixels>] [--full-page] [--wait-for-selector <selector>] [--timeout-ms <milliseconds>] [--browser-executable <path>] [--if-match <revision>] [--project <id>]",
         options: {
-          project,
+          project: project$1,
           out: option$1.string("Project-relative PNG output path.", { required: true }),
           width: option$1.string("Viewport width in pixels, from 1 to 7680.", { default: "1440" }),
           height: option$1.string("Viewport height in pixels, from 1 to 7680.", { default: "900" }),
@@ -54775,13 +55293,14 @@ function browserCommand(runtime, blocks) {
           "wait-for-selector": option$1.string("Wait for this selector to become visible before capturing the page."),
           "timeout-ms": timeout,
           "browser-executable": executable,
-          "if-match": revision$1
+          "if-match": revision$1,
+          "no-browser-sandbox": noSandbox
         }
       },
       validate: {
         description: "Validate a declared tutorial flow without opening a browser and inspect its output revision.",
         ...projectMode,
-        options: { project, out: option$1.string("Optional project-relative tutorial directory whose current revision should be inspected.") },
+        options: { project: project$1, out: option$1.string("Optional project-relative tutorial directory whose current revision should be inspected.") },
         output: tutorialValidationSchema
       },
       tutorial: {
@@ -54791,11 +55310,12 @@ function browserCommand(runtime, blocks) {
         destructive: true,
         idempotent: true,
         options: {
-          project,
+          project: project$1,
           out: option$1.string("Project-relative tutorial directory for index.md, screenshots and flow.json.", { required: true }),
           "timeout-ms": timeout,
           "browser-executable": executable,
-          "if-match": revision$1
+          "if-match": revision$1,
+          "no-browser-sandbox": noSandbox
         },
         output: tutorialSchema
       }
@@ -54818,7 +55338,8 @@ function browserCommand(runtime, blocks) {
       const out2 = value$2(flags, "out", true);
       const timeoutMs = browserTimeout(integer$2(flags, "timeout-ms", 1));
       const executablePath = browserExecutable(value$2(flags, "browser-executable")), ifMatch2 = expectedRevision(value$2(flags, "if-match"));
-      if (action2 === "tutorial") return tutorial.run(context, { source: args[1], out: out2, timeoutMs, executablePath, ifMatch: ifMatch2 });
+      const disableSandbox = flags["no-browser-sandbox"] === true;
+      if (action2 === "tutorial") return tutorial.run(context, { source: args[1], out: out2, timeoutMs, executablePath, ifMatch: ifMatch2, disableSandbox });
       return screenshot.run(context, {
         url: args[1],
         out: out2,
@@ -54827,7 +55348,8 @@ function browserCommand(runtime, blocks) {
         waitForSelector: value$2(flags, "wait-for-selector"),
         timeoutMs,
         executablePath,
-        ifMatch: ifMatch2
+        ifMatch: ifMatch2,
+        disableSandbox
       });
     }
   };
@@ -54870,7 +55392,8 @@ const browserStrings = { en: { messages: englishMessages }, de: {
     "Capture the full page instead of only the viewport.": "Die vollständige Seite statt nur des sichtbaren Ausschnitts erfassen.",
     "Wait for this selector to become visible before capturing the page.": "Vor der Aufnahme warten, bis dieser Selektor sichtbar ist.",
     "Optional project-relative tutorial directory whose current revision should be inspected.": "Optionaler projektrelativer Anleitungsordner, dessen aktuelle Revision geprüft werden soll.",
-    "Project-relative tutorial directory for index.md, screenshots and flow.json.": "Projektrelativer Anleitungsordner für index.md, Screenshots und flow.json."
+    "Project-relative tutorial directory for index.md, screenshots and flow.json.": "Projektrelativer Anleitungsordner für index.md, Screenshots und flow.json.",
+    "Run Chromium without its operating-system sandbox; only for trusted pages where the sandbox cannot start.": "Chromium ohne seine Betriebssystem-Sandbox ausführen; nur für vertrauenswürdige Seiten, wenn die Sandbox nicht starten kann."
   },
   errors: {
     BROWSER_UNAVAILABLE: { summary: "Browser-Laufzeit oder ausführbare Datei fehlen.", hint: "Prüfen Sie browser status und führen Sie browser install aus oder übergeben Sie einen installierten Chromium-Browser mit --browser-executable." },
@@ -54921,6 +55444,20 @@ function releaseJson(bytes) {
 function releaseVersion(value2) {
   requireUpdate(/^\d+\.\d+\.\d+$/.test(value2), "Use a stable release version such as 0.1.0.");
   return value2;
+}
+const archiveLimits = { bytes: 256 * 1024 * 1024, entries: 5e3 };
+function requireArchiveListing(listing) {
+  const lines2 = listing.trim().split(/\r?\n/);
+  requireUpdate(lines2.length <= archiveLimits.entries, `Release archive has more than ${archiveLimits.entries} entries.`);
+  let total2 = 0;
+  for (const line of lines2) {
+    requireUpdate(["-", "d"].includes(line[0]), "Release archive contains a link or special file.");
+    const fields2 = line.trim().split(/\s+/);
+    const size = fields2[1]?.includes("/") ? fields2[2] : fields2[4];
+    requireUpdate(size !== void 0 && /^\d+$/.test(size), "Release archive listing could not be read.");
+    total2 += Number(size);
+  }
+  requireUpdate(total2 <= archiveLimits.bytes, `Release archive unpacks to more than ${archiveLimits.bytes / 1024 / 1024} MB.`);
 }
 function compareVersions(left, right) {
   const a = releaseVersion(left).split(".").map(Number), b = releaseVersion(right).split(".").map(Number);
@@ -54975,6 +55512,19 @@ class AppUpdate {
     const installed = await this.installed(context);
     ensure(ifMatch2 === installed.revision, "CONFLICT", "The app or workspace settings changed; run update check again.", { currentRevision: installed.revision });
     requireUpdate(compareVersions(version2, installed.version) >= 0, "Downgrading the installed app is not supported.");
+    if (context.environment.dryRun) {
+      return {
+        installedVersion: installed.version,
+        releaseVersion: releaseVersion(version2),
+        checksum: null,
+        downloaded: false,
+        changed: version2 !== installed.version,
+        dryRun: true,
+        changes: [],
+        revision: installed.revision,
+        restartRequired: false
+      };
+    }
     const release2 = await this.source.download(releaseVersion(version2));
     requireUpdate(release2.version === version2, "Downloaded release version differs from the requested version.");
     const desired = new Map(release2.files.map((file) => [file.path, file]));
@@ -55002,6 +55552,7 @@ class AppUpdate {
       installedVersion: installed.version,
       releaseVersion: version2,
       checksum: release2.checksum,
+      downloaded: true,
       changed: writes.length + removes.length > 0,
       dryRun: result.dryRun,
       changes: result.changes,
@@ -55032,28 +55583,28 @@ function githubReleases(policy, run2 = runTool) {
     },
     async download(version2) {
       releaseVersion(version2);
-      const staging = await promises$1.mkdtemp(path$3.join(node_os.tmpdir(), "forge-update-"));
+      const staging = await promises.mkdtemp(path$3.join(node_os.tmpdir(), "forge-update-"));
       try {
         const name2 = `forge-${version2}.tar.gz`, archive = path$3.join(staging, name2);
         for (const filename of [name2, `${name2}.sha256`]) await run2("curl", [...curl, `${base}/download/v${version2}/${filename}`, "--output", path$3.join(staging, filename)], { timeout: 19e4 });
-        const bytes = await promises$1.readFile(archive), checksum = node_crypto.createHash("sha256").update(bytes).digest("hex");
-        requireUpdate((await promises$1.readFile(`${archive}.sha256`, "utf8")).trim() === `${checksum}  ${name2}`, "Release checksum verification failed; no app files were changed.");
+        const bytes = await promises.readFile(archive), checksum = node_crypto.createHash("sha256").update(bytes).digest("hex");
+        requireUpdate((await promises.readFile(`${archive}.sha256`, "utf8")).trim() === `${checksum}  ${name2}`, "Release checksum verification failed; no app files were changed.");
         const { stdout: listing } = await run2("tar", ["-tzf", name2], { cwd: staging, maxBuffer: 8 * 1024 * 1024 });
         requireUpdate(listing.trim().split(/\r?\n/).every((path2) => path2.startsWith("bin/") && !path2.includes("\\") && !path2.includes(":") && !path2.split("/").some((part) => part === "." || part === "..")), "Release archive contains an unsafe path.");
         const { stdout: detailed } = await run2("tar", ["-tvzf", name2], { cwd: staging, maxBuffer: 8 * 1024 * 1024 });
-        requireUpdate(detailed.trim().split(/\r?\n/).every((line) => ["-", "d"].includes(line[0])), "Release archive contains a link or special file.");
+        requireArchiveListing(detailed);
         await run2("tar", ["-xzf", name2, "--no-same-owner", "--no-same-permissions"], { cwd: staging });
         const root = path$3.join(staging, "bin");
-        const pkg = JSON.parse(await promises$1.readFile(path$3.join(root, "package.json"), "utf8"));
+        const pkg = JSON.parse(await promises.readFile(path$3.join(root, "package.json"), "utf8"));
         requireUpdate(pkg !== null && typeof pkg === "object" && "name" in pkg && pkg.name === "forge-bundle" && "version" in pkg && pkg.version === version2, "Release package version differs from the requested version.");
         const { stdout } = await run2(process.execPath, [path$3.join(root, "forge.js"), "--version"], { timeout: 3e4 });
         requireUpdate(JSON.parse(stdout).data?.version === version2, "The downloaded app cannot execute on this Node version.");
-        const paths2 = distributionFiles(JSON.parse(await promises$1.readFile(path$3.join(root, "data/distribution.json"), "utf8")), policy);
+        const paths2 = distributionFiles(JSON.parse(await promises.readFile(path$3.join(root, "data/distribution.json"), "utf8")), policy);
         const files = [];
         for (const path2 of paths2) {
-          const entry2 = await promises$1.lstat(path$3.join(root, path2));
+          const entry2 = await promises.lstat(path$3.join(root, path2));
           requireUpdate(entry2.isFile() && !entry2.isSymbolicLink(), "A release asset is not a regular file.");
-          const bytes2 = await promises$1.readFile(path$3.join(root, path2));
+          const bytes2 = await promises.readFile(path$3.join(root, path2));
           files.push({ path: path2, bytes: bytes2, revision: node_crypto.createHash("sha256").update(bytes2).digest("hex") });
         }
         return { version: version2, checksum, files };
@@ -55061,7 +55612,7 @@ function githubReleases(policy, run2 = runTool) {
         if (error2 instanceof AppError) throw error2;
         throw updateError("UPDATE_DOWNLOAD_FAILED", "Could not download or unpack the release. Check network access, curl, tar and available disk space; existing app files were preserved.");
       } finally {
-        await promises$1.rm(staging, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+        await promises.rm(staging, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
       }
     }
   };
@@ -55074,13 +55625,14 @@ const updateCheckSchema = {
 };
 const updateApplySchema = {
   type: "object",
-  required: ["installedVersion", "releaseVersion", "checksum", "changed", "dryRun", "changes", "revision", "restartRequired"],
+  required: ["installedVersion", "releaseVersion", "checksum", "downloaded", "changed", "dryRun", "changes", "revision", "restartRequired"],
   additionalProperties: false,
   properties: {
     installedVersion: { type: "string" },
     releaseVersion: { type: "string" },
-    checksum: { type: "string" },
-    changed: { type: "boolean" },
+    checksum: { oneOf: [{ type: "string" }, { type: "null" }], description: "Verified archive SHA-256; null in a dry run, which downloads nothing." },
+    downloaded: { type: "boolean", description: "Whether the release was downloaded and verified; false in a dry run." },
+    changed: { type: "boolean", description: "Whether files changed; in a dry run, whether the requested version differs from the installed one." },
     dryRun: { type: "boolean" },
     changes: { type: "array", items: { type: "object" } },
     revision: { type: "string" },
@@ -55178,11 +55730,11 @@ const distributionPolicy = {
   requiredAssets,
   ownedAssetPattern
 };
-function nodeLockFiles(root, warn) {
+function nodeLockFiles(root, warn, wait = () => 0) {
   return async (path2, command2) => {
     const target = await (await NodeFiles.at(root)).resolvePath(path2);
-    await promises$1.mkdir(path$3.dirname(target), { recursive: true });
-    const token = await acquireLock(target, () => ({ command: command2 }), path2, (lock) => warn(recoveredLockMessage(lock)));
+    await promises.mkdir(path$3.dirname(target), { recursive: true });
+    const token = await acquireLockWithin(wait(), target, () => ({ command: command2 }), path2, (lock) => warn(recoveredLockMessage(lock)));
     return async () => await releaseLock(target, token) === "released";
   };
 }
@@ -55264,11 +55816,13 @@ const configSchema = strictObject({
 });
 async function loadConfig(options2) {
   const root = options2.root !== void 0 ? path$3.resolve(options2.cwd, options2.root) : path$3.resolve(path$3.dirname(options2.defaultPath), "..");
+  const directory = await promises.stat(root).then((info) => info.isDirectory(), () => false);
+  if (!directory) throw forgeError("INVALID_ROOT", `Workspace root ${root} does not exist or is not a directory.`, { root });
   const path2 = path$3.resolve(root, "bin/config.json");
   let content2;
   let exists2 = true;
   try {
-    content2 = JSON.parse(await promises$1.readFile(path2, "utf8"));
+    content2 = JSON.parse((await promises.readFile(path2, "utf8")).replace(/^\ufeff/, ""));
   } catch (error2) {
     if (error2.code === "ENOENT") {
       content2 = {};
@@ -55282,7 +55836,7 @@ async function loadConfig(options2) {
 }
 const ownedAsset = new RegExp(distributionPolicy.ownedAssetPattern);
 async function readSetupArtifacts(bundleDir) {
-  const root = await promises$1.lstat(bundleDir);
+  const root = await promises.lstat(bundleDir);
   ensure(root.isDirectory() && !root.isSymbolicLink(), "INVALID_SETUP", "The bin folder must be a regular directory.");
   const readAsset2 = async (path2) => {
     vaultPath(path2);
@@ -55291,13 +55845,13 @@ async function readSetupArtifacts(bundleDir) {
     let current = bundleDir;
     for (const [index2, segment2] of segments2.entries()) {
       current = path$3.join(current, segment2);
-      const entry2 = await promises$1.lstat(current).catch((error2) => {
+      const entry2 = await promises.lstat(current).catch((error2) => {
         if (error2.code !== "ENOENT" && error2.code !== "ENOTDIR") throw error2;
         throw forgeError("INVALID_SETUP", `The distribution is incomplete: bin/${path2} is missing. Copy the complete bin folder of a release, or rebuild it, then run setup again.`, { path: `bin/${path2}` });
       });
       ensure(!entry2.isSymbolicLink() && (index2 === segments2.length - 1 ? entry2.isFile() : entry2.isDirectory()), "INVALID_SETUP", `Distribution paths must contain only regular files and directories: ${path2}`);
     }
-    return promises$1.readFile(current);
+    return promises.readFile(current);
   };
   let manifest;
   try {
@@ -55394,8 +55948,8 @@ function decodeResolution(stored, paths2) {
   const path2 = (value2) => typeof value2 === "number" && Number.isInteger(value2) && value2 >= 0 && value2 < paths2.length ? paths2[value2] : void 0;
   if (stored === null) return { status: "external" };
   if (typeof stored === "number") {
-    const resolved = path2(stored < 0 ? -1 - stored : stored);
-    return resolved === void 0 ? void 0 : { status: "resolved", path: resolved, via: stored < 0 ? "alias" : "path" };
+    const resolved2 = path2(stored < 0 ? -1 - stored : stored);
+    return resolved2 === void 0 ? void 0 : { status: "resolved", path: resolved2, via: stored < 0 ? "alias" : "path" };
   }
   if (!Array.isArray(stored) || typeof stored[1] !== "string") return void 0;
   const [reason, linkpath, ...indexes2] = stored;
@@ -55763,19 +56317,19 @@ class VaultMetadata {
     const aliasesChanged = [...aliasesBefore].some(([path2, key]) => key !== this.aliasKey(path2));
     this.paths = paths2;
     for (const path2 of changed) if (!this.caches.has(path2)) this.forget(path2);
-    let resolved;
+    let resolved2;
     if (pathsChanged || aliasesChanged) {
       this.results.outdated();
       this.reindex();
       const previous2 = new Map(this.sources().map((source2) => [source2, this.resolutionKey(source2)]));
       for (const source2 of this.sources()) this.resolve(source2);
-      resolved = this.sources().filter((source2) => contents.has(source2) || previous2.get(source2) !== this.resolutionKey(source2));
+      resolved2 = this.sources().filter((source2) => contents.has(source2) || previous2.get(source2) !== this.resolutionKey(source2));
     } else {
-      resolved = vaultOrder(changed.filter((path2) => this.caches.has(path2)));
-      for (const source2 of resolved) this.resolve(source2);
+      resolved2 = vaultOrder(changed.filter((path2) => this.caches.has(path2)));
+      for (const source2 of resolved2) this.resolve(source2);
     }
     this.reorder();
-    return { changed: vaultOrder(changed), deleted: vaultOrder(deleted), resolved, prevCaches };
+    return { changed: vaultOrder(changed), deleted: vaultOrder(deleted), resolved: resolved2, prevCaches };
   }
   aliasKey(path2) {
     return JSON.stringify(this.caches.get(path2)?.aliases ?? []);
@@ -55814,16 +56368,16 @@ class VaultMetadata {
       const resolution = (known2 && decodeResolution(known2[place], this.paths)) ?? resolveLinkpath(this.index, item.reference.link, source2, { relative, aliases: true });
       if (resolution.status !== "external") references.push({ ...item, resolution });
     }
-    const resolved = counts(), unresolved = counts();
+    const resolved2 = counts(), unresolved = counts();
     for (const { resolution } of references) {
       if (resolution.status === "resolved") {
-        resolved[resolution.path] = (resolved[resolution.path] ?? 0) + 1;
+        resolved2[resolution.path] = (resolved2[resolution.path] ?? 0) + 1;
         const sources = this.incoming.get(resolution.path) ?? /* @__PURE__ */ new Set();
         this.incoming.set(resolution.path, sources.add(source2));
       } else if (resolution.status === "unresolved") unresolved[resolution.linkpath] = (unresolved[resolution.linkpath] ?? 0) + 1;
     }
     this.outgoing.set(source2, references);
-    this.resolvedLinks[source2] = resolved;
+    this.resolvedLinks[source2] = resolved2;
     this.unresolvedLinks[source2] = unresolved;
   }
   unlink(source2) {
@@ -63742,9 +64296,9 @@ function markdownReferences(value2, tree, inlineTags) {
   };
   const text2 = (slice, base2) => {
     const escaped = (index2) => {
-      let slashes = 0;
-      while (index2 > 0 && slice[--index2] === "\\") slashes++;
-      return slashes % 2 === 1;
+      let slashes2 = 0;
+      while (index2 > 0 && slice[--index2] === "\\") slashes2++;
+      return slashes2 % 2 === 1;
     };
     const visible = slice.includes("$") ? slice.replace(math, blank) : slice;
     for (const match of visible.matchAll(/(!?)\[\[([^\]\n]+)\]\]/g)) {
@@ -63982,7 +64536,7 @@ class NodeMetadataSnapshotStore {
   }
   async load() {
     try {
-      const bytes = await promises$1.readFile(await this.folder(false).then((folder) => path$3.join(folder, this.name)));
+      const bytes = await promises.readFile(await this.folder(false).then((folder) => path$3.join(folder, this.name)));
       const end2 = bytes.indexOf(10);
       if (end2 < 0) return null;
       const header2 = JSON.parse(bytes.toString("utf8", 0, end2));
@@ -63997,16 +64551,16 @@ class NodeMetadataSnapshotStore {
     const body = Buffer.from(JSON.stringify(snapshot));
     const header2 = JSON.stringify({ type: documentType, build: await this.identity(), digest: sha256(body) });
     const folder = await this.folder(true);
-    await promises$1.writeFile(path$3.join(folder, ".gitignore"), "*\n", { flag: "wx" }).catch((error2) => {
+    await promises.writeFile(path$3.join(folder, ".gitignore"), "*\n", { flag: "wx" }).catch((error2) => {
       if (error2.code !== "EEXIST") throw error2;
     });
     const temp = path$3.join(folder, `.${this.name}.${node_crypto.randomUUID()}.tmp`);
     try {
-      await promises$1.writeFile(temp, Buffer.concat([Buffer.from(`${header2}
+      await promises.writeFile(temp, Buffer.concat([Buffer.from(`${header2}
 `), body]));
-      await retryTransient(() => promises$1.rename(temp, path$3.join(folder, this.name)));
+      await retryTransient(() => promises.rename(temp, path$3.join(folder, this.name)));
     } catch (error2) {
-      await promises$1.rm(temp, { force: true }).catch(() => {
+      await promises.rm(temp, { force: true }).catch(() => {
       });
       throw error2;
     }
@@ -64019,11 +64573,11 @@ class NodeMetadataSnapshotStore {
     let current = this.root;
     for (const part of this.file.split("/").slice(0, -1)) {
       current = path$3.join(current, part);
-      const info = await promises$1.lstat(current).catch((error2) => {
+      const info = await promises.lstat(current).catch((error2) => {
         if (error2.code === "ENOENT" && create2) return null;
         throw error2;
       });
-      if (info === null) await promises$1.mkdir(current).catch((error2) => {
+      if (info === null) await promises.mkdir(current).catch((error2) => {
         if (error2.code !== "EEXIST") throw error2;
       });
       else ensure(info.isDirectory() && !info.isSymbolicLink(), "UNSAFE_PATH", `The metadata cache folder ${this.file.split("/").slice(0, -1).join("/")} must be a folder, not a symlink or file.`);
@@ -64031,9 +64585,229 @@ class NodeMetadataSnapshotStore {
     return current;
   }
   identity() {
-    this.build ??= promises$1.stat(this.program).then((info) => `${info.size}:${info.mtimeMs}`, () => "unknown");
+    this.build ??= promises.stat(this.program).then((info) => `${info.size}:${info.mtimeMs}`, () => "unknown");
     return this.build;
   }
+}
+const reportedMatchLines = 20;
+function literalMatches(text2, find) {
+  const offsets = [];
+  if (find.length === 0) return offsets;
+  for (let offset = text2.indexOf(find); offset >= 0; offset = text2.indexOf(find, offset + 1)) offsets.push(offset);
+  return offsets;
+}
+function lineNumbers(text2, offsets) {
+  const lines2 = [];
+  let line = 1, scanned = 0;
+  for (const offset of offsets) {
+    for (let index2 = text2.indexOf("\n", scanned); index2 >= 0 && index2 < offset; index2 = text2.indexOf("\n", index2 + 1)) line++;
+    scanned = offset;
+    lines2.push(line);
+  }
+  return lines2;
+}
+function replaceUniqueLiteral(text2, find, replacement2) {
+  ensure(find.length > 0, "INVALID_INPUT", "--find must not be empty.");
+  const matches2 = literalMatches(text2, find);
+  ensure(matches2.length > 0, "NO_MATCH", "The find text does not occur in the file. Read it again and copy the exact current text.", { find, matches: 0 });
+  ensure(
+    matches2.length === 1,
+    "AMBIGUOUS_EDIT",
+    `The find text matches ${matches2.length} times, including overlapping matches; it must match exactly once.`,
+    { matches: matches2.length, lines: lineNumbers(text2, matches2.slice(0, reportedMatchLines)) }
+  );
+  const [offset] = matches2;
+  return text2.slice(0, offset) + replacement2 + text2.slice(offset + find.length);
+}
+function replaceEveryLiteral(text2, find, replacement2) {
+  ensure(find.length > 0, "INVALID_INPUT", "find must not be empty.");
+  const parts = text2.split(find);
+  ensure(parts.length > 1, "NO_MATCH", "The find text does not occur in the file. Read it again and copy the exact current text.", { find, matches: 0 });
+  return parts.join(replacement2);
+}
+function applyLiteralEdits(text2, edits) {
+  ensure(edits.length > 0, "INVALID_INPUT", "Pass at least one edit.");
+  return edits.reduce((current, edit, index2) => {
+    try {
+      return edit.all === true ? replaceEveryLiteral(current, edit.find, edit.replace) : replaceUniqueLiteral(current, edit.find, edit.replace);
+    } catch (error2) {
+      if (!(error2 instanceof AppError)) throw error2;
+      throw locatedError(error2, `Edit ${index2}: `, { edit: index2 });
+    }
+  }, text2);
+}
+const rangeEditModes = ["replace", "append", "prepend"];
+const reportedHeadings = 50;
+const blockIdEnding = /(?:^|\s)\^[A-Za-z0-9-]+\s*$/;
+function lineBreak(text2) {
+  return /\r?\n/.exec(text2)?.[0] ?? "\n";
+}
+const lineStart = (text2, offset) => text2.lastIndexOf("\n", offset - 1) + 1;
+function nextLine(text2, offset) {
+  const index2 = text2.indexOf("\n", offset);
+  return index2 < 0 ? text2.length : index2 + 1;
+}
+function sections(text2, headings) {
+  const ordered2 = [...headings].sort((a, b) => a.position.start.offset - b.position.start.offset);
+  const stack = [];
+  return ordered2.map((heading2, index2) => {
+    while (stack.length > 0 && stack.at(-1).level >= heading2.level) stack.pop();
+    stack.push(heading2);
+    const next = ordered2.slice(index2 + 1).find((candidate) => candidate.level <= heading2.level);
+    return { heading: heading2, path: stack.map((item) => item.heading.trim()), bodyStart: nextLine(text2, heading2.position.end.offset), end: next?.position.start.offset ?? text2.length };
+  });
+}
+function names(path2, segments2, same2) {
+  if (!same2(path2.at(-1), segments2.at(-1))) return false;
+  let next = 0;
+  for (const ancestor of path2.slice(0, -1)) if (next < segments2.length - 1 && same2(ancestor, segments2[next])) next++;
+  return next === segments2.length - 1;
+}
+const exact = (a, b) => a === b;
+const caseless = (a, b) => a.toLowerCase() === b.toLowerCase();
+const segment = (heading2) => heading2.replace(/(\s)>(?=\s)/g, "$1\\>");
+const describe$1 = (section2) => ({ section: section2.path.map(segment).join(" > "), line: section2.heading.position.start.line + 1 });
+function pathSegments(heading2) {
+  const segments2 = heading2.split(/\s>\s/).map((part) => part.replaceAll("\\>", ">").trim());
+  ensure(segments2.every((part) => part.length > 0), "INVALID_INPUT", 'A section path lists heading texts separated by " > ", such as "Plan > Risks"; write a " > " inside a heading as " \\> ".');
+  return segments2;
+}
+function onLine(matches2, heading2, line) {
+  const pinned = matches2.filter((section2) => section2.heading.position.start.line + 1 === line);
+  if (pinned.length > 0) return pinned;
+  throw forgeError("SECTION_NOT_FOUND", `No heading matching the section path "${heading2}" starts on line ${line}.`, { section: heading2, line, headings: matches2.slice(0, reportedHeadings).map(describe$1) });
+}
+function findSection(text2, headings, heading2, line) {
+  const segments2 = pathSegments(heading2);
+  const all2 = sections(text2, headings);
+  let matches2 = all2.filter((section2) => names(section2.path, segments2, exact));
+  if (matches2.length === 0) matches2 = all2.filter((section2) => names(section2.path, segments2, caseless));
+  if (matches2.length === 0) {
+    throw forgeError("SECTION_NOT_FOUND", `No heading matches the section path "${heading2}".`, { section: heading2, headings: all2.slice(0, reportedHeadings).map(describe$1) });
+  }
+  if (line !== void 0) matches2 = onLine(matches2, heading2, line);
+  const candidates2 = matches2.slice(0, reportedHeadings).map(describe$1);
+  const pick2 = "pass one candidate's line as the section line (--section-line, or sectionLine in an apply plan)";
+  const hint = new Set(candidates2.map((candidate) => candidate.section)).size === 1 ? pick2 : `add an ancestor heading, such as "Parent > ${segment(segments2.at(-1))}", or ${pick2}`;
+  ensure(matches2.length === 1, "AMBIGUOUS_SECTION", `The section path "${heading2}" matches ${matches2.length} headings; ${hint}.`, { section: heading2, matches: matches2.length, candidates: candidates2 });
+  return matches2[0];
+}
+function asLines(content2, newline) {
+  const lines2 = content2.replace(/\r?\n/g, newline);
+  return lines2 === "" || lines2.endsWith("\n") ? lines2 : lines2 + newline;
+}
+function insertLines(text2, at, content2, newline) {
+  const lead = at > 0 && text2[at - 1] !== "\n" ? newline : "";
+  return text2.slice(0, at) + lead + asLines(content2, newline) + text2.slice(at);
+}
+function editSection(text2, metadata2, heading2, mode, content2, line) {
+  const section2 = findSection(text2, metadata2.headings ?? [], heading2, line), newline = lineBreak(text2);
+  const body = text2.slice(section2.bodyStart, section2.end);
+  const start2 = section2.bodyStart + (/^(?:[ \t]*\r?\n)*/.exec(body)?.[0].length ?? 0);
+  const last = text2.slice(start2, section2.end).trimEnd().length;
+  const end2 = last === 0 ? start2 : Math.min(nextLine(text2, start2 + last - 1), section2.end);
+  if (mode === "prepend") return insertLines(text2, start2, content2, newline);
+  const endsInBlockId = last > 0 && blockIdEnding.test(text2.slice(lineStart(text2, start2 + last), start2 + last));
+  if (mode === "append") return insertLines(text2, end2, endsInBlockId ? `
+${content2}` : content2, newline);
+  const lead = start2 > 0 && text2[start2 - 1] !== "\n" ? newline : "";
+  return text2.slice(0, start2) + lead + asLines(content2, newline) + text2.slice(end2);
+}
+const reportedBlocks = 50;
+const itemMarker = /^((?:[-*+]|\d{1,9}[.)])[ \t]+)((?:\[.\][ \t]+)?)/;
+const blankLine = /^[ \t]*(?:\r?\n|$)/;
+function blockCount(metadata2, id2) {
+  return [...metadata2.sections ?? [], ...metadata2.listItems ?? []].filter((item) => item.id?.toLowerCase() === id2).length;
+}
+function insertBlocks(text2, at, content2, newline) {
+  let head = text2.slice(0, at);
+  const tail = text2.slice(at);
+  if (head !== "" && !head.endsWith("\n")) head += newline;
+  if (head !== "" && !/(?:^|\n)[ \t]*\r?\n$/.test(head)) head += newline;
+  return head + asLines(content2, newline) + (tail !== "" && !blankLine.test(tail) ? newline : "") + tail;
+}
+function subtreeEnd(items2, item) {
+  const lines2 = /* @__PURE__ */ new Set([item.position.start.line]);
+  let end2 = item.position.end.offset;
+  for (const next of items2.slice(items2.indexOf(item) + 1)) {
+    if (!lines2.has(next.parent) || next.position.start.col <= item.position.start.col) break;
+    lines2.add(next.position.start.line);
+    end2 = Math.max(end2, next.position.end.offset);
+  }
+  return end2;
+}
+function indented(lines2, first, indent2, newline) {
+  return lines2.map((line, index2) => index2 === 0 ? first + line : line.trim() === "" ? indent2.trimEnd() + line : indent2 + line).join(newline);
+}
+function editListItem(text2, metadata2, item, id2, mode, content2, newline) {
+  const start2 = item.position.start.offset, lineAt = lineStart(text2, start2), prefix = text2.slice(lineAt, start2);
+  const lines2 = content2.replace(/\r?\n$/, "").split(/\r?\n/);
+  if (mode !== "replace") {
+    ensure(itemMarker.test(lines2[0]), "INVALID_INPUT", `Content added next to the list item ^${id2} becomes sibling list items, so it must start with a list marker, such as "- ${lines2[0].trim() || "Item"}".`, { block: id2 });
+    const siblings = lines2.map((line) => line.trim() === "" ? prefix.trimEnd() : prefix + line).join(newline);
+    return insertLines(text2, mode === "append" ? nextLine(text2, subtreeEnd(metadata2.listItems ?? [], item)) : lineAt, siblings, newline);
+  }
+  const [, bullet = "", checkbox = ""] = itemMarker.exec(text2.slice(start2)) ?? [];
+  const own2 = itemMarker.exec(lines2[0]);
+  const first = own2 ? "" : bullet + checkbox;
+  const width = (own2?.[1] ?? bullet).length;
+  let replacement2 = indented(lines2, first, prefix.replace(/[^\s>]/g, " ") + " ".repeat(width), newline);
+  if (!new RegExp(`(?:^|\\s)\\^${id2}\\s*$`, "i").test(replacement2)) replacement2 += ` ^${id2}`;
+  return text2.slice(0, start2) + replacement2 + text2.slice(item.position.end.offset);
+}
+function editBlock(text2, metadata2, id2, mode, content2) {
+  const key = id2.replace(/^\^/, "").toLowerCase(), block = metadata2.blocks?.[key];
+  if (!block) throw forgeError("SECTION_NOT_FOUND", `No block has the id ^${key}.`, { block: key, blocks: Object.values(metadata2.blocks ?? {}).sort((a, b) => a.position.start.offset - b.position.start.offset).slice(0, reportedBlocks).map((item2) => item2.id) });
+  const count2 = blockCount(metadata2, key);
+  ensure(count2 <= 1, "AMBIGUOUS_SECTION", `The block id ^${block.id} occurs ${count2} times; Obsidian links only the first. Give each block a unique id.`, { block: block.id, matches: count2 });
+  const newline = lineBreak(text2), { start: start2, end: end2 } = { start: block.position.start.offset, end: block.position.end.offset };
+  const item = metadata2.listItems?.find((candidate) => candidate.id?.toLowerCase() === key && candidate.position.start.offset === start2);
+  if (item) return editListItem(text2, metadata2, item, block.id, mode, content2, newline);
+  const marker = new RegExp(`(?:^|\\s)\\^${block.id}\\s*$`, "i");
+  const inside2 = marker.test(text2.slice(start2, end2));
+  if (mode === "prepend") return insertBlocks(text2, lineStart(text2, start2), content2, newline);
+  if (mode === "append") {
+    const markerLine = inside2 ? null : new RegExp(`^\\s*\\^${block.id}[ \\t]*(?=\\r?\\n|$)`, "i").exec(text2.slice(end2));
+    return insertBlocks(text2, nextLine(text2, end2 + (markerLine?.[0].length ?? 0)), content2, newline);
+  }
+  const replacement2 = asLines(content2, newline).replace(/\r?\n$/, "");
+  const kept = inside2 && !marker.test(replacement2) ? `${replacement2} ^${block.id}` : replacement2;
+  return text2.slice(0, start2) + kept + text2.slice(end2);
+}
+const targetsStructure = (request) => request.kind === "section" || request.kind === "block";
+function applyTextEdit(text2, request, metadata2) {
+  switch (request.kind) {
+    case "replace":
+      return replaceUniqueLiteral(text2, request.find, request.replace);
+    case "literal":
+      return applyLiteralEdits(text2, request.edits);
+    case "append":
+      return text2 + request.content;
+    case "section":
+      return editSection(text2, metadata2(), request.section, request.mode, request.content, request.line);
+    case "block":
+      return editBlock(text2, metadata2(), request.block, request.mode, request.content);
+  }
+}
+function decodeText(bytes) {
+  try {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    throw forgeError("INVALID_ENCODING", "Edits require valid UTF-8 text; use write for binary content.");
+  }
+}
+function ensureEditable(path2, request) {
+  const kind2 = fileKind(path2);
+  ensure(["markdown", "text"].includes(kind2), "UNSUPPORTED_EDIT", "Use edit for Markdown and text files, patch for Canvas/Bases, and write for attachments.");
+  ensure(!targetsStructure(request) || kind2 === "markdown", "UNSUPPORTED_EDIT", "Section and block edits require a Markdown note.");
+}
+function editBytes(path2, bytes, request, metadata2) {
+  ensureEditable(path2, request);
+  const text2 = decodeText(bytes);
+  ensure(isTextContent(path2, text2), "INVALID_ENCODING", "Text file edits require UTF-8 without NUL characters; use write for UTF-16 or binary content.");
+  const edited = applyTextEdit(text2, request, () => metadata2.parseContent(path2, bytes));
+  ensure(isTextContent(path2, edited), "INVALID_ENCODING", "Text file edits cannot introduce NUL characters; use write for binary content.");
+  return new TextEncoder().encode(edited);
 }
 const isMarkdownPath = (path2) => /\.md$/i.test(path2);
 const folderOf = (path2) => path2.includes("/") ? path2.slice(0, path2.lastIndexOf("/")) : ".";
@@ -64254,10 +65028,15 @@ function rewriteCanvas(text2, nodes) {
   for (const node2 of nodesOf) if (expected.has(String(node2.id))) node2.file = expected.get(String(node2.id));
   return (text2.startsWith("\uFEFF") ? "\uFEFF" : "") + JSON.stringify(data, null, 2) + "\n";
 }
-const encoder = new TextEncoder();
+const encoder$1 = new TextEncoder();
 const decode$1 = (bytes) => new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
 const notFound$1 = (error2) => error2 instanceof AppError && error2.code === "NOT_FOUND";
 const json = (value2) => JSON.stringify(value2);
+function copyName(name2, kind2, copy2) {
+  if (copy2 === 0) return name2;
+  const dot = kind2 === "file" ? name2.lastIndexOf(".") : -1;
+  return dot > 0 ? `${name2.slice(0, dot)} ${copy2}${name2.slice(dot)}` : `${name2} ${copy2}`;
+}
 const folders = (paths2) => paths2.map((path2) => ({ path: path2, kind: "folder" }));
 class FileManager {
   constructor(workspace2, metadata2, scope2) {
@@ -64293,7 +65072,7 @@ class FileManager {
         unrewritten.push(...rewritten.unrewritten);
         references -= rewritten.unrewritten.length;
         const path2 = moves.get(file.source) ?? file.source;
-        writes.push({ path: path2, bytes: encoder.encode(rewritten.text), expectedRevision: snapshot.revision });
+        writes.push({ path: path2, bytes: encoder$1.encode(rewritten.text), expectedRevision: snapshot.revision });
         previous2.set(path2, snapshot);
       }
     }
@@ -64389,17 +65168,32 @@ class FileManager {
       };
     }));
   }
-  /** `.trash/<path>`, or with ` 1`, ` 2`… before the extension when that name is taken, as Obsidian names trash copies. */
+  /**
+   * `.trash/<path>`, or with ` 1`, ` 2`… before the extension when that name is taken, as Obsidian names trash copies.
+   * A trash folder on the way that is a file (an extensionless file trashed earlier) is passed by such a name too.
+   */
   async trashDestination(path2, kind2) {
-    const slash = path2.lastIndexOf("/"), name2 = path2.slice(slash + 1), dot = kind2 === "file" ? name2.lastIndexOf(".") : -1;
-    const [stem, extension2] = dot > 0 ? [name2.slice(0, dot), name2.slice(dot)] : [name2, ""];
-    const folder = `${trashFolder}/${path2.slice(0, slash + 1)}`;
+    const parts = path2.split("/"), name2 = parts.pop();
+    let folder = trashFolder;
+    for (const part of parts) folder = `${folder}/${await this.trashFolderName(folder, part)}`;
     for (let copy2 = 0; ; copy2++) {
-      const candidate = `${folder}${stem}${copy2 === 0 ? "" : ` ${copy2}`}${extension2}`;
+      const candidate = `${folder}/${copyName(name2, kind2, copy2)}`;
       try {
         await this.workspace.files.stat(candidate);
       } catch (error2) {
         if (notFound$1(error2)) return candidate;
+        throw error2;
+      }
+    }
+  }
+  /** The first copy name of `name` in `folder` that is a folder or free; reading tells a file from a folder without walking it. */
+  async trashFolderName(folder, name2) {
+    for (let copy2 = 0; ; copy2++) {
+      const candidate = copyName(name2, "folder", copy2);
+      try {
+        await this.workspace.files.read(`${folder}/${candidate}`);
+      } catch (error2) {
+        if (notFound$1(error2) || error2 instanceof AppError && error2.code === "INVALID_PATH") return candidate;
         throw error2;
       }
     }
@@ -64412,15 +65206,19 @@ class FileManager {
       if (!notFound$1(error2)) throw error2;
     }
   }
-  /** Protect case-insensitive names and Windows trailing-dot/space aliases of the reserved roots. */
+  /** Protect every alias of the reserved roots: letter case, Windows trailing dots, spaces and short names, HFS+ ignorable code points. */
   ensureMovable(path2) {
     const top = path2.split("/")[0];
     const protectedRoots = [".obsidian", ".forge", ...this.scope.workspace ? ["bin"] : []];
-    ensure(!protectedRoots.includes(top.toLowerCase().replace(/[. ]+$/, "")), "PROTECTED_PATH", `${top} is protected; Forge does not move or delete it.`, { path: path2, protected: top });
+    ensure(!protectedRoots.some((root) => aliasesName(top, root)), "PROTECTED_PATH", `${top} is protected; Forge does not move or delete it.`, { path: path2, protected: top });
   }
 }
 const encode = (data) => typeof data === "string" ? new TextEncoder().encode(data) : data;
-const decode = (bytes) => new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes);
+function decode(path2, bytes) {
+  const text2 = decodeText(bytes);
+  ensure(isTextContent(path2, text2), "INVALID_ENCODING", "Text file edits require UTF-8 without NUL characters; use write for UTF-16 or binary content.");
+  return text2;
+}
 const copy = (value2) => structuredClone(value2);
 const listen = (events2, prefix) => (name2, callback) => {
   ensure(typeof name2 === "string", "INVALID_ARGUMENT", "Event names are strings.");
@@ -64435,17 +65233,17 @@ function createApp({ workspace: workspace2, metadata: metadata2, events: events2
   };
   const files = async () => (await metadata2.load()).files().slice();
   const vault2 = {
-    read: async (path2) => decode((await workspace2.files.read(path2)).bytes),
+    read: async (path2) => decode(path2, (await workspace2.files.read(path2)).bytes),
     create: (path2, data) => single(workspace2.write([{ path: path2, bytes: encode(data) }])),
     modify: async (path2, data, options2) => single(workspace2.write([{ path: path2, bytes: encode(data), expectedRevision: await revision2(path2, options2) }])),
     async process(path2, fn, options2 = {}) {
       const snapshot = await workspace2.files.read(path2);
-      const text2 = await fn(decode(snapshot.bytes));
+      const text2 = await fn(decode(path2, snapshot.bytes));
       ensure(typeof text2 === "string", "INVALID_ARGUMENT", "vault.process needs a function returning text.");
       await workspace2.edit(path2, options2.ifMatch ?? snapshot.revision, () => encode(text2));
       return text2;
     },
-    append: async (path2, data, options2) => single(workspace2.edit(path2, await revision2(path2, options2), (bytes) => encode(decode(bytes) + data))),
+    append: async (path2, data, options2) => single(workspace2.edit(path2, await revision2(path2, options2), (bytes) => encode(decode(path2, bytes) + data))),
     trash: (path2, options2 = {}) => fileManager.delete(path2, { ...options2, recursive: true, allowBrokenLinks: true }),
     delete: (path2, options2 = {}) => fileManager.delete(path2, { ...options2, permanent: true, allowBrokenLinks: true }),
     rename: (path2, newPath, options2 = {}) => fileManager.move(path2, newPath, { ...options2, updateLinks: false }),
@@ -64545,6 +65343,7 @@ function serverCommands(controller) {
     }
   }];
 }
+const forgeIdentity = { name: "The Forge", version: metadata$2.version, apiVersion: 1 };
 class CommanderError extends Error {
   /**
    * Constructs the CommanderError class
@@ -67371,7 +68170,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
    */
   unknownOption(flag2) {
     if (this._allowUnknownOption) return;
-    let suggestion = "";
+    let suggestion2 = "";
     if (flag2.startsWith("--") && this._showSuggestionAfterError) {
       let candidateFlags = [];
       let command2 = this;
@@ -67380,9 +68179,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
         candidateFlags = candidateFlags.concat(moreFlags);
         command2 = command2.parent;
       } while (command2 && !command2._enablePositionalOptions);
-      suggestion = suggestSimilar(flag2, candidateFlags);
+      suggestion2 = suggestSimilar(flag2, candidateFlags);
     }
-    const message2 = `error: unknown option '${flag2}'${suggestion}`;
+    const message2 = `error: unknown option '${flag2}'${suggestion2}`;
     this.error(message2, { code: "commander.unknownOption" });
   }
   /**
@@ -67408,16 +68207,16 @@ Expecting one of '${allowedValues.join("', '")}'`);
    */
   unknownCommand() {
     const unknownName = this.args[0];
-    let suggestion = "";
+    let suggestion2 = "";
     if (this._showSuggestionAfterError) {
       const candidateNames = [];
       this.createHelp().visibleCommands(this).forEach((command2) => {
         candidateNames.push(command2.name());
         if (command2.alias()) candidateNames.push(command2.alias());
       });
-      suggestion = suggestSimilar(unknownName, candidateNames);
+      suggestion2 = suggestSimilar(unknownName, candidateNames);
     }
-    const message2 = `error: unknown command '${unknownName}'${suggestion}`;
+    const message2 = `error: unknown command '${unknownName}'${suggestion2}`;
     this.error(message2, { code: "commander.unknownCommand" });
   }
   /**
@@ -67889,15 +68688,49 @@ function useColor() {
   return void 0;
 }
 new Command();
+const commandGlobals = Object.keys(globalOptions).filter((key) => !["root", "no-plugins", "version"].includes(key));
+function unknownOption(diagnostic2, accepts) {
+  const token = /'([^']+)'/.exec(diagnostic2)?.[1] ?? diagnostic2;
+  const option2 = token.split("=")[0];
+  return forgeError("UNKNOWN_OPTION", `Unknown option ${option2}.`, { option: option2, suggestions: optionSuggestions(option2, accepts) });
+}
+function invocationName(command2, args) {
+  const action2 = args[0];
+  return action2 !== void 0 && command2.actions && Object.hasOwn(command2.actions, action2) ? `${command2.id} ${action2}` : command2.id;
+}
+function unknownOptionGuidance(error2, command2, args) {
+  if (!(error2 instanceof AppError) || error2.code !== "UNKNOWN_OPTION" || typeof error2.details?.option !== "string") return error2;
+  const option2 = error2.details.option, accepts = [...Object.keys(commandOptions(command2, args)), ...commandGlobals];
+  return forgeError("UNKNOWN_OPTION", `Unknown option ${option2} for ${invocationName(command2, args)}.`, { option: option2, command: command2.id, suggestions: optionSuggestions(option2, accepts) });
+}
+const arityDetails = (details) => isRecord$1(details) && ["minimum", "maximum", "received"].every((key) => typeof details[key] === "number") && Object.keys(details).length === 3;
+function argumentGuidance(error2, command2, args) {
+  if (!(error2 instanceof AppError) || error2.code !== "INVALID_ARGUMENT" || !arityDetails(error2.details)) return error2;
+  const { received, minimum } = error2.details;
+  const action2 = args.length > received && command2.actions && Object.hasOwn(command2.actions, args[0]) ? command2.actions[args[0]] : void 0;
+  const usage = action2?.usage ?? command2.usage;
+  const missing2 = command2.actions === void 0 && received < minimum ? (command2.args ?? []).slice(received, minimum).map((arg) => arg.name) : [];
+  const named = missing2.length > 0 ? `Missing ${missing2.map((name2) => `<${name2}>`).join(" ")}. ` : action2 ? `${command2.id} ${args[0]}: ` : "";
+  return forgeError("INVALID_ARGUMENT", `${named}${error2.message} Usage: ${usage}`, { ...error2.details, ...missing2.length > 0 ? { missing: missing2 } : {} });
+}
+async function runCommand(command2, args, flags, context) {
+  ensureKnownAction(command2, args);
+  try {
+    return await command2.run(args, flags, context);
+  } catch (error2) {
+    throw argumentGuidance(error2, command2, args);
+  }
+}
 const globalOptionMetadata = {
-  root: option$1.string("Workspace root to load bin/config.json from; must precede the command."),
+  root: option$1.string("Workspace root to load bin/config.json from; overrides FORGE_ROOT."),
   lang: option$1.string("Response language for descriptions, hints and summaries.", { enum: ["en", "de"], default: "en" }),
   events: option$1.string("Events included in the response; delivery to listeners is unaffected.", { enum: ["none", "changes", "all"], default: "changes" }),
   json: option$1.boolean("Compact JSON output."),
   "no-json": option$1.boolean("Indented JSON output."),
   "dry-run": option$1.boolean("Validate and preview writes without changing files."),
   "no-dry-run": option$1.boolean("Write even when settings.dryRun is true."),
-  "no-plugins": option$1.boolean("Skip loading user plugins; core plugins stay. Must precede the command."),
+  "no-plugins": option$1.boolean("Skip loading user plugins; core plugins stay."),
+  wait: option$1.string("Milliseconds (0 to 600000, default 0) a write waits for another Forge writer's lock while WORKSPACE_BUSY is retryable."),
   help: option$1.boolean("Describe the command instead of running it."),
   version: option$1.boolean("Report the Forge version; used without a command.")
 };
@@ -67913,15 +68746,34 @@ function parseBootstrap(tokens) {
     }
     end2 += type2 === "string" && !token.includes("=") ? 2 : 1;
   }
-  const parsed2 = parseArguments(tokens.slice(0, end2), globalOptions);
-  return { flags: parsed2.flags, args: tokens.slice(end2 + (tokens[end2] === "--" ? 1 : 0)) };
+  const terminated = tokens[end2] === "--", tail = tokens.slice(end2 + (terminated ? 1 : 0));
+  const routing = [];
+  for (let index2 = 0; !terminated && index2 < tail.length && tail[index2] !== "--"; index2++) {
+    const token = tail[index2];
+    if (token === "--no-plugins" || token.startsWith("--root=")) routing.push(token);
+    else if (token === "--root") {
+      routing.push(token, ...tail.slice(index2 + 1, index2 + 2));
+      index2++;
+    }
+  }
+  const parsed2 = parseArguments([...tokens.slice(0, end2), ...routing], globalOptions);
+  return { flags: parsed2.flags, args: tail };
+}
+function parseCommand(tokens, command2) {
+  const actionArgs2 = hasActionOptions(command2) ? parseArguments(tokens, { ...globalOptions, ...optionTypes(command2.options) }, true).args.slice(1) : [];
+  try {
+    return parseArguments(tokens, { ...globalOptions, ...optionTypes(commandOptions(command2, actionArgs2)) });
+  } catch (error2) {
+    ensureKnownAction(command2, actionArgs2);
+    throw unknownOptionGuidance(error2, command2, actionArgs2);
+  }
 }
 function declaredValues(options2, flags) {
   const values2 = Object.assign(/* @__PURE__ */ Object.create(null), flags);
   for (const [key, schema2] of Object.entries(options2)) {
     const given = Object.hasOwn(flags, key) ? flags[key] : void 0;
     if (given === void 0) {
-      if (schema2.required) throw forgeError("MISSING_ARGUMENT", `--${key} is required.`, { option: key });
+      if (schema2.required) throw forgeError("MISSING_ARGUMENT", requiredOptionMessage(key), { option: key });
       continue;
     }
     if (typeof given !== "string") continue;
@@ -67934,10 +68786,23 @@ function declaredValues(options2, flags) {
   }
   return values2;
 }
+function ensureValuesAreNotFlags(tokens, options2) {
+  const known2 = (key) => Object.hasOwn(options2, key);
+  const flag2 = (token) => token === "--" || token === "-h" && known2("help") || token === "-V" && known2("version") || token.startsWith("--") && known2(token.slice(2).split("=")[0]);
+  for (let index2 = 0; index2 < tokens.length && tokens[index2] !== "--"; index2++) {
+    const token = tokens[index2], key = token.slice(2);
+    if (!token.startsWith("--") || token.includes("=") || !known2(key) || options2[key] !== "string") continue;
+    const next = tokens[++index2];
+    if (next !== void 0 && flag2(next)) {
+      throw forgeError("MISSING_ARGUMENT", `--${key} needs a value, but ${next} follows it; write a literal value that starts with - as --${key}=<value>.`, { option: key });
+    }
+  }
+}
 function parseArguments(tokens, options2, allowUnknown = false) {
+  ensureValuesAreNotFlags(tokens, options2);
   const command2 = new Command("forge").helpOption(false).allowUnknownOption(allowUnknown).allowExcessArguments(true).exitOverride().configureOutput({ writeOut: () => {
   }, writeErr: () => {
-  } });
+  } }).showSuggestionAfterError(false);
   const seen = /* @__PURE__ */ new Set();
   const descriptors = [];
   for (const [key, type2] of Object.entries(options2)) {
@@ -67956,7 +68821,8 @@ function parseArguments(tokens, options2, allowUnknown = false) {
     command2.parse(tokens, { from: "user" });
   } catch (error2) {
     if (!(error2 instanceof CommanderError)) throw error2;
-    const code2 = error2.code === "commander.unknownOption" ? "UNKNOWN_OPTION" : error2.code === "commander.optionMissingArgument" ? "MISSING_ARGUMENT" : "INVALID_ARGUMENT";
+    if (error2.code === "commander.unknownOption") throw unknownOption(error2.message, Object.keys(options2));
+    const code2 = error2.code === "commander.optionMissingArgument" ? "MISSING_ARGUMENT" : "INVALID_ARGUMENT";
     throw forgeError(code2, error2.message.replace(/^error: /, ""));
   }
   const flags = /* @__PURE__ */ Object.create(null);
@@ -68062,18 +68928,18 @@ const germanServerDescriptions = {
   "Installed webview id to include in the launch URL, such as admin.": "ID einer installierten Webview für die Start-URL, zum Beispiel admin."
 };
 const germanCommands = {
-  "read-many": "Bis zu 32 Dateien nacheinander mit Revisionen und einer Gesamtgrenze von 8 MiB Rohdaten lesen.",
+  "read-many": "Bis zu 32 Dateien nacheinander mit Revisionen lesen; jede Datei trägt höchstens --max-bytes zu einer Gesamtgrenze von 8 MiB bei.",
   ...germanServerCommands,
   stat: "Die Revision einer Datei oder eines Ordners mit Größe oder Anzahl der enthaltenen Einträge ohne Inhalt prüfen.",
   help: "Befehle und ihre Verwendung ohne interaktive Abfragen entdecken.",
-  schema: "Maschinenlesbarer Vertrag: JSON-Schema-2020-12-Eingabe- und -Ausgabeschemas, Annotationen und Fehlercodes aller Befehle oder eines Befehls.",
+  schema: "Maschinenlesbarer Vertrag: JSON-Schema-2020-12-Eingabe- und -Ausgabeschemas, Annotationen und Fehlercodes eines Befehls oder mit --all aller Befehle; ohne beides ein Verzeichnis der Befehls-, Generator- und Skill-IDs.",
   config: "Die geprüfte wirksame Konfiguration und ihren Quellpfad anzeigen.",
   setup: "The Forge installieren und fehlende Konfiguration, Skills, Vorlagen und Projektanleitungen anlegen.",
   project: "Eigenständige Bibliotheks- und Webview-Projekte verwalten und getestete Domain- oder Anwendungskomponenten hinzufügen.",
   workflows: "Projekteigene CI-Workflows entdecken und ihre generierten GitHub-Einstiegspunkte synchronisieren; --check meldet Abweichungen.",
   formats: "Native Obsidian-Formate und unterstützte Vorgänge anzeigen.",
-  list: "Dateien in stabiler Pfadreihenfolge auflisten; symbolische Verknüpfungen, Git und node_modules überspringen.",
-  read: "Ein Dokument, UTF-8-Text oder einen Base64-Anhang mit seiner SHA-256-Revision lesen.",
+  list: "Dateien in stabiler Pfadreihenfolge auflisten; symbolische Verknüpfungen, Git, node_modules und .trash überspringen.",
+  read: "Ein Dokument, UTF-8-Text oder einen Base64-Anhang mit seiner SHA-256-Revision lesen; langer Inhalt wird gekürzt, und --lines liest einen Zeilenbereich.",
   validate: "Markdown-Frontmatter, Canvas-Graphen, Base-Strukturen oder UTF-8-Text prüfen.",
   create: "Eine Notiz, ein Canvas, eine Base oder eine Datei erstellen. Vorhandene Dateien werden nicht überschrieben.",
   write: "Eine Datei erstellen oder ersetzen; Ersetzen erfordert die aktuelle Revision.",
@@ -68101,10 +68967,12 @@ const germanActions = {
   "workflows sync": "Die generierten .github/workflows-Einstiegspunkte schreiben; mit --check Abweichungen melden, ohne zu schreiben."
 };
 const germanGuidance = {
+  helpNext: "Verwendung, Optionen, Argumente, Fehler und Beispiele eines Befehls zeigt help <command>, seine JSON-Schemas schema <command>. make listet die Generatoren, skills die Agent-Skills.",
   attachments: "Dateien verlustfrei als Bytes lesen, kopieren, ersetzen und einbetten; keine integrierte Konvertierung, Darstellung oder PDF-Inhaltsbearbeitung.",
   otherFiles: "Uninterpretierte Bytes; Plugins können weitere Verarbeitung bereitstellen.",
   textFiles: "textFilenames gelten ohne Beachtung der Groß- und Kleinschreibung, auch mit Punkt-Suffixen, die mit einem anderen Zeichen als einem Punkt beginnen; native Erweiterungen haben Vorrang. UTF-8 lesen, wörtlich bearbeiten, ergänzen und vollständig ersetzen, mit Unified-Diffs im Probelauf; ungültiges UTF-8 und Inhalte mit NUL-Zeichen werden als Base64-Anhang gelesen.",
   delivery: "Geordnet, abgewartet und mit separaten Snapshots je Behandler; Fehler werden zu Warnungen. Obsidian-artige vault.*-Ereignisse folgen jedem erfolgreichen Schreibvorgang (zuerst neue Ordner, übergeordnete vor untergeordneten, dann Dateien in Stapelreihenfolge); Probeläufe senden stattdessen workspace.quick-preview. Nach den vault.*-Ereignissen eines Stapels folgen metadataCache.changed, metadataCache.deleted, metadataCache.resolve und ein metadataCache.resolved, sobald der Metadaten-Cache in diesem Aufruf geladen wurde. operation.*-, command.*- und plugin.*-Ereignisse sind Lebenszyklusphasen des Hosts, die claude.*-Ereignisse des claude-Kern-Plugins Phasen jedes Claude-Aufrufs; workspace.*-Ereignisse entsprechen Obsidians Workspace (file-open, quick-preview, layout-ready, quit, project-change). Host-Namensräume gehören dem Host: Plugins beobachten sie, senden aber nur eigene Ereignisse. onAny beobachtet alle Ereignisse; replay liest den begrenzten Verlauf dieses Aufrufs. Keine dauerhafte Wiederholung. Die Antwort enthält standardmäßig nur vault.*-Ereignisse; --events none|changes|all oder settings.events wählt die Ausgabe, ohne Zustellung oder replay zu ändern.",
+  schemaMore: "Führen Sie schema <Befehl> für den Vertrag eines Befehls oder schema --all für alle Befehle aus.",
   eventChanges: "Nur erfolgreich geschriebene vault.*-Ereignisse: vault.create, vault.modify, vault.delete und vault.rename für Dateien und Ordner.",
   setup: {
     "node bin/forge.js templates list": "Die installierten, bearbeitbaren Planungsvorlagen entdecken.",
@@ -68143,14 +69011,15 @@ const germanEvents = {
 const germanDescriptions = {
   ...germanServerDescriptions,
   // Global options.
-  "Workspace root to load bin/config.json from; must precede the command.": "Workspace-Stammverzeichnis, aus dem bin/config.json geladen wird; muss vor dem Befehl stehen.",
+  "Workspace root to load bin/config.json from; overrides FORGE_ROOT.": "Workspace-Stammverzeichnis, aus dem bin/config.json geladen wird; hat Vorrang vor FORGE_ROOT.",
   "Response language for descriptions, hints and summaries.": "Antwortsprache für Beschreibungen, Hinweise und Zusammenfassungen.",
   "Events included in the response; delivery to listeners is unaffected.": "Ereignisse in der Antwort; die Zustellung an Listener bleibt unverändert.",
   "Compact JSON output.": "Kompakte JSON-Ausgabe.",
   "Indented JSON output.": "Eingerückte JSON-Ausgabe.",
   "Validate and preview writes without changing files.": "Schreibvorgänge prüfen und als Vorschau zeigen, ohne Dateien zu ändern.",
   "Write even when settings.dryRun is true.": "Auch dann schreiben, wenn settings.dryRun true ist.",
-  "Skip loading user plugins; core plugins stay. Must precede the command.": "Benutzer-Plugins nicht laden; Kern-Plugins bleiben aktiv. Muss vor dem Befehl stehen.",
+  "Skip loading user plugins; core plugins stay.": "Benutzer-Plugins nicht laden; Kern-Plugins bleiben aktiv.",
+  "Milliseconds (0 to 600000, default 0) a write waits for another Forge writer's lock while WORKSPACE_BUSY is retryable.": "Millisekunden (0 bis 600000, Standard 0), die ein Schreibvorgang auf die Sperre eines anderen Forge-Schreibvorgangs wartet, solange WORKSPACE_BUSY wiederholbar ist.",
   "Describe the command instead of running it.": "Den Befehl beschreiben, statt ihn auszuführen.",
   "Report the Forge version; used without a command.": "Die Forge-Version melden; ohne Befehl verwenden.",
   // Discovery and project commands.
@@ -68165,10 +69034,16 @@ const germanDescriptions = {
   // File commands.
   "Use this project instead of the selected project.": "Dieses Projekt statt des ausgewählten Projekts verwenden.",
   "Only files of this kind.": "Nur Dateien dieser Art.",
-  "Only files whose root-relative path matches this glob (*, **, ?, [abc], {a,b}).": "Nur Dateien, deren Pfad relativ zum Stammverzeichnis diesem Glob entspricht (*, **, ?, [abc], {a,b}).",
-  "Maximum number of files; a truncated page returns nextCursor.": "Höchstzahl der Dateien; eine gekürzte Seite liefert nextCursor.",
-  "Continue after the page that returned this nextCursor, with the same --kind and --path.": "Nach der Seite fortfahren, die diesen nextCursor geliefert hat, mit denselben --kind und --path.",
-  "Comma-separated optional parts of a Markdown read.": "Kommagetrennte optionale Teile eines Markdown-Lesevorgangs.",
+  "Only files whose root-relative path matches this glob (*, **, ?, [abc], {a,b}), or that are this file or below this folder.": "Nur Dateien, deren Pfad relativ zum Stammverzeichnis diesem Glob entspricht (*, **, ?, [abc], {a,b}) oder die diese Datei sind oder unter diesem Ordner liegen.",
+  "Return the complete contract of every command instead of the index.": "Den vollständigen Vertrag aller Befehle statt des Verzeichnisses liefern.",
+  "Only notes with this tag or a nested tag below it.": "Nur Notizen mit diesem Tag oder einem darunter verschachtelten Tag.",
+  "Only notes whose frontmatter has key (not null), or key=value.": "Nur Notizen, deren Frontmatter key (nicht null) oder key=value enthält.",
+  "Also list files in .trash, where delete moves files.": "Auch Dateien in .trash auflisten, wohin delete Dateien verschiebt.",
+  "Maximum number of files per page; a truncated page returns nextCursor.": "Höchstzahl der Dateien je Seite; eine gekürzte Seite liefert nextCursor.",
+  "Continue after the page that returned this nextCursor, with the same filters.": "Nach der Seite fortfahren, die diesen nextCursor geliefert hat, mit denselben Filtern.",
+  "Comma-separated parts of a Markdown read; content and properties by default.": "Kommagetrennte Teile eines Markdown-Lesevorgangs; standardmäßig content und properties.",
+  "Only these 1-based, inclusive lines of Markdown or text content: start-end, start- or start.": "Nur diese Zeilen des Markdown- oder Textinhalts, ab 1 gezählt und einschließlich: start-end, start- oder start.",
+  "Most bytes of text or attachment content returned per field; longer content is truncated with truncated: true.": "Höchstzahl der Bytes an Text- oder Anhangsinhalt je Feld; längerer Inhalt wird mit truncated: true gekürzt.",
   "Vault path relative to the command scope.": "Vault-Pfad relativ zum Geltungsbereich des Befehls.",
   "Literal content.": "Wörtlicher Inhalt.",
   "Copy the bytes of another file in the same scope.": "Die Bytes einer anderen Datei im selben Geltungsbereich kopieren.",
@@ -68258,6 +69133,7 @@ const germanKernelMessages = {
   PLUGIN_STATE_IGNORED: "Ungültige Datei {path} ignoriert; Plugins mit Aktivierungs-Hooks gelten als neu aktiviert.",
   PLUGIN_STATE_UNSAVED: "Der Aktivierungszustand der Plugins konnte nicht in {path} gespeichert werden: {diagnostic}",
   SETUP_TEMPLATES_UNAVAILABLE: "Das Kern-Plugin templates ist deaktiviert oder nicht verfügbar; setup hat keine Vorlagen in bin/templates installiert.",
+  CWD_OUTSIDE_WORKSPACE: "Das Arbeitsverzeichnis {cwd} liegt außerhalb des Workspace-Stammverzeichnisses {workspaceRoot}; relative Pfade beziehen sich auf das Workspace-Stammverzeichnis (context.root), nicht auf das Arbeitsverzeichnis. Übergeben Sie --root oder setzen Sie FORGE_ROOT, um einen anderen Workspace zu verwenden.",
   METADATA_CACHE_UNSAVED: "Der Metadaten-Cache konnte nicht unter {file} gespeichert werden; der nächste Befehl liest und analysiert den Vault daher erneut: {diagnostic}",
   LOCK_RECOVERED: "Die verwaiste Sperre {path} von PID {pid} auf {host} (seit {since}{command}) wurde entfernt: {reason}. Prüfen Sie, was dieser Lauf unvollendet hinterlassen hat (zum Beispiel mit git status oder backlog sync status).",
   LOCK_HOLDER_COMMAND: ", Befehl {command}",
@@ -68277,7 +69153,10 @@ const germanKernelMessages = {
   HOST_NOTIFICATION_FAILED: "Host-Benachrichtigung {event}: {diagnostic}",
   LAYOUT_CALLBACK_FAILED: "Layout bereit: {diagnostic}",
   QUIT_TASK_FAILED: "Beendigungsaufgabe: {diagnostic}",
-  PLUGIN_CLEANUP_FAILED: "Plugin-Bereinigung: {diagnostic}"
+  PLUGIN_CLEANUP_FAILED: "Plugin-Bereinigung: {diagnostic}",
+  PATH_MATCHED_NOTHING: "{option} {pattern} trifft in diesem Bereich keine Datei. Pfade sind relativ zu context.root und unterscheiden Groß- und Kleinschreibung, und ein Ordnerpfad ohne Glob-Zeichen umfasst alles darunter; list zeigt die vorhandenen Pfade.",
+  READ_TRUNCATED: "{path} wurde auf die Zeilen {start}-{end} von {total} gekürzt ({returned} von {bytes} Bytes); lesen Sie mit --lines {next}- weiter oder erhöhen Sie --max-bytes.",
+  READ_BYTES_TRUNCATED: "{path} wurde auf die ersten {returned} von {bytes} Bytes gekürzt; erhöhen Sie --max-bytes, um den Rest zu lesen."
 };
 const claudeDefinitionHint = "Korrigieren Sie das in der Meldung genannte Feld und führen Sie den Befehl erneut aus.";
 const argumentsHint = "Korrigieren Sie die in der Meldung genannten Argumente; die Verwendung zeigt help <command>.";
@@ -68314,7 +69193,11 @@ const germanErrors = {
   SECTION_NOT_FOUND: { summary: "Keine Überschrift passt zum --section-Pfad, oder kein Block hat die --block-ID.", hint: 'Lesen Sie die Notiz und übernehmen Sie einen Überschriftenpfad aus error.details.headings (Abschnitte mit " > " verbunden) oder eine Block-ID aus error.details.blocks.' },
   AMBIGUOUS_SECTION: { summary: "Der --section-Pfad passt zu mehreren Überschriften, oder die --block-ID kommt mehrfach vor.", hint: "Ergänzen Sie übergeordnete Überschriften im Pfad (Eltern > Überschrift), bis nur einer der Kandidaten in error.details.candidates bleibt, oder übergeben Sie die Zeile eines Kandidaten als --section-line (sectionLine in einem apply-Plan); geben Sie jedem Block eine eindeutige ID." },
   INVALID_PLAN: { summary: "Der apply-Plan oder Schreibstapel ist ungültig: Er entspricht nicht dem Planschema, oder seine Schritte enthalten doppelte oder überlappende Pfade.", hint: "Korrigieren Sie den in error.details.operation genannten Vorgang (siehe error.details.issues und das Planschema in help apply); schreiben Sie jeden Pfad nur einmal und verwenden Sie keinen Pfad erneut, den derselbe Plan verschiebt oder löscht." },
-  WORKSPACE_BUSY: { summary: "Ein anderer Forge-Schreibvorgang hält die Sperre .agent-cli.lock oder eine Abgleichsperre .forge/sync/<Verbindung>.lock.", hint: 'error.details.stale nennt den Grund (eine Sperre, deren Halter nachweislich nicht mehr läuft, entfernt Forge automatisch mit einer Warnung). "active": Der Halter läuft, oder ein anderer laufender Schreibvorgang entfernt die verwaiste Sperre gerade; warten Sie und versuchen Sie es erneut. "unknown": Forge kann den Halter nicht prüfen (anderer Rechner, PID-Namensraum oder Systemstart, oder eine unlesbare Sperre), daher ist error.retryable false; stellen Sie anhand von error.details.lock sicher, dass er nicht mehr läuft, prüfen Sie seine unvollendeten Änderungen, löschen Sie dann die in error.details.path genannte Datei (relativ zum Workspace-Stamm) und wiederholen Sie den Befehl. "stale": Der Halter läuft nachweislich nicht mehr, aber die Sperre ließ sich nicht entfernen, daher ist error.retryable false; stellen Sie sicher, dass kein Forge-Prozess sie verwendet, löschen Sie dann diese Datei und wiederholen Sie den Befehl.' },
+  WORKSPACE_BUSY: { summary: "Ein anderer Forge-Schreibvorgang hält die Sperre .agent-cli.lock oder eine Abgleichsperre .forge/sync/<Verbindung>.lock.", hint: 'error.details.stale nennt den Grund (eine Sperre, deren Halter nachweislich nicht mehr läuft, entfernt Forge automatisch mit einer Warnung). "active": Der Halter läuft, oder ein anderer laufender Schreibvorgang entfernt die verwaiste Sperre gerade; warten Sie und versuchen Sie es erneut. "unknown": Forge kann den Halter nicht prüfen (anderer Rechner, PID-Namensraum oder Systemstart, oder eine unlesbare Sperre), daher ist error.retryable false; stellen Sie anhand von error.details.lock sicher, dass er nicht mehr läuft, prüfen Sie seine unvollendeten Änderungen, löschen Sie dann die in error.details.path genannte Datei (relativ zum Workspace-Stamm) und wiederholen Sie den Befehl. "stale": Der Halter läuft nachweislich nicht mehr, aber die Sperre ließ sich nicht entfernen, daher ist error.retryable false; stellen Sie sicher, dass kein Forge-Prozess sie verwendet, löschen Sie dann diese Datei und wiederholen Sie den Befehl.', variants: {
+    active: "Der Halter läuft, oder ein anderer laufender Schreibvorgang entfernt gerade eine verwaiste Sperre: Versuchen Sie es nach error.details.retryAfterMs Millisekunden erneut, oder wiederholen Sie den Befehl mit --wait <ms>, um auf die Sperre zu warten.",
+    unknown: "Forge kann den Halter nicht prüfen (anderer Rechner, PID-Namensraum oder Systemstart, oder eine unlesbare Sperre) und entfernt seine Sperre nie, daher hilft Warten nicht: Stellen Sie anhand von error.details.lock sicher, dass er nicht mehr läuft, prüfen Sie seine unvollendeten Änderungen, löschen Sie dann die in error.details.path genannte Datei (relativ zum Workspace-Stamm) und wiederholen Sie den Befehl.",
+    stale: "Der Halter läuft nachweislich nicht mehr, aber seine Sperre ließ sich nicht entfernen: Stellen Sie sicher, dass kein Forge-Prozess sie verwendet, löschen Sie dann die in error.details.path genannte Datei (relativ zum Workspace-Stamm) und wiederholen Sie den Befehl."
+  } },
   DESTINATION_EXISTS: { summary: "Das Ziel des Verschiebens oder Umbenennens existiert bereits.", hint: "Wählen Sie ein Ziel, das nicht existiert (error.details.path), oder verschieben bzw. löschen Sie die vorhandene Datei zuerst; Forge überschreibt nie ein Ziel." },
   PROTECTED_PATH: { summary: "Der Pfad ist vor Verschieben und Löschen geschützt.", hint: "Forge verschiebt oder löscht niemals .obsidian, .forge oder im Workspace-Bereich bin (in beliebiger Groß- und Kleinschreibung) und keinen Ordner mit einem .git-Repository; endgültig löscht es nur Ordner ohne symbolische Links, node_modules oder Spezialdateien, verschieben Sie einen solchen Ordner daher in den Papierkorb. Die Bereichswurzel und .git-Pfade werden als INVALID_PATH abgelehnt." },
   INVALID_MOVE: { summary: "Das Verschieben oder Umbenennen ist nicht möglich.", hint: "Verwenden Sie ein Ziel, das sich von der Quelle unterscheidet und nicht in ihr liegt; rename erwartet einen neuen Namen ohne Schrägstriche." },
@@ -68330,11 +69213,13 @@ const germanErrors = {
   INVALID_BASE_QUERY: { summary: "Die Bases-Abfrage ist ungültig.", hint: "Prüfen Sie die in der Meldung genannte Ansicht, den Kontext und die Ausdrücke." },
   INVALID_BASE_EXPRESSION: { summary: "Ein Bases-Ausdruck kann nicht geparst werden.", hint: "Korrigieren Sie den in der Meldung genannten Ausdruck." },
   BASE_EVALUATION_ERROR: { summary: "Ein Bases-Ausdruck ist bei der Auswertung einer Datei fehlgeschlagen.", hint: "Prüfen Sie die in der Meldung genannte Ansicht, Datei und den Ausdruck." },
+  BASE_TIMEOUT: { summary: "Eine Bases-Abfrage hat ihr Zeitbudget für die Auswertung von Ausdrücken überschritten.", hint: "Vereinfachen Sie die Ausdrücke der in der Meldung genannten .base-Datei (vermeiden Sie verschachtelte Quantoren in regulären Ausdrücken wie (a+)+) oder grenzen Sie ihre Filter ein." },
   BASE_VIEW_NOT_FOUND: { summary: "Die angeforderte Bases-Ansicht existiert nicht.", hint: "Führen Sie bases inspect <file.base> aus und übergeben Sie eine vorhandene --view." },
   BASE_CONTEXT_NOT_FOUND: { summary: "Die Kontextdatei ist keine indexierte Tresordatei.", hint: "Übergeben Sie eine vorhandene Tresordatei an --context." },
   INVALID_BASE_PROPERTY_TYPES: { summary: "Das Register der Obsidian-Eigenschaftstypen ist ungültig.", hint: "Korrigieren Sie .obsidian/types.json zu einem JSON-Objekt mit Eigenschaftstypen." },
   UNSUPPORTED_BASE_PROPERTY_TYPE: { summary: "Ein Obsidian-Eigenschaftstyp wird nicht unterstützt.", hint: "Verwenden Sie in .obsidian/types.json einen unterstützten Typ." },
   // Konfiguration, Installation und Projekte
+  INVALID_ROOT: { summary: "Das Workspace-Stammverzeichnis existiert nicht oder ist kein Verzeichnis.", hint: "Übergeben Sie mit --root (oder FORGE_ROOT) das vorhandene Workspace-Verzeichnis, das bin/ enthält; --root hat Vorrang vor FORGE_ROOT." },
   INVALID_CONFIG: { summary: "Die Konfiguration ist ungültig oder nicht lesbar.", hint: "Korrigieren Sie bin/config.json an der in der Meldung genannten Stelle und prüfen Sie mit config." },
   INVALID_SETUP: { summary: "Die Installation kann mit den aktuellen Distributionsdateien nicht abgeschlossen werden.", hint: "Reparieren Sie den in der Meldung genannten bin-Pfad und führen Sie setup erneut aus." },
   INVALID_PROJECT: { summary: "Die Projektmetadaten sind ungültig.", hint: "Korrigieren Sie .forge/project.json im Projektverzeichnis." },
@@ -68421,6 +69306,42 @@ const germanErrors = {
   CLAUDE_RUNTIME_FAILED: { summary: "Claude Code wurde mit einem Status ungleich null beendet.", hint: "Prüfen Sie error.details (nativer Status, Ausgabe und geparstes Ergebnis) und den externen Zustand vor einer Wiederholung." },
   CLAUDE_INVALID_OUTPUT: { summary: "Claude Code war erfolgreich, lieferte aber nicht das angeforderte JSON.", hint: "Prüfen Sie stdout und den externen Zustand vor einer Wiederholung." }
 };
+function germanHintVariant(code2, value2) {
+  const { variants } = germanErrors[code2];
+  return variants !== void 0 && Object.hasOwn(variants, value2) ? variants[value2] : void 0;
+}
+const suggestionCodes = /* @__PURE__ */ new Set(["UNKNOWN_COMMAND", "UNKNOWN_OPTION", "UNKNOWN_GENERATOR", "INVALID_ARGUMENT"]);
+const phrases = {
+  en: {
+    suggest: (items2) => `Did you mean ${items2}?`,
+    or: " or ",
+    force: "There is no force option: pass --if-match <revision> with the file's current revision from read or stat.",
+    copy: "There is no copy command: read the source, then create the copy with its content."
+  },
+  de: {
+    suggest: (items2) => `Meinten Sie ${items2}?`,
+    or: " oder ",
+    force: "Es gibt keine Force-Option: Übergeben Sie --if-match <revision> mit der aktuellen Revision der Datei aus read oder stat.",
+    copy: "Es gibt keinen Kopierbefehl: Lesen Sie die Quelle mit read und legen Sie die Kopie mit create und deren Inhalt an."
+  }
+};
+function alternatives(items2, or) {
+  return items2.length < 2 ? items2.join("") : `${items2.slice(0, -1).join(", ")}${or}${items2.at(-1)}`;
+}
+function suggestion$1(code2, details, language2) {
+  const suggestions2 = Array.isArray(details.suggestions) ? details.suggestions.filter((item) => typeof item === "string") : [];
+  if (!suggestionCodes.has(code2) || suggestions2.length === 0) return void 0;
+  const text2 = phrases[language2];
+  if (code2 === "UNKNOWN_OPTION" && forceOptions.includes(String(details.option)) && suggestions2.includes("--if-match")) return text2.force;
+  if (code2 === "UNKNOWN_COMMAND" && copyCommands.includes(String(details.command))) return text2.copy;
+  return text2.suggest(alternatives(suggestions2, text2.or));
+}
+function guidedHint(hint, code2, details, language2, command2) {
+  const named = command2 ?? (code2 !== "UNKNOWN_COMMAND" && typeof details?.command === "string" ? details.command : void 0);
+  const next = named === void 0 ? hint : hint.replaceAll("help <command>", `help ${named}`);
+  const first = isRecord$1(details) ? suggestion$1(code2, details, language2) : void 0;
+  return first === void 0 ? next : `${first} ${next}`;
+}
 function language(value2) {
   ensure(value2 === "en" || value2 === "de", "INVALID_LANGUAGE", "Unsupported language. Use --lang en or --lang de.");
   return value2;
@@ -68429,12 +69350,15 @@ function translated(catalog, id2) {
   return Object.hasOwn(catalog, id2) ? catalog[id2] : void 0;
 }
 class Localizer {
-  constructor(language2 = "en", plugins) {
+  /** `invoked` is the invoked command id, which hints name in place of their `help <command>` placeholder. */
+  constructor(language2 = "en", plugins, invoked) {
     this.language = language2;
     this.plugins = plugins;
+    this.invoked = invoked;
   }
   language;
   plugins;
+  invoked;
   german(kind2, id2) {
     const kernel = kind2 === "commands" ? germanCommands : kind2 === "events" ? germanEvents : void 0;
     return (kernel && translated(kernel, id2)) ?? this.plugins?.text("de", kind2, id2);
@@ -68514,7 +69438,9 @@ class Localizer {
   }
   result(command2, data) {
     if (this.language === "en" || !isRecord$1(data)) return data;
+    if (command2 === "schema" && typeof data.more === "string") return { ...data, generators: this.catalogued("generators", data.generators), more: germanGuidance.schemaMore };
     if (command2 === "schema" && Array.isArray(data.errors)) return { ...data, eventOutput: this.eventOutput(data.eventOutput), ...this.globalOptions(data), generators: this.catalogued("generators", data.generators), errors: this.errors(data.errors) };
+    if (command2 === "help" && typeof data.next === "string") return { ...data, next: germanGuidance.helpNext };
     if (["help", "schema", "make"].includes(command2) && Array.isArray(data.generators)) return { ...data, ...data.eventOutput === void 0 ? {} : { eventOutput: this.eventOutput(data.eventOutput) }, ...this.globalOptions(data), generators: this.catalogued("generators", data.generators) };
     if (command2 === "help" && isRecord$1(data.globalOptions)) return { ...data, ...this.globalOptions(data) };
     if (command2 === "config" && Array.isArray(data.sections)) return { ...data, sections: data.sections.map((section2) => isRecord$1(section2) ? { ...section2, schema: this.schema(section2.schema) } : section2) };
@@ -68547,8 +69473,11 @@ class Localizer {
     if (!definition2) return { code: code2, message: diagnostic2, ...details ? { details } : {} };
     const retryable2 = error2 instanceof AppError && error2.retryable !== void 0 ? error2.retryable : definition2.retryable;
     const german = this.language !== "de" ? void 0 : builtIn ? germanErrors[code2] : this.plugins?.localizedError(code2, "de");
-    if (!german) return { code: code2, message: diagnostic2, hint: definition2.hint, retryable: retryable2, ...details ? { details } : {} };
-    return { code: code2, message: german.summary, hint: german.hint, retryable: retryable2, details: { ...details, localization: { originalMessage: diagnostic2, ...details?.localization !== void 0 ? { originalDetails: details.localization } : {} } } };
+    const variant = builtIn?.variants === void 0 ? void 0 : details?.[builtIn.variants.detail];
+    const refined = typeof variant === "string" && Object.hasOwn(builtIn.variants.hints, variant) ? variant : void 0;
+    if (!german) return { code: code2, message: diagnostic2, hint: guidedHint(refined ? builtIn.variants.hints[refined] : definition2.hint, code2, details, "en", this.invoked), retryable: retryable2, ...details ? { details } : {} };
+    const germanHint = refined === void 0 ? void 0 : germanHintVariant(code2, refined);
+    return { code: code2, message: german.summary, hint: guidedHint(germanHint ?? german.hint, code2, details, "de", this.invoked), retryable: retryable2, details: { ...details, localization: { originalMessage: diagnostic2, ...details?.localization !== void 0 ? { originalDetails: details.localization } : {} } } };
   }
 }
 function pluginCatalog(registry2, installed, localizer = new Localizer("en", registry2.catalog)) {
@@ -68652,16 +69581,17 @@ const texts = { type: "array", items: text$2 };
 const flag = { type: "boolean" };
 const schemaDocument = { type: "object", description: "A JSON Schema 2020-12 document." };
 const scope = { type: "string", enum: ["workspace", "project"] };
+const pathFlag = { type: "boolean", description: "Names a file or folder in the command scope; \\ separators, a leading ./ and absolute paths inside the scope root are accepted and passed on as the relative POSIX path." };
 const optionSchema = {
   type: "object",
   required: ["type", "description"],
-  properties: { type: { type: "string", enum: ["string", "boolean"] }, description: text$2, enum: texts, list: flag, default: {}, required: flag }
+  properties: { type: { type: "string", enum: ["string", "boolean"] }, description: text$2, enum: texts, list: flag, default: {}, required: flag, path: pathFlag }
 };
 const options = { type: "object", additionalProperties: optionSchema };
 const argumentSchema = {
   type: "object",
   required: ["name", "description"],
-  properties: { name: text$2, description: text$2, required: flag, enum: texts, variadic: flag }
+  properties: { name: text$2, description: text$2, required: flag, enum: texts, variadic: flag, path: pathFlag }
 };
 const hints = {
   scope,
@@ -68692,6 +69622,7 @@ const commandEntry = {
     id: text$2,
     description: text$2,
     usage: text$2,
+    examples: { ...texts, description: "Invocations after forge that start with the command id." },
     options,
     args: { type: "array", items: argumentSchema },
     annotations,
@@ -68705,7 +69636,8 @@ const errorEntry = {
   required: ["code", "exitCode", "category", "retryable", "summary"],
   properties: { code: text$2, exitCode: { type: "integer", minimum: 0 }, category: text$2, retryable: flag, summary: text$2, plugin: text$2 }
 };
-const schemaOutput = {
+const schemaDocumentOutput = {
+  title: "contract",
   type: "object",
   required: ["name", "version", "apiVersion", "dialect", "globalOptions", "envelope", "commands", "commonErrors", "errors"],
   properties: {
@@ -68724,8 +69656,27 @@ const schemaOutput = {
     errors: { type: "array", items: errorEntry }
   }
 };
+const schemaIndex = {
+  title: "index",
+  type: "object",
+  required: ["name", "version", "apiVersion", "dialect", "commands", "generators", "skills", "more"],
+  additionalProperties: false,
+  properties: {
+    name: text$2,
+    version: text$2,
+    apiVersion: { type: "integer", minimum: 1 },
+    node: text$2,
+    dialect: { type: "string", const: "https://json-schema.org/draft/2020-12/schema" },
+    commands: { type: "array", items: { type: "object", required: ["id", "description"], additionalProperties: false, properties: { id: text$2, description: text$2 } } },
+    generators: { type: "array", items: { type: "object", required: ["id", "description"], properties: { id: text$2, description: text$2 } } },
+    skills: texts,
+    more: { ...text$2, description: "How to request the contracts." }
+  }
+};
+const schemaOutput = { type: "object", oneOf: [schemaIndex, schemaDocumentOutput] };
 const discovery$1 = { scope: "workspace", discovery: true, mutating: false };
 const commandArgument = [{ name: "command", description: "A command id from the catalog." }];
+const helpNext = "Run help <command> for its usage, options, arguments, errors and examples, or schema <command> for its JSON Schemas. make lists generators; skills lists agent skills.";
 const commonErrors = [
   "UNKNOWN_COMMAND",
   "UNKNOWN_OPTION",
@@ -68734,6 +69685,7 @@ const commonErrors = [
   "INVALID_OPTION_VALUE",
   "DUPLICATE_OPTION",
   "INVALID_LANGUAGE",
+  "INVALID_ROOT",
   "INVALID_CONFIG",
   "INVALID_PATH",
   "UNSAFE_PATH",
@@ -68743,8 +69695,8 @@ const commonErrors = [
   "INVALID_RESULT",
   "OPERATION_FAILED"
 ];
-function describe$1(command2, includeOutput = true) {
-  const { id: id2, description: description2, usage, options: options2, args, output: output2 } = command2;
+function describe(command2, includeOutput = true) {
+  const { id: id2, description: description2, usage, options: options2, args, output: output2, examples } = command2;
   const annotations2 = commandAnnotations(command2);
   if (!includeOutput && annotations2.actions) {
     annotations2.actions = Object.fromEntries(Object.entries(annotations2.actions).map(([id22, action2]) => {
@@ -68756,6 +69708,7 @@ function describe$1(command2, includeOutput = true) {
     id: id2,
     description: description2,
     usage,
+    ...examples ? { examples: [...examples] } : {},
     options: options2 ?? {},
     args: args ?? [],
     annotations: annotations2,
@@ -68764,48 +69717,69 @@ function describe$1(command2, includeOutput = true) {
   };
 }
 function catalogCommands(registry2) {
-  const identity2 = { name: "The Forge", version: metadata$2.version, apiVersion: 1, node: metadata$2.engines.node };
+  const identity2 = { ...forgeIdentity, node: metadata$2.engines.node };
   const catalog = () => ({
     ...identity2,
     dialect: jsonSchemaDialect,
     globalOptions: globalOptionMetadata,
     envelope: envelopeSchema,
     eventOutput: { option: "--events", setting: "settings.events", levels: eventOutputLevels, default: "changes", changes: "Only committed vault.* records: vault.create, vault.modify, vault.delete and vault.rename, for files and folders." },
-    commands: [...registry2.commands.values()].map((command2) => describe$1(command2)),
+    commands: [...registry2.commands.values()].map((command2) => describe(command2)),
     generators: generatorCatalog(registry2),
     skills: [...registry2.skills.keys()]
   });
   return [
     { id: "help", description: "Discover commands and usage without prompts.", usage: "help [command]", ...discovery$1, args: commandArgument, errors: ["UNKNOWN_COMMAND"], run(args) {
       arity(args, 0, 1);
-      if (!args[0]) return {
-        ...identity2,
-        globalOptions: globalOptionMetadata,
-        commands: [...registry2.commands.values()].map((command22) => {
-          const { actions: _actions, ...annotations2 } = commandAnnotations(command22);
-          return { id: command22.id, description: command22.description, usage: command22.usage, annotations: annotations2 };
-        }),
-        generators: generatorCatalog(registry2),
-        skills: [...registry2.skills.keys()]
-      };
+      if (!args[0]) {
+        const commands2 = [...registry2.commands.values()];
+        return {
+          name: identity2.name,
+          version: identity2.version,
+          apiVersion: identity2.apiVersion,
+          commands: Object.fromEntries(commands2.map((command22) => [command22.id, command22.description])),
+          mutating: commands2.filter((command22) => commandAnnotations(command22).mutating).map((command22) => command22.id),
+          globalOptions: Object.keys(globalOptionMetadata).map((key) => `--${key}`),
+          next: helpNext
+        };
+      }
       const command2 = registry2.resolveCommand(args[0]);
-      return { ...describe$1(command2, false), globalOptions: globalOptionMetadata };
+      return { ...describe(command2, false), globalOptions: globalOptionMetadata };
     } },
-    { id: "schema", description: "Machine-readable contract: JSON Schema 2020-12 input and output schemas, annotations and error codes of every command, or of one.", usage: "schema [command]", ...discovery$1, args: commandArgument, errors: ["UNKNOWN_COMMAND"], output: schemaOutput, run(args) {
-      arity(args, 0, 1);
-      const builtIn = errorCodes.map((code2) => {
-        const { exitCode, category, retryable: retryable2, summary } = errorCatalog[code2];
-        return { code: code2, exitCode, category, retryable: retryable2, summary };
-      });
-      const contributed = registry2.catalog.errors().map(({ code: code2, exitCode, category, retryable: retryable2, summary, pluginId }) => ({ code: code2, exitCode, category, retryable: retryable2, summary, plugin: pluginId }));
-      const errors2 = [...builtIn, ...contributed];
-      const contract = (command22) => ({ ...describe$1(command22), inputSchema: commandInputSchema(command22) });
-      if (args[0] === void 0) return { ...catalog(), commands: [...registry2.commands.values()].map(contract), commonErrors, errors: errors2 };
-      const command2 = registry2.resolveCommand(args[0]);
-      const codes = /* @__PURE__ */ new Set([...commonErrors, ...declaredErrors(command2)]);
-      const { generators: _generators, skills: _skills, ...head } = catalog();
-      return { ...head, commands: [contract(command2)], commonErrors, errors: errors2.filter((entry2) => codes.has(entry2.code)) };
-    } },
+    {
+      id: "schema",
+      description: "Machine-readable contract: JSON Schema 2020-12 input and output schemas, annotations and error codes of one command, or with --all of every command; without either, an index of command, generator and skill ids.",
+      usage: "schema [command | --all]",
+      ...discovery$1,
+      args: commandArgument,
+      options: { all: option$1.boolean("Return the complete contract of every command instead of the index.") },
+      errors: ["UNKNOWN_COMMAND"],
+      output: schemaOutput,
+      run(args, flags) {
+        arity(args, 0, 1);
+        ensure(args[0] === void 0 || flags.all !== true, "INVALID_ARGUMENT", "Pass a command or --all, not both.");
+        if (args[0] === void 0 && flags.all !== true) return {
+          ...identity2,
+          dialect: jsonSchemaDialect,
+          commands: [...registry2.commands.values()].map(({ id: id2, description: description2 }) => ({ id: id2, description: description2 })),
+          generators: generatorCatalog(registry2),
+          skills: [...registry2.skills.keys()],
+          more: "Run schema <command> for one command's contract, or schema --all for every command."
+        };
+        const builtIn = errorCodes.map((code2) => {
+          const { exitCode, category, retryable: retryable2, summary } = errorCatalog[code2];
+          return { code: code2, exitCode, category, retryable: retryable2, summary };
+        });
+        const contributed = registry2.catalog.errors().map(({ code: code2, exitCode, category, retryable: retryable2, summary, pluginId }) => ({ code: code2, exitCode, category, retryable: retryable2, summary, plugin: pluginId }));
+        const errors2 = [...builtIn, ...contributed];
+        const contract = (command22) => ({ ...describe(command22), inputSchema: commandInputSchema(command22) });
+        if (args[0] === void 0) return { ...catalog(), commands: [...registry2.commands.values()].map(contract), commonErrors, errors: errors2 };
+        const command2 = registry2.resolveCommand(args[0]);
+        const codes = /* @__PURE__ */ new Set([...commonErrors, ...declaredErrors(command2)]);
+        const { generators: _generators, skills: _skills, ...head } = catalog();
+        return { ...head, commands: [contract(command2)], commonErrors, errors: errors2.filter((entry2) => codes.has(entry2.code)) };
+      }
+    },
     { id: "formats", description: "Native Obsidian formats and supported operations.", usage: "formats", ...discovery$1, run(args) {
       arity(args, 0);
       return { nativeFormats, structured: ["md", "canvas", "base"], text: textExtensions, textFilenames, textFiles: "textFilenames match case-insensitively, including dot suffixes that start with a non-dot character; native extensions take precedence. UTF-8 read, literal edit, append and full replacement with unified dry-run diffs; files that are not valid UTF-8 or contain NUL characters read as base64 attachments.", attachments: "Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.", otherFiles: "Opaque bytes; plugins can provide additional processing." };
@@ -68862,7 +69836,7 @@ function workflowCommands(services2) {
     {
       id: "setup",
       description: "Install The Forge into this workspace and initialize missing configuration, skills, templates and project guidance.",
-      usage: "[--root project] setup [--dry-run]",
+      usage: "[--root workspace] setup [--dry-run]",
       ...discovery,
       mutating: true,
       ...additive,
@@ -68961,23 +69935,73 @@ function workflowsCommands(services2) {
     }
   }];
 }
+const encoder = new TextEncoder();
+const utf8Bytes = (text2) => encoder.encode(text2).length;
+function lineRange(text2) {
+  const match = /^(\d+)(?:(-)(\d*))?$/.exec(text2);
+  const start2 = match ? Number(match[1]) : 0, end2 = match?.[3] ? Number(match[3]) : void 0;
+  ensure(match !== null && Number.isSafeInteger(start2) && start2 >= 1 && (end2 === void 0 || Number.isSafeInteger(end2) && end2 >= start2), "INVALID_ARGUMENT", "--lines must be start-end, start- or start, with 1-based line numbers and end at least start.");
+  return match[2] === void 0 ? { start: start2, end: start2 } : { start: start2, ...end2 === void 0 ? {} : { end: end2 } };
+}
+const textLines = (text2) => text2.match(/[^\r\n]*(?:\r\n|\n|\r)|[^\r\n]+$/g) ?? [];
+function bytePrefix(text2, maxBytes2) {
+  let bytes = 0, end2 = 0;
+  for (const char of text2) {
+    const size = utf8Bytes(char);
+    if (bytes + size > maxBytes2) break;
+    bytes += size;
+    end2 += char.length;
+  }
+  return text2.slice(0, end2);
+}
+function textWindow(text2, maxBytes2, range2 = { start: 1 }) {
+  const lines2 = textLines(text2), total2 = lines2.length;
+  ensure(range2.start <= Math.max(total2, 1), "INVALID_ARGUMENT", `--lines starts after the last line; the text has ${total2} line${total2 === 1 ? "" : "s"}.`, { total: total2 });
+  const last = Math.min(range2.end ?? total2, total2);
+  let content2 = "", bytes = 0, end2 = range2.start - 1;
+  for (let line = range2.start; line <= last; line++) {
+    const size = utf8Bytes(lines2[line - 1]);
+    if (bytes + size > maxBytes2) {
+      const partial2 = line === range2.start;
+      if (partial2) {
+        content2 = bytePrefix(lines2[line - 1], maxBytes2);
+        bytes = utf8Bytes(content2);
+        end2 = line;
+      }
+      return { content: content2, truncated: true, partial: partial2, bytes, lines: { start: range2.start, end: end2, total: total2 } };
+    }
+    content2 += lines2[line - 1];
+    bytes += size;
+    end2 = line;
+  }
+  return { content: content2, truncated: false, partial: false, bytes, lines: { start: range2.start, end: end2, total: total2 } };
+}
 const text$1 = { type: "string" };
 const path$1 = { type: "string", description: "Path relative to context.root, with / separators." };
 const revision = { type: "string", pattern: "^[0-9a-f]{64}$", description: "SHA-256 of the file bytes; pass it as --if-match." };
 const kind = (...kinds) => kinds.length === 1 ? { type: "string", const: kinds[0] } : { type: "string", enum: kinds };
 const attachmentKinds = fileKinds.filter((name2) => !["markdown", "canvas", "base", "text"].includes(name2));
+const lineNumber = { type: "integer", minimum: 1 };
 const readOutput = {
   type: "object",
   required: ["path", "revision", "bytes", "document"],
   properties: {
     path: path$1,
     revision,
-    bytes: { type: "integer", minimum: 0 },
+    bytes: { type: "integer", minimum: 0, description: "Size of the whole file in bytes, also when the content is truncated." },
+    truncated: { type: "boolean", const: true, description: "Present when --max-bytes cut text or attachment content; a warning says how to read the rest." },
+    lines: {
+      type: "object",
+      required: ["start", "end", "total"],
+      description: "The lines content holds, with --lines or when content was truncated.",
+      properties: { start: lineNumber, end: { type: "integer", minimum: 0 }, total: { type: "integer", minimum: 0, description: "Lines of the whole file." } }
+    },
     document: { oneOf: [
       {
         title: "markdown",
         type: "object",
-        required: ["kind", "content", "properties"],
+        required: ["kind"],
+        description: "content and properties, or the parts --parts selects.",
         properties: { kind: kind("markdown"), content: text$1, properties: { type: "object", description: "Parsed YAML frontmatter." }, body: { type: "string", description: "Text after the frontmatter, with --parts body." } }
       },
       { title: "canvas or base", type: "object", required: ["kind", "data"], properties: { kind: kind("canvas", "base"), data: { type: "object" } } },
@@ -68994,9 +70018,10 @@ const readOutput = {
 };
 const listOutput = {
   type: "object",
-  required: ["files"],
+  required: ["files", "total"],
   properties: {
     files: { type: "array", items: { type: "object", required: ["path", "kind"], properties: { path: path$1, kind: kind(...fileKinds) } } },
+    total: { type: "integer", minimum: 0, description: "Every file that passes the filters, across all pages." },
     nextCursor: { type: "string", description: "Present when the page was truncated; pass it as --cursor." }
   }
 };
@@ -69053,6 +70078,82 @@ const applyOutput = {
     folders: { type: "array", items: path$1, description: "Folders the batch created." }
   }
 };
+const defaultReadBytes = 256 * 1024;
+const markdownParts = ["content", "properties", "body"];
+const defaultParts = /* @__PURE__ */ new Set(["content", "properties"]);
+function readView(result, selection2, warn) {
+  const document2 = isRecord$1(result.document) ? result.document : {};
+  const { kind: kind2 } = document2, textual = kind2 === "markdown" || kind2 === "text";
+  ensure(selection2.parts === void 0 || kind2 === "markdown", "INVALID_ARGUMENT", "--parts requires a Markdown file.");
+  ensure(selection2.lines === void 0 || textual, "INVALID_ARGUMENT", "--lines requires a Markdown or UTF-8 text file.");
+  const cut = (returned, bytes) => warn(kernelMessage("READ_BYTES_TRUNCATED", { path: result.path, returned, bytes }));
+  if (document2.encoding === "base64" && result.bytes > selection2.maxBytes) {
+    cut(selection2.maxBytes, result.bytes);
+    const content2 = Buffer.from(String(document2.content), "base64").subarray(0, selection2.maxBytes).toString("base64");
+    return { ...result, document: { ...document2, content: content2 }, truncated: true };
+  }
+  if (!textual) return result;
+  const parts = kind2 === "markdown" ? selection2.parts ?? defaultParts : /* @__PURE__ */ new Set(["content"]);
+  ensure(selection2.lines === void 0 || parts.has("content"), "INVALID_ARGUMENT", "--lines selects lines of content; include content in --parts.");
+  const shaped = { kind: kind2 };
+  const extra = {};
+  if (parts.has("content")) {
+    const window = textWindow(String(document2.content), selection2.maxBytes, selection2.lines);
+    shaped.content = window.content;
+    if (window.truncated || selection2.lines) extra.lines = window.lines;
+    if (window.truncated) {
+      extra.truncated = true;
+      const { start: start2, end: end2, total: total2 } = window.lines;
+      warn(kernelMessage("READ_TRUNCATED", { path: result.path, start: start2, end: end2, total: total2, returned: window.bytes, bytes: result.bytes, next: window.partial ? end2 : end2 + 1 }));
+    }
+  }
+  if (parts.has("properties")) shaped.properties = document2.properties;
+  if (parts.has("body")) {
+    const body = String(document2.body), window = textWindow(body, selection2.maxBytes);
+    shaped.body = window.content;
+    if (window.truncated) {
+      extra.truncated = true;
+      cut(window.bytes, Buffer.byteLength(body));
+    }
+  }
+  return { ...result, document: shaped, ...extra };
+}
+const maxBytesOption = option$1.string("Most bytes of text or attachment content returned per field; longer content is truncated with truncated: true.", { default: String(defaultReadBytes) });
+const maxBytes$1 = (flags) => integer$2(flags, "max-bytes", 1) ?? defaultReadBytes;
+function selection(flags) {
+  const parts = value$2(flags, "parts"), lines2 = value$2(flags, "lines");
+  return {
+    maxBytes: maxBytes$1(flags),
+    ...parts === void 0 ? {} : { parts: new Set(listOptionItems(parts)) },
+    ...lines2 === void 0 ? {} : { lines: lineRange(lines2) }
+  };
+}
+function readCommand() {
+  return {
+    id: "read",
+    description: "Read a document, UTF-8 text or base64 attachment with its SHA-256 revision; long content is truncated, and --lines reads a line range.",
+    examples: ["read notes/idea.md", "read notes/idea.md --lines 40-80", "read notes/idea.md --parts body"],
+    usage: "read <path> [--parts content,properties,body] [--lines start-end] [--max-bytes count] [--project id]",
+    scope: "project",
+    projectOption: "project",
+    discovery: false,
+    mutating: false,
+    args: [{ name: "path", description: "Vault path relative to the command scope.", required: true, path: true }],
+    errors: ["NOT_FOUND", "INVALID_FRONTMATTER"],
+    options: {
+      parts: option$1.string("Comma-separated parts of a Markdown read; content and properties by default.", { enum: markdownParts, list: true }),
+      lines: option$1.string("Only these 1-based, inclusive lines of Markdown or text content: start-end, start- or start."),
+      "max-bytes": maxBytesOption,
+      project: option$1.string("Use this project instead of the selected project.")
+    },
+    output: readOutput,
+    async run(args, flags, { workspace: workspace2, events: events2 }) {
+      arity(args, 1);
+      const request = selection(flags);
+      return readView(await workspace2.read(args[0]), request, (message2) => events2.warn(message2));
+    }
+  };
+}
 const readManyOutput = {
   type: "object",
   required: ["files", "bytes"],
@@ -69063,13 +70164,12 @@ const readManyOutput = {
       minItems: 1,
       maxItems: 32,
       items: readOutput,
-      description: "Default read results in requested order. Each revision describes that file when it was read; this is not an atomic snapshot."
+      description: "Default read results in requested order, each truncated at --max-bytes as read truncates it. Each revision describes that file when it was read; this is not an atomic snapshot."
     },
     bytes: {
       type: "integer",
       minimum: 0,
-      maximum: 8 * 1024 * 1024,
-      description: "Sum of raw file byte counts, before JSON or base64 encoding."
+      description: "Sum of raw file byte counts, before JSON or base64 encoding; each file counts toward the 8 MiB limit only up to --max-bytes."
     }
   }
 };
@@ -69078,27 +70178,26 @@ function atPath(error2, index2, path2) {
   const failure2 = error2 instanceof AppError ? error2 : forgeError("OPERATION_FAILED", errorMessage(error2));
   return locatedError(failure2, `read-many path at index ${index2}: `, { index: index2, path: path2 });
 }
-async function readFile(context, path2, beforeParse) {
-  const result = await context.workspace.read(path2, { beforeParse });
-  if (!isRecord$1(result.document) || result.document.kind !== "markdown") return result;
-  const { body: _body, ...document2 } = result.document;
-  return { ...result, document: document2 };
+async function readFile(context, path2, maxBytes2, beforeParse) {
+  return readView(await context.workspace.read(path2, { beforeParse }), { maxBytes: maxBytes2 }, (message2) => context.events.warn(message2));
 }
 function readManyCommand() {
   return {
     id: "read-many",
-    description: "Read up to 32 files sequentially with revisions and an 8 MiB aggregate raw-byte limit.",
-    usage: "read-many <paths...> [--project id]",
+    description: "Read up to 32 files sequentially with revisions; each file contributes at most --max-bytes to an 8 MiB aggregate limit.",
+    examples: ["read-many notes/a.md notes/b.md"],
+    usage: "read-many <paths...> [--max-bytes count] [--project id]",
     scope: "project",
     projectOption: "project",
     discovery: false,
     mutating: false,
-    args: [{ name: "paths", description: "Vault path relative to the command scope.", required: true, variadic: true }],
-    options: { project: option$1.string("Use this project instead of the selected project.") },
+    args: [{ name: "paths", description: "Vault path relative to the command scope.", required: true, variadic: true, path: true }],
+    options: { "max-bytes": maxBytesOption, project: option$1.string("Use this project instead of the selected project.") },
     output: readManyOutput,
     errors: ["NOT_FOUND", "INVALID_FRONTMATTER", "INVALID_YAML", "INVALID_CANVAS", "INVALID_BASE", "INVALID_ENCODING"],
-    async run(args, _flags, context) {
+    async run(args, flags, context) {
       arity(args, 1, maxFiles);
+      const limit = maxBytes$1(flags);
       const paths2 = /* @__PURE__ */ new Set();
       for (const [index2, input] of args.entries()) {
         try {
@@ -69110,14 +70209,15 @@ function readManyCommand() {
         }
       }
       const files = [];
-      let bytes = 0;
+      let bytes = 0, counted = 0;
       const budget = (size) => {
         bytes += size;
-        ensure(bytes <= maxBytes, "INVALID_ARGUMENT", "read-many exceeds the 8 MiB aggregate raw-byte limit.", { maxBytes, bytes });
+        counted += Math.min(size, limit);
+        ensure(counted <= maxBytes, "INVALID_ARGUMENT", "read-many exceeds its 8 MiB aggregate limit; lower --max-bytes or read fewer files.", { maxBytes, bytes: counted });
       };
       for (const [index2, path2] of [...paths2].entries()) {
         try {
-          files.push(await readFile(context, path2, budget));
+          files.push(await readFile(context, path2, limit, budget));
         } catch (error2) {
           throw atPath(error2, index2, path2);
         }
@@ -69126,85 +70226,14 @@ function readManyCommand() {
     }
   };
 }
+const base64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+function base64Bytes(text2, message2) {
+  const compact = text2.replace(/[\t\n\f\r ]+/g, "");
+  ensure(base64.test(compact), "INVALID_ENCODING", message2);
+  return Uint8Array.from(atob(compact), (character) => character.charCodeAt(0));
+}
 function encodeText(text2) {
   return new TextEncoder().encode(text2);
-}
-const rangeEditModes = ["replace", "append", "prepend"];
-const reportedHeadings = 50;
-const blockIdEnding = /(?:^|\s)\^[A-Za-z0-9-]+\s*$/;
-function lineBreak(text2) {
-  return /\r?\n/.exec(text2)?.[0] ?? "\n";
-}
-const lineStart = (text2, offset) => text2.lastIndexOf("\n", offset - 1) + 1;
-function nextLine(text2, offset) {
-  const index2 = text2.indexOf("\n", offset);
-  return index2 < 0 ? text2.length : index2 + 1;
-}
-function sections(text2, headings) {
-  const ordered2 = [...headings].sort((a, b) => a.position.start.offset - b.position.start.offset);
-  const stack = [];
-  return ordered2.map((heading2, index2) => {
-    while (stack.length > 0 && stack.at(-1).level >= heading2.level) stack.pop();
-    stack.push(heading2);
-    const next = ordered2.slice(index2 + 1).find((candidate) => candidate.level <= heading2.level);
-    return { heading: heading2, path: stack.map((item) => item.heading.trim()), bodyStart: nextLine(text2, heading2.position.end.offset), end: next?.position.start.offset ?? text2.length };
-  });
-}
-function names(path2, segments2, same2) {
-  if (!same2(path2.at(-1), segments2.at(-1))) return false;
-  let next = 0;
-  for (const ancestor of path2.slice(0, -1)) if (next < segments2.length - 1 && same2(ancestor, segments2[next])) next++;
-  return next === segments2.length - 1;
-}
-const exact = (a, b) => a === b;
-const caseless = (a, b) => a.toLowerCase() === b.toLowerCase();
-const segment = (heading2) => heading2.replace(/(\s)>(?=\s)/g, "$1\\>");
-const describe = (section2) => ({ section: section2.path.map(segment).join(" > "), line: section2.heading.position.start.line + 1 });
-function pathSegments(heading2) {
-  const segments2 = heading2.split(/\s>\s/).map((part) => part.replaceAll("\\>", ">").trim());
-  ensure(segments2.every((part) => part.length > 0), "INVALID_INPUT", 'A section path lists heading texts separated by " > ", such as "Plan > Risks"; write a " > " inside a heading as " \\> ".');
-  return segments2;
-}
-function onLine(matches2, heading2, line) {
-  const pinned = matches2.filter((section2) => section2.heading.position.start.line + 1 === line);
-  if (pinned.length > 0) return pinned;
-  throw forgeError("SECTION_NOT_FOUND", `No heading matching the section path "${heading2}" starts on line ${line}.`, { section: heading2, line, headings: matches2.slice(0, reportedHeadings).map(describe) });
-}
-function findSection(text2, headings, heading2, line) {
-  const segments2 = pathSegments(heading2);
-  const all2 = sections(text2, headings);
-  let matches2 = all2.filter((section2) => names(section2.path, segments2, exact));
-  if (matches2.length === 0) matches2 = all2.filter((section2) => names(section2.path, segments2, caseless));
-  if (matches2.length === 0) {
-    throw forgeError("SECTION_NOT_FOUND", `No heading matches the section path "${heading2}".`, { section: heading2, headings: all2.slice(0, reportedHeadings).map(describe) });
-  }
-  if (line !== void 0) matches2 = onLine(matches2, heading2, line);
-  const candidates2 = matches2.slice(0, reportedHeadings).map(describe);
-  const pick2 = "pass one candidate's line as the section line (--section-line, or sectionLine in an apply plan)";
-  const hint = new Set(candidates2.map((candidate) => candidate.section)).size === 1 ? pick2 : `add an ancestor heading, such as "Parent > ${segment(segments2.at(-1))}", or ${pick2}`;
-  ensure(matches2.length === 1, "AMBIGUOUS_SECTION", `The section path "${heading2}" matches ${matches2.length} headings; ${hint}.`, { section: heading2, matches: matches2.length, candidates: candidates2 });
-  return matches2[0];
-}
-function asLines(content2, newline) {
-  const lines2 = content2.replace(/\r?\n/g, newline);
-  return lines2 === "" || lines2.endsWith("\n") ? lines2 : lines2 + newline;
-}
-function insertLines(text2, at, content2, newline) {
-  const lead = at > 0 && text2[at - 1] !== "\n" ? newline : "";
-  return text2.slice(0, at) + lead + asLines(content2, newline) + text2.slice(at);
-}
-function editSection(text2, metadata2, heading2, mode, content2, line) {
-  const section2 = findSection(text2, metadata2.headings ?? [], heading2, line), newline = lineBreak(text2);
-  const body = text2.slice(section2.bodyStart, section2.end);
-  const start2 = section2.bodyStart + (/^(?:[ \t]*\r?\n)*/.exec(body)?.[0].length ?? 0);
-  const last = text2.slice(start2, section2.end).trimEnd().length;
-  const end2 = last === 0 ? start2 : Math.min(nextLine(text2, start2 + last - 1), section2.end);
-  if (mode === "prepend") return insertLines(text2, start2, content2, newline);
-  const endsInBlockId = last > 0 && blockIdEnding.test(text2.slice(lineStart(text2, start2 + last), start2 + last));
-  if (mode === "append") return insertLines(text2, end2, endsInBlockId ? `
-${content2}` : content2, newline);
-  const lead = start2 > 0 && text2[start2 - 1] !== "\n" ? newline : "";
-  return text2.slice(0, start2) + lead + asLines(content2, newline) + text2.slice(end2);
 }
 const reportedIssues = 20;
 const literalEditsSchema = {
@@ -69320,149 +70349,6 @@ function editRequest$1(item) {
   if (item.section !== void 0) return { kind: "section", section: item.section, ...item.sectionLine === void 0 ? {} : { line: item.sectionLine }, mode, content: item[mode] };
   if (item.block !== void 0) return { kind: "block", block: item.block, mode, content: item[mode] };
   return { kind: "append", content: item.append };
-}
-const reportedMatchLines = 20;
-function literalMatches(text2, find) {
-  const offsets = [];
-  if (find.length === 0) return offsets;
-  for (let offset = text2.indexOf(find); offset >= 0; offset = text2.indexOf(find, offset + 1)) offsets.push(offset);
-  return offsets;
-}
-function lineNumbers(text2, offsets) {
-  const lines2 = [];
-  let line = 1, scanned = 0;
-  for (const offset of offsets) {
-    for (let index2 = text2.indexOf("\n", scanned); index2 >= 0 && index2 < offset; index2 = text2.indexOf("\n", index2 + 1)) line++;
-    scanned = offset;
-    lines2.push(line);
-  }
-  return lines2;
-}
-function replaceUniqueLiteral(text2, find, replacement2) {
-  ensure(find.length > 0, "INVALID_INPUT", "--find must not be empty.");
-  const matches2 = literalMatches(text2, find);
-  ensure(matches2.length > 0, "NO_MATCH", "The find text does not occur in the file. Read it again and copy the exact current text.", { find, matches: 0 });
-  ensure(
-    matches2.length === 1,
-    "AMBIGUOUS_EDIT",
-    `The find text matches ${matches2.length} times, including overlapping matches; it must match exactly once.`,
-    { matches: matches2.length, lines: lineNumbers(text2, matches2.slice(0, reportedMatchLines)) }
-  );
-  const [offset] = matches2;
-  return text2.slice(0, offset) + replacement2 + text2.slice(offset + find.length);
-}
-function replaceEveryLiteral(text2, find, replacement2) {
-  ensure(find.length > 0, "INVALID_INPUT", "find must not be empty.");
-  const parts = text2.split(find);
-  ensure(parts.length > 1, "NO_MATCH", "The find text does not occur in the file. Read it again and copy the exact current text.", { find, matches: 0 });
-  return parts.join(replacement2);
-}
-function applyLiteralEdits(text2, edits) {
-  ensure(edits.length > 0, "INVALID_INPUT", "Pass at least one edit.");
-  return edits.reduce((current, edit, index2) => {
-    try {
-      return edit.all === true ? replaceEveryLiteral(current, edit.find, edit.replace) : replaceUniqueLiteral(current, edit.find, edit.replace);
-    } catch (error2) {
-      if (!(error2 instanceof AppError)) throw error2;
-      throw locatedError(error2, `Edit ${index2}: `, { edit: index2 });
-    }
-  }, text2);
-}
-const reportedBlocks = 50;
-const itemMarker = /^((?:[-*+]|\d{1,9}[.)])[ \t]+)((?:\[.\][ \t]+)?)/;
-const blankLine = /^[ \t]*(?:\r?\n|$)/;
-function blockCount(metadata2, id2) {
-  return [...metadata2.sections ?? [], ...metadata2.listItems ?? []].filter((item) => item.id?.toLowerCase() === id2).length;
-}
-function insertBlocks(text2, at, content2, newline) {
-  let head = text2.slice(0, at);
-  const tail = text2.slice(at);
-  if (head !== "" && !head.endsWith("\n")) head += newline;
-  if (head !== "" && !/(?:^|\n)[ \t]*\r?\n$/.test(head)) head += newline;
-  return head + asLines(content2, newline) + (tail !== "" && !blankLine.test(tail) ? newline : "") + tail;
-}
-function subtreeEnd(items2, item) {
-  const lines2 = /* @__PURE__ */ new Set([item.position.start.line]);
-  let end2 = item.position.end.offset;
-  for (const next of items2.slice(items2.indexOf(item) + 1)) {
-    if (!lines2.has(next.parent) || next.position.start.col <= item.position.start.col) break;
-    lines2.add(next.position.start.line);
-    end2 = Math.max(end2, next.position.end.offset);
-  }
-  return end2;
-}
-function indented(lines2, first, indent2, newline) {
-  return lines2.map((line, index2) => index2 === 0 ? first + line : line.trim() === "" ? indent2.trimEnd() + line : indent2 + line).join(newline);
-}
-function editListItem(text2, metadata2, item, id2, mode, content2, newline) {
-  const start2 = item.position.start.offset, lineAt = lineStart(text2, start2), prefix = text2.slice(lineAt, start2);
-  const lines2 = content2.replace(/\r?\n$/, "").split(/\r?\n/);
-  if (mode !== "replace") {
-    ensure(itemMarker.test(lines2[0]), "INVALID_INPUT", `Content added next to the list item ^${id2} becomes sibling list items, so it must start with a list marker, such as "- ${lines2[0].trim() || "Item"}".`, { block: id2 });
-    const siblings = lines2.map((line) => line.trim() === "" ? prefix.trimEnd() : prefix + line).join(newline);
-    return insertLines(text2, mode === "append" ? nextLine(text2, subtreeEnd(metadata2.listItems ?? [], item)) : lineAt, siblings, newline);
-  }
-  const [, bullet = "", checkbox = ""] = itemMarker.exec(text2.slice(start2)) ?? [];
-  const own2 = itemMarker.exec(lines2[0]);
-  const first = own2 ? "" : bullet + checkbox;
-  const width = (own2?.[1] ?? bullet).length;
-  let replacement2 = indented(lines2, first, prefix.replace(/[^\s>]/g, " ") + " ".repeat(width), newline);
-  if (!new RegExp(`(?:^|\\s)\\^${id2}\\s*$`, "i").test(replacement2)) replacement2 += ` ^${id2}`;
-  return text2.slice(0, start2) + replacement2 + text2.slice(item.position.end.offset);
-}
-function editBlock(text2, metadata2, id2, mode, content2) {
-  const key = id2.replace(/^\^/, "").toLowerCase(), block = metadata2.blocks?.[key];
-  if (!block) throw forgeError("SECTION_NOT_FOUND", `No block has the id ^${key}.`, { block: key, blocks: Object.values(metadata2.blocks ?? {}).sort((a, b) => a.position.start.offset - b.position.start.offset).slice(0, reportedBlocks).map((item2) => item2.id) });
-  const count2 = blockCount(metadata2, key);
-  ensure(count2 <= 1, "AMBIGUOUS_SECTION", `The block id ^${block.id} occurs ${count2} times; Obsidian links only the first. Give each block a unique id.`, { block: block.id, matches: count2 });
-  const newline = lineBreak(text2), { start: start2, end: end2 } = { start: block.position.start.offset, end: block.position.end.offset };
-  const item = metadata2.listItems?.find((candidate) => candidate.id?.toLowerCase() === key && candidate.position.start.offset === start2);
-  if (item) return editListItem(text2, metadata2, item, block.id, mode, content2, newline);
-  const marker = new RegExp(`(?:^|\\s)\\^${block.id}\\s*$`, "i");
-  const inside2 = marker.test(text2.slice(start2, end2));
-  if (mode === "prepend") return insertBlocks(text2, lineStart(text2, start2), content2, newline);
-  if (mode === "append") {
-    const markerLine = inside2 ? null : new RegExp(`^\\s*\\^${block.id}[ \\t]*(?=\\r?\\n|$)`, "i").exec(text2.slice(end2));
-    return insertBlocks(text2, nextLine(text2, end2 + (markerLine?.[0].length ?? 0)), content2, newline);
-  }
-  const replacement2 = asLines(content2, newline).replace(/\r?\n$/, "");
-  const kept = inside2 && !marker.test(replacement2) ? `${replacement2} ^${block.id}` : replacement2;
-  return text2.slice(0, start2) + kept + text2.slice(end2);
-}
-const targetsStructure = (request) => request.kind === "section" || request.kind === "block";
-function applyTextEdit(text2, request, metadata2) {
-  switch (request.kind) {
-    case "replace":
-      return replaceUniqueLiteral(text2, request.find, request.replace);
-    case "literal":
-      return applyLiteralEdits(text2, request.edits);
-    case "append":
-      return text2 + request.content;
-    case "section":
-      return editSection(text2, metadata2(), request.section, request.mode, request.content, request.line);
-    case "block":
-      return editBlock(text2, metadata2(), request.block, request.mode, request.content);
-  }
-}
-function decodeText(bytes) {
-  try {
-    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
-  } catch {
-    throw forgeError("INVALID_ENCODING", "Edits require valid UTF-8 text; use write for binary content.");
-  }
-}
-function ensureEditable(path2, request) {
-  const kind2 = fileKind(path2);
-  ensure(["markdown", "text"].includes(kind2), "UNSUPPORTED_EDIT", "Use edit for Markdown and text files, patch for Canvas/Bases, and write for attachments.");
-  ensure(!targetsStructure(request) || kind2 === "markdown", "UNSUPPORTED_EDIT", "Section and block edits require a Markdown note.");
-}
-function editBytes(path2, bytes, request, metadata2) {
-  ensureEditable(path2, request);
-  const text2 = decodeText(bytes);
-  ensure(isTextContent(path2, text2), "INVALID_ENCODING", "Text file edits require UTF-8 without NUL characters; use write for UTF-16 or binary content.");
-  const edited = applyTextEdit(text2, request, () => metadata2.parseContent(path2, bytes));
-  ensure(isTextContent(path2, edited), "INVALID_ENCODING", "Text file edits cannot introduce NUL characters; use write for binary content.");
-  return new TextEncoder().encode(edited);
 }
 const notFound = (error2) => error2 instanceof AppError && error2.code === "NOT_FOUND";
 const inside = (path2, folder) => path2.startsWith(`${folder}/`);
@@ -69667,13 +70553,10 @@ async function plannedBatch(staged, trashDestinations) {
   const trash = trashDestinations.filter((path2) => renames.some((rename2) => within(rename2.to, path2)));
   return { batch: { renames, writes }, previous: previous2, trash, operations: operations2 };
 }
-const base64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 const silentEvents = () => new EventBus({ depth: () => 0, run: (callback) => callback() });
 function contentBytes(content2, encoding) {
   if (encoding === "utf8") return new TextEncoder().encode(content2);
-  const text2 = content2.trim();
-  ensure(base64.test(text2), "INVALID_ENCODING", "Invalid base64 content.");
-  return Uint8Array.from(atob(text2), (character) => character.charCodeAt(0));
+  return base64Bytes(content2, "Invalid base64 content.");
 }
 function located(error2, index2, op) {
   if (!(error2 instanceof AppError) || error2.details?.operation !== void 0) return error2;
@@ -69803,6 +70686,7 @@ async function editRequest(flags, context) {
     return { kind: "append", content: value$2(flags, "content", true) };
   }
   ensure(content2 === void 0, "INVALID_INPUT", "--content requires --append or --prepend.");
+  ensure(find !== void 0 || replace !== void 0, "INVALID_INPUT", `Choose an edit mode: --find text --replace text, --edits json|@file|-, --append --content text, or --section "A > B" or --block id with ${modeUsage}.`, { modes: ["find", "edits", "append", "section", "block"] });
   return { kind: "replace", find: value$2(flags, "find", true), replace: value$2(flags, "replace", true) };
 }
 const editErrors = ["CONFLICT", "NO_MATCH", "AMBIGUOUS_EDIT", "SECTION_NOT_FOUND", "AMBIGUOUS_SECTION", "UNSUPPORTED_EDIT", "INVALID_INPUT", "INVALID_JSON", "INPUT_REQUIRED", "INVALID_ENCODING", "INVALID_FRONTMATTER", "INVALID_YAML"];
@@ -69811,11 +70695,17 @@ function editCommand() {
   return {
     id: "edit",
     description: "Edit Markdown or UTF-8 text in place: literal replacements, an append, or a section or block edit.",
-    usage: 'edit <note.md|text-file> --if-match sha256 (--find text --replace text | --edits json|@file|- | --append --content text | (--section "A > B" [--section-line n] | --block id) (--replace text | --append --content text | --prepend --content text))',
+    examples: [
+      "edit notes/idea.md --find Draft --replace Final --if-match <revision>",
+      'edit notes/idea.md --section "Plan > Risks" --append --content "- Late data" --if-match <revision>',
+      "edit notes/idea.md --edits @edits.json --if-match <revision> --dry-run"
+    ],
+    usage: 'edit <note.md|text-file> --if-match sha256 (--find text --replace text | --edits json|@file|- | --append --content text | (--section "A > B" [--section-line n] | --block id) (--replace text | --append --content text | --prepend --content text)) [--project id]',
     scope: "project",
+    projectOption: "project",
     discovery: false,
     mutating: true,
-    args: [{ name: "path", description: "Vault path relative to the command scope.", required: true }],
+    args: [{ name: "path", description: "Vault path relative to the command scope.", required: true, path: true }],
     errors: editErrors,
     output: editOutput,
     options: {
@@ -69828,7 +70718,8 @@ function editCommand() {
       content: option$1.string("Text for --append or --prepend."),
       section: option$1.string('Markdown heading path such as "Plan > Risks"; the section runs to the next heading of the same or a higher level. Write " > " inside a heading as " \\> ".'),
       "section-line": option$1.string("1-based line of the --section heading, from AMBIGUOUS_SECTION details.candidates, when the path matches several headings."),
-      block: option$1.string("Markdown block id (^id) of a paragraph, list item or section; a list item keeps its marker and checkbox, and content added next to it must be list items.")
+      block: option$1.string("Markdown block id (^id) of a paragraph, list item or section; a list item keeps its marker and checkbox, and content added next to it must be list items."),
+      project: option$1.string("Use this project instead of the selected project.")
     },
     async run(args, flags, context) {
       arity(args, 1);
@@ -69844,6 +70735,7 @@ function applyCommand() {
     id: "apply",
     description: "Run a JSON plan of writes, edits, frontmatter changes, moves and deletions as one guarded batch.",
     usage: "apply <plan.json|-> [--project id]",
+    examples: ["apply plan.json --dry-run", "apply plan.json"],
     // Destructive: write, edit and delete replace or remove content. Not idempotent: an operation without ifMatch,
     // such as an append, applies again on a repeat; only a plan whose every operation carries ifMatch fails instead.
     scope: "project",
@@ -69854,7 +70746,7 @@ function applyCommand() {
     idempotent: false,
     errors: applyErrors,
     output: applyOutput,
-    args: [{ name: "plan", description: "Plan file in the command scope, or - to read the plan from standard input.", required: true, schema: applyPlanSchema }],
+    args: [{ name: "plan", description: "Plan file in the command scope, or - to read the plan from standard input.", required: true, schema: applyPlanSchema, path: true }],
     options: { project: option$1.string("Use this project instead of the selected project.") },
     async run(args, _flags, context) {
       arity(args, 1);
@@ -69863,34 +70755,63 @@ function applyCommand() {
     }
   };
 }
+const defaultListLimit = 500;
+function listCommand() {
+  return {
+    id: "list",
+    description: "List regular files in stable path order; skip symlinks, Git, node_modules and .trash.",
+    examples: ["list --kind markdown --path notes", "list --tag plan --limit 100"],
+    usage: "list [--kind markdown|canvas|base|image|audio|video|pdf|text|attachment] [--path glob] [--tag tag] [--property key[=value]] [--include-trash] [--limit count] [--cursor token] [--project id]",
+    scope: "project",
+    projectOption: "project",
+    discovery: false,
+    mutating: false,
+    options: {
+      kind: option$1.string("Only files of this kind.", { enum: fileKinds }),
+      path: option$1.string("Only files whose root-relative path matches this glob (*, **, ?, [abc], {a,b}), or that are this file or below this folder."),
+      tag: option$1.string("Only notes with this tag or a nested tag below it."),
+      property: option$1.string("Only notes whose frontmatter has key (not null), or key=value."),
+      "include-trash": option$1.boolean("Also list files in .trash, where delete moves files."),
+      limit: option$1.string("Maximum number of files per page; a truncated page returns nextCursor.", { default: String(defaultListLimit) }),
+      cursor: option$1.string("Continue after the page that returned this nextCursor, with the same filters."),
+      project: option$1.string("Use this project instead of the selected project.")
+    },
+    output: listOutput,
+    async run(args, flags, { workspace: workspace2, metadata: metadata2, events: events2 }) {
+      arity(args, 0);
+      const kind2 = value$2(flags, "kind"), glob = value$2(flags, "path"), filters = noteFilters(value$2(flags, "tag"), value$2(flags, "property"));
+      const inPath = recordingFilter(glob === void 0 ? () => true : pathFilter(glob));
+      const trash = flags["include-trash"] === true || glob !== void 0 && isInTrash(glob.replace(/^\.\//, "").split("/")[0]);
+      const query = { command: "list", kind: kind2 ?? null, path: glob ?? null, trash, ...filters };
+      const pager = new Pager({ limit: integer$2(flags, "limit", 1) ?? defaultListLimit, cursor: value$2(flags, "cursor") }, query, (path2) => [path2]);
+      const cache = filters.tag !== void 0 || filters.property !== void 0 ? await metadata2.load() : void 0;
+      for (const path2 of await workspace2.files.list()) {
+        if (!inPath.matches(path2) || !trash && isInTrash(path2) || kind2 && fileKind(path2) !== kind2) continue;
+        if (cache && !metadataMatches(cache.getFileCache(path2), filters)) continue;
+        pager.offer(path2);
+      }
+      if (glob !== void 0 && !inPath.matched()) events2.warn(kernelMessage("PATH_MATCHED_NOTHING", { option: "--path", pattern: glob }));
+      const nextCursor = pager.nextCursor();
+      return { files: pager.items.map((path2) => ({ path: path2, kind: fileKind(path2) })), total: pager.total, ...nextCursor === void 0 ? {} : { nextCursor } };
+    }
+  };
+}
 async function content(flags, context) {
   const bytes = await readInputBytes(flags, context, "Choose exactly one of --content, --from, or --stdin.");
   const encoding = value$2(flags, "encoding") ?? "utf8";
-  if (encoding === "base64") {
-    const text2 = Buffer.from(bytes).toString("utf8").trim();
-    ensure(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(text2), "INVALID_ENCODING", "Invalid base64 input.");
-    return Buffer.from(text2, "base64");
-  }
-  return bytes;
+  return encoding === "base64" ? base64Bytes(new TextDecoder().decode(bytes), "Invalid base64 input.") : bytes;
 }
 const contentOptions = {
   content: option$1.string("Literal content."),
-  from: option$1.string("Copy the bytes of another file in the same scope."),
+  from: option$1.string("Copy the bytes of another file in the same scope.", { path: true }),
   stdin: option$1.boolean("Read the content from piped standard input."),
   encoding: option$1.string("Decode --content, --from or --stdin input; base64 writes binary content.", { enum: ["utf8", "base64"], default: "utf8" })
 };
 const ifMatch$1 = (required2 = false) => option$1.string("SHA-256 revision the file must still have (from read).", { required: required2 });
-const pathArgument = (description2 = "Vault path relative to the command scope.") => ({ name: "path", description: description2, required: true });
-const reading = { scope: "project", discovery: false, mutating: false };
-const writing = { scope: "project", discovery: false, mutating: true };
-const readParts = ["body"];
-function selectedParts(flags, kind2) {
-  const requested = value$2(flags, "parts");
-  if (requested === void 0) return /* @__PURE__ */ new Set();
-  const parts = listOptionItems(requested);
-  ensure(kind2 === "markdown", "INVALID_ARGUMENT", "--parts body requires a Markdown file.");
-  return new Set(parts);
-}
+const pathArgument = (description2 = "Vault path relative to the command scope.") => ({ name: "path", description: description2, required: true, path: true });
+const reading = { scope: "project", projectOption: "project", discovery: false, mutating: false };
+const writing = { scope: "project", projectOption: "project", discovery: false, mutating: true };
+const projectOptions = { project: option$1.string("Use this project instead of the selected project.") };
 function defaultDocument(kind2) {
   if (kind2 === "canvas") return encodeText('{"nodes":[],"edges":[]}\n');
   if (kind2 === "base") return encodeText("views:\n  - type: table\n    name: Table\n");
@@ -69899,48 +70820,9 @@ function defaultDocument(kind2) {
 const defaultable = ["markdown", "canvas", "base", "text"];
 function documentCommands() {
   return [
-    {
-      id: "list",
-      description: "List regular files in stable path order; skip symlinks, Git and node_modules.",
-      usage: "list [--kind markdown|canvas|base|image|audio|video|pdf|text|attachment] [--path glob] [--limit count] [--cursor token]",
-      ...reading,
-      options: {
-        kind: option$1.string("Only files of this kind.", { enum: fileKinds }),
-        path: option$1.string("Only files whose root-relative path matches this glob (*, **, ?, [abc], {a,b})."),
-        limit: option$1.string("Maximum number of files; a truncated page returns nextCursor."),
-        cursor: option$1.string("Continue after the page that returned this nextCursor, with the same --kind and --path.")
-      },
-      output: listOutput,
-      async run(args, flags, { workspace: workspace2 }) {
-        arity(args, 0);
-        const kind2 = value$2(flags, "kind"), glob = value$2(flags, "path");
-        const matches2 = glob === void 0 ? () => true : pathGlob(glob);
-        const pager = new Pager({ limit: integer$2(flags, "limit", 1), cursor: value$2(flags, "cursor") }, { command: "list", kind: kind2 ?? null, path: glob ?? null }, (path2) => [path2]);
-        for (const path2 of await workspace2.files.list()) if ((!kind2 || fileKind(path2) === kind2) && matches2(path2)) pager.offer(path2);
-        const nextCursor = pager.nextCursor();
-        return { files: pager.items.map((path2) => ({ path: path2, kind: fileKind(path2) })), ...nextCursor === void 0 ? {} : { nextCursor } };
-      }
-    },
-    {
-      id: "read",
-      description: "Read a document, UTF-8 text or base64 attachment with its SHA-256 revision.",
-      usage: "read <path> [--parts body] [--project id]",
-      ...reading,
-      projectOption: "project",
-      args: [pathArgument()],
-      errors: ["NOT_FOUND", "INVALID_FRONTMATTER"],
-      options: { parts: option$1.string("Comma-separated optional parts of a Markdown read.", { enum: readParts, list: true }), project: option$1.string("Use this project instead of the selected project.") },
-      output: readOutput,
-      async run(args, flags, { workspace: workspace2 }) {
-        arity(args, 1);
-        const parts = selectedParts(flags, fileKind(args[0]));
-        const result = await workspace2.read(args[0]);
-        if (!isRecord$1(result.document) || result.document.kind !== "markdown" || parts.has("body")) return result;
-        const { body: _body, ...document2 } = result.document;
-        return { ...result, document: document2 };
-      }
-    },
-    { id: "validate", description: "Validate Markdown frontmatter, Canvas graph, Base structure or UTF-8 text.", usage: "validate <path>", ...reading, args: [pathArgument()], errors: ["NOT_FOUND", "INVALID_FRONTMATTER", "INVALID_YAML", "INVALID_CANVAS", "INVALID_BASE", "INVALID_ENCODING"], output: validateOutput, async run(args, _, { workspace: workspace2 }) {
+    listCommand(),
+    readCommand(),
+    { id: "validate", description: "Validate Markdown frontmatter, Canvas graph, Base structure or UTF-8 text.", usage: "validate <path> [--project id]", ...reading, args: [pathArgument()], options: projectOptions, errors: ["NOT_FOUND", "INVALID_FRONTMATTER", "INVALID_YAML", "INVALID_CANVAS", "INVALID_BASE", "INVALID_ENCODING"], output: validateOutput, async run(args, _, { workspace: workspace2 }) {
       arity(args, 1);
       const file = await workspace2.files.read(args[0]);
       workspace2.codec.validate(file.path, file.bytes);
@@ -69950,12 +70832,13 @@ function documentCommands() {
     {
       id: "create",
       description: "Create a note, Canvas, Base, or file. Existing files are refused.",
-      usage: "create <path> [--content text | --from path | --stdin] [--encoding base64]",
+      usage: "create <path> [--content text | --from path | --stdin] [--encoding base64] [--project id]",
       ...writing,
       destructive: false,
       idempotent: true,
       args: [pathArgument("New vault path.")],
-      options: contentOptions,
+      options: { ...contentOptions, ...projectOptions },
+      examples: ['create notes/idea.md --content "# Idea"', "create notes/idea.md --stdin"],
       errors: ["CONFLICT", "INVALID_INPUT", "INVALID_ENCODING", "INVALID_FRONTMATTER", "INVALID_CANVAS", "INVALID_BASE"],
       async run(args, flags, context) {
         arity(args, 1);
@@ -69973,11 +70856,12 @@ function documentCommands() {
     {
       id: "write",
       description: "Create or replace a file; replacement requires its current revision.",
-      usage: "write <path> (--content text | --from path | --stdin) [--encoding base64] [--if-match sha256]",
+      usage: "write <path> (--content text | --from path | --stdin) [--encoding base64] [--if-match sha256] [--project id]",
       ...writing,
       idempotent: true,
       args: [pathArgument()],
-      options: { ...contentOptions, "if-match": ifMatch$1() },
+      examples: ["write notes/idea.md --from drafts/idea.md --if-match <revision>"],
+      options: { ...contentOptions, "if-match": ifMatch$1(), ...projectOptions },
       errors: ["CONFLICT", "INVALID_INPUT", "INVALID_ENCODING", "INVALID_FRONTMATTER", "INVALID_CANVAS", "INVALID_BASE"],
       async run(args, flags, context) {
         arity(args, 1);
@@ -69988,11 +70872,12 @@ function documentCommands() {
     {
       id: "properties",
       description: "Merge YAML frontmatter properties while preserving the Markdown body.",
-      usage: "properties <note.md> --set JSON --if-match sha256",
+      usage: "properties <note.md> --set JSON --if-match sha256 [--project id]",
       ...writing,
       args: [pathArgument("Markdown note path.")],
       errors: ["CONFLICT", "UNSUPPORTED_EDIT", "INVALID_JSON", "INVALID_INPUT", "INVALID_KEY", "INVALID_FRONTMATTER"],
-      options: { set: option$1.string("JSON object of properties to set.", { required: true }), "if-match": ifMatch$1(true) },
+      examples: [`properties notes/idea.md --set '{"status":"done","tags":["plan"]}' --if-match <revision>`],
+      options: { set: option$1.string("JSON object of properties to set.", { required: true }), "if-match": ifMatch$1(true), ...projectOptions },
       async run(args, flags, { workspace: workspace2 }) {
         arity(args, 1);
         ensure(fileKind(args[0]) === "markdown", "UNSUPPORTED_EDIT", "Properties require a Markdown note.");
@@ -70004,11 +70889,11 @@ function documentCommands() {
     {
       id: "patch",
       description: "Set a Canvas/Base JSON Pointer; - appends to an existing array.",
-      usage: "patch <path> --pointer /nodes/- --value JSON --if-match sha256",
+      usage: "patch <path> --pointer /nodes/- --value JSON --if-match sha256 [--project id]",
       ...writing,
       args: [pathArgument("Canvas or Base path.")],
       errors: ["CONFLICT", "INVALID_POINTER", "INVALID_JSON", "INVALID_CANVAS", "INVALID_BASE", "UNSUPPORTED_EDIT"],
-      options: { pointer: option$1.string("JSON Pointer to set; /- appends to an existing array.", { required: true }), value: option$1.string("JSON value to set.", { required: true }), "if-match": ifMatch$1(true) },
+      options: { pointer: option$1.string("JSON Pointer to set; /- appends to an existing array.", { required: true }), value: option$1.string("JSON value to set.", { required: true }), "if-match": ifMatch$1(true), ...projectOptions },
       async run(args, flags, { workspace: workspace2 }) {
         arity(args, 1);
         const pointer2 = value$2(flags, "pointer", true), data = parseJson(value$2(flags, "value", true));
@@ -70047,14 +70932,15 @@ function statCommand() {
   return {
     id: "stat",
     description: "Inspect a file or folder revision with size or descendant counts, without returning content.",
+    examples: ["stat notes/idea.md", "stat notes"],
     usage: "stat <path> [--project id]",
     scope: "project",
     projectOption: "project",
     discovery: false,
     mutating: false,
-    args: [{ name: "path", description: "Vault path relative to the command scope.", required: true }],
+    args: [{ name: "path", description: "Vault path relative to the command scope.", required: true, path: true }],
     options: { project: option$1.string("Use this project instead of the selected project.") },
-    errors: ["NOT_FOUND"],
+    errors: ["NOT_FOUND", "CONFLICT"],
     output: statOutput,
     async run(args, _flags, { workspace: workspace2 }) {
       arity(args, 1);
@@ -70065,8 +70951,9 @@ function statCommand() {
   };
 }
 const ifMatch = option$1.string("SHA-256 revision of the source file (from read); required unless --dry-run.");
-const linkOptions = { "if-match": ifMatch, "no-update-links": option$1.boolean("Move without rewriting links to the moved files.") };
-const vaultWrite = { scope: "project", discovery: false, mutating: true, idempotent: true };
+const project = option$1.string("Use this project instead of the selected project.");
+const linkOptions = { "if-match": ifMatch, "no-update-links": option$1.boolean("Move without rewriting links to the moved files."), project };
+const vaultWrite = { scope: "project", projectOption: "project", discovery: false, mutating: true, idempotent: true };
 const moveErrors = ["NOT_FOUND", "CONFLICT", "DESTINATION_EXISTS", "PROTECTED_PATH", "INVALID_MOVE"];
 const guard = (flags, dryRun2) => value$2(flags, "if-match", !dryRun2);
 function vaultCommands() {
@@ -70074,11 +70961,12 @@ function vaultCommands() {
     {
       id: "delete",
       description: "Move a file or folder to .trash, or remove it with --permanent; refuses while other files link to it.",
-      usage: "delete <path> --if-match sha256 [--recursive] [--permanent] [--allow-broken-links]",
+      usage: "delete <path> --if-match sha256 [--recursive] [--permanent] [--allow-broken-links] [--project id]",
       ...vaultWrite,
-      args: [{ name: "path", description: "File or folder to delete.", required: true }],
+      args: [{ name: "path", description: "File or folder to delete.", required: true, path: true }],
       errors: ["NOT_FOUND", "CONFLICT", "PROTECTED_PATH", "HAS_BACKLINKS"],
-      options: { "if-match": ifMatch, recursive: option$1.boolean("Required to delete a folder."), permanent: option$1.boolean("Remove instead of moving to .trash."), "allow-broken-links": option$1.boolean("Delete even while other files link to it.") },
+      examples: ["delete notes/idea.md --if-match <revision>", "delete drafts --recursive --dry-run"],
+      options: { "if-match": ifMatch, recursive: option$1.boolean("Required to delete a folder."), permanent: option$1.boolean("Remove instead of moving to .trash."), "allow-broken-links": option$1.boolean("Delete even while other files link to it."), project },
       async run(args, flags, { app, workspace: workspace2 }) {
         arity(args, 1);
         return app.fileManager.delete(args[0], {
@@ -70092,11 +70980,12 @@ function vaultCommands() {
     {
       id: "move",
       description: "Move or rename a file or folder and rewrite every link to it in one guarded batch.",
-      usage: "move <from> <to> --if-match sha256 [--no-update-links]",
+      usage: "move <from> <to> --if-match sha256 [--no-update-links] [--project id]",
       options: linkOptions,
       ...vaultWrite,
       errors: moveErrors,
-      args: [{ name: "from", description: "File or folder to move.", required: true }, { name: "to", description: "New path; it must not exist.", required: true }],
+      examples: ["move notes/idea.md archive/idea.md --if-match <revision>", "move notes/idea.md archive/idea.md --dry-run"],
+      args: [{ name: "from", description: "File or folder to move.", required: true, path: true }, { name: "to", description: "New path; it must not exist.", required: true, path: true }],
       async run(args, flags, { app, workspace: workspace2 }) {
         arity(args, 2);
         return app.fileManager.move(args[0], args[1], { ifMatch: guard(flags, workspace2.dryRun), updateLinks: flags["no-update-links"] !== true });
@@ -70105,11 +70994,12 @@ function vaultCommands() {
     {
       id: "rename",
       description: "Rename a file or folder in place and rewrite every link to it; a file keeps its extension.",
-      usage: "rename <path> <new-name> --if-match sha256 [--no-update-links]",
+      usage: "rename <path> <new-name> --if-match sha256 [--no-update-links] [--project id]",
       options: linkOptions,
       ...vaultWrite,
       errors: moveErrors,
-      args: [{ name: "path", description: "File or folder to rename.", required: true }, { name: "new-name", description: "New name without slashes; a file keeps its extension.", required: true }],
+      examples: ["rename notes/idea.md plan.md --if-match <revision>"],
+      args: [{ name: "path", description: "File or folder to rename.", required: true, path: true }, { name: "new-name", description: "New name without slashes; a file keeps its extension.", required: true }],
       async run(args, flags, { app, workspace: workspace2 }) {
         arity(args, 2);
         return app.fileManager.rename(args[0], args[1], { ifMatch: guard(flags, workspace2.dryRun), updateLinks: flags["no-update-links"] !== true });
@@ -70130,6 +71020,114 @@ function commands(registry2, services2) {
     generationCommand(registry2),
     ...extensionCommands(registry2, services2)
   ];
+}
+const validLevel = (level) => eventOutputLevels.includes(level);
+function flagSetting(flags, name2, configured) {
+  return flags[`no-${name2}`] ? false : flags[name2] ? true : configured;
+}
+function statedJson(tokens) {
+  const end2 = tokens.indexOf("--"), options2 = end2 === -1 ? tokens : tokens.slice(0, end2);
+  return options2.includes("--no-json") ? false : options2.includes("--json") ? true : void 0;
+}
+function requestedLanguage(flags, current) {
+  const requested = value$2(flags, "lang");
+  return requested === void 0 ? current : language(requested);
+}
+function bootstrapSettings(tokens, prefix) {
+  const events2 = value$2(prefix, "events");
+  return { language: requestedLanguage(prefix, "en"), json: statedJson(tokens) ?? false, dryRun: false, events: events2 !== void 0 && validLevel(events2) ? events2 : "changes" };
+}
+function configuredSettings(configured, bootstrap, tokens, prefix) {
+  return {
+    language: value$2(prefix, "lang") !== void 0 ? bootstrap.language : configured.language,
+    json: statedJson(tokens) ?? configured.json,
+    dryRun: flagSetting(prefix, "dry-run", configured.dryRun),
+    events: value$2(prefix, "events") !== void 0 ? bootstrap.events : configured.events
+  };
+}
+function requestedEvents(flags, current) {
+  const requested = value$2(flags, "events");
+  return requested !== void 0 && (!flags.help || validLevel(requested)) ? eventOutput(requested) : current;
+}
+function responseDocument(response, compact, invalidResult) {
+  const { result, context, events: events2, warnings } = response;
+  const envelope = (outcome) => ({ ...outcome, ...context ? { context } : {}, events: events2, warnings });
+  try {
+    return { text: JSON.stringify(envelope(result), null, compact ? void 0 : 2) + "\n", serializable: true };
+  } catch {
+    return { text: JSON.stringify(envelope({ ok: false, error: invalidResult() })) + "\n", serializable: false };
+  }
+}
+const slashes = (path2) => path2.replaceAll("\\", "/");
+const isAbsolute = (path2) => path2.startsWith("/") || /^[A-Za-z]:\//.test(path2);
+const comparable = (path2) => /^[A-Za-z]:/.test(path2) ? path2[0].toLowerCase() + path2.slice(1) : path2;
+function relativeTo(path2, root) {
+  const base2 = comparable(slashes(root).replace(/\/+$/, "")), candidate = comparable(path2);
+  if (candidate === base2) return "";
+  return candidate.startsWith(`${base2}/`) ? path2.slice(base2.length + 1) : void 0;
+}
+function normalizeInputPath(input, root) {
+  let path2 = slashes(input);
+  if (isAbsolute(path2)) path2 = relativeTo(path2, root) ?? path2;
+  while (path2.startsWith("./")) path2 = path2.slice(2);
+  return path2;
+}
+function resolved(path2) {
+  const parts = [];
+  for (const part of path2.split("/")) {
+    if (part === "..") {
+      if (parts.pop() === void 0) return void 0;
+    } else if (part !== "" && part !== ".") parts.push(part);
+  }
+  return parts.length > 0 ? parts.join("/") : void 0;
+}
+function suggestion(input, path2, origin, scope2) {
+  if (isAbsolute(path2)) return origin.stdin && relativeTo(path2, scope2.workspaceRoot) === void 0 ? "--stdin" : void 0;
+  const fixed = resolved(path2);
+  if (fixed !== void 0 && fixed !== input) {
+    try {
+      return vaultPath(fixed);
+    } catch {
+      return void 0;
+    }
+  }
+  return origin.stdin && fixed === void 0 ? "--stdin" : void 0;
+}
+function absoluteReason(path2, scope2) {
+  if (!isAbsolute(path2)) return "";
+  const workspacePath = relativeTo(path2, scope2.workspaceRoot);
+  if (workspacePath !== void 0 && scope2.root !== scope2.workspaceRoot) return " It lies outside the selected project; pass a path relative to the project root, or select the project that contains it.";
+  return " It lies outside the command scope root.";
+}
+function checked(input, origin, scope2) {
+  const path2 = normalizeInputPath(input, scope2.root);
+  try {
+    vaultPath(path2.endsWith("/") && path2.length > 1 ? path2.slice(0, -1) : path2);
+    return path2;
+  } catch (error2) {
+    if (!(error2 instanceof AppError) || error2.code !== "INVALID_PATH") throw error2;
+    const { source: source2 } = origin;
+    const named = "option" in source2 ? `Option --${source2.option}` : `Argument <${source2.argument}>${source2.index === void 0 ? "" : ` at index ${source2.index}`}`;
+    const better = suggestion(input, path2, origin, scope2);
+    const stdin = better === "--stdin" ? " To use a file from outside the scope, pipe it with --stdin instead." : "";
+    throw forgeError("INVALID_PATH", `${named} ${JSON.stringify(input)}: ${error2.message}${absoluteReason(path2, scope2)}${stdin}`, { ...source2, value: input, ...better === void 0 ? {} : { suggestion: better } });
+  }
+}
+function normalizedPathInputs(command2, args, flags, scope2) {
+  const declared = command2.args ?? [];
+  const normalizedArgs = args.map((value2, index2) => {
+    const variadic = index2 >= declared.length - 1 && declared.at(-1)?.variadic === true;
+    const argument = variadic ? declared.at(-1) : declared[index2];
+    const source2 = { argument: argument?.name ?? "", ...variadic ? { index: index2 } : {} };
+    return argument?.path === true ? checked(value2, { source: source2, stdin: false }, scope2) : value2;
+  });
+  const normalizedFlags = Object.assign(/* @__PURE__ */ Object.create(null), flags);
+  const options2 = commandOptions(command2, args), stdin = options2.stdin?.type === "boolean";
+  for (const [key, option2] of Object.entries(options2)) {
+    const value2 = flags[key];
+    if (option2.path === true && typeof value2 === "string") normalizedFlags[key] = checked(value2, { source: { option: key }, stdin }, scope2);
+  }
+  return [normalizedArgs, normalizedFlags];
 }
 const corePlugins = [
   templatesPlugin,
@@ -70152,44 +71150,39 @@ const corePlugins = [
 ];
 async function run() {
   const tokens = process.argv.slice(2);
-  const registry2 = new Registry(skillFrontmatter), events2 = new EventBus(new NodeEventScope());
+  const registry2 = new Registry(skillFrontmatter, metadata$2.version), events2 = new EventBus(new NodeEventScope());
   let result;
   let activeContext;
-  let localizer = new Localizer();
-  let compact = tokens.includes("--json");
-  let eventLevel = "changes";
+  let settings2 = bootstrapSettings(tokens, {});
+  let invoked;
+  const localizer = () => new Localizer(settings2.language, registry2.catalog, invoked);
   let persistMetadata;
   try {
     const bootstrap = parseBootstrap(tokens);
-    const requestedLanguage = value$2(bootstrap.flags, "lang");
-    if (requestedLanguage !== void 0) localizer = new Localizer(language(requestedLanguage));
-    const requestedEvents = value$2(bootstrap.flags, "events");
-    const validLevel = (level) => eventOutputLevels.includes(level);
-    if (requestedEvents !== void 0 && validLevel(requestedEvents)) eventLevel = requestedEvents;
+    settings2 = bootstrapSettings(tokens, bootstrap.flags);
     if (bootstrap.flags.version) {
-      if (requestedEvents !== void 0) eventOutput(requestedEvents);
+      const prefixEvents = value$2(bootstrap.flags, "events");
+      if (prefixEvents !== void 0) eventOutput(prefixEvents);
       const parsed2 = parseArguments(tokens, globalOptions);
       ensure(parsed2.args.length === 0, "INVALID_ARGUMENT", "--version does not accept a command.");
-      result = { ok: true, data: { name: "The Forge", version: metadata$2.version, apiVersion: 1 } };
+      result = { ok: true, data: { ...forgeIdentity } };
     } else {
-      const loaded = await loadConfig({ defaultPath: path$3.resolve(__dirname, "config.json"), cwd: process.cwd(), root: value$2(bootstrap.flags, "root") });
+      const requestedRoot = value$2(bootstrap.flags, "root") ?? (process.env.FORGE_ROOT || void 0);
+      const loaded = await loadConfig({ defaultPath: path$3.resolve(__dirname, "config.json"), cwd: process.cwd(), root: requestedRoot });
       const config2 = loaded.config;
-      localizer = new Localizer(requestedLanguage !== void 0 ? language(requestedLanguage) : config2.settings.language);
-      config2.settings.language = localizer.language;
-      config2.settings.json = bootstrap.flags["no-json"] ? false : bootstrap.flags.json ? true : config2.settings.json;
-      config2.settings.dryRun = bootstrap.flags["no-dry-run"] ? false : bootstrap.flags["dry-run"] ? true : config2.settings.dryRun;
-      if (requestedEvents !== void 0) config2.settings.events = eventLevel;
-      else eventLevel = config2.settings.events;
-      compact = config2.settings.json;
-      let lockOwner = {};
+      settings2 = Object.assign(config2.settings, configuredSettings(config2.settings, settings2, tokens, bootstrap.flags));
+      let lockOwner = {}, lockWait = 0;
       const warn = (message2) => events2.warn(message2);
-      const files = await NodeFiles.at(loaded.root, warn, () => lockOwner);
+      const files = await NodeFiles.at(loaded.root, warn, () => lockOwner, () => lockWait);
       activeContext = { workspaceRoot: files.root, root: files.root, project: null };
       registerHostEvents(events2);
+      const outside = await workingDirectoryOutside(files.root, process.cwd());
+      if (outside !== void 0) warn(kernelMessage("CWD_OUTSIDE_WORKSPACE", { cwd: outside, workspaceRoot: files.root }));
       events2.on("command.started", ({ command: command22, operationId }) => {
         lockOwner = { command: command22, operationId };
       });
       let environment;
+      let projects2;
       const skipUserPlugins = bootstrap.flags["no-plugins"] === true;
       const scaffolder = (action2) => registry2.requireService(projectScaffolderService, `project ${action2}`);
       const services2 = {
@@ -70197,7 +71190,7 @@ async function run() {
         files,
         server: new NodeServerController({ workspaceRoot: files.root, distributionPath: __dirname, version: metadata$2.version }),
         get projects() {
-          return new ProjectService(files, environment, config2.paths.projects, scaffolder, events2);
+          return projects2 ??= new ProjectService(files, environment, config2.paths.projects, scaffolder, events2);
         },
         get workflows() {
           return new WorkflowSync(environment, this.projects, yamlWorkflowRenderer);
@@ -70208,15 +71201,15 @@ async function run() {
           return new SetupService(environment, config2, await readSetupArtifacts(__dirname), [...registry2.skills.values()], templates2?.setupTemplates() ?? null).run();
         },
         configSections: () => registry2.settings.sections(),
-        installedPlugins: () => installedPlugins("bin/plugins", config2.plugins.enabled, skipUserPlugins, files, (message2) => events2.warn(message2))
+        installedPlugins: () => installedPlugins("bin/plugins", config2.plugins.enabled, skipUserPlugins, files, metadata$2.version, (message2) => events2.warn(message2))
       };
       for (const command22 of commands(registry2, services2)) registry2.add(registry2.commands, command22);
       registerCorePlugins(registry2, events2, corePlugins, {
         skills: registrySkills(registry2),
         fileDates: nodeFileDates,
-        openFiles: (root) => NodeFiles.at(root, warn),
+        openFiles: (root) => NodeFiles.at(root, warn, void 0, () => lockWait),
         operationId: () => events2.nextOperationId(),
-        locks: (root) => nodeLockFiles(root, warn),
+        locks: (root) => nodeLockFiles(root, warn, () => lockWait),
         http: new FetchHttpClient(),
         environment: (name2) => process.env[name2]
       }, config2.plugins.disabled);
@@ -70226,34 +71219,22 @@ async function run() {
       await registry2.publishRegistered(events2);
       const id2 = bootstrap.args[0] ?? "help";
       const command2 = registry2.resolveCommand(id2);
-      const actionArgs2 = hasActionOptions(command2) ? parseArguments(tokens, { ...globalOptions, ...optionTypes(command2.options) }, true).args.slice(1) : [];
-      const parsed2 = (() => {
-        try {
-          return parseArguments(tokens, { ...globalOptions, ...optionTypes(commandOptions(command2, actionArgs2)) });
-        } catch (error2) {
-          ensureKnownAction(command2, actionArgs2);
-          throw error2;
-        }
-      })();
-      config2.settings.json = parsed2.flags["no-json"] ? false : parsed2.flags.json ? true : config2.settings.json;
-      compact = config2.settings.json;
-      const parsedLanguage = value$2(parsed2.flags, "lang");
-      localizer = new Localizer(parsedLanguage !== void 0 ? language(parsedLanguage) : localizer.language, registry2.catalog);
-      config2.settings.language = localizer.language;
-      const parsedEvents = value$2(parsed2.flags, "events");
-      if (parsedEvents !== void 0 && (!parsed2.flags.help || validLevel(parsedEvents))) eventLevel = config2.settings.events = eventOutput(parsedEvents);
-      for (const [commandId2, registered] of registry2.commands) registry2.commands.set(commandId2, localizer.command(registered));
+      invoked = command2.id;
+      const parsed2 = parseCommand(tokens, command2);
+      settings2.language = requestedLanguage(parsed2.flags, settings2.language);
+      settings2.events = requestedEvents(parsed2.flags, settings2.events);
+      const commandLocalizer = localizer();
+      for (const [commandId2, registered] of registry2.commands) registry2.commands.set(commandId2, commandLocalizer.command(registered));
       ensure(!parsed2.flags.version, "INVALID_ARGUMENT", "--version must be used without a command.");
       const flags = parsed2.flags.help ? parsed2.flags : declaredValues(commandOptions(command2, parsed2.args.slice(1)), parsed2.flags);
-      for (const option2 of ["root", "no-plugins"]) ensure(parsed2.flags[option2] === bootstrap.flags[option2], "INVALID_ARGUMENT", `--${option2} must precede the command.`);
-      config2.settings.dryRun = parsed2.flags["no-dry-run"] ? false : parsed2.flags["dry-run"] ? true : config2.settings.dryRun;
+      if (!parsed2.flags.help) lockWait = waitBudget(parsed2.flags);
+      settings2.dryRun = flagSetting(parsed2.flags, "dry-run", settings2.dryRun);
       let metadataCommits;
-      environment = new Workspace(files, new ObsidianDocuments(), events2, config2.settings.dryRun, files.root, { committed: async (changes2) => {
+      environment = new Workspace(files, new ObsidianDocuments(), events2, settings2.dryRun, files.root, { committed: async (changes2) => {
         await metadataCommits?.committed(changes2);
       } });
       const policy = invocationPolicy(command2, parsed2.args.slice(1), parsed2.flags);
-      const projects2 = new ProjectService(files, environment, config2.paths.projects, scaffolder, events2);
-      const project2 = policy.scope === "workspace" ? null : policy.requestedProject !== void 0 ? await projects2.inspect(policy.requestedProject) : await projects2.current();
+      const project2 = policy.scope === "workspace" ? null : policy.requestedProject !== void 0 ? await services2.projects.inspect(policy.requestedProject) : await services2.projects.current();
       const scopedFiles = project2 ? new ScopedFiles(files, project2.directory) : files;
       const cacheFile = snapshotFile(project2?.directory ?? null);
       const vaultMetadata = new VaultMetadata(scopedFiles, new ObsidianMetadataParser(environment.codec), {
@@ -70262,7 +71243,7 @@ async function run() {
         snapshots: {
           store: new NodeMetadataSnapshotStore(files.root, cacheFile, __filename, (stamped) => stampedFiles(files, project2?.directory, stamped)),
           key: `forge ${metadata$2.version}; parser ${metadataParserVersion}; scope ${project2?.directory ?? "."}`,
-          save: !config2.settings.dryRun
+          save: !settings2.dryRun
         }
       });
       persistMetadata = () => vaultMetadata.persist().catch((error2) => events2.warn(kernelMessage("METADATA_CACHE_UNSAVED", { file: cacheFile, diagnostic: errorMessage(error2) })));
@@ -70271,12 +71252,7 @@ async function run() {
       const workspace2 = project2 ? environment.within(scopedFiles, path$3.resolve(files.root, project2.directory), metadataEvents) : environment;
       activeContext = { workspaceRoot: files.root, root: project2 ? path$3.resolve(files.root, project2.directory) : files.root, project: project2 };
       const app = createApp({ workspace: workspace2, metadata: vaultMetadata, events: events2, project: project2 });
-      const context = { workspace: workspace2, environment, events: events2, metadata: vaultMetadata, app, ...activeContext, language: localizer.language, input: async () => {
-        ensure(!process.stdin.isTTY, "INPUT_REQUIRED", "--stdin needs piped input.");
-        const chunks = [];
-        for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
-        return Buffer.concat(chunks);
-      } };
+      const context = { workspace: workspace2, environment, events: events2, metadata: vaultMetadata, app, ...activeContext, language: settings2.language, input: standardInput };
       const commandId = parsed2.flags.help ? "help" : id2;
       const data = await invokeCommand(events2, {
         command: commandId,
@@ -70292,27 +71268,28 @@ async function run() {
         await registry2.activate(events2, context, skipUserPlugins ? void 0 : new WorkspacePluginState(environment, (message2) => events2.warn(message2), settingsRevision));
         await announceLayoutReady(events2);
       }, async () => {
-        const output2 = parsed2.flags.help ? await registry2.commands.get("help").run(id2 === "help" ? [] : [id2], {}, context) : await command2.run(parsed2.args.slice(1), flags, context);
-        return localizer.result(commandId, output2);
+        const output2 = parsed2.flags.help ? await registry2.commands.get("help").run(id2 === "help" ? [] : [id2], {}, context) : await runCommand(command2, ...normalizedPathInputs(command2, parsed2.args.slice(1), flags, context), context);
+        return localizer().result(commandId, output2);
       });
       result = { ok: true, data };
     }
   } catch (error2) {
     process.exitCode = error2 instanceof AppError ? error2.exitCode : 1;
-    result = { ok: false, error: localizer.error(error2) };
+    result = { ok: false, error: localizer().error(error2) };
   } finally {
     await persistMetadata?.();
     await quitInvocation(events2);
     await registry2.dispose(events2);
   }
-  let response;
-  try {
-    response = JSON.stringify({ ...result, ...activeContext ? { context: activeContext } : {}, events: selectEventOutput(events2.history, eventLevel), warnings: events2.warningRecords.map((warning2) => localizer.warning(warning2)) }, null, compact ? void 0 : 2) + "\n";
-  } catch {
-    process.exitCode = 1;
-    response = JSON.stringify({ ok: false, error: localizer.error(forgeError("INVALID_RESULT", "Command returned non-serializable data. Inspect committed events before retrying.")), ...activeContext ? { context: activeContext } : {}, events: selectEventOutput(events2.history, eventLevel), warnings: events2.warningRecords.map((warning2) => localizer.warning(warning2)) }) + "\n";
-  }
-  output(response);
+  const responseLocalizer = localizer();
+  const response = responseDocument({
+    result,
+    context: activeContext,
+    events: selectEventOutput(events2.history, settings2.events),
+    warnings: events2.warningRecords.map((warning2) => responseLocalizer.warning(warning2))
+  }, settings2.json, () => responseLocalizer.error(forgeError("INVALID_RESULT", "Command returned non-serializable data. Inspect committed events before retrying.")));
+  if (!response.serializable) process.exitCode = 1;
+  output(response.text);
 }
 const output = standardOutput();
 void run();

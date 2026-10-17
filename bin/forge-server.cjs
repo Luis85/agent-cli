@@ -52,7 +52,11 @@ const errorCatalog = {
   SECTION_NOT_FOUND: entry("input", "No heading matches the --section path, or no block has the --block id.", 'Read the note and copy a heading path from error.details.headings (segments joined with " > ") or a block id from error.details.blocks.'),
   AMBIGUOUS_SECTION: entry("input", "The --section path matches several headings, or the --block id occurs more than once.", "Add ancestor headings to the path (Parent > Heading) until one of error.details.candidates remains, or pass a candidate's line as --section-line (sectionLine in an apply plan); give each block a unique id."),
   INVALID_PLAN: entry("input", "The apply plan or write batch is invalid: it does not match the plan schema, or its steps have duplicate or overlapping paths.", "Fix the operation named in error.details.operation (see error.details.issues and the plan schema in help apply); write each path once and do not reuse a path that the same plan moves or deletes."),
-  WORKSPACE_BUSY: entry("busy", "Another Forge writer holds the workspace lock or a backlog sync lock.", 'error.details.stale says why the lock stays (a lock whose holder provably no longer runs is removed automatically with a warning). "active": the holder runs, or another running writer is removing the stale lock; wait and retry. "unknown": Forge cannot verify the holder (another host, pid namespace or boot, or an unreadable lock), so error.retryable is false; confirm in error.details.lock that it no longer runs, inspect its unfinished changes, then delete the file named in error.details.path (relative to the workspace root) and retry. "stale": the holder provably no longer runs but removing the lock failed, so error.retryable is false; confirm no Forge process uses it, then delete that file and retry.', true),
+  WORKSPACE_BUSY: { ...entry("busy", "Another Forge writer holds the workspace lock or a backlog sync lock.", 'error.details.stale says why the lock stays (a lock whose holder provably no longer runs is removed automatically with a warning). "active": the holder runs, or another running writer is removing the stale lock; wait and retry. "unknown": Forge cannot verify the holder (another host, pid namespace or boot, or an unreadable lock), so error.retryable is false; confirm in error.details.lock that it no longer runs, inspect its unfinished changes, then delete the file named in error.details.path (relative to the workspace root) and retry. "stale": the holder provably no longer runs but removing the lock failed, so error.retryable is false; confirm no Forge process uses it, then delete that file and retry.', true), variants: { detail: "stale", hints: {
+    active: "The holder runs, or another running writer is removing a stale lock: retry after error.details.retryAfterMs milliseconds, or rerun with --wait <ms> to wait for the lock.",
+    unknown: "Forge cannot verify the holder (another host, pid namespace or boot, or an unreadable lock) and never removes its lock, so waiting does not help: confirm in error.details.lock that it no longer runs, inspect its unfinished changes, then delete the file named in error.details.path (relative to the workspace root) and retry.",
+    stale: "The holder provably no longer runs, but removing its lock failed: confirm no Forge process uses it, then delete the file named in error.details.path (relative to the workspace root) and retry."
+  } } },
   DESTINATION_EXISTS: entry("conflict", "The move or rename destination already exists.", "Choose a destination that does not exist (error.details.path), or move or delete the existing file first; Forge never overwrites a destination."),
   PROTECTED_PATH: entry("input", "The path is protected from moves and deletion.", "Forge never moves or deletes .obsidian, .forge or, at workspace scope, bin (in any letter case), nor a folder holding a .git repository; it permanently deletes only folders without symlinks, node_modules or special files, so move such a folder to the trash instead. The scope root and .git paths are refused as INVALID_PATH."),
   INVALID_MOVE: entry("input", "The move or rename is not possible.", "Use a destination that differs from the source and is not inside it; rename takes a new name without slashes."),
@@ -68,11 +72,13 @@ const errorCatalog = {
   INVALID_BASE_QUERY: entry("input", "The Bases query is invalid.", "Check the view, context and expressions named in the message."),
   INVALID_BASE_EXPRESSION: entry("input", "A Bases expression cannot be parsed.", "Fix the expression named in the message."),
   BASE_EVALUATION_ERROR: entry("input", "A Bases expression failed while evaluating a file.", "Check the view, file and expression named in the message."),
+  BASE_TIMEOUT: entry("input", "A Bases query exceeded its expression evaluation time budget.", "Simplify the expressions of the .base file named in the message (avoid nested regular-expression quantifiers such as (a+)+) or narrow its filters."),
   BASE_VIEW_NOT_FOUND: entry("input", "The requested Bases view does not exist.", "Run bases inspect <file.base> and pass an existing --view."),
   BASE_CONTEXT_NOT_FOUND: entry("input", "The context file is not an indexed vault file.", "Pass an existing vault file to --context."),
   INVALID_BASE_PROPERTY_TYPES: entry("input", "The Obsidian property type registry is invalid.", "Fix .obsidian/types.json so it is a JSON object of property types."),
   UNSUPPORTED_BASE_PROPERTY_TYPE: entry("input", "An Obsidian property type is not supported.", "Use a supported type in .obsidian/types.json."),
   // Configuration, setup and projects
+  INVALID_ROOT: entry("not-found", "The workspace root does not exist or is not a directory.", "Pass --root (or set FORGE_ROOT) to the existing workspace directory that contains bin/; --root wins over FORGE_ROOT."),
   INVALID_CONFIG: entry("input", "The configuration is invalid or unreadable.", "Fix bin/config.json at the location named in the message, then run config."),
   INVALID_SETUP: entry("input", "Setup cannot complete with the current distribution files.", "Repair the bin path named in the message, then run setup again."),
   INVALID_PROJECT: entry("input", "The project metadata is invalid.", "Fix .forge/project.json in the project directory."),
@@ -259,6 +265,9 @@ async function readAsset(assets, pathname) {
     throw error;
   }
 }
+function viewToken(serverToken, viewId) {
+  return node_crypto.createHmac("sha256", serverToken).update(`forge-view:${viewId}`).digest("hex");
+}
 const csp = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
 function json(response, status, value) {
   response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
@@ -267,7 +276,7 @@ function json(response, status, value) {
 function failure(response, status, code, message) {
   json(response, status, { ok: false, error: { code, message } });
 }
-function authorized(request, token) {
+function bearer(request, token) {
   const supplied = Buffer.from(request.headers.authorization ?? "");
   const expected = Buffer.from(`Bearer ${token}`);
   return supplied.length === expected.length && node_crypto.timingSafeEqual(supplied, expected);
@@ -294,6 +303,8 @@ async function startHttpServer(options) {
     ids.add(asset.id);
   }
   const startedAt = (/* @__PURE__ */ new Date()).toISOString();
+  const viewTokens = options.assets.map((asset) => viewToken(options.token, asset.id));
+  const access = (request) => bearer(request, options.token) ? "server" : viewTokens.some((token) => bearer(request, token)) ? "view" : null;
   let port = options.port;
   const handle = async (request, response) => {
     response.setHeader("X-Content-Type-Options", "nosniff");
@@ -311,7 +322,8 @@ async function startHttpServer(options) {
       return;
     }
     if (pathname.startsWith("/api/")) {
-      if (!authorized(request, options.token)) {
+      const granted = access(request);
+      if (!granted) {
         response.setHeader("WWW-Authenticate", "Bearer");
         failure(response, 401, "SERVER_UNAUTHORIZED", "A valid server access token is required.");
         return;
@@ -325,6 +337,10 @@ async function startHttpServer(options) {
       if (request.method !== method) {
         response.setHeader("Allow", method);
         failure(response, 405, "SERVER_METHOD_NOT_ALLOWED", "The endpoint does not accept this method.");
+        return;
+      }
+      if (pathname === "/api/shutdown" && granted !== "server") {
+        failure(response, 403, "SERVER_FORBIDDEN", "Only the CLI can stop the server; run server stop.");
         return;
       }
       if (pathname === "/api/health") json(response, 200, { ok: true, data: { schemaVersion: 1, instanceId: options.instanceId, pid: process.pid, startedAt } });
@@ -390,6 +406,16 @@ async function startHttpServer(options) {
     })
   };
 }
+const nativeFormats = {
+  markdown: ["md"],
+  canvas: ["canvas"],
+  base: ["base"],
+  image: ["avif", "bmp", "gif", "jpeg", "jpg", "png", "svg", "webp"],
+  audio: ["flac", "m4a", "mp3", "ogg", "wav", "webm", "3gp"],
+  video: ["mkv", "mov", "mp4", "ogv", "webm"],
+  pdf: ["pdf"]
+};
+[...Object.keys(nativeFormats), "text", "attachment"];
 const missing = (error) => error.code === "ENOENT";
 const invalid = () => forgeError("SERVER_STATE_INVALID", "Server state is unsafe or invalid. Inspect .forge/server.json and its permissions.");
 async function stateDirectory(root, create = false) {

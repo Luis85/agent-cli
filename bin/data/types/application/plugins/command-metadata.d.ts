@@ -20,6 +20,7 @@ import { type JsonSchema } from '../../domain/schema/json-schema.ts';
  *   idempotent, and so is one that requires `--if-match`: the repeat fails on the changed revision. A mode whose
  *   `--if-match` is optional declares `idempotent` itself when a repeat is refused or changes nothing.
  * - `output`: the JSON Schema of `data` in a successful response, on the command or, overriding it, on an action.
+ * - `examples`: one to three complete invocations that start with the command id, which `help <command>` shows.
  */
 export type CommandScope = 'workspace' | 'project';
 declare const unknownActionCodes: readonly ["UNKNOWN_GENERATOR", "INVALID_ARGUMENT"];
@@ -28,7 +29,10 @@ export type CommandFlags = Record<string, string | boolean>;
 /**
  * `schema` describes the JSON document a string option or argument holds or names, such as `apply`'s plan; `help`
  * and `schema` publish it with the option or argument. `list` makes a string option with an `enum` a comma-separated
- * list of its values (`read --parts body`); its input schema is a `pattern` instead of the `enum`.
+ * list of its values (`read --parts body`); its input schema is a `pattern` instead of the `enum`. `path` marks a
+ * string option or argument that names a file or folder in the command scope: the host accepts `\` separators, a
+ * leading `./` and an absolute path inside the scope root, passes the command the relative POSIX path and refuses
+ * any other invalid path with INVALID_PATH naming the option or argument.
  */
 export interface CommandOption {
     type: 'string' | 'boolean';
@@ -38,6 +42,7 @@ export interface CommandOption {
     default?: string | boolean;
     required?: boolean;
     schema?: JsonSchema;
+    path?: boolean;
 }
 export interface CommandArgument {
     name: string;
@@ -46,6 +51,7 @@ export interface CommandArgument {
     enum?: readonly string[];
     variadic?: boolean;
     schema?: JsonSchema;
+    path?: boolean;
 }
 export interface CommandMode {
     scope?: CommandScope;
@@ -76,6 +82,8 @@ export interface CommandMetadata extends CommandMode {
     output?: JsonSchema;
     /** Failure codes the command reports itself, beyond the input and routing codes every command can raise. */
     errors?: readonly string[];
+    /** One to three invocations after `forge`, each starting with the command id; examples are not translated. */
+    examples?: readonly string[];
 }
 export interface ResolvedMode {
     action?: string;
@@ -95,7 +103,10 @@ export declare function commandMode(command: CommandMetadata, args: readonly str
 export declare function commandOptions(command: CommandMetadata, args: readonly string[]): Record<string, CommandOption>;
 /** Whether parsing must resolve the action first: some action declares its own options, or unknown actions fail. */
 export declare function hasActionOptions(command: CommandMetadata): boolean;
-/** Fails with the command's `unknownAction` code when the first argument (not an option) names no declared action. */
+/**
+ * Fails with the command's `unknownAction` code when the first argument (not an option) names no declared action.
+ * The message lists the declared actions, which `details.allowed` holds with the closest in `details.suggestions`.
+ */
 export declare function ensureKnownAction(command: CommandMetadata, args: readonly string[]): void;
 /** Option types for the argument parser. */
 export declare function optionTypes(options: CommandMetadata['options']): Record<string, 'string' | 'boolean'>;

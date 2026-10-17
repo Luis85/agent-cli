@@ -35,12 +35,12 @@ type WorkspaceEvents = {
  * does not update links and `trash`/`delete` do not check them; use `app.fileManager` for that.
  */
 export interface VaultFacade {
-    /** UTF-8 text of a file. */
+    /** UTF-8 text of a file; other bytes are INVALID_ENCODING, so text never silently loses bytes. */
     read(path: string): Promise<string>;
     /** Creates a new file; an existing file is a CONFLICT. */
     create(path: string, data: string | Uint8Array): Promise<FileChange>;
     modify(path: string, data: string | Uint8Array, options?: Guard): Promise<FileChange>;
-    /** Atomic read-modify-write of UTF-8 text; returns the new text. */
+    /** Atomic read-modify-write of UTF-8 text; returns the new text. Bytes that are not text fail with INVALID_ENCODING. */
     process(path: string, fn: (data: string) => string | Promise<string>, options?: Guard): Promise<string>;
     append(path: string, data: string, options?: Guard): Promise<FileChange>;
     trash(path: string, options?: Guard): ReturnType<FileManager['delete']>;

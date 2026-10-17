@@ -29,10 +29,22 @@ Plugins can register their own codes with a category, summary, hint and retryabi
 | `external` | 1 | Claude Code could not run or failed |
 | `input` | 2 | Invalid arguments, definitions or edit requests |
 | `conflict` | 2 | The target exists or changed since it was read |
-| `not-found` | 3 | A file, project or selected project is missing |
+| `not-found` | 3 | A file, project, selected project or the workspace root is missing |
 | `busy` | 4 | Another Forge writer holds the workspace lock, or another command holds the server lifecycle lock |
 | `drift` | 5 | Generated UI, data-source or workflow output differs from its sources |
 | `interrupted` | 130 | Claude Code was interrupted by SIGINT; SIGTERM reports 143 |
+
+## Recovering commands and arguments
+
+Each failure's `hint` names the invoked command where the catalog hint says `help <command>`, for example `run help read for usage`.
+
+**`UNKNOWN_COMMAND`** (exit 2): `details` is `{command, suggestions}`. `suggestions` lists registered commands spelled alike or doing what the id names in shells and other CLIs (`ls` → `list`, `cat` → `read`, `grep` and `find` → `search`, `mv` → `move`, `rm` → `delete`, `cp` → `read` then `create`, `version` → `--version`), and the hint starts with `Did you mean …?`.
+
+**`UNKNOWN_OPTION`** (exit 2): the message names the option and the command, and `details` is `{option, command, suggestions}`; `command` is absent for an option before the command. `suggestions` lists only options the invocation accepts: the command's own, the selected action's and the global options that may follow a command, never `--version` (`--preview` → `--dry-run`). `--force`, `-f`, `--yes`, `-y` and `--overwrite` suggest `--if-match` where the command takes it, and the hint explains the revision guard.
+
+**`UNKNOWN_GENERATOR`**, and **`INVALID_ARGUMENT`** for an unknown action of a command that declares its actions (`server`, `vault`, `webview`, `browser`, `update`): the message lists the declared generators or actions, and `details` is `{generator|action, allowed, suggestions}`.
+
+**`INVALID_ARGUMENT`** for a wrong number of positional arguments: the message says how many the command expects and received, names the missing arguments (`Missing <path>.`) and ends with the usage of the command or the selected action. `details` is `{minimum, maximum, received}`, plus `missing` with the missing argument names of a command without actions.
 
 ## Recovering edits and guarded writes
 
@@ -57,7 +69,7 @@ Plugins can register their own codes with a category, summary, hint and retryabi
 
 `currentRevision` equals what a fresh `read` returns. Do not resend the old request with that revision unchanged: read the file, reapply the change to its current content, then retry through the command's revision guard: `--if-match` for file commands, or a reviewed `--plan-out` plan and `--revisions-from` for generation. `create` has no guard and only adds new paths; replace an existing file with `write --if-match`. `write`, `edit`, `properties`, `patch`, `create` over an existing file and native Claude settings updates report these details; an `apply` plan reports them for the operation in `details.operation`, both when an operation's `ifMatch` is stale and when a file changed between planning and committing. Generation commands such as `make ui` keep the details and replace the message with planning guidance.
 
-**`WORKSPACE_BUSY`** (exit 4, retryable while the holder runs): see the [write contract](cli.md#write-contract) for `details.lock`, `details.stale` and `details.path`. A lock whose holder provably no longer runs is broken automatically with a warning, so this error means the holder runs or another running writer is removing the stale lock (`stale: "active"`, `retryable: true`), the holder cannot be verified (`stale: "unknown"`, `retryable: false`: check the holder, then delete the file in `details.path`), or the holder provably no longer runs but this writer's own removal failed (`stale: "stale"`, `retryable: false`: confirm no Forge process uses it, then delete the file in `details.path`). A live `backlog sync` holds `.forge/sync/<connection>.lock` at the workspace root for its whole run, whichever scope syncs; the message names the lock file, and `details.lock.command` is `backlog sync`.
+**`WORKSPACE_BUSY`** (exit 4, retryable while the holder runs): see the [write contract](cli.md#write-contract) for `details.lock`, `details.stale`, `details.path`, `details.retryAfterMs` and, after `--wait <ms>`, `details.waitedMs`. Its `hint` is chosen by `details.stale`, so it names the next step for that lock state; the catalog row below gives the hint for an occurrence without it. A lock whose holder provably no longer runs is broken automatically with a warning, so this error means the holder runs or another running writer is removing the stale lock (`stale: "active"`, `retryable: true`), the holder cannot be verified (`stale: "unknown"`, `retryable: false`: check the holder, then delete the file in `details.path`), or the holder provably no longer runs but this writer's own removal failed (`stale: "stale"`, `retryable: false`: confirm no Forge process uses it, then delete the file in `details.path`). A live `backlog sync` holds `.forge/sync/<connection>.lock` at the workspace root for its whole run, whichever scope syncs; the message names the lock file, and `details.lock.command` is `backlog sync`.
 
 ## Recovering moves and deletions
 
@@ -118,10 +130,12 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 | `INVALID_BASE_QUERY` | 2 | input | no | The Bases query is invalid. | Check the view, context and expressions named in the message. |
 | `INVALID_BASE_EXPRESSION` | 2 | input | no | A Bases expression cannot be parsed. | Fix the expression named in the message. |
 | `BASE_EVALUATION_ERROR` | 2 | input | no | A Bases expression failed while evaluating a file. | Check the view, file and expression named in the message. |
+| `BASE_TIMEOUT` | 2 | input | no | A Bases query exceeded its 30-second expression evaluation budget over all files (`details.path`, `details.timeoutMs`); no partial result is returned. | Simplify the expressions of the .base file named in the message (avoid nested regular-expression quantifiers such as (a+)+) or narrow its filters. |
 | `BASE_VIEW_NOT_FOUND` | 2 | input | no | The requested Bases view does not exist. | Run `bases inspect <file.base>` and pass an existing `--view`. |
 | `BASE_CONTEXT_NOT_FOUND` | 2 | input | no | The context file is not an indexed vault file. | Pass an existing vault file to `--context`. |
 | `INVALID_BASE_PROPERTY_TYPES` | 2 | input | no | The Obsidian property type registry is invalid. | Fix `.obsidian/types.json` so it is a JSON object of property types. |
 | `UNSUPPORTED_BASE_PROPERTY_TYPE` | 2 | input | no | An Obsidian property type is not supported. | Use a supported type in `.obsidian/types.json`. |
+| `INVALID_ROOT` | 3 | not-found | no | The workspace root does not exist or is not a directory. | Pass --root (or set FORGE_ROOT) to the existing workspace directory that contains bin/; --root wins over FORGE_ROOT. |
 | `INVALID_CONFIG` | 2 | input | no | The configuration is invalid or unreadable. | Fix `bin/config.json` at the location named in the message, then run config. |
 | `INVALID_SETUP` | 2 | input | no | Setup cannot complete with the current distribution files. | Repair the bin path named in the message, then run setup again. |
 | `INVALID_PROJECT` | 2 | input | no | The project metadata is invalid. | Fix `.forge/project.json` in the project directory. |
@@ -210,6 +224,7 @@ Bundled [core plugins](plugins.md#core-and-user-plugins) register their own code
 | --- | --- | --- | --- | --- | --- |
 | `WEBVIEW_INVALID` | `webviews` | 2 | input | no | The built view fails manifest or static-asset validation, or changes an installed asset between a file and a directory. Inspect `dist` and its matching project-ID manifest; use regular supported assets and a new path for file/directory changes; see [webviews](webviews.md) |
 | `WEBVIEW_BUILD_REQUIRED` | `webviews` | 2 | input | no | The selected webview project has no build output. Run `npm run build` in that project, then `webview inspect` before publication |
+| `WEBVIEW_PROJECT_REQUIRED` | `webviews` | 2 | input | no | The selected or named project is not a webview project; `details` is `{project, type}`. Pass `--project <webview-id>`, or run `project open <webview-id>`; `project list` shows each project's type |
 | `WEBVIEW_DRIFT` | `webviews` | 5 | drift | no | `webview publish --check` found differences between `dist` and the installed view. Inspect the comparison and publish the reviewed build; replacing changed installed output requires its folder revision with `--if-match` |
 | `BROWSER_UNAVAILABLE` | `browser` | 1 | runtime | no | The browser runtime or executable is unavailable. Run `browser status`, then `browser install`, or supply an installed Chromium executable with `--browser-executable`; see [browser](browser.md) |
 | `BROWSER_CAPTURE_FAILED` | `browser` | 1 | runtime | no | The webpage could not be captured. Check the URL, browser availability, readiness selector and timeout; no screenshot was written |
@@ -235,6 +250,6 @@ Bundled [core plugins](plugins.md#core-and-user-plugins) register their own code
 | `SYNC_CONFLICT` | `backlog` | 2 | conflict | yes | The remote item changed between reading and writing it (its revision moved), or its links changed on the other end while an update changed them (then its `parent` and `dependencies` are reported as conflicts by the next sync wherever the sides differ). `backlog sync resolve` fails with it; `backlog sync` reports it per note in `failed` and continues. Run `backlog sync status` and repeat; see [sync](backlog.md#sync-with-external-trackers) |
 | `SYNC_INTERRUPTED` | `backlog` | 130 | interrupted | no | SIGINT or SIGTERM stopped a live `backlog sync` at a safe point, before its next remote write or vault commit (exit 130, or 143 for SIGTERM); `details.signal` names it. Its locks are released and every remote item it created is recorded in the sync state. Run `backlog sync` again to finish; a second signal terminates at once, and the next sync then recovers the lock |
 | `CONNECTOR_NOT_FOUND` | `connector` | 3 | not-found | no | No connection with that id in `plugins.settings.connector.connections` (`details.connections` lists them), or its platform has no enabled connector (`details.platforms`). See [connectors](connectors.md) |
-| `CONNECTION_INVALID` | `connector` | 2 | input | no | A connection profile fails its platform schema or names unknown mapping fields; `details.issues` names each path |
+| `CONNECTION_INVALID` | `connector` | 2 | input | no | A connection profile fails its platform schema or names unknown mapping fields, or its organization host is not trusted (`details.host`; list it in `FORGE_CONNECTOR_ALLOWED_HOSTS`), in which case no request was sent; `details.issues` names each path |
 | `CONNECTOR_AUTH_FAILED` | `connector` | 1 | external | no | The token variable named in `details.tokenEnv` is unset, or the service refused it (`details.status` 401, 403, 203 or a sign-in redirect). Set the variable to a valid token; the token itself never appears in output. A sync sends no further request after the refusal; items it created before are already recorded in the sync state, so the next sync does not create them again |
 | `CONNECTOR_REQUEST_FAILED` | `connector` | 1 | external | yes | A request failed: `details.status` (null when the service was unreachable or timed out), `method` and `url`; `details.reason: "stale-revision"` marks a revision guard, `"relations-changed"` an update that was applied but whose link changes could not be confirmed. Throttled requests (429, 503) were already retried |
