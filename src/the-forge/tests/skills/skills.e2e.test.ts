@@ -45,7 +45,7 @@ describe('the skills core plugin', () => {
       expect(ids(schema.commands)).not.toContain('skills');
       // Skills contributed by other plugins stay registered for setup.
       expect(schema.skills).toEqual(['forge-agents', 'forge-backlog', 'forge-webviews', 'forge-browser']);
-      expect(ids((await cli(['help'])).body.data.commands)).not.toContain('skills');
+      expect(Object.keys((await cli(['help'])).body.data.commands)).not.toContain('skills');
       expect((await cli(['help', 'skills'])).body.error.code).toBe('UNKNOWN_COMMAND');
       expect((await cli(['skills'])).body.error.code).toBe('UNKNOWN_COMMAND');
       expect((await cli(['plugins'])).body.data.plugins).toContainEqual(expect.objectContaining({ id: 'skills', core: true, state: 'disabled', contributions: null }));
@@ -54,7 +54,7 @@ describe('the skills core plugin', () => {
       expect(help.status).toBe(0);
       expect(help.body.warnings).toEqual([expect.stringContaining('ignored quality')]);
     } finally { await rm(join(fixture.project, 'bin/config.json')); }
-    expect(ids((await cli(['help'])).body.data.commands)).toContain('skills');
+    expect(Object.keys((await cli(['help'])).body.data.commands)).toContain('skills');
     expect((await cli(['--no-plugins', 'skills'])).body.data.skills).toEqual(['forge-workflow', 'forge-vault', 'forge-development', 'forge-agents', 'forge-backlog', 'forge-webviews', 'forge-browser']);
   });
 

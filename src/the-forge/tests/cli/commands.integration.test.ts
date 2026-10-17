@@ -61,12 +61,17 @@ describe('extracted command boundaries', () => {
       actions: { show: { description: 'Show the result.', output: { type: 'string' } } }, run: () => null,
     });
     const help = registry.commands.get('help')!;
-    const catalog = await help.run([], {}, context) as { commands: Array<Record<string, unknown>> };
-    expect(catalog).not.toHaveProperty('envelope');
-    expect(catalog.commands.find(command => command.id === 'custom.inspect')).toEqual({
-      id: 'custom.inspect', description: 'Inspect a result', usage: 'custom.inspect [show]',
-      annotations: { scope: 'project', discovery: false, mutating: false, readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-    });
+    // The entry index lists each command's id and description, the mutating ids, global flags and where to go next.
+    const catalog = await help.run([], {}, context) as { commands: Record<string, string>; mutating: string[]; globalOptions: string[]; next: string };
+    expect(Object.keys(catalog)).toEqual(['name', 'version', 'apiVersion', 'commands', 'mutating', 'globalOptions', 'next']);
+    expect(catalog.commands['custom.inspect']).toBe('Inspect a result');
+    expect(Object.keys(catalog.commands)).toEqual([...registry.commands.keys()]);
+    expect(catalog.mutating).toContain('write');
+    expect(catalog.mutating).not.toContain('custom.inspect');
+    expect(catalog.mutating).not.toContain('read');
+    expect(catalog.globalOptions).toContain('--dry-run');
+    expect(catalog.next).toContain('help <command>');
+    expect(JSON.stringify(catalog).length).toBeLessThan(6000);
     const targeted = await help.run(['custom.inspect'], {}, context);
     expect(targeted).toMatchObject({
       args: [{ name: 'action' }], options: { input: { schema: { type: 'object' } } }, errors: [],

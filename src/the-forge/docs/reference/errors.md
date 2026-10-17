@@ -34,6 +34,18 @@ Plugins can register their own codes with a category, summary, hint and retryabi
 | `drift` | 5 | Generated UI, data-source or workflow output differs from its sources |
 | `interrupted` | 130 | Claude Code was interrupted by SIGINT; SIGTERM reports 143 |
 
+## Recovering commands and arguments
+
+Each failure's `hint` names the invoked command where the catalog hint says `help <command>`, for example `run help read for usage`.
+
+**`UNKNOWN_COMMAND`** (exit 2): `details` is `{command, suggestions}`. `suggestions` lists registered commands spelled alike or doing what the id names in shells and other CLIs (`ls` → `list`, `cat` → `read`, `grep` and `find` → `search`, `mv` → `move`, `rm` → `delete`, `cp` → `read` then `create`, `version` → `--version`), and the hint starts with `Did you mean …?`.
+
+**`UNKNOWN_OPTION`** (exit 2): the message names the option and the command, and `details` is `{option, command, suggestions}`; `command` is absent for an option before the command. `suggestions` lists only options the invocation accepts: the command's own, the selected action's and the global options that may follow a command, never `--version` (`--preview` → `--dry-run`). `--force`, `-f`, `--yes`, `-y` and `--overwrite` suggest `--if-match` where the command takes it, and the hint explains the revision guard.
+
+**`UNKNOWN_GENERATOR`**, and **`INVALID_ARGUMENT`** for an unknown action of a command that declares its actions (`server`, `vault`, `webview`, `browser`, `update`): the message lists the declared generators or actions, and `details` is `{generator|action, allowed, suggestions}`.
+
+**`INVALID_ARGUMENT`** for a wrong number of positional arguments: the message says how many the command expects and received, names the missing arguments (`Missing <path>.`) and ends with the usage of the command or the selected action. `details` is `{minimum, maximum, received}`, plus `missing` with the missing argument names of a command without actions.
+
 ## Recovering edits and guarded writes
 
 **`NO_MATCH`** (exit 2): the `edit --find` text does not occur in the file. `details` is `{find, matches: 0}`. Read the file again, because it may have changed, and copy the exact current text, including whitespace and line endings. Nothing was written.
@@ -210,6 +222,7 @@ Bundled [core plugins](plugins.md#core-and-user-plugins) register their own code
 | --- | --- | --- | --- | --- | --- |
 | `WEBVIEW_INVALID` | `webviews` | 2 | input | no | The built view fails manifest or static-asset validation, or changes an installed asset between a file and a directory. Inspect `dist` and its matching project-ID manifest; use regular supported assets and a new path for file/directory changes; see [webviews](webviews.md) |
 | `WEBVIEW_BUILD_REQUIRED` | `webviews` | 2 | input | no | The selected webview project has no build output. Run `npm run build` in that project, then `webview inspect` before publication |
+| `WEBVIEW_PROJECT_REQUIRED` | `webviews` | 2 | input | no | The selected or named project is not a webview project; `details` is `{project, type}`. Pass `--project <webview-id>`, or run `project open <webview-id>`; `project list` shows each project's type |
 | `WEBVIEW_DRIFT` | `webviews` | 5 | drift | no | `webview publish --check` found differences between `dist` and the installed view. Inspect the comparison and publish the reviewed build; replacing changed installed output requires its folder revision with `--if-match` |
 | `BROWSER_UNAVAILABLE` | `browser` | 1 | runtime | no | The browser runtime or executable is unavailable. Run `browser status`, then `browser install`, or supply an installed Chromium executable with `--browser-executable`; see [browser](browser.md) |
 | `BROWSER_CAPTURE_FAILED` | `browser` | 1 | runtime | no | The webpage could not be captured. Check the URL, browser availability, readiness selector and timeout; no screenshot was written |

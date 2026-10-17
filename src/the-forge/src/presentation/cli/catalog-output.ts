@@ -36,7 +36,7 @@ const annotations: JsonSchema = {
 const commandEntry: JsonSchema = {
   type: 'object', required: ['id', 'description', 'usage', 'options', 'args', 'annotations', 'errors', 'inputSchema'],
   properties: {
-    id: text, description: text, usage: text, options, args: { type: 'array', items: argumentSchema }, annotations,
+    id: text, description: text, usage: text, examples: { ...texts, description: 'Invocations after forge that start with the command id.' }, options, args: { type: 'array', items: argumentSchema }, annotations,
     errors: { ...texts, description: 'Codes the command reports itself, besides commonErrors; a command with a project option also lists the codes of naming a project.' },
     inputSchema: schemaDocument, outputSchema: schemaDocument,
   },

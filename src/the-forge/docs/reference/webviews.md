@@ -71,7 +71,8 @@ Local fixtures are the starter's default. Optional real workspace inspection use
 | Code | Recovery |
 | --- | --- |
 | `PROJECT_REQUIRED` | Select a valid managed project or pass the command's `--project <id>` option. |
-| `INVALID_ARGUMENT` | Use a `webview` project other than reserved `admin`, valid options and a SHA-256 revision when required. |
+| `WEBVIEW_PROJECT_REQUIRED` | The selected or named project has another type; `details` is `{project, type}`. Pass `--project <webview-id>` or run `project open <webview-id>`; `project list` shows each project's type. |
+| `INVALID_ARGUMENT` | Use a project other than reserved `admin`, valid options and a SHA-256 revision when required. |
 | `WEBVIEW_BUILD_REQUIRED` | Build the selected project, then inspect and retry publication. |
 | `WEBVIEW_INVALID` | Correct the reported project, manifest or asset validation problem. |
 | `WEBVIEW_DRIFT` | Inspect the comparison, rebuild if needed, and review a guarded publication; `--check` wrote nothing. |

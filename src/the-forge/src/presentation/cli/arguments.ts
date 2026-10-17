@@ -2,6 +2,7 @@ import { Command, CommanderError, Option } from 'commander';
 import { forgeError, ensure } from '../../domain/shared/errors.ts';
 import { listOptionItems, option, type CommandOption } from '../../application/plugins/command-metadata.ts';
 import { globalOptions } from '../../application/plugins/command-input.ts';
+import { unknownOption } from './guidance.ts';
 /** The global options as help and schema describe them; routing options must precede the command. */
 export const globalOptionMetadata = {
   root: option.string('Workspace root to load bin/config.json from; must precede the command.'),
@@ -65,7 +66,7 @@ export function declaredValues(options: Readonly<Record<string, CommandOption>>,
 /** Commander owns tokenization; normalize its options and errors into the agent protocol. */
 export function parseArguments(tokens: string[], options: Record<string, 'string' | 'boolean'>, allowUnknown = false): ParsedArguments {
   const command = new Command('forge').helpOption(false).allowUnknownOption(allowUnknown).allowExcessArguments(true)
-    .exitOverride().configureOutput({ writeOut: () => {}, writeErr: () => {} });
+    .exitOverride().configureOutput({ writeOut: () => {}, writeErr: () => {} }).showSuggestionAfterError(false);
   const seen = new Set<string>();
   const descriptors: Array<{ key: string; option: Option }> = [];
   for (const [key, type] of Object.entries(options)) {
@@ -84,7 +85,9 @@ export function parseArguments(tokens: string[], options: Record<string, 'string
   try { command.parse(tokens, { from: 'user' }); }
   catch (error) {
     if (!(error instanceof CommanderError)) throw error;
-    const code = error.code === 'commander.unknownOption' ? 'UNKNOWN_OPTION' : error.code === 'commander.optionMissingArgument' ? 'MISSING_ARGUMENT' : 'INVALID_ARGUMENT';
+    // Commander would suggest any parsed option, --version after a command included; suggestions follow the command.
+    if (error.code === 'commander.unknownOption') throw unknownOption(error.message, Object.keys(options));
+    const code = error.code === 'commander.optionMissingArgument' ? 'MISSING_ARGUMENT' : 'INVALID_ARGUMENT';
     throw forgeError(code, error.message.replace(/^error: /, ''));
   }
   const flags: Record<string, string | boolean> = Object.create(null) as Record<string, string | boolean>;

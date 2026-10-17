@@ -7,6 +7,7 @@ import { statOutput } from './stat-output.ts';
 export function statCommand(): Command {
   return {
     id: 'stat', description: 'Inspect a file or folder revision with size or descendant counts, without returning content.',
+    examples: ['stat notes/idea.md', 'stat notes'],
     usage: 'stat <path> [--project id]', scope: 'project', projectOption: 'project', discovery: false, mutating: false,
     args: [{ name: 'path', description: 'Vault path relative to the command scope.', required: true, path: true }],
     options: { project: option.string('Use this project instead of the selected project.') },

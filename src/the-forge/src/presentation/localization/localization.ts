@@ -5,6 +5,7 @@ import { germanKernelMessages } from './messages.ts';
 import { renderWarning } from '../../domain/shared/kernel-messages.ts';
 import type { CommandArgument, CommandOption } from '../../application/plugins/command-metadata.ts';
 import { germanErrors, germanHintVariant } from './errors.ts';
+import { guidedHint } from './hints.ts';
 import { errorDefinition, type ErrorCode } from '../../domain/shared/error-catalog.ts';
 import type { Language, PluginCatalog } from '../../application/plugins/plugin-catalog.ts';
 
@@ -24,7 +25,8 @@ type Options = Readonly<Record<string, CommandOption>>;
  * catalogs come first; strings and error entries contributed by plugins fill in their own ids and codes.
  */
 export class Localizer {
-  constructor(readonly language: Language = 'en', private readonly plugins?: PluginCatalog) {}
+  /** `invoked` is the invoked command id, which hints name in place of their `help <command>` placeholder. */
+  constructor(readonly language: Language = 'en', private readonly plugins?: PluginCatalog, private readonly invoked?: string) {}
 
   private german(kind: 'commands' | 'generators' | 'events', id: string): string | undefined {
     // Every generator comes from a plugin, so only commands and events have kernel catalogs.
@@ -119,6 +121,7 @@ export class Localizer {
   result(command: string, data: unknown): unknown {
     if (this.language === 'en' || !isRecord(data)) return data;
     if (command === 'schema' && Array.isArray(data.errors)) return { ...data, eventOutput: this.eventOutput(data.eventOutput), ...this.globalOptions(data), generators: this.catalogued('generators', data.generators), errors: this.errors(data.errors) };
+    if (command === 'help' && typeof data.next === 'string') return { ...data, next: germanGuidance.helpNext };
     if (['help', 'schema', 'make'].includes(command) && Array.isArray(data.generators)) return { ...data, ...(data.eventOutput === undefined ? {} : { eventOutput: this.eventOutput(data.eventOutput) }), ...this.globalOptions(data), generators: this.catalogued('generators', data.generators) };
     if (command === 'help' && isRecord(data.globalOptions)) return { ...data, ...this.globalOptions(data) };
     if (command === 'config' && Array.isArray(data.sections)) return { ...data, sections: data.sections.map((section: unknown) => isRecord(section) ? { ...section, schema: this.schema(section.schema) } : section) };
@@ -152,9 +155,9 @@ export class Localizer {
     // A built-in code may refine its hint by one detail of the occurrence, such as the lock state of WORKSPACE_BUSY.
     const variant = builtIn?.variants === undefined ? undefined : details?.[builtIn.variants.detail];
     const refined = typeof variant === 'string' && Object.hasOwn(builtIn!.variants!.hints, variant) ? variant : undefined;
-    if (!german) return { code, message: diagnostic, hint: refined ? builtIn!.variants!.hints[refined]! : definition.hint, retryable, ...(details ? { details } : {}) };
+    if (!german) return { code, message: diagnostic, hint: guidedHint(refined ? builtIn!.variants!.hints[refined]! : definition.hint, code, details, 'en', this.invoked), retryable, ...(details ? { details } : {}) };
     const germanHint = refined === undefined ? undefined : germanHintVariant(code as ErrorCode, refined);
     // A namespaced diagnostic preserves plugin/application details, including their own diagnostic key.
-    return { code, message: german.summary, hint: germanHint ?? german.hint, retryable, details: { ...details, localization: { originalMessage: diagnostic, ...(details?.localization !== undefined ? { originalDetails: details.localization } : {}) } } };
+    return { code, message: german.summary, hint: guidedHint(germanHint ?? german.hint, code, details, 'de', this.invoked), retryable, details: { ...details, localization: { originalMessage: diagnostic, ...(details?.localization !== undefined ? { originalDetails: details.localization } : {}) } } };
   }
 }

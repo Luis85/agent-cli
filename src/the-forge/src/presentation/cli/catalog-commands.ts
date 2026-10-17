@@ -18,6 +18,8 @@ import { schemaOutput } from './catalog-output.ts';
 
 const discovery = { scope: 'workspace', discovery: true, mutating: false } as const;
 const commandArgument = [{ name: 'command', description: 'A command id from the catalog.' }];
+/** Where the entry index of `help` points next; the German text is `germanGuidance.helpNext`. */
+const helpNext = 'Run help <command> for its usage, options, arguments, errors and examples, or schema <command> for its JSON Schemas. make lists generators; skills lists agent skills.';
 /**
  * Input, routing and runtime codes any command can report besides its declared `errors`; a project-scoped command
  * reads the saved project selection, which fails with INVALID_PROJECT_CONTEXT or STALE_PROJECT_CONTEXT.
@@ -29,7 +31,7 @@ export const commonErrors = [
 
 /** One command as help and schema describe it, generated from its metadata. */
 function describe(command: Command, includeOutput = true) {
-  const { id, description, usage, options, args, output } = command;
+  const { id, description, usage, options, args, output, examples } = command;
   const annotations = commandAnnotations(command);
   if (!includeOutput && annotations.actions) {
     annotations.actions = Object.fromEntries(Object.entries(annotations.actions).map(([id, action]) => {
@@ -38,7 +40,7 @@ function describe(command: Command, includeOutput = true) {
     }));
   }
   return {
-    id, description, usage, options: options ?? {}, args: args ?? [], annotations,
+    id, description, usage, ...(examples ? { examples: [...examples] } : {}), options: options ?? {}, args: args ?? [], annotations,
     errors: declaredErrors(command), ...(includeOutput && output ? { outputSchema: outputDocument(id, output) } : {}),
   };
 }
@@ -56,15 +58,17 @@ export function catalogCommands(registry: Registry): Command[] {
   return [
     { id: 'help', description: 'Discover commands and usage without prompts.', usage: 'help [command]', ...discovery, args: commandArgument, errors: ['UNKNOWN_COMMAND'], run(args) {
       arity(args, 0, 1);
-      // The entry catalog helps an agent choose its next command without consuming every command's schemas.
-      if (!args[0]) return {
-        ...identity, globalOptions: globalOptionMetadata,
-        commands: [...registry.commands.values()].map(command => {
-          const { actions: _actions, ...annotations } = commandAnnotations(command);
-          return { id: command.id, description: command.description, usage: command.usage, annotations };
-        }),
-        generators: generatorCatalog(registry), skills: [...registry.skills.keys()],
-      };
+      // The entry index helps an agent choose its next command in a few kilobytes; help <command> has the details.
+      if (!args[0]) {
+        const commands = [...registry.commands.values()];
+        return {
+          name: identity.name, version: identity.version, apiVersion: identity.apiVersion,
+          commands: Object.fromEntries(commands.map(command => [command.id, command.description])),
+          mutating: commands.filter(command => commandAnnotations(command).mutating).map(command => command.id),
+          globalOptions: Object.keys(globalOptionMetadata).map(key => `--${key}`),
+          next: helpNext,
+        };
+      }
       const command = registry.resolveCommand(args[0]);
       return { ...describe(command, false), globalOptions: globalOptionMetadata };
     } },

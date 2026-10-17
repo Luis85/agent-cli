@@ -120,7 +120,7 @@ describe('Claude runtime command plans', () => {
     ]);
     expect(buildClaudeRuntimeArgs('plugins', ['eval'], {})).toEqual(['plugin', 'eval']);
     expect(buildClaudeRuntimeArgs('plugins', ['eval', 'init', 'smoke'], { bare: true, 'eval-dir': 'checks' })).toEqual(['plugin', 'eval', 'init', 'smoke', '--bare', '--eval-dir', 'checks']);
-    expect(() => buildClaudeRuntimeArgs('plugins', ['eval', 'init'], {})).toThrow(/positional arguments/);
+    expect(() => buildClaudeRuntimeArgs('plugins', ['eval', 'init'], {})).toThrow(/positional argument/);
     expect(() => buildClaudeRuntimeArgs('plugins', ['eval', 'init', 'smoke'], { runs: '2' })).toThrow(/--runs is not supported/);
     expect(() => buildClaudeRuntimeArgs('plugins', ['eval', 'init', 'smoke'], { interactive: true })).toThrow(/requires a terminal/);
     expect(() => buildClaudeRuntimeArgs('plugins', ['eval', 'init', 'smoke'], { bare: true, interactive: true })).toThrow(/requires a terminal/);
@@ -171,8 +171,8 @@ describe('Claude runtime command plans', () => {
 
   it('rejects unrecognized commands, excess operands and options used with the wrong action', () => {
     expect(() => buildClaudeRuntimeArgs('plugins', ['constructor'], {})).toThrow(/Unknown Claude/);
-    expect(() => buildClaudeRuntimeArgs('plugins', ['list', 'name'], {})).toThrow(/positional arguments/);
-    expect(() => buildClaudeRuntimeArgs('plugins', ['install'], {})).toThrow(/positional arguments/);
+    expect(() => buildClaudeRuntimeArgs('plugins', ['list', 'name'], {})).toThrow(/positional argument/);
+    expect(() => buildClaudeRuntimeArgs('plugins', ['install'], {})).toThrow(/positional argument/);
     expect(() => buildClaudeRuntimeArgs('plugins', ['list'], { scope: 'project' })).toThrow(/--scope is not supported/);
     expect(() => buildClaudeRuntimeArgs('plugins', ['install', 'name'], { strict: true })).toThrow(/--strict is not supported/);
     expect(() => buildClaudeRuntimeArgs('plugins', ['validate', '.'], { available: true })).toThrow(/--available is not supported/);

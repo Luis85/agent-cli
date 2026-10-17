@@ -30,6 +30,7 @@ const output: JsonSchema = {
 export function searchCommand(service: (context: CommandContext) => (query: SearchQuery, page: PageRequest) => Promise<SearchResult>): Command {
   return {
     id: 'search', description: 'Search text files for a literal or regular-expression pattern and return hits with line, column, snippet and revision.',
+    examples: ['search "open question" --path "notes/**"', 'search "^- \\[ \\]" --regex --kind markdown'],
     usage: 'search <pattern> [--regex] [--case-sensitive] [--in body|frontmatter|all] [--skip-code] [--kind markdown|canvas|base|text] [--path glob] [--exclude glob] [--tag tag] [--property key[=value]] [--context lines] [--limit count] [--cursor token]',
     scope: 'project', discovery: false, mutating: false,
     args: [{ name: 'pattern', description: 'Literal text, or a JavaScript regular expression with --regex. Use -- before a pattern that starts with -.', required: true }],

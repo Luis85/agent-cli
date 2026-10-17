@@ -17,6 +17,7 @@ import { errorPrefix, PluginCatalog, type Language, type PluginErrorDefinition, 
 import { PluginSettings } from './plugin-settings.ts';
 import { reviewOptions } from '../generation/controls.ts';
 import { kernelMessage, renderKernelMessage, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
+import { commandSuggestions } from './suggestions.ts';
 
 /**
  * `workspace` is the command's scope (the selected project, or the workspace) and `environment` the workspace-root
@@ -189,10 +190,13 @@ export class Registry {
   }
   /** Why a disabled core plugin contributes nothing. */
   disabledReason(pluginId: string): KernelMessage | undefined { return this.disabledReasons.get(pluginId); }
-  /** A registered command, including one of an unavailable plugin; any other id fails with UNKNOWN_COMMAND. */
+  /**
+   * A registered command, including one of an unavailable plugin; any other id fails with UNKNOWN_COMMAND, whose
+   * `details` `{command, suggestions}` suggest registered commands spelled alike or doing what the id names elsewhere.
+   */
   resolveCommand(commandId: string): Command {
     const command = this.commands.get(commandId);
-    ensure(command, 'UNKNOWN_COMMAND', `Unknown command ${commandId}. Run help or schema.`);
+    ensure(command, 'UNKNOWN_COMMAND', `Unknown command ${commandId}. Run help or schema.`, { command: commandId, suggestions: commandSuggestions(commandId, [...this.commands.keys()]) });
     return command;
   }
   /**

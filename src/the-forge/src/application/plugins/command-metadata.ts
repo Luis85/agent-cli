@@ -1,5 +1,6 @@
 import { ensure, forgeError, isRecord } from '../../domain/shared/errors.ts';
 import { jsonSchemaDialect, schemaIssues, type JsonSchema } from '../../domain/schema/json-schema.ts';
+import { actionSuggestions } from './suggestions.ts';
 
 /**
  * Declarative command metadata. One description drives argument parsing, the invocation policy (scope and plugin
@@ -22,6 +23,7 @@ import { jsonSchemaDialect, schemaIssues, type JsonSchema } from '../../domain/s
  *   idempotent, and so is one that requires `--if-match`: the repeat fails on the changed revision. A mode whose
  *   `--if-match` is optional declares `idempotent` itself when a repeat is refused or changes nothing.
  * - `output`: the JSON Schema of `data` in a successful response, on the command or, overriding it, on an action.
+ * - `examples`: one to three complete invocations that start with the command id, which `help <command>` shows.
  */
 export type CommandScope = 'workspace' | 'project';
 const unknownActionCodes = ['UNKNOWN_GENERATOR', 'INVALID_ARGUMENT'] as const;
@@ -63,6 +65,8 @@ export interface CommandMetadata extends CommandMode {
   output?: JsonSchema;
   /** Failure codes the command reports itself, beyond the input and routing codes every command can raise. */
   errors?: readonly string[];
+  /** One to three invocations after `forge`, each starting with the command id; examples are not translated. */
+  examples?: readonly string[];
 }
 export interface ResolvedMode { action?: string; scope: CommandScope; discovery: boolean; mutating: boolean; projectOption?: string }
 
@@ -102,14 +106,19 @@ export function hasActionOptions(command: CommandMetadata): boolean {
   return command.unknownAction !== undefined || Object.values(command.actions ?? {}).some(action => Object.keys(action.options ?? {}).length > 0);
 }
 
-/** Fails with the command's `unknownAction` code when the first argument (not an option) names no declared action. */
+/**
+ * Fails with the command's `unknownAction` code when the first argument (not an option) names no declared action.
+ * The message lists the declared actions, which `details.allowed` holds with the closest in `details.suggestions`.
+ */
 export function ensureKnownAction(command: CommandMetadata, args: readonly string[]): void {
   const action = args[0];
   if (command.unknownAction === undefined || action === undefined || action.startsWith('-')) return;
-  if (command.actions === undefined || !Object.hasOwn(command.actions, action)) unknownAction(command.unknownAction, action);
+  if (command.actions === undefined || !Object.hasOwn(command.actions, action)) unknownAction(command.unknownAction, command, action);
 }
-function unknownAction(code: 'UNKNOWN_GENERATOR' | 'INVALID_ARGUMENT', action: string): never {
-  throw forgeError(code, action);
+function unknownAction(code: 'UNKNOWN_GENERATOR' | 'INVALID_ARGUMENT', command: CommandMetadata, action: string): never {
+  const allowed = Object.keys(command.actions ?? {}), suggestions = actionSuggestions(action, allowed);
+  const message = code === 'UNKNOWN_GENERATOR' ? `Unknown generator ${action}. Generators: ${allowed.join(', ')}.` : `Unknown ${command.id} action ${action}. Actions: ${allowed.join(', ')}.`;
+  throw forgeError(code, message, { [code === 'UNKNOWN_GENERATOR' ? 'generator' : 'action']: action, allowed, suggestions });
 }
 
 /** Option types for the argument parser. */
@@ -290,5 +299,7 @@ export function validateCommandMetadata(command: Record<string, unknown>): void 
   }
   ensure(command.defaultAction === undefined || (typeof command.defaultAction === 'string' && isRecord(command.actions) && Object.hasOwn(command.actions, command.defaultAction)), 'INVALID_PLUGIN', `${where} defaultAction must name a declared action.`);
   ensure(command.unknownAction === undefined || (unknownActionCodes.includes(command.unknownAction as UnknownActionCode) && isRecord(command.actions)), 'INVALID_PLUGIN', `${where} unknownAction must be ${unknownActionCodes.join(' or ')} for a command with actions.`);
+  ensure(command.examples === undefined || (Array.isArray(command.examples) && command.examples.length >= 1 && command.examples.length <= 3
+    && command.examples.every(example => typeof example === 'string' && (example === command.id || example.startsWith(`${String(command.id)} `)))), 'INVALID_PLUGIN', `${where} examples must list one to three invocations that start with the command id.`);
   ensure(command.errors === undefined || (Array.isArray(command.errors) && command.errors.every(code => typeof code === 'string' && /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code))), 'INVALID_PLUGIN', `${where} errors must list UPPER_SNAKE_CASE codes.`);
 }
