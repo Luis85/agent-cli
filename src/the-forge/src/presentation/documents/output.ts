@@ -1,6 +1,6 @@
 import { fileKinds } from '../../domain/documents/file.ts';
 import type { JsonSchema } from '../../domain/schema/json-schema.ts';
-import { changesSchema as changes, dryRunSchema as dryRun, pathSchema as path, revisionSchema as revision } from '../../application/plugins/output-schemas.ts';
+import { alreadyAppliedSchema as alreadyApplied, changesSchema as changes, dryRunSchema as dryRun, pathSchema as path, revisionSchema as revision } from '../../application/plugins/output-schemas.ts';
 
 const text: JsonSchema = { type: 'string' };
 const kind = (...kinds: string[]): JsonSchema => kinds.length === 1 ? { type: 'string', const: kinds[0] } : { type: 'string', enum: kinds };
@@ -66,12 +66,16 @@ const links: JsonSchema = {
   properties: { updated: count, files: count, unrewritten: { type: 'array', description: 'Links the move could not rewrite, each with a reason.' } },
 };
 
-/** `move` and `rename`: the moved path, every rename in commit order, the files whose links were rewritten. */
+/**
+ * `move` and `rename`: the moved path, every rename in commit order, the files whose links were rewritten. A retry
+ * whose move already happened reports `alreadyApplied` with no renames or changes.
+ */
 export const moveOutput: JsonSchema = {
   type: 'object', required: ['dryRun', 'from', 'to', 'kind', 'renames', 'changes', 'links'],
   properties: {
     dryRun, from: path, to: path, kind: kind('file', 'folder'), revision: { ...revision, description: 'The revision the move was guarded with.' },
     renames: { type: 'array', items: rename, description: 'The moved folder (if any) and each moved descendant, in commit order.' }, changes, links,
+    alreadyApplied,
   },
 };
 

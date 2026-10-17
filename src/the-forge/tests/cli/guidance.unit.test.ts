@@ -22,6 +22,11 @@ const backlog: Command = {
   actions: { list: { description: 'List.' }, show: { description: 'Show.', usage: 'backlog show <item>' } },
   run: args => { arity(args.slice(1), args[0] === 'show' ? 1 : 0); return null; },
 };
+const plan: Command = {
+  id: 'plan', description: 'Plan', usage: 'plan iteration add | iteration assign <item>', unknownAction: 'INVALID_ARGUMENT',
+  actions: { 'iteration add': { description: 'Add.' }, 'iteration assign': { description: 'Assign.', usage: 'plan iteration assign <item>' } },
+  run: args => { arity(args.slice(2), args[1] === 'assign' ? 1 : 0); return null; },
+};
 const context = {} as CommandContext;
 const failure = async (command: Command, args: string[]) => {
   try { await runCommand(command, args, {}, context); }
@@ -42,6 +47,12 @@ describe('invocation guidance', () => {
   it('names the action and its usage for a command with actions, and rejects unknown actions first', async () => {
     expect(await failure(backlog, ['show'])).toMatchObject({ message: 'backlog show: Expected 1 positional argument, got 0. Usage: backlog show <item>', details: { minimum: 1, maximum: 1, received: 0 } });
     expect(await failure(backlog, ['sho'])).toMatchObject({ code: 'INVALID_ARGUMENT', message: 'Unknown backlog action sho. Actions: list, show.', details: { action: 'sho', allowed: ['list', 'show'], suggestions: ['show'] } });
+  });
+
+  it('names an action of several words, its usage and its options', async () => {
+    expect(await failure(plan, ['iteration', 'assign'])).toMatchObject({ message: 'plan iteration assign: Expected 1 positional argument, got 0. Usage: plan iteration assign <item>' });
+    expect(await failure(plan, ['iteration', 'asign'])).toMatchObject({ code: 'INVALID_ARGUMENT', details: { action: 'iteration asign', suggestions: ['iteration assign', 'iteration add'] } });
+    expect(unknownOptionGuidance(unknownOption("unknown option '--goal'", []), plan, ['iteration', 'add'])).toMatchObject({ message: 'Unknown option --goal for plan iteration add.' });
   });
 
   it('leaves other failures unchanged', async () => {

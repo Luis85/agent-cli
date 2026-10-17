@@ -1,5 +1,5 @@
 import { AppError, forgeError, isRecord } from '../../domain/shared/errors.ts';
-import { commandOptions, ensureKnownAction, type CommandFlags, type CommandMetadata } from '../../application/plugins/command-metadata.ts';
+import { commandMode, commandOptions, ensureKnownAction, type CommandFlags, type CommandMetadata } from '../../application/plugins/command-metadata.ts';
 import { globalOptions } from '../../application/plugins/command-input.ts';
 import { optionSuggestions } from '../../application/plugins/suggestions.ts';
 import type { Command, CommandContext } from '../../application/plugins/registry.ts';
@@ -20,10 +20,13 @@ export function unknownOption(diagnostic: string, accepts: readonly string[]): A
   return forgeError('UNKNOWN_OPTION', `Unknown option ${option}.`, { option, suggestions: optionSuggestions(option, accepts) });
 }
 
+/** The action id the leading arguments spell, such as `iteration add`; never the default action of no arguments. */
+const spelledAction = (command: CommandMetadata, args: readonly string[]) => args.length === 0 ? undefined : commandMode(command, args).action;
+
 /** The command, or `<command> <action>` when the arguments select an action, as messages name it. */
 function invocationName(command: CommandMetadata, args: readonly string[]): string {
-  const action = args[0];
-  return action !== undefined && command.actions && Object.hasOwn(command.actions, action) ? `${command.id} ${action}` : command.id;
+  const action = spelledAction(command, args);
+  return action !== undefined ? `${command.id} ${action}` : command.id;
 }
 
 /**
@@ -49,10 +52,10 @@ const arityDetails = (details: unknown): details is ArityDetails => isRecord(det
 function argumentGuidance(error: unknown, command: CommandMetadata, args: readonly string[]): unknown {
   if (!(error instanceof AppError) || error.code !== 'INVALID_ARGUMENT' || !arityDetails(error.details)) return error;
   const { received, minimum } = error.details;
-  const action = args.length > received && command.actions && Object.hasOwn(command.actions, args[0]!) ? command.actions[args[0]!] : undefined;
+  const id = args.length > received ? spelledAction(command, args) : undefined, action = id === undefined ? undefined : command.actions?.[id];
   const usage = action?.usage ?? command.usage;
   const missing = command.actions === undefined && received < minimum ? (command.args ?? []).slice(received, minimum).map(arg => arg.name) : [];
-  const named = missing.length > 0 ? `Missing ${missing.map(name => `<${name}>`).join(' ')}. ` : action ? `${command.id} ${args[0]!}: ` : '';
+  const named = missing.length > 0 ? `Missing ${missing.map(name => `<${name}>`).join(' ')}. ` : action ? `${command.id} ${id!}: ` : '';
   return forgeError('INVALID_ARGUMENT', `${named}${error.message} Usage: ${usage}`, { ...error.details, ...(missing.length > 0 ? { missing } : {}) });
 }
 

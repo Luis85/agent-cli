@@ -13,7 +13,7 @@ const backlogBase = 'filters:\n  and:\n    - file.inFolder("plan")\nviews:\n  - 
 
 beforeAll(async () => {
   expect((await cli(['setup'])).status).toBe(0);
-  const schema = await cli(['schema']);
+  const schema = await cli(['schema', '--all']);
   expect(schema.status).toBe(0);
   validator = responseValidator(schema.body.data as SchemaDocument);
 });
@@ -40,6 +40,19 @@ describe('output schemas of mutating commands', () => {
     await conforms(['rename', 'archive/a.md', 'b.md', '--if-match', await revision('archive/a.md')]);
     expect(await conforms(['delete', 'archive/b.md', '--if-match', await revision('archive/b.md')])).toMatchObject({ permanent: false, trashPath: '.trash/archive/b.md' });
     await conforms(['delete', 'archive', '--recursive', '--permanent', '--dry-run']);
+  });
+
+  it('describe retries that find their change already applied', async () => {
+    await conforms(['create', 'retry/a.md', '--content', '# A\n']);
+    // A create over identical bytes and a stale guard over identical bytes write nothing.
+    expect((await conforms(['create', 'retry/a.md', '--content', '# A\n'])).changes).toEqual([expect.objectContaining({ path: 'retry/a.md', operation: 'unchanged', alreadyApplied: true })]);
+    const before = await revision('retry/a.md');
+    await conforms(['write', 'retry/a.md', '--content', '# A2\n', '--if-match', before]);
+    expect((await conforms(['write', 'retry/a.md', '--content', '# A2\n', '--if-match', before])).changes).toEqual([expect.objectContaining({ operation: 'unchanged', alreadyApplied: true })]);
+    expect((await conforms(['write', 'retry/a.md', '--content', '# A2\n', '--if-match', await revision('retry/a.md'), '--dry-run'])).changes).toEqual([expect.objectContaining({ operation: 'unchanged' })]);
+    const moved = await revision('retry/a.md');
+    await conforms(['move', 'retry/a.md', 'retry/b.md', '--if-match', moved]);
+    expect(await conforms(['move', 'retry/a.md', 'retry/b.md', '--if-match', moved])).toMatchObject({ alreadyApplied: true, renames: [], changes: [] });
   });
 
   it('describe generators, projects and plugin writes', async () => {

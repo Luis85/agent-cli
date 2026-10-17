@@ -9,12 +9,22 @@ export const pathSchema: JsonSchema = { type: 'string', description: 'Path relat
 export const revisionSchema: JsonSchema = { type: 'string', pattern: '^[0-9a-f]{64}$', description: 'SHA-256 of the file bytes; pass it as --if-match.' };
 export const dryRunSchema: JsonSchema = { type: 'boolean', description: 'True when --dry-run planned the changes without writing them.' };
 
-/** One committed (or, in a dry run, planned) file change; a dry run adds the unified `diff`. */
+/** `alreadyApplied: true`: the target already held the requested result, so the retry wrote nothing. */
+export const alreadyAppliedSchema: JsonSchema = {
+  type: 'boolean', const: true,
+  description: 'Present when the target already held the requested result (a retry after a lost response): nothing was written.',
+};
+
+/**
+ * One committed (or, in a dry run, planned) file change; a dry run adds the unified `diff`. `unchanged` reports a
+ * write whose bytes the file already held: nothing was written and no event published.
+ */
 const changeSchema: JsonSchema = {
   type: 'object', required: ['path', 'revision', 'operation', 'bytes'],
   properties: {
-    path: pathSchema, revision: revisionSchema, operation: { type: 'string', enum: ['created', 'updated', 'deleted'] }, bytes: { type: 'integer', minimum: 0 },
-    diff: { oneOf: [{ type: 'string' }, { type: 'null' }], description: 'Dry runs only: a unified diff of the change, or null for binary content.' },
+    path: pathSchema, revision: revisionSchema, operation: { type: 'string', enum: ['created', 'updated', 'deleted', 'unchanged'] }, bytes: { type: 'integer', minimum: 0 },
+    alreadyApplied: alreadyAppliedSchema,
+    diff: { oneOf: [{ type: 'string' }, { type: 'null' }], description: 'Dry runs only: a unified diff of the change (empty when unchanged), or null for binary content.' },
   },
 };
 export const changesSchema: JsonSchema = { type: 'array', items: changeSchema };
