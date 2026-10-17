@@ -22,6 +22,12 @@ describe('the scaffolds core plugin', () => {
     expect((await cli(['--lang', 'de', 'make'])).body.data.generators).toContainEqual({ id: 'entity', description: 'Domain-Entität mit Identität und Prüfung von Invarianten.' });
   });
 
+  it('writes use cases to the application layer and the other code scaffolds to the domain layer by default', async () => {
+    const paths = async (generator: string, name: string) => (await cli(['make', generator, name, '--dry-run'])).body.data.changes.map((change: { path: string }) => change.path);
+    expect(await paths('use-case', 'FindItem')).toEqual(['src/application/find-item.ts']);
+    expect(await paths('entity', 'Order')).toEqual(['src/domain/order.ts']);
+  });
+
   it('removes its generators when disabled; project create and component fail clearly while selection keeps working', async () => {
     expect((await cli(['project', 'create', 'demo'])).status).toBe(0);
     await config({ plugins: { disabled: ['scaffolds'] } });
