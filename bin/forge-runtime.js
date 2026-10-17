@@ -69892,11 +69892,11 @@ const germanErrors = {
   INVALID_LANGUAGE: { summary: "Die Sprache wird nicht unterstützt.", hint: "Verwenden Sie --lang en oder --lang de." },
   INVALID_NAME: { summary: "Der Name entspricht nicht der erforderlichen Namensregel.", hint: "Verwenden Sie das in der Meldung beschriebene Format, zum Beispiel PascalCase." },
   INVALID_KEY: { summary: "Der Eigenschaftsschlüssel ist reserviert oder unsicher.", hint: "Verwenden Sie einen anderen Eigenschaftsschlüssel." },
-  INVALID_RESULT: { summary: "Der Befehl lieferte Daten, die nicht als JSON serialisierbar sind.", hint: "Prüfen Sie bestätigte Tresor-Ereignisse und lesen Sie betroffene Dateien erneut, bevor Sie es wieder versuchen; melden Sie den fehlerhaften Plugin-Befehl." },
-  OPERATION_FAILED: { summary: "Ein unerwarteter Laufzeit- oder E/A-Fehler ist aufgetreten.", hint: "Lesen Sie die ursprüngliche Diagnose, prüfen Sie den Arbeitsbereich und lesen Sie betroffene Dateien vor einem erneuten Versuch." },
+  INVALID_RESULT: { summary: "Der Befehl lieferte Daten, die nicht als JSON serialisierbar sind.", hint: "Prüfen Sie bestätigte Vault-Ereignisse und lesen Sie betroffene Dateien erneut, bevor Sie es wieder versuchen; melden Sie den fehlerhaften Plugin-Befehl." },
+  OPERATION_FAILED: { summary: "Ein unerwarteter Laufzeit- oder E/A-Fehler ist aufgetreten.", hint: "Lesen Sie die ursprüngliche Diagnose, prüfen Sie den Zustand des Workspace und lesen Sie betroffene Dateien vor einem erneuten Versuch." },
   // Pfade, Dateien und geschützte Schreibvorgänge
-  INVALID_PATH: { summary: "Der Pfad ist kein gültiger relativer Pfad im Arbeitsbereich.", hint: "Verwenden Sie einen relativen Pfad im ausgewählten Arbeitsbereich oder Projekt mit Schrägstrichen und ohne ..-Segmente." },
-  UNSAFE_PATH: { summary: "Der Pfad verlässt den Arbeitsbereich oder durchquert eine symbolische Verknüpfung.", hint: "Verwenden Sie einen Pfad innerhalb des Arbeitsbereichs ohne symbolische Verknüpfungen." },
+  INVALID_PATH: { summary: "Der Pfad ist kein gültiger relativer Pfad im Workspace oder Projekt.", hint: "Verwenden Sie einen relativen Pfad im ausgewählten Workspace oder Projekt mit Schrägstrichen und ohne ..-Segmente." },
+  UNSAFE_PATH: { summary: "Der Pfad verlässt den Workspace oder durchquert eine symbolische Verknüpfung.", hint: "Verwenden Sie einen Pfad innerhalb des Workspace ohne symbolische Verknüpfungen." },
   NOT_FOUND: { summary: "Die Datei oder Ressource wurde nicht gefunden.", hint: "Prüfen Sie Pfad und ausgewähltes Projekt (project current); list zeigt vorhandene Dateien. error.details.alreadyDeleted true bedeutet, dass ein Löschvorgang die Datei bereits nach error.details.trashPath verschoben hat." },
   CONFLICT: { summary: "Die Datei existiert bereits oder ihre Revision hat sich seit dem Lesen geändert.", hint: "Die Meldung nennt den Fall. Eine vorhandene Datei (error.details.expectedRevision null): ersetzen Sie sie mit write --if-match oder ändern Sie sie mit edit. Eine fehlende Datei (error.details.currentRevision null): prüfen Sie den Pfad oder lassen Sie den Schutz weg, um sie anzulegen. Eine geänderte Datei: lesen Sie sie erneut, gleichen Sie Ihre Änderung mit dem aktuellen Inhalt ab und versuchen Sie es mit error.details.currentRevision über den Revisionsschutz des Befehls erneut (--if-match, ifMatch in einem Plan oder --revisions-from). error.details.alreadyApplied true bedeutet, dass die Datei die angeforderte Änderung bereits enthält; ein erneuter Versuch ist nicht nötig." },
   NO_MATCH: { summary: "Der --find-Text kommt in der Datei nicht vor.", hint: "Lesen Sie die Datei erneut und übernehmen Sie den exakten aktuellen Text einschließlich Leerraum und Zeilenenden in --find; error.details.lineEndings nennt die Zeilenenden der Datei und error.details.nearMatch eine Zeile, die ohne Beachtung von Leerraum und Groß- und Kleinschreibung passt." },
@@ -70015,9 +70015,9 @@ const templates = {
   DESTINATION_EXISTS: [{ text: "Das Ziel {path} existiert bereits." }],
   INVALID_PATH: [
     { text: `{named} {quoted}: ${device}` },
-    { text: "{named} {quoted} ist kein gültiger relativer Pfad im Arbeitsbereich; leiten Sie eine Datei außerhalb des Bereichs stattdessen mit --stdin weiter.", when: stdin },
-    { text: "{named} {quoted} ist kein gültiger relativer Pfad im Arbeitsbereich; gemeint ist vermutlich {suggestion}." },
-    { text: "{named} {quoted} ist kein gültiger relativer Pfad im Arbeitsbereich." },
+    { text: "{named} {quoted} ist kein gültiger relativer Pfad im Workspace oder Projekt; leiten Sie eine Datei außerhalb des Bereichs stattdessen mit --stdin weiter.", when: stdin },
+    { text: "{named} {quoted} ist kein gültiger relativer Pfad im Workspace oder Projekt; gemeint ist vermutlich {suggestion}." },
+    { text: "{named} {quoted} ist kein gültiger relativer Pfad im Workspace oder Projekt." },
     { text: device },
     { text: "Der Pfad {path} ist auf diesem Dateisystem nicht verwendbar ({reason})." },
     { text: "Der Ordner {path} enthält einen Eintrag, dessen Name kein gültiges UTF-8 ist: {entry}." }

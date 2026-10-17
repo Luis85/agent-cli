@@ -65,9 +65,9 @@ const templates: Partial<Record<ErrorCode, readonly Template[]>> = {
   DESTINATION_EXISTS: [{ text: 'Das Ziel {path} existiert bereits.' }],
   INVALID_PATH: [
     { text: `{named} {quoted}: ${device}` },
-    { text: '{named} {quoted} ist kein gültiger relativer Pfad im Arbeitsbereich; leiten Sie eine Datei außerhalb des Bereichs stattdessen mit --stdin weiter.', when: stdin },
-    { text: '{named} {quoted} ist kein gültiger relativer Pfad im Arbeitsbereich; gemeint ist vermutlich {suggestion}.' },
-    { text: '{named} {quoted} ist kein gültiger relativer Pfad im Arbeitsbereich.' },
+    { text: '{named} {quoted} ist kein gültiger relativer Pfad im Workspace oder Projekt; leiten Sie eine Datei außerhalb des Bereichs stattdessen mit --stdin weiter.', when: stdin },
+    { text: '{named} {quoted} ist kein gültiger relativer Pfad im Workspace oder Projekt; gemeint ist vermutlich {suggestion}.' },
+    { text: '{named} {quoted} ist kein gültiger relativer Pfad im Workspace oder Projekt.' },
     { text: device },
     { text: 'Der Pfad {path} ist auf diesem Dateisystem nicht verwendbar ({reason}).' },
     { text: 'Der Ordner {path} enthält einen Eintrag, dessen Name kein gültiges UTF-8 ist: {entry}.' },
