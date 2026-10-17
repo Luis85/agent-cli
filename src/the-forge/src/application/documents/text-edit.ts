@@ -2,10 +2,11 @@ import { ensure, forgeError } from '../../domain/shared/errors.ts';
 import { fileKind, isTextContent } from '../../domain/documents/file.ts';
 import { applyTextEdit, targetsStructure, type TextEditRequest } from '../../domain/documents/text-edit.ts';
 import type { MetadataIndex } from '../metadata/ports.ts';
+import { decodeUtf8 } from '../../domain/shared/utf8.ts';
 
 /** UTF-8 text of a file to edit; other bytes are INVALID_ENCODING. */
 export function decodeText(bytes: Uint8Array): string {
-  try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
+  try { return decodeUtf8(bytes, 'keep'); }
   catch { throw forgeError('INVALID_ENCODING', 'Edits require valid UTF-8 text; use write for binary content.'); }
 }
 

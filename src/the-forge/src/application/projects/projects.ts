@@ -1,9 +1,11 @@
 import { forgeError, AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
+import { isNotFound, readOrMissing } from '../../domain/shared/not-found.ts';
 import { vaultPath, type FileSnapshot, type WriteRequest } from '../../domain/documents/file.ts';
 import type { FileRepository } from '../workspace/ports.ts';
 import type { Workspace } from '../workspace/workspace.ts';
 import type { EventBus } from '../plugins/events.ts';
 import { publishHostEvent } from '../plugins/host-events.ts';
+import { decodeUtf8 } from '../../domain/shared/utf8.ts';
 
 export type ComponentKind = 'domain' | 'application';
 export type ProjectType = 'library' | 'webview';
@@ -70,11 +72,11 @@ export class ProjectService {
     let marker;
     try { marker = await this.files.read(`${directory}/.forge/project.json`); }
     catch (error) {
-      if (error instanceof AppError && error.code === 'NOT_FOUND') throw forgeError('PROJECT_NOT_FOUND', `No Forge project named ${name} in ${this.projectsDirectory}.`);
+      if (isNotFound(error)) throw forgeError('PROJECT_NOT_FOUND', `No Forge project named ${name} in ${this.projectsDirectory}.`);
       throw error;
     }
     let metadata: unknown;
-    try { metadata = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(marker.bytes)); }
+    try { metadata = JSON.parse(decodeUtf8(marker.bytes)); }
     catch { throw forgeError('INVALID_PROJECT', `Invalid project metadata: ${directory}/.forge/project.json`, { directory }); }
     const path = `${directory}/.forge/project.json`;
     ensure(isRecord(metadata) && metadata.schemaVersion === 1, 'INVALID_PROJECT', `Expected schemaVersion 1 in ${path}.`, { directory });
@@ -141,16 +143,12 @@ export class ProjectService {
   }
 
   private async contextSnapshot(): Promise<FileSnapshot | null> {
-    try { return await this.files.read('bin/data/context.json'); }
-    catch (error) {
-      if (error instanceof AppError && error.code === 'NOT_FOUND') return null;
-      throw error;
-    }
+    return (await readOrMissing(() => this.files.read('bin/data/context.json'))) ?? null;
   }
 
   private contextProject(snapshot: FileSnapshot): ProjectSelection | null {
     try {
-      const context: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(snapshot.bytes));
+      const context: unknown = JSON.parse(decodeUtf8(snapshot.bytes));
       ensure(isRecord(context) && context.schemaVersion === 1 && (context.project === null || typeof context.project === 'string'), 'INVALID_PROJECT_CONTEXT', 'Invalid project context.');
       if (context.project === null) return null;
       const name = projectName(context.project);

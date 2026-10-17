@@ -1,16 +1,15 @@
 import type { CommandContext } from '../../../application/plugins/registry.ts';
 import type { FileSnapshot, FileStat } from '../../../domain/documents/file.ts';
 import { vaultPath } from '../../../domain/documents/file.ts';
-import { AppError, ensure } from '../../../domain/shared/errors.ts';
+import { ensure } from '../../../domain/shared/errors.ts';
+import { readOrMissing } from '../../../domain/shared/not-found.ts';
 import { extractTutorial, type TutorialPlan, type TutorialBlocks } from '../domain/tutorial.ts';
 import { ensureBrowser, browserError } from '../domain/errors.ts';
 import type { BrowserRuntime, BrowserFlowResult } from './runtime.ts';
 import { browserTimeout, expectedRevision, imageMarkdown, reportedUrl } from './requests.ts';
+import { decodeUtf8 } from '../../../domain/shared/utf8.ts';
 
-async function optionalStat(context: CommandContext, path: string): Promise<FileStat | null> {
-  try { return await context.workspace.files.stat(path); }
-  catch (error) { if (error instanceof AppError && error.code === 'NOT_FOUND') return null; throw error; }
-}
+const optionalStat = (context: CommandContext, path: string): Promise<FileStat | undefined> => readOrMissing(() => context.workspace.files.stat(path));
 function plannedFiles(plan: TutorialPlan) {
   return ['index.md', 'flow.json', ...plan.steps.filter(step => step.screenshot).map(step => `screenshots/${step.id}.png`)];
 }
@@ -36,10 +35,10 @@ export class BrowserTutorial {
     vaultPath(source);
     const snapshot = await context.workspace.files.read(source);
     let text: string;
-    try { text = new TextDecoder('utf-8', { fatal: true }).decode(snapshot.bytes); }
+    try { text = decodeUtf8(snapshot.bytes); }
     catch { throw browserError('BROWSER_FLOW_INVALID', 'Tutorial source must be valid UTF-8.'); }
     const plan = extractTutorial(text, source, this.blocks);
-    let current: FileStat | null = null;
+    let current: FileStat | undefined;
     if (out !== undefined) {
       vaultPath(out);
       ensure(source === `${out}/flow.json` || (source !== out && !source.startsWith(`${out}/`)), 'INVALID_ARGUMENT', 'Keep source documents outside the output directory, or replay its generated flow.json.');
@@ -47,9 +46,9 @@ export class BrowserTutorial {
       // Resolve each future destination now, including missing children of unsafe existing parents.
       for (const path of plannedFiles(plan)) {
         const destination = await optionalStat(context, `${out}/${path}`);
-        ensure(destination === null || destination.kind === 'file', 'INVALID_ARGUMENT', `Tutorial output must be a regular file: ${out}/${path}`);
+        ensure(destination === undefined || destination.kind === 'file', 'INVALID_ARGUMENT', `Tutorial output must be a regular file: ${out}/${path}`);
       }
-      ensure(current === null || current.kind === 'folder', 'INVALID_ARGUMENT', '--out must name a directory.');
+      ensure(current === undefined || current.kind === 'folder', 'INVALID_ARGUMENT', '--out must name a directory.');
       if (current?.kind === 'folder') {
         ensureBrowser(current.files.includes('index.md') && current.files.includes('flow.json') &&
           current.files.every(path => ['index.md', 'flow.json'].includes(path) || /^screenshots\/[a-z][a-z0-9-]{0,63}\.png$/.test(path)) &&

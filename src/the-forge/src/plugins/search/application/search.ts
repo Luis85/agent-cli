@@ -4,10 +4,11 @@ import { fileKind, isTextContent, type FileSnapshot } from '../../../domain/docu
 import { pathFilter, recordingFilter } from '../../../domain/documents/path-glob.ts';
 import { kernelMessage, type KernelMessage } from '../../../domain/shared/kernel-messages.ts';
 import { metadataMatches } from '../../../domain/metadata/note-filters.ts';
-import { AppError } from '../../../domain/shared/errors.ts';
+import { readOrMissing } from '../../../domain/shared/not-found.ts';
 import { Pager, type PageRequest } from '../../../domain/shared/paging.ts';
 import { clipAround, clipLine, matchLines, searchExpression, searchedLines, splitLines, type LineHit } from '../domain/matching.ts';
 import { searchKinds, type SearchKind, type SearchQuery } from '../domain/query.ts';
+import { decodeUtf8 } from '../../../domain/shared/utf8.ts';
 
 /** One match: 1-based line and UTF-16 column, the matched text, a clipped snippet and the file's revision. */
 export interface SearchHit {
@@ -38,19 +39,15 @@ interface PendingHit { path: string; line: number; column: number; match: string
 
 /** Files read concurrently, then matched together within the budget. */
 const batchSize = 32;
-const decoder = new TextDecoder('utf-8', { fatal: true });
 
 /** The searchable text of a file: undefined for invalid UTF-8 and for text files with NUL characters, which read as attachments. */
 function decode({ path, bytes }: FileSnapshot): string | undefined {
   let text: string;
-  try { text = decoder.decode(bytes); }
+  try { text = decodeUtf8(bytes); }
   catch { return undefined; }
   return isTextContent(path, text) ? text : undefined;
 }
-async function readExisting(files: FileRepository, path: string): Promise<FileSnapshot | undefined> {
-  try { return await files.read(path); }
-  catch (error) { if (error instanceof AppError && error.code === 'NOT_FOUND') return undefined; throw error; }
-}
+const readExisting = (files: FileRepository, path: string): Promise<FileSnapshot | undefined> => readOrMissing(() => files.read(path));
 function codeLines(metadata: CachedMetadata | null): Set<number> {
   const lines = new Set<number>();
   for (const section of metadata?.sections ?? []) {

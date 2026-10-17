@@ -5,6 +5,7 @@ import { option } from '../../../application/plugins/command-metadata.ts';
 import { parseJson, value } from '../../../application/plugins/command-input.ts';
 import { changesOutput } from '../../../application/plugins/output-schemas.ts';
 import type { DocumentTemplates } from '../application/templates.ts';
+import { decodeUtf8 } from '../../../domain/shared/utf8.ts';
 
 /**
  * `make document`: renders a shared template from the workspace's bin/templates into the command scope. Template
@@ -30,7 +31,7 @@ export function documentGenerator(templates: (context: CommandContext) => Docume
       const source = await context.environment.files.read(`bin/templates/${vaultPath(template)}`);
       const inline = value(flags, 'values'), from = value(flags, 'values-from');
       ensure(inline === undefined || from === undefined, 'INVALID_INPUT', 'Use either --values or --values-from.');
-      const data = from === undefined ? parseJson(inline ?? '{}') : parseJson(new TextDecoder('utf-8', { fatal: true }).decode((await context.workspace.files.read(from)).bytes));
+      const data = from === undefined ? parseJson(inline ?? '{}') : parseJson(decodeUtf8((await context.workspace.files.read(from)).bytes));
       ensure(isRecord(data), 'INVALID_INPUT', 'Template values must be a JSON object.');
       const settings = context.settings ?? {};
       const bytes = templates(context).render(source.bytes, { title, values: data, date: value(flags, 'date'), dateFormat: settings.dateFormat as string | undefined, timeFormat: settings.timeFormat as string | undefined });

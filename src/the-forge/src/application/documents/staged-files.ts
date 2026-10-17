@@ -1,4 +1,5 @@
-import { AppError, ensure, forgeError } from '../../domain/shared/errors.ts';
+import { ensure, forgeError } from '../../domain/shared/errors.ts';
+import { isNotFound } from '../../domain/shared/not-found.ts';
 import { vaultPath, type FileChange, type FileRename, type FileSnapshot, type FileStat, type RenameRequest, type WriteRequest } from '../../domain/documents/file.ts';
 import { snapshotBatch } from '../workspace/batch-plan.ts';
 import { revisionConflict, snapshotWriteRequests } from '../../domain/documents/write-plan.ts';
@@ -13,7 +14,6 @@ export interface StagedFile { bytes: Uint8Array; revision: string; origin: FileS
 /** A folder move the plan made, in order, by the operation that made it. */
 export interface StagedFolderMove { from: string; to: string; operation: number }
 
-const notFound = (error: unknown) => error instanceof AppError && error.code === 'NOT_FOUND';
 const inside = (path: string, folder: string) => path.startsWith(`${folder}/`);
 const byPath = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -49,7 +49,7 @@ export class StagedFiles implements FileRepository {
     if (!this.originals.has(path)) {
       let snapshot: FileSnapshot | null = null;
       try { if ((await this.base.stat(path)).kind === 'file') snapshot = await this.base.read(path); }
-      catch (error) { if (!notFound(error)) throw error; }
+      catch (error) { if (!isNotFound(error)) throw error; }
       this.originals.set(path, snapshot);
     }
     return this.originals.get(path)!;
@@ -68,7 +68,7 @@ export class StagedFiles implements FileRepository {
     try {
       const stat = await this.base.stat(path);
       return stat.kind === 'folder' ? stat : undefined;
-    } catch (error) { if (notFound(error)) return undefined; throw error; }
+    } catch (error) { if (isNotFound(error)) return undefined; throw error; }
   }
 
   /** The revision `path` had before the plan: a file's origin revision (null for a planned file), else the original folder's. */
@@ -124,7 +124,7 @@ export class StagedFiles implements FileRepository {
   async commit(batch: FileBatch): Promise<BatchResult> {
     batch = snapshotBatch(batch);
     for (const guard of batch.guards ?? []) {
-      const current = await this.stat(guard.path).then(entry => entry.revision, (error: unknown) => { if (notFound(error)) return undefined; throw error; });
+      const current = await this.stat(guard.path).then(entry => entry.revision, (error: unknown) => { if (isNotFound(error)) return undefined; throw error; });
       ensure(current === guard.expectedRevision, 'CONFLICT', `Guarded path changed: ${guard.path}`, revisionConflict(guard.path, guard.expectedRevision, current));
     }
     ensure((batch.removes ?? []).length === 0, 'INVALID_PLAN', 'Plans move files to .trash; they never remove files permanently.');
@@ -140,7 +140,7 @@ export class StagedFiles implements FileRepository {
     ensure(entry.revision === request.expectedRevision, 'CONFLICT', `File changed; read again before moving: ${from}`, revisionConflict(from, request.expectedRevision, entry.revision));
     // A case-only rename finds its own source on case-insensitive filesystems.
     if (from.toLowerCase() !== to.toLowerCase()) {
-      const occupied = await this.stat(to).then(() => true, (error: unknown) => { if (notFound(error)) return false; throw error; });
+      const occupied = await this.stat(to).then(() => true, (error: unknown) => { if (isNotFound(error)) return false; throw error; });
       ensure(!occupied, 'DESTINATION_EXISTS', `Destination already exists: ${to}`, { path: to, from });
     }
     if (entry.kind === 'file') return [await this.moveFile(from, to)];

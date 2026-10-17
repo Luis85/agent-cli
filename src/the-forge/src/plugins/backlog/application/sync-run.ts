@@ -1,7 +1,7 @@
 import type { ConnectorHub } from '../../../application/connectors/contract.ts';
 import type { ReleaseLock } from '../../../application/plugins/core-plugins.ts';
 import type { CommandContext } from '../../../application/plugins/registry.ts';
-import { AppError } from '../../../domain/shared/errors.ts';
+import { isNotFound } from '../../../domain/shared/not-found.ts';
 import { backlogError } from '../domain/errors.ts';
 import type { CivilDate } from '../domain/fields.ts';
 import { englishSyncWarning, type SyncWarningText } from '../domain/messages.ts';
@@ -39,7 +39,7 @@ async function boundViews(context: CommandContext, request: Pick<SyncRequest, 'b
   else {
     try { bases = [await readBase(context, request.base)]; }
     catch (error) {
-      if (error instanceof AppError && error.code === 'NOT_FOUND') throw backlogError('BACKLOG_NOT_FOUND', `The base ${request.base} does not exist.`, { base: request.base });
+      if (isNotFound(error)) throw backlogError('BACKLOG_NOT_FOUND', `The base ${request.base} does not exist.`, { base: request.base });
       throw error;
     }
   }

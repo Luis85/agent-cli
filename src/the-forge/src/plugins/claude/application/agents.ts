@@ -2,6 +2,7 @@ import { forgeError, errorMessage, AppError, ensure } from '../../../domain/shar
 import { vaultPath } from '../../../domain/documents/file.ts';
 import type { ClaudeAgentDocument } from '../../../domain/claude/agents.ts';
 import type { Workspace } from '../../../application/workspace/workspace.ts';
+import { decodeUtf8 } from '../../../domain/shared/utf8.ts';
 
 export interface ClaudeAgentCodec {
   parse(text: string): ClaudeAgentDocument;
@@ -13,7 +14,7 @@ interface AgentSummary {
 }
 
 function text(bytes: Uint8Array): string {
-  try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
+  try { return decodeUtf8(bytes, 'keep'); }
   catch { throw forgeError('INVALID_ENCODING', 'Agent definitions must be valid UTF-8.'); }
 }
 

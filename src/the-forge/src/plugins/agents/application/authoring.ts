@@ -2,13 +2,15 @@ import type { Workspace } from '../../../application/workspace/workspace.ts';
 import { vaultPath, type FileSnapshot } from '../../../domain/documents/file.ts';
 import { revisionConflict } from '../../../domain/documents/write-plan.ts';
 import { validateClaudeAgent } from '../../../domain/claude/agents.ts';
-import { AppError, ensure } from '../../../domain/shared/errors.ts';
+import { ensure } from '../../../domain/shared/errors.ts';
+import { readOrMissing } from '../../../domain/shared/not-found.ts';
 import { hasErrors, record, type AgentDiagnostic } from '../domain/config.ts';
 import { importClaudeAgent, importedName } from '../domain/claude-import.ts';
 import { agentError } from '../domain/errors.ts';
 import { templateAgents, type AgentTemplate } from '../domain/templates.ts';
 import type { AgentDefinitions } from './definitions.ts';
 import type { AgentPorts } from './ports.ts';
+import { decodeUtf8 } from '../../../domain/shared/utf8.ts';
 
 /** Toolset types `agents create --toolset` adds; the others need settings such as a command or URL. */
 export const simpleToolsets = ['filesystem', 'shell', 'fetch', 'think', 'todo', 'tasks', 'memory', 'user_prompt', 'calculator', 'random', 'datetime',
@@ -21,7 +23,6 @@ export interface CreateRequest {
 type AgentEntry = [name: string, agent: Record<string, unknown>];
 
 const agentName = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
-const decoder = new TextDecoder('utf-8', { fatal: true });
 
 /** Adds agents to docker-agent definition files: new ones from options, or converted from Claude agents. */
 export class AgentAuthoring {
@@ -55,7 +56,7 @@ export class AgentAuthoring {
   async importClaude(source: string, options: { file?: string; ifMatch?: string }) {
     const path = vaultPath(source.includes('/') || source.endsWith('.md') ? source : `.claude/agents/${source}.md`);
     const snapshot = await this.workspace.files.read(path);
-    const { metadata, body } = this.ports.markdown.parse(decoder.decode(snapshot.bytes));
+    const { metadata, body } = this.ports.markdown.parse(decodeUtf8(snapshot.bytes));
     validateClaudeAgent(metadata, body);
     const file = options.file ?? `${importedName(metadata.name)}.yaml`;
     const known = await this.knownAgents(this.definitions.target(file));
@@ -67,12 +68,11 @@ export class AgentAuthoring {
   private async knownAgents(path: string): Promise<string[]> {
     const current = await this.current(path);
     if (!current) return [];
-    return Object.keys(record(this.definitions.check(decoder.decode(current.bytes)).config?.agents));
+    return Object.keys(record(this.definitions.check(decodeUtf8(current.bytes)).config?.agents));
   }
 
-  private async current(path: string): Promise<FileSnapshot | undefined> {
-    try { return await this.workspace.files.read(path); }
-    catch (error) { if (error instanceof AppError && error.code === 'NOT_FOUND') return undefined; throw error; }
+  private current(path: string): Promise<FileSnapshot | undefined> {
+    return readOrMissing(() => this.workspace.files.read(path));
   }
 
   /** Adds `entries` (the first is the main agent) to a new file, or to an existing one at its `--if-match` revision. */
@@ -82,7 +82,7 @@ export class AgentAuthoring {
     if (current) {
       ensure(ifMatch !== undefined, 'CONFLICT', `${path} exists; pass its current revision with --if-match to add ${names.join(', ')} to it.`, revisionConflict(path, null, current.revision));
       ensure(ifMatch === current.revision, 'CONFLICT', `${path} changed; read it again and pass its current revision with --if-match.`, revisionConflict(path, ifMatch, current.revision));
-      text = decoder.decode(current.bytes);
+      text = decodeUtf8(current.bytes);
       const defined = record(this.definitions.check(text).config?.agents), existing = names.find(entry => Object.hasOwn(defined, entry));
       if (existing !== undefined) throw agentError('AGENT_EXISTS', `${path} already defines agent ${existing}.`, { path, agent: existing });
       for (const [entry, agent] of entries) text = this.ports.codec.addAgent(text, entry, agent);
