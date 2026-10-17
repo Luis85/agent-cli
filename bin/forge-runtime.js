@@ -1353,6 +1353,7 @@ const workspace = (value2) => operation$3(value2) && ["read", "write", "edit", "
 const plugin = (value2) => text$m(value2.pluginId);
 const changeOperations = ["created", "updated", "deleted"];
 const change = (value2) => isRecord$1(value2) && text$m(value2.path) && text$m(value2.revision) && count$4(value2.bytes) && changeOperations.includes(String(value2.operation));
+const summarizedChange = (value2) => isRecord$1(value2) && (change(value2) || text$m(value2.path) && text$m(value2.revision) && count$4(value2.bytes) && value2.operation === "unchanged") && (value2.alreadyApplied === void 0 || value2.alreadyApplied === true);
 const moved = (value2) => isRecord$1(value2) && text$m(value2.from) && text$m(value2.to) && ["file", "folder"].includes(String(value2.kind));
 const project$2 = (value2) => value2 === null || text$m(value2);
 const vault$1 = (expected, kinds) => (value2) => value2.operation === expected && kinds.includes(String(value2.kind)) && (value2.kind === "file" ? change(value2) && Object.keys(value2).length === 5 : text$m(value2.path) && Object.keys(value2).length === 3);
@@ -1365,7 +1366,7 @@ const hostEventDefinitions = [
   definition$2("command.succeeded", "A routed command returned successfully.", command),
   definition$2("command.failed", "A routed command failed; error codes contain no command input.", (value2) => command(value2) && error$3(value2.error)),
   definition$2("operation.started", "A guarded workspace operation started, including previews.", workspace),
-  definition$2("operation.succeeded", "A guarded workspace operation completed, including previews.", (value2) => workspace(value2) && (value2.bytes === void 0 || count$4(value2.bytes)) && (value2.changes === void 0 || Array.isArray(value2.changes) && value2.changes.every(change)) && (value2.renames === void 0 || Array.isArray(value2.renames) && value2.renames.every(moved))),
+  definition$2("operation.succeeded", "A guarded workspace operation completed, including previews.", (value2) => workspace(value2) && (value2.bytes === void 0 || count$4(value2.bytes)) && (value2.changes === void 0 || Array.isArray(value2.changes) && value2.changes.every(summarizedChange)) && (value2.renames === void 0 || Array.isArray(value2.renames) && value2.renames.every(moved))),
   definition$2("operation.failed", "A guarded workspace operation failed.", (value2) => workspace(value2) && error$3(value2.error)),
   definition$2("vault.create", "A file or folder was created by a committed write.", vault$1("created", ["file", "folder"])),
   definition$2("vault.modify", "An existing file was replaced by a committed write.", vault$1("updated", ["file"])),

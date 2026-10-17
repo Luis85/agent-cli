@@ -25,6 +25,8 @@ describe('retried mutations through the portable CLI', () => {
     const before = await revision('notes/a.md');
     const retry = await cli(['create', 'notes/a.md', '--content', '# A\n']);
     expect(retry.body.data.changes).toEqual([{ path: 'notes/a.md', revision: before, operation: 'unchanged', bytes: 4, alreadyApplied: true }]);
+    // The operation summary of an unchanged write is a valid host event, so no payload warning appears.
+    expect(retry.body.warnings).toEqual([]);
     expect(ids(retry)).toEqual([]);
     const exists = await cli(['create', 'notes/a.md', '--content', '# B\n']);
     expect(exists.body.error).toMatchObject({ code: 'CONFLICT', message: 'File already exists: notes/a.md. Replace it with write --if-match and its currentRevision, or change it with edit.', details: { expectedRevision: null, currentRevision: before } });

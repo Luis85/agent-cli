@@ -32,6 +32,15 @@ describe('typed host process catalog', () => {
     expect(bus.history).toHaveLength(26);
   });
 
+  it('accepts operation summaries of writes that found their bytes in place, but no such vault event', async () => {
+    const bus = create(); registerHostEvents(bus);
+    await bus.emit('operation.succeeded', { ...workspace, changes: [{ ...change, operation: 'unchanged', alreadyApplied: true }] });
+    expect(bus.history).toHaveLength(1);
+    await expect(bus.emit('operation.succeeded', { ...workspace, changes: [{ ...change, operation: 'unchanged', alreadyApplied: false }] })).rejects.toThrow();
+    await expect(bus.emit('vault.modify', { ...file, operation: 'unchanged' })).rejects.toThrow();
+    expect(bus.history).toHaveLength(1);
+  });
+
   it('rejects malformed host payloads and does not deliver or record them', async () => {
     const bus = create(); registerHostEvents(bus);
     for (const [id, payload] of [
