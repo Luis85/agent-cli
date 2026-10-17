@@ -44,6 +44,7 @@ export const germanKernelMessages: Record<KernelMessageCode, string> = {
   PATH_MATCHED_NOTHING: '{option} {pattern} trifft in diesem Bereich keine Datei. Pfade sind relativ zu context.root und unterscheiden Groß- und Kleinschreibung, und ein Ordnerpfad ohne Glob-Zeichen umfasst alles darunter; list zeigt die vorhandenen Pfade.',
   READ_TRUNCATED: '{path} wurde auf die Zeilen {start}-{end} von {total} gekürzt ({returned} von {bytes} Bytes); lesen Sie mit --lines {next}- weiter oder erhöhen Sie --max-bytes.',
   READ_BYTES_TRUNCATED: '{path} wurde auf die ersten {returned} von {bytes} Bytes gekürzt; erhöhen Sie --max-bytes, um den Rest zu lesen.',
+  READ_LINE_TRUNCATED: '{path} wurde innerhalb der Zeile {start} von {total} gekürzt ({returned} von {bytes} Bytes), die allein {lineBytes} Bytes umfasst; erhöhen Sie --max-bytes auf mindestens {lineBytes}, um diese Zeile zu lesen.',
   EXTENSION_DROPPED: '{to} hat keine Dateiendung, daher verliert {from} beim Verschieben die Endung {extension}. Beenden Sie das Ziel mit /, um in einen Ordner zu verschieben, oder ergänzen Sie die Endung.',
   LITERAL_NEWLINE: '--{option} enthält die beiden Zeichen \\n, aber keinen Zeilenumbruch, daher werden sie wörtlich geschrieben. Übergeben Sie echte Zeilenumbrüche, zum Beispiel mit --stdin.',
   EMPTY_STDIN: '--stdin hat keine Bytes gelesen, daher wird {path} leer geschrieben. Leiten Sie den Inhalt weiter oder übergeben Sie --content "", um absichtlich eine leere Datei zu schreiben.',

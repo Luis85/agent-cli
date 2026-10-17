@@ -43,7 +43,10 @@ export function readView(result: ReadResult, selection: ReadSelection, warn: (me
     if (window.truncated) {
       extra.truncated = true;
       const { start, end, total } = window.lines;
-      warn(kernelMessage('READ_TRUNCATED', { path: result.path, start, end, total, returned: window.bytes, bytes: result.bytes, next: window.partial ? end : end + 1 }));
+      // Continuing at the cut line would return the same prefix again, so only a larger --max-bytes reads it.
+      warn(window.partial
+        ? kernelMessage('READ_LINE_TRUNCATED', { path: result.path, start, total, returned: window.bytes, bytes: result.bytes, lineBytes: window.lineBytes! })
+        : kernelMessage('READ_TRUNCATED', { path: result.path, start, end, total, returned: window.bytes, bytes: result.bytes, next: end + 1 }));
     }
   }
   if (parts.has('properties')) shaped.properties = document.properties;

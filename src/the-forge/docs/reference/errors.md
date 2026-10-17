@@ -263,6 +263,7 @@ Reads and filters an agent could misread:
 
 - `PATH_MATCHED_NOTHING`: a `--path` filter selected no file (`details.option`, `details.pattern`).
 - `READ_TRUNCATED`, `READ_BYTES_TRUNCATED`: `read` or `read-many` returned only part of a file (`details.path`, `start`, `end`, `total`, `returned`, `bytes`, `next`).
+- `READ_LINE_TRUNCATED`: the first selected line alone exceeds `--max-bytes`, so only its prefix was returned and `--lines` cannot continue past it; `details.lineBytes` is that line's size, the `--max-bytes` that reads it whole (`details.path`, `start`, `total`, `returned`, `bytes`).
 - `CWD_OUTSIDE_WORKSPACE`: the working directory lies outside the workspace, so relative paths do not resolve against it (`details.cwd`, `details.workspaceRoot`).
 
 Writes that succeed but probably differ from what was meant:

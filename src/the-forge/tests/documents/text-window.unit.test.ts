@@ -38,8 +38,8 @@ describe('text windows', () => {
   });
 
   it('cuts a single line longer than the limit at a UTF-8 character boundary', () => {
-    expect(textWindow('aé€😀b\nnext', 7)).toEqual({ content: 'aé€', truncated: true, partial: true, bytes: 6, lines: { start: 1, end: 1, total: 2 } });
-    expect(textWindow('😀', 3)).toEqual({ content: '', truncated: true, partial: true, bytes: 0, lines: { start: 1, end: 1, total: 1 } });
+    expect(textWindow('aé€😀b\nnext', 7)).toEqual({ content: 'aé€', truncated: true, partial: true, bytes: 6, lines: { start: 1, end: 1, total: 2 }, lineBytes: 12 });
+    expect(textWindow('😀', 3)).toEqual({ content: '', truncated: true, partial: true, bytes: 0, lines: { start: 1, end: 1, total: 1 }, lineBytes: 4 });
     expect(textWindow('é'.repeat(10), 5).content).toBe('éé');
   });
 });
