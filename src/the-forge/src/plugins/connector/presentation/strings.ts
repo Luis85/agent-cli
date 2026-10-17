@@ -1,4 +1,25 @@
-import type { PluginStrings } from '../../../application/plugins/plugin-catalog.ts';
+import type { PluginStrings, PluginStringTable } from '../../../application/plugins/plugin-catalog.ts';
+
+/** German descriptions of the connector plugin's command, actions and events, and its error summaries and hints. */
+export const de: PluginStringTable = {
+  commands: { connectors: 'Die in plugins.settings.connector.connections konfigurierten Backlog-Verbindungen auflisten, prüfen und testen.' },
+  actions: {
+    'connectors list': 'Jede Verbindung mit Plattform, Gültigkeit, Warnungen und der Angabe, ob ihre Token-Variable gesetzt ist.',
+    'connectors inspect': 'Eine Verbindung mit ihren aufgelösten Typ-, Status- und Feldzuordnungen.',
+    'connectors test': 'Eine authentifizierte, nur lesende Prüfung einer Verbindung.',
+  },
+  events: {
+    'connector.pushed': 'Eine Notiz wurde in ihr entferntes Work Item übertragen.',
+    'connector.pulled': 'Entfernte Änderungen wurden in eine Notiz geschrieben.',
+    'connector.conflict': 'Felder wurden seit dem letzten Abgleich auf beiden Seiten geändert und blieben unverändert.',
+  },
+  errors: {
+    CONNECTOR_NOT_FOUND: { summary: 'Die Verbindung oder ihre Plattform ist nicht verfügbar.', hint: 'Prüfen Sie die Verbindungs-ID mit connectors list und aktivieren Sie das Connector-Plugin der Plattform.' },
+    CONNECTION_INVALID: { summary: 'Das Verbindungsprofil ist ungültig.', hint: 'Korrigieren Sie die in error.details.issues genannten Felder in plugins.settings.connector.connections.' },
+    CONNECTOR_AUTH_FAILED: { summary: 'Die Anmeldung beim entfernten Dienst ist fehlgeschlagen.', hint: 'Setzen Sie die in error.details.tokenEnv genannte Umgebungsvariable auf ein gültiges Zugriffstoken mit Lese- und Schreibrechten für Work Items.' },
+    CONNECTOR_REQUEST_FAILED: { summary: 'Eine Anfrage an den entfernten Dienst ist fehlgeschlagen.', hint: 'Prüfen Sie error.details.status und die Meldung, die Organisations-URL und das Projekt, und wiederholen Sie den Befehl.' },
+  },
+};
 
 /** The connector plugin's German manifest and argument and settings descriptions, available while it is disabled. */
 export const connectorStrings: PluginStrings = {
