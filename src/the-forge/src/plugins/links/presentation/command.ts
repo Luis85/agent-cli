@@ -1,7 +1,8 @@
 import type { Command, CommandContext } from '../../../application/plugins/registry.ts';
 import { option } from '../../../application/plugins/command-metadata.ts';
 import { arity, value } from '../../../application/plugins/command-input.ts';
-import { pathGlob } from '../../../domain/documents/path-glob.ts';
+import { pathFilter, pathGlob, recordingFilter } from '../../../domain/documents/path-glob.ts';
+import { kernelMessage } from '../../../domain/shared/kernel-messages.ts';
 import { ensure } from '../../../domain/shared/errors.ts';
 import type { MetadataCache } from '../../../application/metadata/ports.ts';
 import { linksOutput } from './output.ts';
@@ -16,8 +17,8 @@ export interface LinksService { cache(): Promise<MetadataCache>; roots(): readon
 export function linksCommand(service: (context: CommandContext) => LinksService): Command {
   return {
     id: 'links', description: 'Report outgoing links, backlinks, unresolved links, orphans and dead ends from the metadata cache.',
-    usage: 'links out <note> | back <note> | unresolved [--path glob] | orphans [--path glob] | deadends [--path glob]',
-    scope: 'project', discovery: false, mutating: false,
+    usage: 'links out <note> | back <note> | unresolved [--path glob] | orphans [--path glob] | deadends [--path glob] [--project id]',
+    scope: 'project', projectOption: 'project', discovery: false, mutating: false,
     actions: {
       out: { description: 'Every link, embed, frontmatter link and Canvas file node of one file, with location and resolution.', output: linksOutput.out },
       back: { description: 'References in other files that resolve to one file.', output: linksOutput.back },
@@ -29,7 +30,10 @@ export function linksCommand(service: (context: CommandContext) => LinksService)
       { name: 'action', description: 'out, back, unresolved, orphans or deadends.', required: true, enum: actions },
       { name: 'note', description: 'The vault path of the file for out and back.' },
     ],
-    options: { path: option.string('For unresolved, orphans and deadends: only files whose root-relative path matches this glob.') },
+    options: {
+      path: option.string('For unresolved, orphans and deadends: only files whose root-relative path matches this glob, or that are this file or below this folder.'),
+      project: option.string('Use this project instead of the selected project.'),
+    },
     errors: ['NOT_FOUND'],
     async run(args, flags, context) {
       const action = args[0];
@@ -43,12 +47,17 @@ export function linksCommand(service: (context: CommandContext) => LinksService)
       }
       arity(args, 1);
       const glob = value(flags, 'path');
-      const include = glob === undefined ? () => true : pathGlob(glob);
+      const filter = recordingFilter(glob === undefined ? () => true : pathFilter(glob)), include = filter.matches;
       const cache = await links.cache();
-      if (action === 'unresolved') return unresolvedLinks(cache, include);
-      if (action === 'deadends') return deadendNotes(cache, include);
-      const roots = links.roots().map(root => pathGlob(root, 'plugins.settings.links.roots'));
-      return orphanNotes(cache, include, path => roots.some(root => root(path)));
+      const report = () => {
+        if (action === 'unresolved') return unresolvedLinks(cache, include);
+        if (action === 'deadends') return deadendNotes(cache, include);
+        const roots = links.roots().map(root => pathGlob(root, 'plugins.settings.links.roots'));
+        return orphanNotes(cache, include, path => roots.some(root => root(path)));
+      };
+      const result = report();
+      if (glob !== undefined && !filter.matched()) context.events.warn(kernelMessage('PATH_MATCHED_NOTHING', { option: '--path', pattern: glob }));
+      return result;
     },
   };
 }

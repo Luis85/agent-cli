@@ -21,7 +21,7 @@ describe('discovery for agents without prior knowledge', () => {
     expect(next).toMatch(/help <command>.*schema <command>/);
     // The indented index stays a small fraction of the full catalog.
     expect(index.stdout.length).toBeLessThan(6500);
-    expect((await cli(['schema'])).stdout.length).toBeGreaterThan(index.stdout.length * 20);
+    expect((await cli(['schema', '--all'])).stdout.length).toBeGreaterThan(index.stdout.length * 20);
     expect((await cli(['help', '--lang', 'de'])).body.data.next).toMatch(/^Verwendung, Optionen/);
   }, workflowTimeout);
 

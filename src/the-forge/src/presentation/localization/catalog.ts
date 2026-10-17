@@ -1,18 +1,18 @@
 import { germanServerActions, germanServerCommands } from '../server/messages.ts';
 
 export const germanCommands = {
-  'read-many': 'Bis zu 32 Dateien nacheinander mit Revisionen und einer Gesamtgrenze von 8 MiB Rohdaten lesen.',
+  'read-many': 'Bis zu 32 Dateien nacheinander mit Revisionen lesen; jede Datei trägt höchstens --max-bytes zu einer Gesamtgrenze von 8 MiB bei.',
   ...germanServerCommands,
   stat: 'Die Revision einer Datei oder eines Ordners mit Größe oder Anzahl der enthaltenen Einträge ohne Inhalt prüfen.',
   help: 'Befehle und ihre Verwendung ohne interaktive Abfragen entdecken.',
-  schema: 'Maschinenlesbarer Vertrag: JSON-Schema-2020-12-Eingabe- und -Ausgabeschemas, Annotationen und Fehlercodes aller Befehle oder eines Befehls.',
+  schema: 'Maschinenlesbarer Vertrag: JSON-Schema-2020-12-Eingabe- und -Ausgabeschemas, Annotationen und Fehlercodes eines Befehls oder mit --all aller Befehle; ohne beides ein Verzeichnis der Befehls-, Generator- und Skill-IDs.',
   config: 'Die geprüfte wirksame Konfiguration und ihren Quellpfad anzeigen.',
   setup: 'The Forge installieren und fehlende Konfiguration, Skills, Vorlagen und Projektanleitungen anlegen.',
   project: 'Eigenständige Bibliotheks- und Webview-Projekte verwalten und getestete Domain- oder Anwendungskomponenten hinzufügen.',
   workflows: 'Projekteigene CI-Workflows entdecken und ihre generierten GitHub-Einstiegspunkte synchronisieren; --check meldet Abweichungen.',
   formats: 'Native Obsidian-Formate und unterstützte Vorgänge anzeigen.',
-  list: 'Dateien in stabiler Pfadreihenfolge auflisten; symbolische Verknüpfungen, Git und node_modules überspringen.',
-  read: 'Ein Dokument, UTF-8-Text oder einen Base64-Anhang mit seiner SHA-256-Revision lesen.',
+  list: 'Dateien in stabiler Pfadreihenfolge auflisten; symbolische Verknüpfungen, Git, node_modules und .trash überspringen.',
+  read: 'Ein Dokument, UTF-8-Text oder einen Base64-Anhang mit seiner SHA-256-Revision lesen; langer Inhalt wird gekürzt, und --lines liest einen Zeilenbereich.',
   validate: 'Markdown-Frontmatter, Canvas-Graphen, Base-Strukturen oder UTF-8-Text prüfen.',
   create: 'Eine Notiz, ein Canvas, eine Base oder eine Datei erstellen. Vorhandene Dateien werden nicht überschrieben.',
   write: 'Eine Datei erstellen oder ersetzen; Ersetzen erfordert die aktuelle Revision.',
@@ -48,6 +48,7 @@ export const germanGuidance = {
   otherFiles: 'Uninterpretierte Bytes; Plugins können weitere Verarbeitung bereitstellen.',
   textFiles: 'textFilenames gelten ohne Beachtung der Groß- und Kleinschreibung, auch mit Punkt-Suffixen, die mit einem anderen Zeichen als einem Punkt beginnen; native Erweiterungen haben Vorrang. UTF-8 lesen, wörtlich bearbeiten, ergänzen und vollständig ersetzen, mit Unified-Diffs im Probelauf; ungültiges UTF-8 und Inhalte mit NUL-Zeichen werden als Base64-Anhang gelesen.',
   delivery: 'Geordnet, abgewartet und mit separaten Snapshots je Behandler; Fehler werden zu Warnungen. Obsidian-artige vault.*-Ereignisse folgen jedem erfolgreichen Schreibvorgang (zuerst neue Ordner, übergeordnete vor untergeordneten, dann Dateien in Stapelreihenfolge); Probeläufe senden stattdessen workspace.quick-preview. Nach den vault.*-Ereignissen eines Stapels folgen metadataCache.changed, metadataCache.deleted, metadataCache.resolve und ein metadataCache.resolved, sobald der Metadaten-Cache in diesem Aufruf geladen wurde. operation.*-, command.*- und plugin.*-Ereignisse sind Lebenszyklusphasen des Hosts, die claude.*-Ereignisse des claude-Kern-Plugins Phasen jedes Claude-Aufrufs; workspace.*-Ereignisse entsprechen Obsidians Workspace (file-open, quick-preview, layout-ready, quit, project-change). Host-Namensräume gehören dem Host: Plugins beobachten sie, senden aber nur eigene Ereignisse. onAny beobachtet alle Ereignisse; replay liest den begrenzten Verlauf dieses Aufrufs. Keine dauerhafte Wiederholung. Die Antwort enthält standardmäßig nur vault.*-Ereignisse; --events none|changes|all oder settings.events wählt die Ausgabe, ohne Zustellung oder replay zu ändern.',
+  schemaMore: 'Führen Sie schema <Befehl> für den Vertrag eines Befehls oder schema --all für alle Befehle aus.',
   eventChanges: 'Nur erfolgreich geschriebene vault.*-Ereignisse: vault.create, vault.modify, vault.delete und vault.rename für Dateien und Ordner.',
   setup: {
     'node bin/forge.js templates list': 'Die installierten, bearbeitbaren Planungsvorlagen entdecken.',

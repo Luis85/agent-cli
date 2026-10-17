@@ -17,7 +17,8 @@ describe('lean agent responses', () => {
     const lean = (await cli(['read', 'note.md'])).body;
     expect(lean.data.document).toEqual({ kind: 'markdown', content: '---\nstatus: draft\n---\n# Note\n', properties: { status: 'draft' } });
     expect(lean.events).toEqual([]);
-    expect((await cli(['read', 'note.md', '--parts', 'body'])).body.data.document.body).toBe('# Note\n');
+    // --parts selects exactly the requested parts.
+    expect((await cli(['read', 'note.md', '--parts', 'body'])).body.data.document).toEqual({ kind: 'markdown', body: '# Note\n' });
     const invalid = await cli(['read', 'note.md', '--parts', 'outline']);
     expect(invalid.status).toBe(2);
     expect(invalid.body.error.code).toBe('INVALID_OPTION_VALUE');

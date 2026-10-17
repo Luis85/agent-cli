@@ -5,11 +5,12 @@
 `schema` publishes the machine-readable contract of the installed executable: every command's input, output and failure codes as JSON Schema 2020-12 documents, behavior annotations derived from command metadata, and the response envelope. Agents and tools can validate an invocation before running it and validate the response after it. The installed executable is the authority: plugins add their commands to the same document.
 
 ```sh
-node bin/forge.js schema --json          # the complete contract
+node bin/forge.js schema --json          # a compact index: command, generator and skill ids
 node bin/forge.js schema read --json     # one command, with only the error codes it can report
+node bin/forge.js schema --all --json    # the complete contract of every command
 ```
 
-Start with `help` (also `forge` without arguments, `--help` and `-h`) for a compact index of a few kilobytes: `commands` maps each command id to its description, `mutating` lists the commands that can change files or external state, `globalOptions` lists the global flags and `next` points to the details. `make` lists the generators and `skills` the agent skills. Use `help <command>` for that command's usage, examples, options, positional arguments, errors and action details, including JSON input document schemas where declared. Help omits response schemas and the envelope; use `schema <command>` when you need those contracts, or `schema` for the complete installed inventory. See [command metadata](plugins.md#command-metadata) for how a command declares them.
+Start with `help` (also `forge` without arguments, `--help` and `-h`) for a compact index of a few kilobytes: `commands` maps each command id to its description, `mutating` lists the commands that can change files or external state, `globalOptions` lists the global flags and `next` points to the details. `make` lists the generators and `skills` the agent skills. Use `help <command>` for that command's usage, examples, options, positional arguments, errors and action details, including JSON input document schemas where declared. Help omits response schemas and the envelope; use `schema <command>` when you need those contracts, or `schema --all` for the complete installed inventory. `schema` alone returns only `name`, `version`, `apiVersion`, `node`, `dialect`, `commands` (`{id, description}`), `generators`, `skills` and `more`, so it stays small; the fields below describe the document of `schema <command>` and `schema --all`. See [command metadata](plugins.md#command-metadata) for how a command declares them.
 
 ## Document
 

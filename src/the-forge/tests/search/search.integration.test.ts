@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { searchFiles, type SearchResult } from '../../src/plugins/search/application/search.ts';
+import { searchFiles, searchMatchingFiles, type SearchResult } from '../../src/plugins/search/application/search.ts';
+import { renderWarning, type KernelMessage } from '../../src/domain/shared/kernel-messages.ts';
 import { vmSearchBudget } from '../../src/plugins/search/infrastructure/budget.ts';
 import type { SearchQuery } from '../../src/plugins/search/domain/query.ts';
 import type { PageRequest } from '../../src/domain/shared/paging.ts';
@@ -13,6 +14,9 @@ import { metadataIndex } from '../support/metadata.ts';
 let root: string;
 /** The files a search parsed for metadata filters: never the whole vault, only the candidates it read. */
 const parsed: string[] = [];
+/** The warnings of the last search, rendered in English. */
+const warned: string[] = [];
+const warn = (message: KernelMessage) => { warned.push(renderWarning(message)); };
 const put = async (path: string, content: string | Uint8Array) => {
   await mkdir(dirname(join(root, path)), { recursive: true });
   await writeFile(join(root, path), content);
@@ -22,8 +26,9 @@ async function search(pattern: string, extra: Partial<SearchQuery> = {}, page: P
   const files = await NodeFiles.at(root);
   const index = metadataIndex(files, { workspaceRoot: true });
   parsed.length = 0;
+  warned.length = 0;
   const parse = (file: FileSnapshot) => { parsed.push(file.path); return index.parseFile(file); };
-  const result = await searchFiles({ files, paths: () => index.vaultFiles(), parse, budget: vmSearchBudget(timeoutMs) }, query(pattern, extra), page);
+  const result = await searchFiles({ files, paths: () => index.vaultFiles(), parse, budget: vmSearchBudget(timeoutMs), warn }, query(pattern, extra), page);
   if (extra.tag === undefined && extra.property === undefined && !extra.skipCode) expect(parsed).toEqual([]);
   return result;
 }
@@ -69,6 +74,38 @@ describe('searching vault text files', () => {
     expect(hit).toMatchObject({ path: 'notes/b.md', line: 6, before: ['---', '# Roadmap'], after: ['```ts', 'const plan = 1;'] });
   });
 
+  it('treats a path without glob characters as that file or folder and warns when a path matches nothing', async () => {
+    for (const path of ['notes', 'notes/', './notes']) expect(places(await search('plan', { path })), path).toEqual(places(await search('plan', { path: 'notes/**' })));
+    expect(warned).toEqual([]);
+    expect(places(await search('plan', { path: 'src/plan.ts' }))).toEqual(['src/plan.ts:1:14', 'src/plan.ts:1:22']);
+    expect(places(await search('plan', { exclude: 'notes' }))).toEqual(['board.canvas:1:43', 'src/plan.ts:1:14', 'src/plan.ts:1:22']);
+    // A folder of attachments matches, so no warning claims that the path does not exist.
+    expect(await search('plan', { path: 'assets' })).toEqual({ hits: [], total: 0 });
+    expect(warned).toEqual([]);
+    expect(await search('plan', { path: 'Notes' })).toEqual({ hits: [], total: 0 });
+    expect(warned).toEqual([expect.stringMatching(/^--path Notes matched no file in this scope\. .*run list/)]);
+    expect(places(await search('plan', { path: 'note' }))).toEqual([]);
+    expect(warned).toHaveLength(1);
+  });
+
+  it('lists the files with hits and their counts in path order, paged by file', async () => {
+    const files = await NodeFiles.at(root);
+    const index = metadataIndex(files, { workspaceRoot: true });
+    const sources = { files, paths: () => index.vaultFiles(), parse: (file: FileSnapshot) => index.parseFile(file), budget: vmSearchBudget(10_000), warn };
+    const all = await searchMatchingFiles(sources, query('plan'), {});
+    expect(all).toEqual({
+      files: ['board.canvas', 'notes/a.md', 'notes/b.md', 'src/plan.ts'].map((path, item) => ({ path, revision: expect.stringMatching(/^[0-9a-f]{64}$/), hits: [1, 2, 2, 2][item] })),
+      total: 7, fileCount: 4,
+    });
+    const first = await searchMatchingFiles(sources, query('plan'), { limit: 3 });
+    expect(first).toMatchObject({ files: all.files.slice(0, 3), total: 7, fileCount: 4, nextCursor: expect.any(String) });
+    expect(await searchMatchingFiles(sources, query('plan'), { limit: 3, cursor: first.nextCursor })).toEqual({ files: all.files.slice(3), total: 7, fileCount: 4 });
+    // A hit cursor never continues a page of files.
+    const hits = await searchFiles(sources, query('plan'), { limit: 1 });
+    await expect(searchMatchingFiles(sources, query('plan'), { cursor: hits.nextCursor })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    expect((await searchMatchingFiles(sources, query('plan', { property: { key: 'status', value: 'done' }, skipCode: true }), {})).files).toEqual([expect.objectContaining({ path: 'notes/b.md', hits: 1 })]);
+  });
+
   it('excludes root-relative globs and brace alternatives without treating .gitignore as search policy', async () => {
     await put('src/dist/plan.ts', 'plan');
     await put('src/coverage/plan.ts', 'plan');
@@ -91,7 +128,7 @@ describe('searching vault text files', () => {
     });
     const parse = vi.fn(async () => null);
     const result = await searchFiles({
-      files, paths: async () => ['notes/a.md', 'notes/b.md'], parse, budget: vmSearchBudget(10_000),
+      files, paths: async () => ['notes/a.md', 'notes/b.md'], parse, budget: vmSearchBudget(10_000), warn,
     }, query('plan', { exclude: 'notes/b.md', skipCode: true }), {});
     expect(places(result)).toEqual(['notes/a.md:4:1', 'notes/a.md:4:13']);
     expect(read.mock.calls).toEqual([['notes/a.md']]);
@@ -116,7 +153,7 @@ describe('searching vault text files', () => {
     const files = await NodeFiles.at(root);
     const read = vi.spyOn(files, 'read');
     const paths = vi.fn(async () => []);
-    const sources = { files, paths, parse: async () => null, budget: vmSearchBudget(10_000) };
+    const sources = { files, paths, parse: async () => null, budget: vmSearchBudget(10_000), warn };
     for (const exclude of ['', '**/[z-a]', '**/{dist,coverage', 'x'.repeat(1025)]) {
       await expect(searchFiles(sources, query('plan', { exclude }), {})).rejects.toMatchObject({
         code: 'INVALID_ARGUMENT', message: expect.stringContaining('--exclude'),

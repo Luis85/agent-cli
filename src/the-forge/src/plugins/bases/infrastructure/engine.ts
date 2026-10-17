@@ -135,6 +135,6 @@ export class NodeBasesQueryEngine implements BasesQueryEngine {
       return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
     });
     const limit = Math.min(options.limit ?? Infinity, typeof view.limit === 'number' ? view.limit : Infinity);
-    return { path, view: String(view.name), context: contextPath, total: rows.length, files: rows.slice(0, limit).map(row => row.path), warnings, compatibility: this.capabilities() };
+    return { path, view: String(view.name), context: contextPath, total: rows.length, files: rows.slice(0, limit).map(row => row.path), warnings };
   }
 }

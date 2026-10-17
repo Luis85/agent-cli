@@ -192,3 +192,28 @@ export function pathGlob(pattern: string, option = '--path'): (path: string) => 
     return alternatives.some(alternative => pathMatches(alternative, parts));
   };
 }
+
+/** Glob syntax; a `--path` value without any of these characters names a file or folder. */
+const globSyntax = /[*?[\]{}\\]/;
+
+/**
+ * A command's `--path` (or `--exclude`) filter. A value with glob syntax matches as `pathGlob` does. A plain value
+ * names a file or folder relative to the scope and matches that path and everything below it, so `notes` and
+ * `notes/` select the whole `notes` folder; `.` and `./` select everything.
+ */
+export function pathFilter(pattern: string, option = '--path'): (path: string) => boolean {
+  if (globSyntax.test(pattern)) return pathGlob(pattern, option);
+  ensure(pattern.length > 0 && pattern.length <= maxGlobLength, 'INVALID_ARGUMENT', `${option} must be a glob of 1 to ${maxGlobLength} characters.`);
+  const literal = pattern.replace(/^\.\//, '').replace(/\/+$/, '');
+  if (literal === '' || literal === '.') return () => true;
+  return path => path === literal || path.startsWith(`${literal}/`);
+}
+
+/** A filter that remembers whether it matched any path, so a command can warn when its `--path` matched nothing. */
+export function recordingFilter(filter: (path: string) => boolean): { matches: (path: string) => boolean; matched: () => boolean } {
+  let matched = false;
+  return {
+    matches: path => { const result = filter(path); if (result) matched = true; return result; },
+    matched: () => matched,
+  };
+}

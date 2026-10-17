@@ -62,8 +62,8 @@ export function editCommand(): Command {
       'edit notes/idea.md --section "Plan > Risks" --append --content "- Late data" --if-match <revision>',
       'edit notes/idea.md --edits @edits.json --if-match <revision> --dry-run',
     ],
-    usage: 'edit <note.md|text-file> --if-match sha256 (--find text --replace text | --edits json|@file|- | --append --content text | (--section "A > B" [--section-line n] | --block id) (--replace text | --append --content text | --prepend --content text))',
-    scope: 'project', discovery: false, mutating: true, args: [{ name: 'path', description: 'Vault path relative to the command scope.', required: true, path: true }], errors: editErrors, output: editOutput,
+    usage: 'edit <note.md|text-file> --if-match sha256 (--find text --replace text | --edits json|@file|- | --append --content text | (--section "A > B" [--section-line n] | --block id) (--replace text | --append --content text | --prepend --content text)) [--project id]',
+    scope: 'project', projectOption: 'project', discovery: false, mutating: true, args: [{ name: 'path', description: 'Vault path relative to the command scope.', required: true, path: true }], errors: editErrors, output: editOutput,
     options: {
       'if-match': option.string('SHA-256 revision the file must still have (from read).', { required: true }),
       find: option.string('Exact literal text that must occur once.'),
@@ -75,6 +75,7 @@ export function editCommand(): Command {
       section: option.string('Markdown heading path such as "Plan > Risks"; the section runs to the next heading of the same or a higher level. Write " > " inside a heading as " \\> ".'),
       'section-line': option.string('1-based line of the --section heading, from AMBIGUOUS_SECTION details.candidates, when the path matches several headings.'),
       block: option.string('Markdown block id (^id) of a paragraph, list item or section; a list item keeps its marker and checkbox, and content added next to it must be list items.'),
+      project: option.string('Use this project instead of the selected project.'),
     },
     async run(args, flags, context) {
       arity(args, 1); const path = args[0]!;

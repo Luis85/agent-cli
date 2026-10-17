@@ -75,7 +75,7 @@ describe('the packaged quality example plugin', () => {
 
   it('describes its commands in German and lists its contributions and error codes', async () => {
     expect((await run('--lang', 'de', 'help', 'quality.owners')).body.data).toMatchObject({ description: 'Notizen ohne Verantwortliche finden', errors: ['QUALITY_UNOWNED', 'PLUGIN_UNAVAILABLE'], annotations: { mutating: false } });
-    const schema = (await run('schema')).body.data;
+    const schema = (await run('schema', '--all')).body.data;
     expect(schema.errors).toContainEqual({ code: 'QUALITY_UNOWNED', exitCode: 5, category: 'drift', retryable: false, summary: 'Some notes have no owner.', plugin: 'quality' });
     const plugins = (await run('plugins')).body.data.plugins;
     expect(plugins.map((plugin: { id: string; core: boolean; state: string }) => [plugin.id, plugin.core, plugin.state])).toEqual([...bundledCorePlugins.map(id => [id, true, 'enabled']), ['quality', false, 'enabled']]);

@@ -19,7 +19,6 @@ export interface BasesQueryResult {
   total: number;
   /** Indexing warnings over every file of the scope, in vault path order. */
   warnings: BaseIndexWarning[];
-  compatibility: Record<string, unknown>;
 }
 export interface BasesQueryEngine {
   query(path: string, options: BasesQueryOptions): Promise<BasesQueryResult>;

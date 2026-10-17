@@ -42,7 +42,7 @@ it('renders discovered Obsidian templates using typed values, configured paths a
     expect(preview.body.data.preview[0].path).toBe('documents/Work Item.md');
     await expect(readFile(join(project, 'documents/Work Item.md'))).rejects.toThrow();
     expect((await cli(make)).status).toBe(0);
-    const read = (await cli(['read', 'documents/Work Item.md', '--parts', 'body'])).body.data.document;
+    const read = (await cli(['read', 'documents/Work Item.md', '--parts', 'properties,body'])).body.data.document;
     expect(read.properties).toEqual({ title: 'Work Item', created: '2026/10/07', tags: values.tags, summary: values.summary });
     expect(read.body).toContain('[[Architecture]]\n> [!tip]');
     expect((await cli(make)).body.error.code).toBe('CONFLICT');

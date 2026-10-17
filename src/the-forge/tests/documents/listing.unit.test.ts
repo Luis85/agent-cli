@@ -111,7 +111,7 @@ describe('cursor paging', () => {
 
 describe('list with --path, --limit and --cursor', () => {
   const list = documentCommands().find(command => command.id === 'list')!;
-  const context = { workspace: { files: new MemoryFiles(Object.fromEntries(paths.map(path => [path, '']))) } } as unknown as CommandContext;
+  const context = { workspace: { files: new MemoryFiles(Object.fromEntries(paths.map(path => [path, '']))) }, events: { warn: () => {} } } as unknown as CommandContext;
   const run = (flags: Record<string, string>) => list.run([], flags, context) as Promise<{ files: Array<{ path: string; kind: string }>; nextCursor?: string }>;
 
   it('filters by glob and kind and pages in path order', async () => {
@@ -119,8 +119,8 @@ describe('list with --path, --limit and --cursor', () => {
     const first = await run({ path: '**/*.md', limit: '3' });
     expect(first.files.map(file => file.path)).toEqual(['README.md', 'notes/a.md', 'notes/deep/b.md']);
     const second = await run({ path: '**/*.md', limit: '3', cursor: first.nextCursor! });
-    expect(second).toEqual({ files: [{ path: 'Ünïcode/ä.md', kind: 'markdown' }] });
-    expect(await run({})).toEqual({ files: paths.map(path => ({ path, kind: expect.any(String) })) });
+    expect(second).toEqual({ files: [{ path: 'Ünïcode/ä.md', kind: 'markdown' }], total: 4 });
+    expect(await run({})).toEqual({ files: paths.map(path => ({ path, kind: expect.any(String) })), total: paths.length });
   });
 
   it('rejects a cursor from a different filter and non-positive limits', async () => {

@@ -23,7 +23,7 @@ it('lists files matching a path glob in pages joined by nextCursor', async () =>
     for (const name of ['a', 'b', 'c']) await writeFile(join(project, `glob-${name}.md`), `# ${name}\n`);
     const first = await cli(['list', '--path', 'glob-*.md', '--limit', '2']);
     expect(first.body.data.files).toEqual([{ path: 'glob-a.md', kind: 'markdown' }, { path: 'glob-b.md', kind: 'markdown' }]);
-    expect((await cli(['list', '--path', 'glob-*.md', '--limit', '2', '--cursor', first.body.data.nextCursor])).body.data).toEqual({ files: [{ path: 'glob-c.md', kind: 'markdown' }] });
+    expect((await cli(['list', '--path', 'glob-*.md', '--limit', '2', '--cursor', first.body.data.nextCursor])).body.data).toEqual({ files: [{ path: 'glob-c.md', kind: 'markdown' }], total: 3 });
     expect((await cli(['list', '--path', '*.md', '--cursor', first.body.data.nextCursor])).body.error.code).toBe('INVALID_ARGUMENT');
   });
 

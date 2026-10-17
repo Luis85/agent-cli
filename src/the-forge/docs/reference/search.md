@@ -23,12 +23,15 @@ node bin/forge.js search -- --dry-run
 | `--in body / frontmatter / all` | Markdown lines to read: `body` is everything after the frontmatter, `frontmatter` the lines between its `---` delimiters, `all` (default) the whole file. Other kinds have no frontmatter: `frontmatter` finds nothing in them |
 | `--skip-code` | Skip fenced and indented Markdown code blocks, as the [metadata cache](formats.md#metadata-index) records them |
 | `--kind markdown / canvas / base / text` | Only files of this kind; attachment kinds are rejected with `INVALID_OPTION_VALUE` |
-| `--path <glob>` | Only files whose root-relative path matches the [path glob](cli.md#path-globs-and-paging) |
+| `--path <glob>` | Only files whose root-relative path matches the [path glob](cli.md#path-globs-and-paging); a value without glob characters selects that file or everything below that folder, and one that matches no file adds a warning |
 | `--exclude <glob>` | Skip files whose root-relative path matches one [path glob](cli.md#path-globs-and-paging), before reading their contents; use braces for alternatives, for example `"**/{dist,coverage}/**"` |
 | `--tag <tag>` | Only notes with the tag or a nested tag below it (`project` matches `#project/alpha`), case-insensitively, with or without `#`; inline and frontmatter tags count |
 | `--property <key>` / `--property <key>=<value>` | Only notes whose top-level frontmatter has `key` with a non-null value, or whose value (or any scalar list element) has exactly the text `value` |
 | `--context <n>` | Up to `n` lines (0–50, default 0) before and after each hit, as `before` and `after` |
-| `--limit <n>` | Hits per page, default 100 |
+| `--files-only` | Return `{files: [{path, revision, hits}], total, fileCount, nextCursor?}`: the files with hits in path order, paged by file, with their hit counts |
+| `--count` | Return only `{total, fileCount}`: the number of hits and of files with hits; it takes no `--limit`, `--cursor` or `--context` |
+| `--project <id>` | Search this project instead of the selected one |
+| `--limit <n>` | Hits (or files with `--files-only`) per page, default 100 |
 | `--cursor <token>` | Continue after the page that returned this `nextCursor`; see [paging](cli.md#path-globs-and-paging) |
 
 The result is `{hits, total, nextCursor?}`:

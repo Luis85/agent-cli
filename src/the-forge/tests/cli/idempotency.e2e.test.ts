@@ -136,7 +136,7 @@ async function snapshot(directory = fixture.project, files: Record<string, strin
 interface Annotations { mutating: boolean; idempotentHint: boolean; actions?: Record<string, { mutating: boolean; idempotentHint: boolean }> }
 /** Every mutating mode of the published schema with its declared idempotentHint: `command` or `command action`. */
 async function declaredModes(): Promise<Map<string, boolean>> {
-  const commands = (await cli(['schema'])).body.data.commands as Array<{ id: string; annotations: Annotations }>;
+  const commands = (await cli(['schema', '--all'])).body.data.commands as Array<{ id: string; annotations: Annotations }>;
   const modes = new Map<string, boolean>();
   for (const { id, annotations } of commands) {
     const actions = Object.entries(annotations.actions ?? {});

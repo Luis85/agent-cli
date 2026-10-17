@@ -54,7 +54,10 @@ describe('read-many contract', () => {
   });
   it('refuses the file that exceeds the raw byte budget before parsing it', async () => {
     const fixture = context(3 * 1024 * 1024);
-    await expect(command.run(['a.bin', 'b.bin', 'c.bin', 'd.bin'], {}, fixture.value)).rejects.toMatchObject({
+    // Each file counts up to --max-bytes; with the limit at 8 MiB, every raw byte counts.
+    expect(await command.run(['a.bin', 'b.bin', 'c.bin', 'd.bin'], {}, fixture.value)).toMatchObject({ bytes: 12 * 1024 * 1024 });
+    fixture.parsed.mockClear(); fixture.read.mockClear();
+    await expect(command.run(['a.bin', 'b.bin', 'c.bin', 'd.bin'], { 'max-bytes': String(8 * 1024 * 1024) }, fixture.value)).rejects.toMatchObject({
       code: 'INVALID_ARGUMENT', details: { index: 2, path: 'c.bin', maxBytes: 8 * 1024 * 1024, bytes: 9 * 1024 * 1024 },
     });
     expect(fixture.parsed.mock.calls.map(([path]) => path)).toEqual(['a.bin', 'b.bin']);

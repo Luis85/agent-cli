@@ -157,7 +157,7 @@ describe('declared command errors', async () => {
 
   it('publishes the project routing codes on every command or action that declares a projectOption', async () => {
     const routed = [...registry.commands.values()].filter(command => command.projectOption !== undefined || Object.values(command.actions ?? {}).some(action => action.projectOption !== undefined));
-    expect(routed.map(command => command.id)).toEqual(expect.arrayContaining(['read', 'read-many', 'stat', 'apply', 'make', 'webview', 'browser']));
+    expect(routed.map(command => command.id)).toEqual(expect.arrayContaining(['list', 'read', 'read-many', 'stat', 'validate', 'create', 'write', 'edit', 'properties', 'patch', 'apply', 'move', 'rename', 'delete', 'search', 'links', 'vault', 'make', 'webview', 'browser']));
     const context = {} as CommandContext;
     const contract = async (id: string) => await registry.commands.get('schema')!.run([id], {}, context) as { commands: Array<{ errors: string[] }>; errors: Array<{ code: string }> };
     for (const command of routed) {
@@ -169,12 +169,12 @@ describe('declared command errors', async () => {
       expect(new Set(help.errors).size, `${command.id} lists each code once`).toBe(help.errors.length);
     }
     // A command without a project option publishes only its own codes.
-    expect((await contract('write')).commands[0]!.errors).toEqual(registry.commands.get('write')!.errors);
+    expect((await contract('help')).commands[0]!.errors).toEqual(registry.commands.get('help')!.errors);
   });
 
   it('declares no code by hand that commonErrors or the project routing codes already publish', () => {
     const derived = new Set<string>([...commonErrors, ...projectOptionErrors]);
-    for (const id of ['read', 'read-many', 'stat', 'apply']) {
+    for (const id of ['list', 'read', 'read-many', 'stat', 'validate', 'create', 'write', 'edit', 'properties', 'patch', 'apply', 'move', 'rename', 'delete', 'search', 'links', 'vault']) {
       expect((registry.commands.get(id)!.errors ?? []).filter(code => derived.has(code)), id).toEqual([]);
     }
   });

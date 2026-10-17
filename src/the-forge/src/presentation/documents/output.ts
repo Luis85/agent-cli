@@ -7,14 +7,20 @@ const revision: JsonSchema = { type: 'string', pattern: '^[0-9a-f]{64}$', descri
 const kind = (...kinds: string[]): JsonSchema => kinds.length === 1 ? { type: 'string', const: kinds[0] } : { type: 'string', enum: kinds };
 const attachmentKinds = fileKinds.filter(name => !['markdown', 'canvas', 'base', 'text'].includes(name));
 
-/** `read`: the revision and byte count, and the parsed document by kind. */
+const lineNumber: JsonSchema = { type: 'integer', minimum: 1 };
+/** `read`: the revision and byte count, and the parsed document by kind; long text or attachment content is truncated. */
 export const readOutput: JsonSchema = {
   type: 'object', required: ['path', 'revision', 'bytes', 'document'],
   properties: {
-    path, revision, bytes: { type: 'integer', minimum: 0 },
+    path, revision, bytes: { type: 'integer', minimum: 0, description: 'Size of the whole file in bytes, also when the content is truncated.' },
+    truncated: { type: 'boolean', const: true, description: 'Present when --max-bytes cut text or attachment content; a warning says how to read the rest.' },
+    lines: {
+      type: 'object', required: ['start', 'end', 'total'], description: 'The lines content holds, with --lines or when content was truncated.',
+      properties: { start: lineNumber, end: { type: 'integer', minimum: 0 }, total: { type: 'integer', minimum: 0, description: 'Lines of the whole file.' } },
+    },
     document: { oneOf: [
       {
-        title: 'markdown', type: 'object', required: ['kind', 'content', 'properties'],
+        title: 'markdown', type: 'object', required: ['kind'], description: 'content and properties, or the parts --parts selects.',
         properties: { kind: kind('markdown'), content: text, properties: { type: 'object', description: 'Parsed YAML frontmatter.' }, body: { type: 'string', description: 'Text after the frontmatter, with --parts body.' } },
       },
       { title: 'canvas or base', type: 'object', required: ['kind', 'data'], properties: { kind: kind('canvas', 'base'), data: { type: 'object' } } },
@@ -30,9 +36,10 @@ export const readOutput: JsonSchema = {
 
 /** `list`: one page of files in path order. */
 export const listOutput: JsonSchema = {
-  type: 'object', required: ['files'],
+  type: 'object', required: ['files', 'total'],
   properties: {
     files: { type: 'array', items: { type: 'object', required: ['path', 'kind'], properties: { path, kind: kind(...fileKinds) } } },
+    total: { type: 'integer', minimum: 0, description: 'Every file that passes the filters, across all pages.' },
     nextCursor: { type: 'string', description: 'Present when the page was truncated; pass it as --cursor.' },
   },
 };
