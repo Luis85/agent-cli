@@ -5,6 +5,7 @@ import { uiBooleanAttributes } from '../../../domain/components/syntax.ts';
 import { ordered, defaults, json, expression, defaultAssignments } from '../rendering.ts';
 import { domFactory, domProps, domSlot, domTypedefs } from './dom-source.ts';
 import { groupElementInteractions, interactionPrefix, renderInteractionHandlers, stateDefaults, stateType } from '../interactions/handlers.ts';
+import { guardedUrl, guardsUrl, safeUrlHelper } from '../url-guard.ts';
 
 /** DOM updates retain mounted components, projected children and browser-managed state. */
 export function reactiveDomModule(definition: UiDefinition, interactions: readonly InteractionDefinition[]): string {
@@ -12,20 +13,21 @@ export function reactiveDomModule(definition: UiDefinition, interactions: readon
   const aliases = new Map(references.map((id, index) => [id, `UiChild_${index}`]));
   const imports = references.map(id => `import ${aliases.get(id)} from ${json(`./${id}.js`)};`).join('\n');
   const prefix = interactionPrefix(definition);
-  const used = { slot: false, component: false, element: false };
+  const used = { slot: false, component: false, element: false, urls: false };
   function nodeCode(node: UiNode): string {
     if ('slot' in node) { used.slot = true; return 'slot(children)'; }
     const children = `[${(node.children ?? []).map(nodeCode).join(', ')}]`;
     if ('component' in node) { used.component = true; return `component(${aliases.get(node.component)}, () => ({${ordered(node.props ?? {}).map(([key, value]) => `${json(key)}: ${expression(value)}`).join(', ')}}), ${children})`; }
     used.element = true;
+    used.urls ||= Object.entries(node.attrs ?? {}).some(([key, value]) => guardsUrl(key, value));
     const listeners = groupElementInteractions(node, interactions, prefix).map(({ event, handlers }) => `${json(event)}: [${handlers.join(', ')}]`).join(', ');
-    return `element(${json(node.tag)}, () => ({${ordered(node.attrs ?? {}).map(([key, value]) => `${json(key)}: ${expression(value)}`).join(', ')}}), ${node.text === undefined ? 'null' : `() => ${expression(node.text)}`}, ${children}, {${listeners}})`;
+    return `element(${json(node.tag)}, () => ({${ordered(node.attrs ?? {}).map(([key, value]) => `${json(key)}: ${guardedUrl(key, value, expression(value))}`).join(', ')}}), ${node.text === undefined ? 'null' : `() => ${expression(node.text)}`}, ${children}, {${listeners}})`;
   }
   const root = nodeCode(definition.root);
   const handlers = renderInteractionHandlers(definition, interactions, { typescript: false, prefix, commit: next => `Object.assign(_uiState, ${next}); refresh();` });
   const assignments = defaultAssignments(definition);
   const usesState = root.includes('_uiState') || handlers.includes('_uiState');
-  return `${imports}${imports ? '\n\n' : ''}${domTypedefs(definition)}${used.element ? `const booleanAttributes = new Set(${json([...uiBooleanAttributes].sort())});\n` : ''}const updateProps = Symbol.for('forge.ui.updateProps');
+  return `${imports}${imports ? '\n\n' : ''}${domTypedefs(definition)}${used.urls ? safeUrlHelper(false) : ''}${used.element ? `const booleanAttributes = new Set(${json([...uiBooleanAttributes].sort())});\n` : ''}const updateProps = Symbol.for('forge.ui.updateProps');
 
 ${domFactory(definition, 'Create a live component; mounting and removal remain owned by the caller.', { props: true, children: used.slot })}
 ${domProps(definition)}${assignments}${assignments ? '\n' : ''}${usesState ? `  /** @type {${stateType(definition)}} */\n  const _uiState = ${json(stateDefaults(definition))};\n` : ''}  /** @type {Array<() => void>} */

@@ -36,6 +36,21 @@ describe('strict Markdown UI definitions', () => {
     expect(() => validateUiLibrary(definitions)).not.toThrow();
     expect(definitions.map(item => item.id)).toEqual(definitions.map(item => item.id).sort());
   });
+  it.each(['script', 'iframe', 'object', 'embed', 'base', 'frame', 'frameset', 'applet'])('rejects the script-capable or embedding element %s', tag => {
+    expect(() => definition('unsafe', { root: { tag: 'div', children: [{ tag }] } })).toThrow(expect.objectContaining({ code: 'INVALID_UI', message: expect.stringContaining(`Element ${tag} runs scripts or embeds documents`) }));
+  });
+  it.each([
+    [{ tag: 'div', attrs: { srcdoc: '{{html}}' } }, 'embeds a document'], [{ tag: 'div', attrs: { SrcDoc: '<b>x</b>' } }, 'embeds a document'],
+    [{ tag: 'a', attrs: { href: 'javascript:alert(1)' } }, 'must be a relative'], [{ tag: 'a', attrs: { HREF: ' java\tscript:alert(1)' } }, 'must be a relative'],
+    [{ tag: 'img', attrs: { src: 'data:text/html,x' } }, 'must be a relative'], [{ tag: 'form', attrs: { action: 'vbscript:x' }, children: [] }, 'must be a relative'],
+  ])('rejects unsafe attribute %#', (root, message) => {
+    expect(() => definition('unsafe', { props: { html: { type: 'string' } }, root })).toThrow(expect.objectContaining({ code: 'INVALID_UI', message: expect.stringContaining(message) }));
+  });
+  it('accepts relative, http(s), mailto and tel literals and bound URL attributes', () => {
+    for (const href of ['#top', '/docs', 'guide.md', 'https://example.com', 'mailto:team@example.com', 'tel:+4912345', '{{href}}', 'javascript:{{code}}']) {
+      expect(() => definition('safe-link', { props: { href: { type: 'string' }, code: { type: 'string' } }, root: { tag: 'a', attrs: { href } } })).not.toThrow();
+    }
+  });
   it.each(['svg', 'math'])('rejects namespace-specific %s trees before generation', tag => {
     expect(() => definition('graphic', { root: { tag: 'div', children: [{ tag }] } })).toThrow(/SVG and MathML namespaces are unsupported/);
   });

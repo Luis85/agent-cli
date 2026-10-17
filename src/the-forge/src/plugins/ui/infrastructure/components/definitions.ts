@@ -3,7 +3,7 @@ import { stringify } from 'yaml';
 import { forgeError, AppError, ensure } from '../../../../domain/shared/errors.ts';
 import { vaultPath } from '../../../../domain/documents/file.ts';
 import type { UiDefinition, UiJson, UiNode } from '../../domain/components/definition.ts';
-import { uiVoidTags } from '../../domain/components/syntax.ts';
+import { uiBindings, uiSafeUrl, uiUnsafeAttributes, uiUnsafeTags, uiUrlAttributes, uiVoidTags } from '../../domain/components/syntax.ts';
 import type { UiDefinitionCodec } from '../../application/components/library.ts';
 import type { DocumentCodec } from '../../../../application/workspace/ports.ts';
 
@@ -24,6 +24,13 @@ const node: z.ZodType<UiNode> = z.lazy(() => z.union([
   z.strictObject({ tag: z.string().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/), attrs: z.record(attribute, value).optional(), text: z.string().optional(), children: z.array(node).optional(), interactions: z.array(id).min(1).refine(ids => new Set(ids).size === ids.length, 'Interaction attachments must be unique.').optional() }).superRefine((element, context) => {
     if (element.tag === 'svg' || element.tag === 'math') context.addIssue({ code: 'custom', message: 'SVG and MathML namespaces are unsupported in portable definitions; use native components or image assets.' });
     if (uiVoidTags.has(element.tag) && (element.text !== undefined || element.children?.length)) context.addIssue({ code: 'custom', message: `Void element ${element.tag} cannot have text or children.` });
+    if (uiUnsafeTags.has(element.tag)) context.addIssue({ code: 'custom', message: `Element ${element.tag} runs scripts or embeds documents and is unsupported in portable definitions; use a native component.` });
+    for (const [name, value] of Object.entries(element.attrs ?? {})) {
+      const key = name.toLowerCase();
+      if (uiUnsafeAttributes.has(key)) context.addIssue({ code: 'custom', path: ['attrs', name], message: `Attribute ${name} embeds a document and is unsupported in portable definitions.` });
+      // Bound URL values are checked when the component renders; a literal one is checked here.
+      if (uiUrlAttributes.has(key) && typeof value === 'string' && uiBindings(value).length === 0 && !uiSafeUrl(value)) context.addIssue({ code: 'custom', path: ['attrs', name], message: `Attribute ${name} must be a relative, http(s), mailto or tel URL.` });
+    }
   }),
   z.strictObject({ component: id, props: values.optional(), children: z.array(node).optional() }),
   z.strictObject({ slot: z.literal('children') }),

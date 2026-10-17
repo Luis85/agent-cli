@@ -1,11 +1,12 @@
 import { componentDependencies } from '../../../domain/components/library.ts';
 import type { UiDefinition, UiNode, UiValue } from '../../../domain/components/definition.ts';
 import type { InteractionDefinition } from '../../../domain/interactions/definition.ts';
-import { uiVoidTags as voidTags, uiBooleanAttributes as booleanAttrs } from '../../../domain/components/syntax.ts';
+import { uiVoidTags as voidTags, uiBooleanAttributes as booleanAttrs, uiSafeUrl } from '../../../domain/components/syntax.ts';
 import { ordered, html, defaults, evaluate, json, expression, defaultAssignments } from '../rendering.ts';
 import { domFactory, domProps, domSlot, domTypedefs } from './dom-source.ts';
 import { hasReactiveDom, reactiveDomModule } from './dom-interactions.ts';
 import { stateDefaults } from '../interactions/handlers.ts';
+import { guardedUrl, guardsUrl, safeUrlHelper } from '../url-guard.ts';
 
 export function staticMarkup(node: UiNode, props: Record<string, UiValue>, definitions: Map<string, UiDefinition>, children = '', state: Record<string, UiValue> = {}): string {
   if ('slot' in node) return children;
@@ -21,6 +22,7 @@ export function staticMarkup(node: UiNode, props: Record<string, UiValue>, defin
   const attrs = ordered(node.attrs ?? {}).map(([key, original]) => {
     const value = evaluate(original, props, state);
     if (value == null || (booleanAttrs.has(key.toLowerCase()) && value === false)) return '';
+    if (guardsUrl(key, original) && !uiSafeUrl(String(value))) return '';
     return booleanAttrs.has(key.toLowerCase()) && value === true ? ` ${key}` : ` ${key}="${html(value)}"`;
   }).join('');
   return `<${node.tag}${attrs}>${voidTags.has(node.tag) ? '' : `${node.text === undefined ? '' : html(evaluate(node.text, props, state))}${childMarkup}</${node.tag}>`}`;
@@ -31,17 +33,18 @@ export function domModule(definition: UiDefinition, definitions: Map<string, UiD
   const refs = componentDependencies(definition.root);
   const aliases = new Map(refs.map((id, index) => [id, `UiChild_${index}`]));
   const imports = refs.map(id => `import ${aliases.get(id)} from ${json(`./${definitions.get(id)!.id}.js`)};`).join('\n');
-  let slots = false;
+  let slots = false, urls = false;
   function nodeCode(node: UiNode): string {
     if ('slot' in node) { slots = true; return 'slot(children)'; }
     const children = `[${(node.children ?? []).map(nodeCode).join(', ')}]`;
     if ('component' in node) return `${aliases.get(node.component)}({${ordered(node.props ?? {}).map(([key, value]) => `${json(key)}: ${expression(value)}`).join(', ')}}, ${children})`;
-    return `element(${json(node.tag)}, {${ordered(node.attrs ?? {}).map(([key, value]) => `${json(key)}: ${expression(value)}`).join(', ')}}, ${node.text === undefined ? 'null' : expression(node.text)}, ${children})`;
+    urls ||= Object.entries(node.attrs ?? {}).some(([key, value]) => guardsUrl(key, value));
+    return `element(${json(node.tag)}, {${ordered(node.attrs ?? {}).map(([key, value]) => `${json(key)}: ${guardedUrl(key, value, expression(value))}`).join(', ')}}, ${node.text === undefined ? 'null' : expression(node.text)}, ${children})`;
   }
   const root = nodeCode(definition.root), assignments = defaultAssignments(definition);
   const usesProps = root.includes('props[') || assignments !== '';
   const elements = root.includes('element(');
-  return `${imports}${imports ? '\n\n' : ''}${domTypedefs(definition)}${elements ? `const booleanAttributes = new Set(${json([...booleanAttrs].sort())});\n` : ''}${slots ? domSlot : ''}${elements ? `/** @param {string} tag @param {Record<string, unknown>} attributes @param {unknown} text @param {readonly Node[]} children */
+  return `${imports}${imports ? '\n\n' : ''}${domTypedefs(definition)}${urls ? safeUrlHelper(false) : ''}${elements ? `const booleanAttributes = new Set(${json([...booleanAttrs].sort())});\n` : ''}${slots ? domSlot : ''}${elements ? `/** @param {string} tag @param {Record<string, unknown>} attributes @param {unknown} text @param {readonly Node[]} children */
 function element(tag, attributes, text, children) {
   const result = document.createElement(tag);
   for (const [key, value] of Object.entries(attributes)) {
