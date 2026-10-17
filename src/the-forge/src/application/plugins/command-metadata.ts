@@ -1,5 +1,6 @@
 import { ensure, forgeError, isRecord } from '../../domain/shared/errors.ts';
 import { jsonSchemaDialect, schemaIssues, type JsonSchema } from '../../domain/schema/json-schema.ts';
+import { actionSuggestions } from './suggestions.ts';
 
 /**
  * Declarative command metadata. One description drives argument parsing, the invocation policy (scope and plugin
@@ -99,14 +100,19 @@ export function hasActionOptions(command: CommandMetadata): boolean {
   return command.unknownAction !== undefined || Object.values(command.actions ?? {}).some(action => Object.keys(action.options ?? {}).length > 0);
 }
 
-/** Fails with the command's `unknownAction` code when the first argument (not an option) names no declared action. */
+/**
+ * Fails with the command's `unknownAction` code when the first argument (not an option) names no declared action.
+ * The message lists the declared actions, which `details.allowed` holds with the closest in `details.suggestions`.
+ */
 export function ensureKnownAction(command: CommandMetadata, args: readonly string[]): void {
   const action = args[0];
   if (command.unknownAction === undefined || action === undefined || action.startsWith('-')) return;
-  if (command.actions === undefined || !Object.hasOwn(command.actions, action)) unknownAction(command.unknownAction, action);
+  if (command.actions === undefined || !Object.hasOwn(command.actions, action)) unknownAction(command.unknownAction, command, action);
 }
-function unknownAction(code: 'UNKNOWN_GENERATOR' | 'INVALID_ARGUMENT', action: string): never {
-  throw forgeError(code, action);
+function unknownAction(code: 'UNKNOWN_GENERATOR' | 'INVALID_ARGUMENT', command: CommandMetadata, action: string): never {
+  const allowed = Object.keys(command.actions ?? {}), suggestions = actionSuggestions(action, allowed);
+  const message = code === 'UNKNOWN_GENERATOR' ? `Unknown generator ${action}. Generators: ${allowed.join(', ')}.` : `Unknown ${command.id} action ${action}. Actions: ${allowed.join(', ')}.`;
+  throw forgeError(code, message, { [code === 'UNKNOWN_GENERATOR' ? 'generator' : 'action']: action, allowed, suggestions });
 }
 
 /** Option types for the argument parser. */

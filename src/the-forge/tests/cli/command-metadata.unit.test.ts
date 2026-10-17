@@ -123,7 +123,13 @@ describe('command modes', () => {
     const closed: CommandMetadata = { id: 'reports', description: 'Reports', usage: 'reports', actions: command.actions!, unknownAction: 'UNKNOWN_GENERATOR' };
     expect(hasActionOptions(closed)).toBe(true);
     expect(hasActionOptions(command)).toBe(false);
-    expect(() => ensureKnownAction(closed, ['missing', 'Name'])).toThrow(expect.objectContaining({ code: 'UNKNOWN_GENERATOR', message: 'missing' }));
+    expect(() => ensureKnownAction(closed, ['missing', 'Name'])).toThrow(expect.objectContaining({
+      code: 'UNKNOWN_GENERATOR', message: 'Unknown generator missing. Generators: list, publish.', details: { generator: 'missing', allowed: ['list', 'publish'], suggestions: [] },
+    }));
+    // An action command names the action it does not know, the declared actions and the closest of them.
+    expect(() => ensureKnownAction({ ...closed, unknownAction: 'INVALID_ARGUMENT' }, ['publsh'])).toThrow(expect.objectContaining({
+      code: 'INVALID_ARGUMENT', message: 'Unknown reports action publsh. Actions: list, publish.', details: { action: 'publsh', allowed: ['list', 'publish'], suggestions: ['publish'] },
+    }));
     for (const args of [[], ['publish'], ['--template', 'x.md']]) expect(() => ensureKnownAction(closed, args)).not.toThrow();
     expect(() => ensureKnownAction(command, ['missing'])).not.toThrow();
     expect(commands.get('make')!.unknownAction).toBe('UNKNOWN_GENERATOR');

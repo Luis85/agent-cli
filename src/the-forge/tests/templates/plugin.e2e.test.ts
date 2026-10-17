@@ -32,7 +32,7 @@ describe('the templates core plugin', () => {
       expect((await cli(['templates'])).body.error.code).toBe('UNKNOWN_COMMAND');
       // Without the generator, its id is unknown, and that outranks its options.
       expect((await cli(['make', 'document', 'Plan'])).body.error.code).toBe('UNKNOWN_GENERATOR');
-      expect((await cli(['make', 'document', 'Plan', '--template', 'entity.md'])).body.error).toMatchObject({ code: 'UNKNOWN_GENERATOR', message: 'document' });
+      expect((await cli(['make', 'document', 'Plan', '--template', 'entity.md'])).body.error).toMatchObject({ code: 'UNKNOWN_GENERATOR', message: expect.stringMatching(/^Unknown generator document\. Generators: /), details: { generator: 'document' } });
       const setup = await cli(['setup', '--dry-run']);
       expect(setup.status).toBe(0);
       expect(paths(setup.body.data.changes).filter(path => path.startsWith('bin/templates/'))).toEqual([]);

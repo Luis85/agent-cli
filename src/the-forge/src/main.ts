@@ -58,6 +58,7 @@ import { createApp } from './application/vault/app.ts';
 import { commands } from './presentation/cli/commands.ts';
 import { declaredValues, parseArguments, parseBootstrap } from './presentation/cli/arguments.ts';
 import { invocationPolicy } from './presentation/cli/invocation-policy.ts';
+import { runCommand, unknownOptionGuidance } from './presentation/cli/guidance.ts';
 import { language, Localizer } from './presentation/localization/localization.ts';
 import { kernelMessage, type KernelMessage } from './domain/shared/kernel-messages.ts';
 
@@ -148,7 +149,7 @@ async function run(): Promise<void> {
         catch (error) {
           // An unknown action outranks its options: make <unknown> --template fails with UNKNOWN_GENERATOR.
           ensureKnownAction(command, actionArgs);
-          throw error;
+          throw unknownOptionGuidance(error, command, actionArgs);
         }
       })();
       // Apply the parsed output preference before any value or routing validation can fail.
@@ -156,7 +157,7 @@ async function run(): Promise<void> {
       compact = config.settings.json;
       const parsedLanguage = value(parsed.flags, 'lang');
       // From here on, plugin-contributed strings and error catalog entries localize responses too.
-      localizer = new Localizer(parsedLanguage !== undefined ? language(parsedLanguage) : localizer.language, registry.catalog);
+      localizer = new Localizer(parsedLanguage !== undefined ? language(parsedLanguage) : localizer.language, registry.catalog, command.id);
       config.settings.language = localizer.language;
       const parsedEvents = value(parsed.flags, 'events');
       // help describes a command without running it, so no declared value applies to it, the global --events included.
@@ -215,7 +216,7 @@ async function run(): Promise<void> {
       }, async () => {
         const output = parsed.flags.help
           ? await registry.commands.get('help')!.run(id === 'help' ? [] : [id], {}, context)
-          : await command.run(parsed.args.slice(1), flags, context);
+          : await runCommand(command, parsed.args.slice(1), flags, context);
         return localizer.result(commandId, output);
       });
       result = { ok: true, data };

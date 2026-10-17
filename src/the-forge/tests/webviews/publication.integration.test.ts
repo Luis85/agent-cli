@@ -147,7 +147,9 @@ describe('webview publication', () => {
   it('requires a webview project and protects the maintained admin view', async () => {
     const { context } = await fixture();
     await expect(publication.inspect({ ...context, project: null })).rejects.toMatchObject({ code: 'PROJECT_REQUIRED' });
-    await expect(publication.inspect({ ...context, project: { ...context.project!, type: 'library' } })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    await expect(publication.inspect({ ...context, project: { ...context.project!, type: 'library' } })).rejects.toMatchObject({
+      code: 'WEBVIEW_PROJECT_REQUIRED', exitCode: 2, message: expect.stringContaining('has type library'), details: { project: context.project!.name, type: 'library' },
+    });
     await expect(publication.inspect({ ...context, project: { ...context.project!, name: 'admin' } })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
   });
 });

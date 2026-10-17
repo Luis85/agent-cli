@@ -5,6 +5,7 @@ import { germanKernelMessages } from './messages.ts';
 import { renderWarning } from '../../domain/shared/kernel-messages.ts';
 import type { CommandArgument, CommandOption } from '../../application/plugins/command-metadata.ts';
 import { germanErrors } from './errors.ts';
+import { guidedHint } from './hints.ts';
 import { errorDefinition, type ErrorCode } from '../../domain/shared/error-catalog.ts';
 import type { Language, PluginCatalog } from '../../application/plugins/plugin-catalog.ts';
 
@@ -24,7 +25,8 @@ type Options = Readonly<Record<string, CommandOption>>;
  * catalogs come first; strings and error entries contributed by plugins fill in their own ids and codes.
  */
 export class Localizer {
-  constructor(readonly language: Language = 'en', private readonly plugins?: PluginCatalog) {}
+  /** `invoked` is the invoked command id, which hints name in place of their `help <command>` placeholder. */
+  constructor(readonly language: Language = 'en', private readonly plugins?: PluginCatalog, private readonly invoked?: string) {}
 
   private german(kind: 'commands' | 'generators' | 'events', id: string): string | undefined {
     // Every generator comes from a plugin, so only commands and events have kernel catalogs.
@@ -149,8 +151,8 @@ export class Localizer {
     if (!definition) return { code, message: diagnostic, ...(details ? { details } : {}) };
     const retryable = error instanceof AppError && error.retryable !== undefined ? error.retryable : definition.retryable;
     const german = this.language !== 'de' ? undefined : builtIn ? germanErrors[code as ErrorCode] : this.plugins?.localizedError(code, 'de');
-    if (!german) return { code, message: diagnostic, hint: definition.hint, retryable, ...(details ? { details } : {}) };
+    if (!german) return { code, message: diagnostic, hint: guidedHint(definition.hint, code, details, 'en', this.invoked), retryable, ...(details ? { details } : {}) };
     // A namespaced diagnostic preserves plugin/application details, including their own diagnostic key.
-    return { code, message: german.summary, hint: german.hint, retryable, details: { ...details, localization: { originalMessage: diagnostic, ...(details?.localization !== undefined ? { originalDetails: details.localization } : {}) } } };
+    return { code, message: german.summary, hint: guidedHint(german.hint, code, details, 'de', this.invoked), retryable, details: { ...details, localization: { originalMessage: diagnostic, ...(details?.localization !== undefined ? { originalDetails: details.localization } : {}) } } };
   }
 }

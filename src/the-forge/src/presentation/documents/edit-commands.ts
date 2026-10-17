@@ -46,6 +46,7 @@ async function editRequest(flags: CommandFlags, context: CommandContext): Promis
     return { kind: 'append', content: value(flags, 'content', true)! };
   }
   ensure(content === undefined, 'INVALID_INPUT', '--content requires --append or --prepend.');
+  ensure(find !== undefined || replace !== undefined, 'INVALID_INPUT', `Choose an edit mode: --find text --replace text, --edits json|@file|-, --append --content text, or --section "A > B" or --block id with ${modeUsage}.`, { modes: ['find', 'edits', 'append', 'section', 'block'] });
   return { kind: 'replace', find: value(flags, 'find', true)!, replace: value(flags, 'replace', true)! };
 }
 

@@ -15,7 +15,7 @@ describe('Commander integration', () => {
     expect(parseArguments(['read', '--', '--root'], globalOptions)).toEqual({ args: ['read', '--root'], flags: {} });
   });
   it.each(['--constructor', '--toString', '--__proto__', '--wat'])('rejects unregistered option %s', option => {
-    expect(() => parseArguments(['read', 'x.md', option, 'value'], globalOptions)).toThrowError(/unknown option/);
+    expect(() => parseArguments(['read', 'x.md', option, 'value'], globalOptions)).toThrowError(/^Unknown option --/);
   });
   it('rejects repeated options, contradictory booleans and missing values', () => {
     expect(() => parseArguments(['--json', '--json'], globalOptions)).toThrow(/Repeated/);

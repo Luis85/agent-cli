@@ -128,7 +128,7 @@ A dry run checks `--if-match` exactly like the real write: a stale or missing re
 
 ## Precise edits
 
-`edit` changes Markdown or UTF-8 text in memory and writes it once, guarded by `--if-match`; a dry run returns the unified diff. Choose one mode:
+`edit` changes Markdown or UTF-8 text in memory and writes it once, guarded by `--if-match`; a dry run returns the unified diff. Choose one mode; without one, `edit` fails with `INVALID_INPUT`, naming the modes in the message and `details.modes`:
 
 | Mode | Options | Behavior |
 | --- | --- | --- |

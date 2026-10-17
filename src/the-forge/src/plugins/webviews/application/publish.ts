@@ -25,7 +25,7 @@ export class WebviewPublication {
   private async plan(context: CommandContext) {
     const { project, workspace, environment } = context;
     ensure(project, 'PROJECT_REQUIRED', 'Open a webview project before inspecting or publishing it.');
-    ensure(project.type === 'webview', 'INVALID_ARGUMENT', 'The selected project must have type webview.');
+    ensureWebview(project.type === 'webview', 'WEBVIEW_PROJECT_REQUIRED', `Project ${project.name} has type ${project.type}; webview inspects and publishes only webview projects.`, { project: project.name, type: project.type });
     ensure(project.name !== 'admin', 'INVALID_ARGUMENT', 'The admin webview belongs to the Forge distribution and cannot be published here.');
     const id = project.name, destination = `bin/webviews/${id}`;
     const sourceStat = await optionalStat(workspace, 'dist');
