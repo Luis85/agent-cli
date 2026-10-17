@@ -74,12 +74,16 @@ describe('guarded release upgrades', () => {
     await expect(updater.apply(context, '0.1.1', report.revision)).rejects.toMatchObject({ code: 'CONFLICT' });
   });
 
-  it('previews the exact upgrade without changing app bytes or emitting committed vault events', async () => {
-    const { context, updater, scope } = await fixture(true);
+  it('previews the upgrade plan without downloading or running the release, changing app bytes or emitting committed vault events', async () => {
+    const { context, updater, scope, source } = await fixture(true);
     const report = await updater.check(context);
     const result = await updater.apply(context, '0.1.1', report.revision);
-    expect(result).toMatchObject({ changed: true, dryRun: true, restartRequired: false });
-    expect(result.changes.some(change => change.path === 'bin/forge-runtime.js')).toBe(true);
+    expect(result).toEqual({ installedVersion: '0.1.0', releaseVersion: '0.1.1', checksum: null, downloaded: false, changed: true, dryRun: true,
+      changes: [], revision: report.revision, restartRequired: false });
+    expect(validateJsonValue(updateApplySchema, result, 'data').issues).toEqual([]);
+    expect(source.download).not.toHaveBeenCalled();
+    await expect(updater.apply(context, '0.1.1', '0'.repeat(64))).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(updater.apply(context, '0.0.9', report.revision)).rejects.toMatchObject({ code: 'UPDATE_INVALID' });
     expect((await context.environment.files.stat('bin')).revision).toBe(report.revision);
     expect(scope.events.history.filter(event => event.id.startsWith('vault.'))).toEqual([]);
   });

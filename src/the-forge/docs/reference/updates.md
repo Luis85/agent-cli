@@ -7,7 +7,7 @@ The bundled `updates` core plugin lets an installed app check and upgrade itself
 | Command | Behavior |
 | --- | --- |
 | `update check [--release-version <version>]` | Read installed version and `bin/` folder revision. Without a pinned version, resolve GitHub's latest stable release. No app changes |
-| `update apply --release-version <version> --if-match <revision> [--dry-run]` | Download and verify the pinned archive, preview or apply its owned assets as one guarded batch |
+| `update apply --release-version <version> --if-match <revision> [--dry-run]` | Download and verify the pinned archive and apply its owned assets as one guarded batch; a dry run checks the installed app, revision and version without downloading |
 
 ## Agent upgrade workflow
 
@@ -22,15 +22,15 @@ node bin/forge.js project current --json
 
 These commands always target workspace scope, regardless of the selected project. With `--root`, they update that workspace's own `bin/`; they never silently update the calling distribution elsewhere. Discovery does not activate user plugins. `update check` returns `installedVersion`, `releaseVersion`, `available`, `revision` and `releaseUrl`. An explicit `--release-version` checks local installation against that version without querying latest; apply downloads and verifies the requested release. Only stable `x.y.z` versions are supported. Downgrades are refused.
 
-The agent checks the exit status and JSON `ok`, reviews dry-run `changes`, then applies the same version with the same revision. If anything in `bin/` changes after inspection or during download, `CONFLICT` prevents all planned writes; recheck and review the new state. A dry run may download and unpack into temporary storage but writes no workspace files and emits no committed vault events.
+The agent checks the exit status and JSON `ok`, reviews the dry-run plan, then applies the same version with the same revision. If anything in `bin/` changes after inspection or during download, `CONFLICT` prevents all planned writes; recheck and review the new state. A dry run never downloads, unpacks or runs the release: it validates the installed app, the `--if-match` revision and the requested version (downgrades are refused), and returns `downloaded: false`, `checksum: null`, `changes: []` and `changed` (whether the requested version differs from the installed one). It writes no workspace files and emits no committed vault events. The file-level changes are known only once the real apply has verified the archive.
 
 ## Preservation and integrity
 
-The archive SHA-256 must match its release checksum. Archive paths, regular file types, package and executable versions, required assets and distribution ownership are validated before writes. Only files declared in the old or new distribution manifest can change. Mutable files are never valid distribution entries.
+The archive SHA-256 must match its release checksum. Before extraction the archive listing must stay within 5,000 entries and 256 MB of declared unpacked size, so a decompression bomb is refused with `UPDATE_INVALID`. Archive paths, regular file types, package and executable versions, required assets and distribution ownership are validated before writes. Only files declared in the old or new distribution manifest can change. Mutable files are never valid distribution entries.
 
 The update preserves `bin/config.json`, `bin/data/context.json`, other private data, installed plugins, editable templates, custom published webviews and all project files. It refreshes the CLI and server bundles, defaults, bundled admin view, browser runtime, SDK, documentation, licenses and bundled skill sources. Obsolete owned assets are removed. Installed project copies of agent skills remain user files and are not replaced.
 
-Apply returns `checksum`, `changed`, `dryRun`, `changes`, the current folder `revision`, and `restartRequired`. The next CLI invocation loads the new app. A running server still uses its loaded runtime: when `restartRequired` is true, run `server stop` followed by `server start --webview admin` (or the previously selected view) to load the new server and assets.
+Apply returns `checksum`, `downloaded`, `changed`, `dryRun`, `changes`, the current folder `revision`, and `restartRequired`. The next CLI invocation loads the new app. A running server still uses its loaded runtime: when `restartRequired` is true, run `server stop` followed by `server start --webview admin` (or the previously selected view) to load the new server and assets.
 
 Writes use the workspace lock, optimistic revision guards, preflight validation and rollback on reported errors. Like other Forge batch writes, this does not promise crash atomicity or prevent an external reader from observing files mid-commit. The existing Node invocation continues from memory while its installed files are updated. A same-version repeat with the current revision makes no changes when files already match; a stale revision is refused.
 
