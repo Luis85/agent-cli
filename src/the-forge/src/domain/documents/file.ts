@@ -36,8 +36,11 @@ export function reservedPathSegment(segment: string): 'git' | 'internal' | undef
   return undefined;
 }
 
-/** Windows device names: a file named like one, with any extension, opens the device instead on Windows. */
-const deviceNames = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/;
+/**
+ * Windows device names: a file named like one, with any extension, opens the device instead on Windows. Windows also
+ * reserves COM and LPT with the superscript digits ¹, ² and ³, and the console devices CONIN$ and CONOUT$.
+ */
+const deviceNames = /^(?:con|prn|aux|nul|conin\$|conout\$|com[1-9¹²³]|lpt[1-9¹²³])$/;
 /**
  * Whether `segment` is a Windows reserved device name in any letter case, alone or with an extension, and with
  * trailing dots or spaces before or after the extension (`con`, `NUL.md`, `Com1 .txt`, `lpt9.tar.gz.`).
@@ -56,7 +59,7 @@ export function vaultPath(input: string): string {
   ensure(!parts.some(p => reservedPathSegment(p) !== undefined), 'INVALID_PATH', 'Reserved workspace path.');
   // Rejected on every platform, so a vault stays usable when it is synced to or opened on Windows.
   const device = parts.find(isDeviceName);
-  ensure(device === undefined, 'INVALID_PATH', `${device} is a Windows reserved device name (CON, PRN, AUX, NUL, COM1-COM9 or LPT1-LPT9, with any extension); rename the file or folder.`, { segment: device });
+  ensure(device === undefined, 'INVALID_PATH', `${device} is a Windows reserved device name (CON, PRN, AUX, NUL, CONIN$, CONOUT$, COM1-COM9, COM¹-COM³, LPT1-LPT9 or LPT¹-LPT³, with any extension); rename the file or folder.`, { segment: device });
   return input;
 }
 

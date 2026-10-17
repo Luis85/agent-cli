@@ -73,7 +73,7 @@ export class FileManager {
         const snapshot = await this.workspace.files.read(file.source);
         const rewritten = rewriteText(file, decodeUtf8(snapshot.bytes, 'keep'), cache.getFileCache(file.source)!, (yaml, replacements) => this.workspace.codec.replaceInYamlStrings(yaml, replacements));
         // The cache was read moments ago in this invocation; a file edited since then is a conflict, not a guess.
-        if (rewritten === undefined) throw forgeError('CONFLICT', `File changed while planning link updates; retry: ${file.source}`, revisionConflict(file.source, null, snapshot.revision));
+        if (rewritten === undefined) throw forgeError('CONFLICT', `File changed while planning link updates; retry: ${file.source}`, { ...revisionConflict(file.source, null, snapshot.revision), reason: 'changed-while-planning' });
         unrewritten.push(...rewritten.unrewritten);
         references -= rewritten.unrewritten.length;
         const path = moves.get(file.source) ?? file.source;

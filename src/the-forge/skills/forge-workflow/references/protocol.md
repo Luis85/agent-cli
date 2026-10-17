@@ -32,6 +32,7 @@ Read this when you need more than the core loop in [SKILL.md](../SKILL.md): the 
 - `SERVER_STOP_FAILED`: inspect `server status` before repeating.
 - `PLUGIN_UNAVAILABLE`: run `plugins` to see the plugin's state and reason.
 - Only `error.retryable: true` allows an unchanged retry, for example `WORKSPACE_BUSY` or `SERVER_BUSY`.
+- `WORKSPACE_BUSY` with `details.nestedWriter: "running"`: the folder you move or delete holds the lock of a nested root whose writer runs. `--wait` does not wait for it; retry once that writer finished.
 
 ## Language and plugins
 - `--lang de` returns German descriptions, hints, warnings and findings. Commands, options, ids, codes and JSON keys stay English, so match codes.

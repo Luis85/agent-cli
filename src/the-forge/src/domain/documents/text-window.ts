@@ -6,9 +6,10 @@ export interface LineRange { start: number; end?: number }
 export interface LineWindow { start: number; end: number; total: number }
 /**
  * A window of a text: the selected lines up to a byte limit, whether the limit cut it, its UTF-8 byte count, and
- * `partial` when its last line is only a prefix (a single line longer than the limit).
+ * `partial` when its last line is only a prefix (a single line longer than the limit), with `lineBytes`, the UTF-8
+ * size of that whole line.
  */
-export interface TextWindow { content: string; truncated: boolean; partial: boolean; bytes: number; lines: LineWindow }
+export interface TextWindow { content: string; truncated: boolean; partial: boolean; bytes: number; lines: LineWindow; lineBytes?: number }
 
 const encoder = new TextEncoder();
 const utf8Bytes = (text: string) => encoder.encode(text).length;
@@ -50,7 +51,7 @@ export function textWindow(text: string, maxBytes: number, range: LineRange = { 
     if (bytes + size > maxBytes) {
       const partial = line === range.start;
       if (partial) { content = bytePrefix(lines[line - 1]!, maxBytes); bytes = utf8Bytes(content); end = line; }
-      return { content, truncated: true, partial, bytes, lines: { start: range.start, end, total } };
+      return { content, truncated: true, partial, bytes, lines: { start: range.start, end, total }, ...(partial ? { lineBytes: size } : {}) };
     }
     content += lines[line - 1]!; bytes += size; end = line;
   }

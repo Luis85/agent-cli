@@ -34,7 +34,7 @@ describe('German error messages with the values of the occurrence', () => {
     expect(german('INVALID_PATH', { argument: 'path', value: '../a.md' })).toBe('Argument <path> "../a.md" ist kein gültiger relativer Pfad im Workspace oder Projekt.');
     expect(german('INVALID_PATH', { argument: 'paths', index: 1, value: 'a//b.md', suggestion: 'a/b.md' })).toBe('Argument <paths> an Position 1 "a//b.md" ist kein gültiger relativer Pfad im Workspace oder Projekt; gemeint ist vermutlich a/b.md.');
     expect(german('INVALID_PATH', { option: 'from', value: '/tmp/x.md', suggestion: '--stdin' })).toContain('mit --stdin weiter');
-    expect(german('INVALID_PATH', { argument: 'path', value: 'notes/con.md', segment: 'con.md' })).toBe('Argument <path> "notes/con.md": con.md ist ein unter Windows reservierter Gerätename (CON, PRN, AUX, NUL, COM1-COM9 oder LPT1-LPT9, mit beliebiger Endung); benennen Sie die Datei oder den Ordner um.');
+    expect(german('INVALID_PATH', { argument: 'path', value: 'notes/con.md', segment: 'con.md' })).toBe('Argument <path> "notes/con.md": con.md ist ein unter Windows reservierter Gerätename (CON, PRN, AUX, NUL, CONIN$, CONOUT$, COM1-COM9, COM¹-COM³, LPT1-LPT9 oder LPT¹-LPT³, mit beliebiger Endung); benennen Sie die Datei oder den Ordner um.');
     expect(german('INVALID_PATH', { path: 'notes', entry: 'caf�.md' })).toBe('Der Ordner notes enthält einen Eintrag, dessen Name kein gültiges UTF-8 ist: caf�.md.');
   });
 
@@ -43,6 +43,12 @@ describe('German error messages with the values of the occurrence', () => {
     expect(german('INVALID_ARGUMENT', { minimum: 0, maximum: 1, received: 3 })).toBe('Falsche Anzahl an Positionsargumenten: erwartet 0 bis 1, erhalten 3.');
     expect(german('INVALID_ARGUMENT', { action: 'lst', allowed: ['list', 'show'], suggestions: ['list'] })).toBe('Unbekannte Aktion lst; verfügbar sind list, show.');
     expect(german('INVALID_ARGUMENT', { total: 3 })).toBe('--lines beginnt nach der letzten Zeile; der Text hat 3 Zeile(n).');
+  });
+
+  it('locates a failure at an argument value that its message does not name, also by the summary', () => {
+    expect(german('NOT_FOUND', { argument: 'paths', index: 1, path: 'b.md' })).toBe('Argument <paths> an Position 1: Die Datei oder Ressource b.md wurde nicht gefunden.');
+    expect(german('INVALID_FRONTMATTER', { argument: 'paths', index: 0, path: 'a.md' })).toBe(`Argument <paths> an Position 0: ${germanErrors.INVALID_FRONTMATTER.summary}`);
+    expect(german('INVALID_PATH', { argument: 'paths', index: 1, value: '../b.md' })).toBe('Argument <paths> an Position 1 "../b.md" ist kein gültiger relativer Pfad im Workspace oder Projekt.');
   });
 
   it('keeps the summary when no template covers the details, and the English diagnostic in every case', () => {

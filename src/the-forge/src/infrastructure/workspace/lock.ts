@@ -200,10 +200,16 @@ export async function releaseLock(path: string, token: string): Promise<LockRele
   } finally { heldTokens.delete(token); }
 }
 
-/** Fails with WORKSPACE_BUSY when a lock exists at `path` whose holder may still run; `display` names it in the error. */
+/**
+ * Fails with WORKSPACE_BUSY when a lock exists at `path` whose holder may still run; `display` names it in the error.
+ * Nothing here waits (`--wait` covers only the locks a writer takes), so a running holder is reported with
+ * `details.nestedWriter: "running"`, whose hint says to retry once that writer finished.
+ */
 export async function ensureNotHeld(path: string, display: string): Promise<void> {
   const found = await inspectLock(path);
-  if (found.missing !== true && found.stale !== 'stale') throw busy(display, found);
+  if (found.missing === true || found.stale === 'stale') return;
+  const failure = busy(display, found);
+  throw found.stale === 'active' ? locatedError(failure, '', { nestedWriter: 'running' }) : failure;
 }
 
 const describeHolder = (lock: LockInspection['lock']) => (lock ? ` (pid ${lock.pid} on ${lock.hostname} since ${lock.startedAt}${lock.command ? `, command ${lock.command}` : ''})` : '');

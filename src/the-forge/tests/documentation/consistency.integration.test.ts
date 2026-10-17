@@ -80,6 +80,26 @@ describe('reference documentation consistency', () => {
     expect(registry.plugins.filter(plugin => registry.origins.get(plugin.manifest.id) === 'core').map(plugin => plugin.manifest.id)).toEqual([...bundledCorePlugins]);
   });
 
+  it('attributes each error code the plugin reference names to its real owner', () => {
+    const owners = new Map(registry.catalog.errors().map(entry => [entry.code, entry.pluginId]));
+    const claimed = (text: string) => [...text.matchAll(/`([A-Z][A-Z0-9_]+_?\*?)`/g)].map(match => match[1]!);
+    const matches = (token: string, code: string) => token.endsWith('*') ? code.startsWith(token.slice(0, -1)) : code === token;
+    // A core plugin row names only codes that plugin registers, never kernel ones.
+    const rows = section(reference['plugins.md']!, 'Bundled core plugins').flatMap(row => {
+      const plugin = /^\| `([a-z-]+)` \|/.exec(row)?.[1];
+      return plugin !== undefined && (bundledCorePlugins as readonly string[]).includes(plugin) ? [{ row, plugin }] : [];
+    });
+    expect(rows).toHaveLength(bundledCorePlugins.length);
+    const misattributed = rows.flatMap(({ row, plugin }) => {
+      return claimed(row).filter(token => ![...owners].some(([code, owner]) => owner === plugin && matches(token, code))).map(token => `${plugin}: ${token}`);
+    });
+    expect(misattributed).toEqual([]);
+    // A sentence that places codes in the kernel or among the built-in codes names only built-in codes.
+    const sentences = reference['plugins.md']!.split(/(?<=\.)\s+|\n| \| /).filter(text => /kernel|built[- ]in/i.test(text));
+    const notBuiltIn = sentences.flatMap(text => claimed(text).filter(token => !errorCodes.some(code => matches(token, code))));
+    expect(notBuiltIn).toEqual([]);
+  });
+
   it('documents every core plugin setting with its default in the configuration reference', () => {
     const rows = section(reference['configuration.md']!, 'Core plugin settings').flatMap(line => {
       const cells = /^\| `([a-z-]+)` \| (?:`([A-Za-z]+)`|none) \|/.exec(line);

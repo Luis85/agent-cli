@@ -26,7 +26,7 @@ function templateValues(details: Details): MessageParams {
   return values;
 }
 
-const device = '{segment} ist ein unter Windows reservierter Gerätename (CON, PRN, AUX, NUL, COM1-COM9 oder LPT1-LPT9, mit beliebiger Endung); benennen Sie die Datei oder den Ordner um.';
+const device = '{segment} ist ein unter Windows reservierter Gerätename (CON, PRN, AUX, NUL, CONIN$, CONOUT$, COM1-COM9, COM¹-COM³, LPT1-LPT9 oder LPT¹-LPT³, mit beliebiger Endung); benennen Sie die Datei oder den Ordner um.';
 const stdin = (details: Details) => details.suggestion === '--stdin';
 
 /**
@@ -51,12 +51,13 @@ const templates: Partial<Record<ErrorCode, readonly Template[]>> = {
     { text: 'Falsche Anzahl an Positionsargumenten: erwartet {range}, erhalten {received}.' },
     { text: 'Unbekannte Aktion {action}; verfügbar sind {allowedValues}.' },
     { text: 'Jeder Pfad darf nur einmal vorkommen; er steht bereits an Position {duplicateOf}.' },
-    { text: 'Die gelesenen Dateien umfassen {bytes} Bytes und überschreiten die Gesamtgrenze von 8 MiB; senken Sie --max-bytes ({maxBytes}) oder lesen Sie weniger Dateien.' },
+    { text: 'Die gelesenen Dateien umfassen {bytes} Bytes und überschreiten die Gesamtgrenze von {aggregateLimit} Bytes; senken Sie --max-bytes (derzeit {maxBytes}) oder lesen Sie weniger Dateien.' },
     { text: '--lines beginnt nach der letzten Zeile; der Text hat {total} Zeile(n).' },
   ],
   INVALID_OPTION_VALUE: [{ text: '--{option} erlaubt {quoted} nicht; gültige Werte (bei einer kommagetrennten Listenoption mehrere davon): {allowedValues}.' }],
   UNKNOWN_GENERATOR: [{ text: 'Unbekannter Generator {generator}; verfügbar sind {allowedValues}.' }],
   CONFLICT: [
+    { text: '{path} wurde geändert, während die Linkaktualisierungen geplant wurden; wiederholen Sie den Befehl.', when: details => details.reason === 'changed-while-planning' },
     { text: '{path} enthält die angeforderte Änderung bereits (Revision {currentRevision}); ein erneuter Versuch ist nicht nötig.', when: details => details.alreadyApplied === true },
     { text: '{path} existiert bereits mit der Revision {currentRevision}.', when: details => details.expectedRevision === null },
     { text: '{path} existiert nicht, erwartet wurde die Revision {expectedRevision}.', when: details => details.currentRevision === null },
@@ -83,9 +84,21 @@ export function germanErrorMessage(code: ErrorCode, details: Details | undefined
   const values = templateValues(details);
   const template = candidates.find(entry => (entry.when?.(details) ?? true) && placeholders(entry.text).every(name => Object.hasOwn(values, name)));
   if (template === undefined) return undefined;
-  // An operation of an apply plan names its position, as the English message does.
-  const located = typeof details.operation === 'number' ? `Vorgang ${details.operation}: ` : '';
-  return located + fill(template.text, values);
+  return location(details, template.text) + fill(template.text, values);
+}
+
+/**
+ * The position an occurrence names, as the English message does: an operation of an apply plan, or an argument value
+ * (a read-many path) that `text` does not already name with `{named}`.
+ */
+function location(details: Details, text: string): string {
+  if (typeof details.operation === 'number') return `Vorgang ${details.operation}: `;
+  return typeof details.argument === 'string' && !placeholders(text).includes('named') ? `${templateValues(details).named}: ` : '';
+}
+
+/** A built-in code's German summary, located like a templated message when no template covers the details. */
+export function locatedGermanSummary(details: Details | undefined, summary: string): string {
+  return details === undefined ? summary : location(details, summary) + summary;
 }
 
 /** The codes with German message templates, for tests. */
