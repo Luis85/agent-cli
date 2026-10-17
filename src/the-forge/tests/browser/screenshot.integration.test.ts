@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BrowserScreenshot, type ScreenshotInput } from '../../src/plugins/browser/application/screenshot.ts';
-import type { BrowserImage, BrowserRuntime } from '../../src/plugins/browser/application/runtime.ts';
+import type { BrowserCapture, BrowserRuntime } from '../../src/plugins/browser/application/runtime.ts';
 import { browserError } from '../../src/plugins/browser/domain/errors.ts';
 import { Workspace } from '../../src/application/workspace/workspace.ts';
 import type { CommandContext } from '../../src/application/plugins/registry.ts';
@@ -28,11 +28,11 @@ const request = (overrides: Partial<ScreenshotInput> = {}): ScreenshotInput => (
   url: 'https://example.test/page#token=private', out: 'docs/screenshots/example.png',
   viewport: { width: 1440, height: 900 }, fullPage: false, timeoutMs: 30_000, ...overrides,
 });
-const image = (): BrowserImage => ({ bytes: png, width: 1, height: 1, url: 'https://example.test/final#private', title: 'Example', capturedAt: '2026-10-11T00:00:00Z' });
+const image = (): BrowserCapture => ({ bytes: png, width: 1, height: 1, url: 'https://example.test/final#private', title: 'Example', capturedAt: '2026-10-11T00:00:00Z', sandbox: 'enabled' });
 function runtime(capture = vi.fn(async () => image())): BrowserRuntime {
   return {
     screenshot: capture,
-    async status() { return { available: true, executablePath: '/browser', source: 'managed', version: '1.64.0', verification: 'executable-only', reason: 'available' }; },
+    async status() { return { available: true, executablePath: '/browser', source: 'managed', version: '1.64.0', verification: 'executable-only', reason: 'available', sandbox: 'enabled' }; },
     async install() { throw new Error('Screenshots must not install browsers'); },
     async flow() { throw new Error('Screenshots must not replay tutorials'); },
   };
@@ -57,11 +57,21 @@ describe('guarded webpage screenshots', () => {
     const result = await new BrowserScreenshot(runtime()).run(ctx, request({ out: 'docs/screenshot (mobile).png' }));
     expect(result).toMatchObject({ dryRun: false, captured: true, path: 'docs/screenshot (mobile).png', width: 1, height: 1,
       bytes: png.length, capturedAt: '2026-10-11T00:00:00.000Z', requestedUrl: 'https://example.test/page', finalUrl: 'https://example.test/final',
-      markdown: '![Screenshot](<docs/screenshot%20%28mobile%29.png>)',
+      markdown: '![Screenshot](<docs/screenshot%20%28mobile%29.png>)', sandbox: 'enabled',
     });
     expect(await readFile(join(root, 'docs/screenshot (mobile).png'))).toEqual(png);
     expect(result).toHaveProperty('revision', (await files.read('docs/screenshot (mobile).png')).revision);
     expect(ctx.events.history.some(event => event.id === 'vault.create')).toBe(true);
+  });
+
+  it('redacts query strings that redirects or the request carry, such as OAuth codes and tokens, from the report', async () => {
+    const capture = vi.fn(async () => ({ ...image(), url: 'https://example.test/callback?code=oauth-secret&state=x#access_token=fragment-secret' }));
+    const result = await new BrowserScreenshot(runtime(capture)).run(context(), request({ url: 'https://example.test/login?token=query-secret' }));
+    expect(capture).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://example.test/login?token=query-secret' }));
+    expect(result).toMatchObject({ requestedUrl: 'https://example.test/login', finalUrl: 'https://example.test/callback' });
+    expect(JSON.stringify(result)).not.toMatch(/secret/);
+    const preview = await new BrowserScreenshot(runtime(capture)).run(context(true), request({ url: 'https://example.test/login?token=query-secret', out: 'other.png' }));
+    expect(preview).toMatchObject({ dryRun: true, plan: { requestedUrl: 'https://example.test/login' } });
   });
 
   it('checks existing output revisions before capturing and applies a reviewed replacement', async () => {
@@ -87,7 +97,7 @@ describe('guarded webpage screenshots', () => {
   });
 
   it('does not persist output after browser failures or malformed captures', async () => {
-    const capture = vi.fn(async (): Promise<BrowserImage> => { throw browserError('BROWSER_CAPTURE_FAILED', 'Failed'); });
+    const capture = vi.fn(async (): Promise<BrowserCapture> => { throw browserError('BROWSER_CAPTURE_FAILED', 'Failed'); });
     await expect(new BrowserScreenshot(runtime(capture)).run(context(), request())).rejects.toMatchObject({ code: 'BROWSER_CAPTURE_FAILED' });
     const malformed = vi.fn(async () => ({ ...image(), bytes: new Uint8Array([0, 1, 2]) }));
     await expect(new BrowserScreenshot(runtime(malformed)).run(context(), request())).rejects.toMatchObject({ code: 'BROWSER_CAPTURE_FAILED' });

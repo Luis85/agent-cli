@@ -61,11 +61,12 @@ describe('top-level permissions', () => {
   });
 
   it('refuses broad allow rules without --allow-broad-permissions and does not write them', () => {
-    const output = generate({ permissions: { allow: ['*', 'shell:cmd=*', 'write_file', 'shell:cmd=ls'] }, agents: { root: agent() } });
+    const output = generate({ permissions: { allow: ['*', 'shell:cmd=*', 'write_file', 'shell:cmd=ls', 'shell:cmd=:*', 'shell:cmd=sh -c *'] }, agents: { root: agent() } });
     expect(ruleLists(output).allow).toEqual(['Read', 'Glob', 'Grep', 'AskUserQuestion', 'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet', 'Bash(ls)']);
     expect(output.diagnostics.filter(entry => entry.severity === 'error').map(entry => `${entry.code} ${entry.pointer} ${entry.message.split(' would')[0]}`)).toEqual([
       'broad-permission /permissions/allow/0 The rule Write', 'broad-permission /permissions/allow/0 The rule Edit', 'broad-permission /permissions/allow/0 The rule Bash',
       'broad-permission /permissions/allow/0 The rule WebFetch', 'broad-permission /permissions/allow/1 The rule Bash(*)', 'broad-permission /permissions/allow/2 The rule Write',
+      'broad-permission /permissions/allow/4 The rule Bash(:*)', 'broad-permission /permissions/allow/5 The rule Bash(sh -c *)',
     ]);
   });
 

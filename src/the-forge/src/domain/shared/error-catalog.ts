@@ -77,6 +77,7 @@ export const errorCatalog = {
   INVALID_BASE_QUERY: entry('input', 'The Bases query is invalid.', 'Check the view, context and expressions named in the message.'),
   INVALID_BASE_EXPRESSION: entry('input', 'A Bases expression cannot be parsed.', 'Fix the expression named in the message.'),
   BASE_EVALUATION_ERROR: entry('input', 'A Bases expression failed while evaluating a file.', 'Check the view, file and expression named in the message.'),
+  BASE_TIMEOUT: entry('input', 'A Bases query exceeded its expression evaluation time budget.', 'Simplify the expressions of the .base file named in the message (avoid nested regular-expression quantifiers such as (a+)+) or narrow its filters.'),
   BASE_VIEW_NOT_FOUND: entry('input', 'The requested Bases view does not exist.', 'Run bases inspect <file.base> and pass an existing --view.'),
   BASE_CONTEXT_NOT_FOUND: entry('input', 'The context file is not an indexed vault file.', 'Pass an existing vault file to --context.'),
   INVALID_BASE_PROPERTY_TYPES: entry('input', 'The Obsidian property type registry is invalid.', 'Fix .obsidian/types.json so it is a JSON object of property types.'),

@@ -1,6 +1,6 @@
 import type { ConnectorHub } from '../../application/connectors/contract.ts';
 import type { CorePlugin } from '../../application/plugins/core-plugins.ts';
-import { AzureDevOpsConnector } from './application/connector.ts';
+import { ALLOWED_HOSTS_ENV, AzureDevOpsConnector } from './application/connector.ts';
 import { azureDevOpsStrings, germanConnectorMessages } from './presentation/strings.ts';
 
 /**
@@ -15,7 +15,8 @@ export const azureDevOpsPlugin: CorePlugin = {
   },
   strings: azureDevOpsStrings,
   create: host => {
-    const connector = new AzureDevOpsConnector(host.http, { de: germanConnectorMessages });
+    const allowedHosts = () => (host.environment(ALLOWED_HOSTS_ENV) ?? '').split(',').map(entry => entry.trim()).filter(Boolean);
+    const connector = new AzureDevOpsConnector(host.http, { de: germanConnectorMessages }, allowedHosts);
     return {
       provides: { 'connector-azure-devops.connector': connector },
       requires: ['connector.hub'],

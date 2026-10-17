@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { NodeServerController } from '../../src/infrastructure/server/controller.ts';
 import { readState, writeState, type ServerState } from '../../src/infrastructure/server/state.ts';
+import { viewToken } from '../../src/infrastructure/server/tokens.ts';
 import { distribution } from '../support/workspace.ts';
 
 const staleState = (workspaceRoot: string): ServerState => ({ schemaVersion: 1, instanceId: '00000000-0000-0000-0000-000000000000',
@@ -37,9 +38,10 @@ describe('detached server lifecycle', () => {
     const result = await controller.start({ port: 0, dryRun: false });
     expect(result).toMatchObject({ running: true, changed: true, stale: false, webviews: [] });
     expect(result.server?.pid).not.toBe(process.pid);
-    expect(result.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/#token=[a-f0-9]{64}$/);
+    // The public catalog link carries no token; the server token stays in the private state file for the CLI.
+    expect(result.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
     const state = await readState(root);
-    expect(state?.token).toBe(new URL(result.url!).hash.slice('#token='.length));
+    expect(state?.token).toMatch(/^[a-f0-9]{64}$/);
     if (process.platform !== 'win32') expect((await lstat(join(root, '.forge/server.json'))).mode & 0o777).toBe(0o600);
     expect((await controller.status()).server?.pid).toBe(result.server?.pid);
     const repeated = await controller.start({ dryRun: false });
@@ -137,6 +139,9 @@ describe('detached server lifecycle', () => {
     expect(await controller.status()).toMatchObject({ running: false, stale: true, webviews: [{ id: 'admin', name: 'Admin', path: '/views/admin/' }] });
     const result = await controller.start({ webview: 'admin', dryRun: false });
     expect(new URL(result.url!).pathname).toBe('/views/admin/');
+    const { token } = (await readState(root))!;
+    expect(new URL(result.url!).hash).toBe(`#token=${viewToken(token, 'admin')}`);
+    expect(result.url).not.toContain(token);
     expect(result.webviews).toEqual([{ id: 'admin', name: 'Admin', path: '/views/admin/' }]);
   });
 

@@ -15,6 +15,7 @@ import { EventBus } from '../../src/application/plugins/events.ts';
 import { Workspace } from '../../src/application/workspace/workspace.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 import { forgeVersion } from '../support/workspace.ts';
+import { commandAnnotations } from '../../src/application/plugins/command-metadata.ts';
 
 it('standalone entity, value-object, use-case and event scaffolds compile without runtime dependencies', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'agent-generators-'));
@@ -79,6 +80,11 @@ it('generates an installable plugin with a validated manifest and runnable lifec
     await loadEnabledPlugins('.agent-cli/plugins', ['http-tools'], files, registry, events);
     const command = registry.commands.get('http-tools.hello')!;
     expect(command).toBeDefined();
+    // The read-only command declares its metadata, so help and schema publish it as safe to run.
+    // The host adds PLUGIN_UNAVAILABLE, which every plugin command can raise, to the declared (empty) errors.
+    expect(command).toMatchObject({ scope: 'workspace', mutating: false, options: {}, errors: ['PLUGIN_UNAVAILABLE'] });
+    expect(commandAnnotations(command)).toMatchObject({ readOnlyHint: true, destructiveHint: false, idempotentHint: true });
+    expect(registry.catalog.text('de', 'commands', 'http-tools.hello')).toBe('Dieses Plugin beschreiben');
     expect(await command.run([], {}, context)).toEqual({ plugin: 'http-tools', ready: false });
     await registry.activate(events, context);
     expect(await command.run([], {}, context)).toEqual({ plugin: 'http-tools', ready: true });

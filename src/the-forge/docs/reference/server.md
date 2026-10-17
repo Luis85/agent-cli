@@ -35,18 +35,18 @@ Successful responses use the standard envelope. `data` contains:
 | `running` | A server responded to its authenticated identity/health check. |
 | `stale` | Saved server state exists but its recorded server could not be verified as running. |
 | `server` | Runtime identity and health: `pid`, `startedAt`, `host`, `port`, `version`, `nodeVersion`, `uptimeSeconds`; otherwise `null`. |
-| `url` | Authenticated local launch URL when running; otherwise `null`. With `--webview admin`, its path is `/views/admin/`. |
+| `url` | Local launch URL when running; otherwise `null`. With `--webview <id>` it opens `/views/<id>/` and carries that view's read-only token in its fragment; without it, it opens the public view catalog `/` and carries no token. |
 | `webviews` | Views with `id`, `name` and `path`: the running server's mounted catalog, or the installed catalog when inspecting an inactive server with `status`. An inactive startup preview also lists installed views. Stop responses do not discover installed assets. |
 | `changed` | Required on start/stop: whether the invocation changed lifecycle state, or would change it during a dry run. |
 | `dryRun` | Present as `true` for a lifecycle preview. No process is started/stopped and no server state is written. |
 
 A preview of an inactive server cannot supply the future ephemeral port or a valid launch link. Repeated startup reuses the current process and reports `changed: false`; it does not silently restart a running server on a new requested port. Stop and then start to change the port. `status` does not remove stale records.
 
-`status` returns a launch link to the server's JSON view catalog, not directly to the admin page. To recover an admin tab after losing its token or closing the browser, run `server start --webview admin` again and open its complete `data.url`. This reuses a healthy server; it does not change project selection.
+`status` returns a link to the server's JSON view catalog, without a token, not directly to the admin page. To recover an admin tab after losing its token or closing the browser, run `server start --webview admin` again and open its complete `data.url`. This reuses a healthy server; it does not change project selection.
 
 ## Inspection and access
 
-The server binds only to IPv4 loopback, `127.0.0.1`. There is no public bind/host option. Its protected API requires the server's bearer token; the launch URL carries the token in its fragment (`#token=…`) for the webview. Treat that URL as local access information and avoid putting it in commits or shared logs. Shutdown invalidates the session; use a fresh CLI launch link after restarting.
+The server binds only to IPv4 loopback, `127.0.0.1`. There is no public bind/host option. Its protected API requires a bearer token. The server token stays in the private `.forge/server.json` for the CLI; a view's launch URL carries only a token derived for that view in its fragment (`#token=…`). A view token reads `/api/health` and `/api/system` but cannot stop the server, and tokens for views the server does not mount are refused, so a project-published view never receives the server token. Treat that URL as local access information and avoid putting it in commits or shared logs. Shutdown invalidates the session; use a fresh CLI launch link after restarting.
 
 The admin view reports workspace context, selected project, managed projects, plugin availability, contribution counts and server runtime details. It does not edit configuration, change project selection, enable plugins or execute arbitrary CLI commands. Read-only describes the webview and inspection API; `server start` and `server stop` explicitly control a process and local lifecycle state.
 
@@ -74,7 +74,7 @@ Use the origin returned by the CLI, including its assigned port. Requests must u
 | --- | --- |
 | `GET /api/system` | Read-only inspection: `{ok:true,data:<SystemSnapshot>}` with `data.schemaVersion: 1`. |
 | `GET /api/health` | Read-only server identity: `{ok:true,data:{schemaVersion:1,instanceId,pid,startedAt}}`. |
-| `POST /api/shutdown` | Authenticated lifecycle control used by `server stop`: `{ok:true,data:{stopping:true}}`. It is not a workspace/configuration mutation API. Webviews should leave lifecycle management to the CLI. |
+| `POST /api/shutdown` | Lifecycle control used by `server stop`: `{ok:true,data:{stopping:true}}`. It requires the server token, so a view token gets 403 `SERVER_FORBIDDEN`. It is not a workspace/configuration mutation API; lifecycle management stays with the CLI. |
 | `GET /` | Public packaged-view catalog: `{ok:true,data:{views:[{id,name,path}]}}`; no workspace inspection data. |
 | `GET` or `HEAD /views/<id>/…` | Public static assets for the named installed webview. The protected API supplies workspace data separately. |
 

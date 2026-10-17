@@ -15,6 +15,15 @@ describe('broad rules', () => {
     expect(isBroadRule(rule)).toBe(true);
   });
 
+  it.each(['Bash(:*)', 'Bash(*:*)', 'Bash(* --version)', 'Bash(sh -c *)', 'Bash(bash *)', 'Bash(bash:*)', 'Bash(/bin/zsh -lc:*)', 'Bash(env *)',
+    'Bash(env FOO=1 *)', 'Bash(xargs:*)', 'Bash(sudo *)', 'Bash(node -e *)', 'Bash(node:*)', 'Bash(python3 -c *)', 'Bash(python3.12 -c *)', 'Bash(npx *)', 'Bash(pwsh.exe -Command *)'])('treats the command-wide %s as broad', rule => {
+    expect(isBroadRule(rule)).toBe(true);
+  });
+
+  it.each(['Bash(git *)', 'Bash(npm run test:*)', 'Bash(bash scripts/check.sh *)', 'Bash(node scripts/build.mjs *)', 'Bash(git commit -m *)', 'Bash(bash -c ls)', 'Bash(environment-check *)'])('keeps the command-specific %s narrow', rule => {
+    expect(isBroadRule(rule)).toBe(false);
+  });
+
   it.each(['NotBash(*)', 'Bash(*)x', 'Bash(ls)', 'xmcp__github', 'mcp__github__get_issue', 'mcp__my_server__get', 'mcp__', 'Read', 'Edit(./docs/**)'])('treats %s as narrow', rule => {
     expect(isBroadRule(rule)).toBe(false);
   });

@@ -7,6 +7,7 @@ import { forgeError, isRecord, type AppError } from '../../domain/shared/errors.
 import type { ServerController, ServerInfo, ServerStatus } from '../../application/server/contracts.ts';
 import { ensureStateIgnored, readState, removeState, withServerLock, type ServerState } from './state.ts';
 import { discoverWebviews } from './assets.ts';
+import { viewToken } from './tokens.ts';
 
 export interface ServerControllerOptions { workspaceRoot: string; distributionPath: string; version: string }
 export interface DaemonConfiguration extends ServerControllerOptions { port: number; instanceId: string; token: string }
@@ -49,11 +50,13 @@ const stopped = (stale = false): ServerStatus => ({ running: false, stale, serve
 function processAlive(pid: number): boolean {
   try { process.kill(pid, 0); return true; } catch { return false; }
 }
+/** A view's launch link carries only that view's read-only token; the public catalog link carries none. */
 function running(state: ServerState, webview?: string): ServerStatus {
   const selected = webview ? state.webviews.find(view => view.id === webview) : undefined;
   if (webview && !selected) throw forgeError('INVALID_ARGUMENT', `Webview '${webview}' is not installed.`);
+  const origin = `http://127.0.0.1:${state.port}`;
   return { running: true, stale: false, server: serverInfo(state),
-    url: `http://127.0.0.1:${state.port}${selected?.path ?? '/'}#token=${state.token}`, webviews: state.webviews };
+    url: selected ? `${origin}${selected.path}#token=${viewToken(state.token, selected.id)}` : `${origin}/`, webviews: state.webviews };
 }
 
 export class NodeServerController implements ServerController {

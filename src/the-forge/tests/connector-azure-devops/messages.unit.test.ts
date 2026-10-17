@@ -12,8 +12,9 @@ const server: Connection = {
 describe('the Azure DevOps connector self-description', () => {
   it('describes itself and warns about an unexpected host in the requested language', () => {
     const connector = new AzureDevOpsConnector(http, { de: germanConnectorMessages });
-    expect(connector.describe().warnings(server)).toEqual(['organization host tfs.example.com is neither dev.azure.com nor *.visualstudio.com; the token in ADO_PAT is sent there (expected only for Azure DevOps Server).']);
-    expect(connector.describe('de').warnings(server)).toEqual(['Der Organisations-Host tfs.example.com ist weder dev.azure.com noch *.visualstudio.com; das Token aus ADO_PAT wird dorthin gesendet (nur für Azure DevOps Server zu erwarten).']);
+    expect(connector.describe().warnings(server)).toEqual(['organization host tfs.example.com is neither dev.azure.com nor *.visualstudio.com, so requests are refused and the token in ADO_PAT is not sent; for Azure DevOps Server, list the host in the environment variable FORGE_CONNECTOR_ALLOWED_HOSTS.']);
+    expect(connector.describe('de').warnings(server)).toEqual(['Der Organisations-Host tfs.example.com ist weder dev.azure.com noch *.visualstudio.com, daher werden Anfragen abgelehnt und das Token aus ADO_PAT wird nicht gesendet; tragen Sie den Host für Azure DevOps Server in die Umgebungsvariable FORGE_CONNECTOR_ALLOWED_HOSTS ein.']);
+    expect(new AzureDevOpsConnector(http, {}, () => ['TFS.example.com']).describe().warnings(server)).toEqual([]);
     expect(connector.describe('de').description).toContain('Azure-DevOps-Projekts');
     expect(new AzureDevOpsConnector(http).describe('de').description).toBe(connector.describe('en').description);
   });

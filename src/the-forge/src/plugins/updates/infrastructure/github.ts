@@ -5,7 +5,7 @@ import { devNull, tmpdir } from 'node:os';
 import { lstat, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ReleaseSource } from '../application/update.ts';
-import { distributionFiles, releaseVersion, requireUpdate, updateError, type DistributionPolicy } from '../domain/release.ts';
+import { distributionFiles, releaseVersion, requireArchiveListing, requireUpdate, updateError, type DistributionPolicy } from '../domain/release.ts';
 import { AppError } from '../../../domain/shared/errors.ts';
 
 const execute = promisify(execFile);
@@ -40,7 +40,7 @@ export function githubReleases(policy: DistributionPolicy, run: ReleaseTool = ru
         const { stdout: listing } = await run('tar', ['-tzf', name], { cwd: staging, maxBuffer: 8 * 1024 * 1024 });
         requireUpdate(listing.trim().split(/\r?\n/).every(path => path.startsWith('bin/') && !path.includes('\\') && !path.includes(':') && !path.split('/').some(part => part === '.' || part === '..')), 'Release archive contains an unsafe path.');
         const { stdout: detailed } = await run('tar', ['-tvzf', name], { cwd: staging, maxBuffer: 8 * 1024 * 1024 });
-        requireUpdate(detailed.trim().split(/\r?\n/).every(line => ['-', 'd'].includes(line[0]!)), 'Release archive contains a link or special file.');
+        requireArchiveListing(detailed);
         await run('tar', ['-xzf', name, '--no-same-owner', '--no-same-permissions'], { cwd: staging });
         const root = join(staging, 'bin');
         const pkg: unknown = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
