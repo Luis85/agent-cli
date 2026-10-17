@@ -12,7 +12,7 @@ import { tagSorts, type TagSort } from '../domain/inventory.ts';
 import {
   compareFindings, effectiveSeverities, isRuleId, ruleIds, severities, type Detection, type Finding, type RuleId, type RuleSetting, type Severity,
 } from '../domain/rules.ts';
-import { fill } from './messages.ts';
+import { fill } from '../../../domain/shared/messages.ts';
 import { vaultOutput } from './output.ts';
 
 const actions = ['check', 'tags', 'properties'] as const;

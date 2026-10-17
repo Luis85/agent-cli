@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   compareFindings, effectiveSeverities, isRuleId, ruleDefaults, ruleIds, ruleSettings, severities, type Finding,
 } from '../../src/plugins/vault-check/domain/rules.ts';
-import { fill } from '../../src/plugins/vault-check/presentation/messages.ts';
+import { fill } from '../../src/domain/shared/messages.ts';
 
 const finding = (fields: Partial<Finding> = {}): Finding => ({ rule: 'unresolved-link', severity: 'error', path: 'a.md', line: 2, column: 3, message: 'm', hint: '', ...fields });
 
