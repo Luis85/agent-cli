@@ -67,7 +67,7 @@ describe('read-many contract', () => {
   it('reports the per-file --max-bytes apart from the aggregate limit, and the location, in both languages', async () => {
     const mebibyte = 1024 * 1024, fixture = context(mebibyte);
     const paths = Array.from({ length: 9 }, (_, index) => `f${index + 1}.bin`);
-    const failure = await command.run(paths, { 'max-bytes': String(mebibyte) }, fixture.value).catch((error: unknown) => error);
+    const failure: unknown = await Promise.resolve(command.run(paths, { 'max-bytes': String(mebibyte) }, fixture.value)).catch((error: unknown) => error);
     expect(failure).toMatchObject({ code: 'INVALID_ARGUMENT', details: { argument: 'paths', index: 8, path: 'f9.bin', aggregateLimit: 8 * mebibyte, maxBytes: mebibyte, bytes: 9 * mebibyte } });
     expect(new Localizer('de').error(failure).message).toBe('Argument <paths> an Position 8: Die gelesenen Dateien umfassen 9437184 Bytes und überschreiten die Gesamtgrenze von 8388608 Bytes; senken Sie --max-bytes (derzeit 1048576) oder lesen Sie weniger Dateien.');
     expect(new Localizer('en').error(failure).message).toMatch(/^read-many path at index 8: /);
