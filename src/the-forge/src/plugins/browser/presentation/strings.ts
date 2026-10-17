@@ -42,6 +42,7 @@ export const browserStrings: PluginStrings = { en: { messages: englishMessages }
     'Wait for this selector to become visible before capturing the page.': 'Vor der Aufnahme warten, bis dieser Selektor sichtbar ist.',
     'Optional project-relative tutorial directory whose current revision should be inspected.': 'Optionaler projektrelativer Anleitungsordner, dessen aktuelle Revision geprüft werden soll.',
     'Project-relative tutorial directory for index.md, screenshots and flow.json.': 'Projektrelativer Anleitungsordner für index.md, Screenshots und flow.json.',
+    'Run Chromium without its operating-system sandbox; only for trusted pages where the sandbox cannot start.': 'Chromium ohne seine Betriebssystem-Sandbox ausführen; nur für vertrauenswürdige Seiten, wenn die Sandbox nicht starten kann.',
   },
   errors: {
     BROWSER_UNAVAILABLE: { summary: 'Browser-Laufzeit oder ausführbare Datei fehlen.', hint: 'Prüfen Sie browser status und führen Sie browser install aus oder übergeben Sie einen installierten Chromium-Browser mit --browser-executable.' },

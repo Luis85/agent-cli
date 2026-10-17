@@ -30,7 +30,8 @@ describe('portable browser runtime boundaries', () => {
   it('reports a missing managed browser without launching or installing it', async () => {
     const { runtime, root } = await fixture();
     vi.stubEnv('FORGE_BROWSER_EXECUTABLE', undefined);
-    expect(await runtime.status()).toEqual({ available: false, executablePath: join(root, 'managed-browser'), source: 'managed', version: '1.64.0', verification: 'executable-only', reason: 'missing' });
+    expect(await runtime.status()).toEqual({ available: false, executablePath: join(root, 'managed-browser'), source: 'managed', version: '1.64.0', verification: 'executable-only', reason: 'missing',
+      sandbox: process.platform === 'linux' && process.getuid?.() === 0 ? 'disabled-root' : 'enabled' });
     expect(existsSync(join(root, 'managed-browser'))).toBe(false);
   });
 

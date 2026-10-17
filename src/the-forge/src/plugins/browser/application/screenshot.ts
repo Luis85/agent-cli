@@ -40,6 +40,6 @@ export class BrowserScreenshot {
     const result = await context.workspace.write([{ path, bytes: image.bytes, ...(revision === undefined ? {} : { expectedRevision: revision }) }]);
     const change = result.changes[0]!;
     return { ...result, captured: true, path, revision: change.revision, bytes: change.bytes, ...dimensions,
-      requestedUrl: plan.requestedUrl, finalUrl, capturedAt: new Date(image.capturedAt).toISOString(), markdown: imageMarkdown(path) };
+      requestedUrl: plan.requestedUrl, finalUrl, capturedAt: new Date(image.capturedAt).toISOString(), markdown: imageMarkdown(path), sandbox: image.sandbox };
   }
 }

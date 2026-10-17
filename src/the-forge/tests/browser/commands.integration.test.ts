@@ -20,7 +20,7 @@ import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 import { scopeServices } from '../support/metadata.ts';
 
 let root: string, context: PluginContext;
-const status: BrowserStatus = { available: false, executablePath: null, source: 'managed', version: '1.64.0', verification: 'executable-only', reason: 'missing' };
+const status: BrowserStatus = { available: false, executablePath: null, source: 'managed', version: '1.64.0', verification: 'executable-only', reason: 'missing', sandbox: 'enabled' };
 const runtime: BrowserRuntime = {
   status: vi.fn(async () => status), install: vi.fn(async () => ({ ...status, available: true, reason: 'available' as const })),
   screenshot: vi.fn(async () => { throw new Error('No capture expected'); }),

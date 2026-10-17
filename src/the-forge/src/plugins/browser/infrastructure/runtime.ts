@@ -4,15 +4,36 @@ import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { Browser, Page } from 'playwright-core';
-import type { BrowserImage, BrowserOptions, BrowserRuntime, BrowserStatus } from '../application/runtime.ts';
+import type { Browser, Locator, Page } from 'playwright-core';
+import type { BrowserFlowRequest, BrowserImage, BrowserOptions, BrowserRuntime, BrowserSandbox, BrowserStatus } from '../application/runtime.ts';
 import type { TutorialLocator } from '../domain/tutorial.ts';
 import { browserError, ensureBrowser } from '../domain/errors.ts';
 import { AppError } from '../../../domain/shared/errors.ts';
 
 const execute = promisify(execFile);
 type Playwright = typeof import('playwright-core');
-type Session = { browser: Browser; page: Page };
+type Session = { browser: Browser; page: Page; sandbox: BrowserSandbox };
+/** No tutorial runs longer than this, whatever its per-operation timeout and number of actions. */
+export const maxTutorialMs = 15 * 60_000;
+
+/** Chromium cannot sandbox itself as root on Linux; everywhere else the sandbox stays on unless explicitly disabled. */
+function defaultSandbox(): BrowserStatus['sandbox'] {
+  return process.platform === 'linux' && process.getuid?.() === 0 ? 'disabled-root' : 'enabled';
+}
+function sandboxMode(disable = false): BrowserSandbox { return disable ? 'disabled-option' : defaultSandbox(); }
+
+/** One operation timeout per action and screenshot plus the start navigation, capped at `maxTutorialMs`. */
+export function tutorialDeadline(request: BrowserFlowRequest): number {
+  const operations = request.plan.steps.reduce((total, step) => total + step.actions.length + Number(step.screenshot), 1);
+  return Math.min(maxTutorialMs, request.timeoutMs * operations);
+}
+
+/** Rejects with `failure` once `milliseconds` pass; `clear` stops the timer after the operation settles. */
+function deadline(milliseconds: number, failure: () => Error) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(failure()), Math.max(1, milliseconds)); });
+  return { expired, clear: () => clearTimeout(timer) };
+}
 
 function proxy() {
   const configured = process.env.HTTPS_PROXY ?? process.env.https_proxy ?? process.env.HTTP_PROXY ?? process.env.http_proxy;
@@ -71,15 +92,18 @@ export function createBrowserRuntime(distributionPath: string): BrowserRuntime {
     let version: string;
     try { version = (JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8')) as { version: string }).version; }
     catch { throw browserError('BROWSER_UNAVAILABLE', 'The packaged browser runtime metadata is missing. Replace the complete Forge distribution.'); }
-    return { available: reason === 'available', executablePath: path, source, version, verification: 'executable-only', reason };
+    return { available: reason === 'available', executablePath: path, source, version, verification: 'executable-only', reason,
+      sandbox: defaultSandbox() };
   }
 
   async function session(options: BrowserOptions): Promise<Session> {
     const info = await status(options.executablePath);
     ensureBrowser(info.available, 'BROWSER_UNAVAILABLE', 'No usable Chromium executable was found. Run browser install or provide --browser-executable.');
     let browser: Browser | undefined;
+    const sandbox = sandboxMode(options.disableSandbox);
     try {
-      browser = await (await playwright()).chromium.launch({ headless: true, channel: 'chromium', executablePath: info.executablePath!, timeout: options.timeoutMs, proxy: proxy() });
+      browser = await (await playwright()).chromium.launch({ headless: true, channel: 'chromium', executablePath: info.executablePath!, timeout: options.timeoutMs, proxy: proxy(),
+        chromiumSandbox: sandbox === 'enabled' });
       const context = await browser.newContext({ viewport: options.viewport, deviceScaleFactor: 1, acceptDownloads: false, serviceWorkers: 'block' });
       context.setDefaultTimeout(options.timeoutMs); context.setDefaultNavigationTimeout(options.timeoutMs);
       await context.route('**/*', route => {
@@ -88,7 +112,7 @@ export function createBrowserRuntime(distributionPath: string): BrowserRuntime {
         return route.continue();
       });
       const page = await context.newPage();
-      return { browser, page };
+      return { browser, page, sandbox };
     } catch (error) {
       await browser?.close().catch(() => {});
       if (error instanceof AppError) throw error;
@@ -102,9 +126,9 @@ export function createBrowserRuntime(distributionPath: string): BrowserRuntime {
     publicUrl(page.url());
   }
 
-  async function capture(page: Page, fullPage: boolean, timeout: number): Promise<BrowserImage> {
+  async function capture(page: Page, fullPage: boolean, timeout: number, mask: Locator[] = []): Promise<BrowserImage> {
     const url = publicUrl(page.url());
-    const bytes = await page.screenshot({ type: 'png', fullPage, animations: 'disabled', timeout });
+    const bytes = await page.screenshot({ type: 'png', fullPage, animations: 'disabled', timeout, ...(mask.length > 0 ? { mask } : {}) });
     return { bytes, width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20), url, title: await page.title(), capturedAt: new Date().toISOString() };
   }
 
@@ -128,21 +152,20 @@ export function createBrowserRuntime(distributionPath: string): BrowserRuntime {
     },
     async screenshot(request) {
       const started = Date.now();
-      const { browser, page } = await session(request);
-      let timer: ReturnType<typeof setTimeout> | undefined;
+      const { browser, page, sandbox } = await session(request);
+      const total = deadline(request.timeoutMs - (Date.now() - started),
+        () => browserError('BROWSER_CAPTURE_FAILED', 'The screenshot exceeded its total timeout. Increase --timeout-ms or simplify the page readiness condition.'));
       try {
         const operation = async () => {
           await navigate(page, request.url);
           if (request.waitForSelector) await page.locator(request.waitForSelector).waitFor({ state: 'visible' });
           return capture(page, request.fullPage, request.timeoutMs);
         };
-        return await Promise.race([operation(), new Promise<never>((_resolve, reject) => {
-          timer = setTimeout(() => reject(browserError('BROWSER_CAPTURE_FAILED', 'The screenshot exceeded its total timeout. Increase --timeout-ms or simplify the page readiness condition.')), Math.max(1, request.timeoutMs - (Date.now() - started)));
-        })]);
+        return { ...await Promise.race([operation(), total.expired]), sandbox };
       } catch (error) {
         if (error instanceof AppError) throw error;
         throw browserError('BROWSER_CAPTURE_FAILED', 'The page could not be captured. Check its address, readiness selector and timeout, then retry.');
-      } finally { clearTimeout(timer); await browser.close().catch(() => {}); }
+      } finally { total.clear(); await browser.close().catch(() => {}); }
     },
     async flow(request) {
       const values = new Map<object, string>();
@@ -153,15 +176,19 @@ export function createBrowserRuntime(distributionPath: string): BrowserRuntime {
           values.set(action, value);
         }
       }
-      const { browser, page } = await session(request);
+      const { browser, page, sandbox } = await session(request);
       const screenshots: Array<BrowserImage & { stepId: string }> = [];
+      // Inputs filled from environment variables stay masked in every later screenshot.
+      const masked: Locator[] = [];
       let stepId: string | undefined;
       let popupOpened = false;
       page.on('popup', () => { popupOpened = true; });
       page.context().on('page', opened => { if (opened !== page) popupOpened = true; });
       const ensureSinglePage = () => ensureBrowser(!popupOpened && page.context().pages().length === 1,
         'BROWSER_FLOW_FAILED', 'Tutorials support one browser tab. This step opened another tab or popup; revise the flow to navigate in the current tab.', stepId ? { stepId } : {});
-      try {
+      const total = deadline(tutorialDeadline(request), () => browserError('BROWSER_FLOW_FAILED',
+        'The tutorial exceeded its total time budget. Split it into shorter tutorials or lower the work per step.', stepId ? { stepId } : {}));
+      const operation = async () => {
         if (request.plan.startUrl) await navigate(page, request.plan.startUrl);
         for (const step of request.plan.steps) {
           stepId = step.id;
@@ -170,7 +197,8 @@ export function createBrowserRuntime(distributionPath: string): BrowserRuntime {
             if (action.type === 'goto') { await navigate(page, action.url); ensureSinglePage(); continue; }
             const target = locate(page, action.locator);
             if (action.type === 'click') await target.click();
-            else if (action.type === 'fill') await target.fill(action.value !== undefined ? action.value : values.get(action)!);
+            else if (action.type === 'fill' && action.value !== undefined) await target.fill(action.value);
+            else if (action.type === 'fill') { masked.push(target); await target.fill(values.get(action)!); }
             else if (action.type === 'select') await target.selectOption(action.value);
             else if (action.type === 'check') await target.setChecked(action.checked);
             else if (action.type === 'press') await target.press(action.key);
@@ -178,14 +206,16 @@ export function createBrowserRuntime(distributionPath: string): BrowserRuntime {
             ensureSinglePage();
           }
           ensureSinglePage();
-          if (step.screenshot) screenshots.push({ ...await capture(page, step.fullPage, request.timeoutMs), stepId: step.id });
+          if (step.screenshot) screenshots.push({ ...await capture(page, step.fullPage, request.timeoutMs, masked), stepId: step.id });
           ensureSinglePage();
         }
-        return { screenshots, browserVersion: browser.version() };
-      } catch (error) {
+        return { screenshots, browserVersion: browser.version(), sandbox };
+      };
+      try { return await Promise.race([operation(), total.expired]); }
+      catch (error) {
         if (error instanceof AppError && error.code === 'BROWSER_FLOW_FAILED') throw error;
         throw browserError('BROWSER_FLOW_FAILED', 'The tutorial could not complete. Inspect the failing step, locator and timeout before retrying.', stepId ? { stepId } : {});
-      } finally { await browser.close().catch(() => {}); }
+      } finally { total.clear(); await browser.close().catch(() => {}); }
     },
   };
 }
