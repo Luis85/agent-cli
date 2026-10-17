@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { cp, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -24,6 +25,9 @@ export async function distributionPath() {
 /** Core plugins that act on the host outside the workspace; evaluation workspaces disable them. */
 export const hostPlugins = ['claude', 'connector', 'connector-azure-devops'];
 
+/** Windows can keep a folder busy for a moment after a process that used it ended. */
+const removal = { recursive: true, force: true, maxRetries: 10, retryDelay: 100 };
+
 const sha256 = (/** @type {Buffer} */ bytes) => createHash('sha256').update(bytes).digest('hex');
 
 /** @param {string} root @param {string} [prefix] @returns {Promise<string[]>} */
@@ -38,21 +42,23 @@ async function files(root, prefix = '') {
 }
 
 /**
- * Runs the workspace's own `bin/forge.js` with `--root` and `--json` and parses the envelope.
- * @param {string} root @param {Args} args @returns {Promise<ForgeResult>}
+ * Runs the workspace's own `bin/forge.js` with `--root` and `--json` and parses the envelope. Failures name the task,
+ * the arguments and the working directory.
+ * @param {string} id @param {string} root @param {Args} args @returns {Promise<ForgeResult>}
  */
-function runForge(root, args) {
+function runForge(id, root, args) {
   return new Promise((resolvePromise, reject) => {
     const child = spawn(process.execPath, [join(root, 'bin/forge.js'), '--root', root, '--json', ...args], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
     /** @type {Buffer[]} */ const stdout = [];
     /** @type {Buffer[]} */ const stderr = [];
     child.stdout.on('data', chunk => stdout.push(chunk));
     child.stderr.on('data', chunk => stderr.push(chunk));
-    child.on('error', reject);
+    // A missing working directory fails the spawn with ENOENT although the Node executable exists.
+    child.on('error', error => reject(new Error(`${id}: forge ${args.join(' ')} could not start in ${root} (${existsSync(root) ? 'present' : 'missing'}): ${error.message}`, { cause: error })));
     child.on('close', status => {
       const text = Buffer.concat(stdout).toString('utf8');
       try { resolvePromise({ status, body: JSON.parse(text), stdout: text }); }
-      catch { reject(new Error(`forge ${args.join(' ')} returned no JSON (exit ${status}): ${Buffer.concat(stderr).toString('utf8') || text}`)); }
+      catch { reject(new Error(`${id}: forge ${args.join(' ')} in ${root} returned no JSON (exit ${status}): ${Buffer.concat(stderr).toString('utf8') || text}`)); }
     });
   });
 }
@@ -87,7 +93,7 @@ export async function createWorkspace(task, options = {}) {
     /** @type {Map<string, string>} */
     const initial = new Map();
     for (const path of await files(fixture)) initial.set(path, sha256(await readFile(join(fixture, path))));
-    const forge = (/** @type {Args} */ args) => runForge(root, args);
+    const forge = (/** @type {Args} */ args) => runForge(task.id, root, args);
     const expand = async (/** @type {string} */ text) => {
       let result = text;
       for (const match of text.matchAll(/\{\{(revision|initial):([^}]+)\}\}/g)) {
@@ -107,9 +113,9 @@ export async function createWorkspace(task, options = {}) {
     for (const path of await files(root)) if (!path.startsWith('bin/')) prepared.set(path, await readFile(join(root, path)));
     // The fixture's own files outside hidden folders: the paths an answer about the vault may name.
     const vaultPaths = [...initial.keys()].filter(path => !path.split('/').some(segment => segment.startsWith('.')) && !path.startsWith('bin/')).sort();
-    return { root, forge, expand, prepared: path => prepared.get(path), vaultPaths, dispose: () => rm(root, { recursive: true, force: true }) };
+    return { root, forge, expand, prepared: path => prepared.get(path), vaultPaths, dispose: () => rm(root, removal) };
   } catch (error) {
-    await rm(root, { recursive: true, force: true });
+    await rm(root, removal);
     throw error;
   }
 }
