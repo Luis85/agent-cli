@@ -25,7 +25,7 @@ import type { LockOwner } from './infrastructure/workspace/lock.ts';
 import { ObsidianDocuments } from './infrastructure/documents/codec.ts';
 import { installedPlugins, loadEnabledPlugins, recordMissingPlugins } from './infrastructure/plugins/loader.ts';
 import { registerCorePlugins, registrySkills } from './application/plugins/core-plugins.ts';
-import { commandOptions, ensureKnownAction, hasActionOptions, optionTypes } from './application/plugins/command-metadata.ts';
+import { commandOptions } from './application/plugins/command-metadata.ts';
 import { globalOptions, value } from './application/plugins/command-input.ts';
 import { basesPlugin } from './plugins/bases/plugin.ts';
 import { skillsPlugin } from './plugins/skills/plugin.ts';
@@ -56,7 +56,7 @@ import { ObsidianMetadataParser, metadataParserVersion } from './infrastructure/
 import { NodeMetadataSnapshotStore, snapshotFile } from './infrastructure/metadata/snapshot-store.ts';
 import { createApp } from './application/vault/app.ts';
 import { commands } from './presentation/cli/commands.ts';
-import { declaredValues, parseArguments, parseBootstrap } from './presentation/cli/arguments.ts';
+import { declaredValues, parseArguments, parseBootstrap, parseCommandArguments } from './presentation/cli/arguments.ts';
 import { invocationPolicy } from './presentation/cli/invocation-policy.ts';
 import { language, Localizer } from './presentation/localization/localization.ts';
 import { kernelMessage, type KernelMessage } from './domain/shared/kernel-messages.ts';
@@ -140,17 +140,7 @@ async function run(): Promise<void> {
       await registry.publishRegistered(events);
       const id = bootstrap.args[0] ?? 'help';
       const command = registry.resolveCommand(id);
-      // An action's own options (make <generator>) parse only once the action is known: the first argument after
-      // the command id, unless an option precedes it.
-      const actionArgs = hasActionOptions(command) ? parseArguments(tokens, { ...globalOptions, ...optionTypes(command.options) }, true).args.slice(1) : [];
-      const parsed = (() => {
-        try { return parseArguments(tokens, { ...globalOptions, ...optionTypes(commandOptions(command, actionArgs)) }); }
-        catch (error) {
-          // An unknown action outranks its options: make <unknown> --template fails with UNKNOWN_GENERATOR.
-          ensureKnownAction(command, actionArgs);
-          throw error;
-        }
-      })();
+      const parsed = parseCommandArguments(command, tokens);
       // Apply the parsed output preference before any value or routing validation can fail.
       config.settings.json = parsed.flags['no-json'] ? false : parsed.flags.json ? true : config.settings.json;
       compact = config.settings.json;

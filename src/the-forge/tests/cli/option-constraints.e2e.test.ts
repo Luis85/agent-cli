@@ -37,31 +37,27 @@ beforeAll(async () => {
 const requiredValues = (options: Record<string, CommandOption>, omit?: string) => Object.entries(options)
   .filter(([key, schema]) => schema.required && key !== omit).flatMap(([key, schema]) => [`--${key}`, schema.enum?.[0] ?? 'value']);
 
+/** The mode whose `tokens` an expectation names, such as `make ui`. */
+const mode = (tokens: string) => modes.find(candidate => candidate.tokens.join(' ') === tokens)!;
+
+/**
+ * `option-constraints.integration.test.ts` checks every declared constraint of every mode in process; these
+ * representative invocations, a command option and an action option each, confirm the CLI applies the same checks.
+ */
 describe('declared option constraints', () => {
-  it('rejects a value outside every declared enum with INVALID_OPTION_VALUE', async () => {
-    const checked: string[] = [];
-    for (const { tokens, options } of modes) {
-      for (const [key, schema] of Object.entries(options)) {
-        if (schema.enum === undefined) continue;
-        const result = await cli([...tokens, ...requiredValues(options), `--${key}`, 'not-a-declared-value']);
-        expect(result.body.error, `${tokens.join(' ')} --${key}`).toMatchObject({ code: 'INVALID_OPTION_VALUE', details: { option: key, value: 'not-a-declared-value', allowed: schema.enum } });
-        checked.push(`${tokens.join(' ')} --${key}`);
-      }
+  it('rejects a value outside a declared enum with INVALID_OPTION_VALUE', async () => {
+    for (const [tokens, key] of [['list', 'kind'], ['make ui', 'framework']] as const) {
+      const { options } = mode(tokens);
+      const result = await cli([...tokens.split(' '), ...requiredValues(options), `--${key}`, 'not-a-declared-value']);
+      expect(result.body.error, `${tokens} --${key}`).toMatchObject({ code: 'INVALID_OPTION_VALUE', details: { option: key, value: 'not-a-declared-value', allowed: options[key]!.enum } });
     }
-    expect(checked).toEqual(expect.arrayContaining(['list --kind', 'create --encoding', 'make ui --framework', 'agents --mcp', 'backlog --direction', 'vault tags --sort']));
   });
 
   it('rejects an invocation without a declared required option with MISSING_ARGUMENT', async () => {
-    const checked: string[] = [];
-    for (const { tokens, options } of modes) {
-      for (const [key, schema] of Object.entries(options)) {
-        if (!schema.required) continue;
-        const result = await cli([...tokens, ...requiredValues(options, key)]);
-        expect(result.body.error, `${tokens.join(' ')} --${key}`).toMatchObject({ code: 'MISSING_ARGUMENT', message: `--${key} is required.`, details: { option: key } });
-        checked.push(`${tokens.join(' ')} --${key}`);
-      }
+    for (const [tokens, key] of [['edit', 'if-match'], ['make document', 'template']] as const) {
+      const result = await cli([...tokens.split(' '), ...requiredValues(mode(tokens).options, key)]);
+      expect(result.body.error, `${tokens} --${key}`).toMatchObject({ code: 'MISSING_ARGUMENT', message: `--${key} is required.`, details: { option: key } });
     }
-    expect(checked).toEqual(expect.arrayContaining(['edit --if-match', 'patch --pointer', 'make document --template']));
   });
 
   it('checks every item of a comma-separated list option and publishes the list as a pattern', async () => {

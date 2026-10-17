@@ -1,6 +1,6 @@
 import { Command, CommanderError, Option } from 'commander';
 import { forgeError, ensure } from '../../domain/shared/errors.ts';
-import { listOptionItems, option, type CommandOption } from '../../application/plugins/command-metadata.ts';
+import { commandOptions, ensureKnownAction, hasActionOptions, listOptionItems, option, optionTypes, type CommandMetadata, type CommandOption } from '../../application/plugins/command-metadata.ts';
 import { globalOptions } from '../../application/plugins/command-input.ts';
 /** The global options as help and schema describe them; routing options must precede the command. */
 export const globalOptionMetadata = {
@@ -33,6 +33,21 @@ export function parseBootstrap(tokens: string[]): ParsedArguments {
   }
   const parsed = parseArguments(tokens.slice(0, end), globalOptions);
   return { flags: parsed.flags, args: tokens.slice(end + (tokens[end] === '--' ? 1 : 0)) };
+}
+
+/**
+ * Parses a complete invocation with the global options, the command's options and those of the action it selects. An
+ * action's own options (make <generator>) parse only once the action is known: the first argument after the command
+ * id, unless an option precedes it.
+ */
+export function parseCommandArguments(command: CommandMetadata, tokens: string[]): ParsedArguments {
+  const actionArgs = hasActionOptions(command) ? parseArguments(tokens, { ...globalOptions, ...optionTypes(command.options) }, true).args.slice(1) : [];
+  try { return parseArguments(tokens, { ...globalOptions, ...optionTypes(commandOptions(command, actionArgs)) }); }
+  catch (error) {
+    // An unknown action outranks its options: make <unknown> --template fails with UNKNOWN_GENERATOR.
+    ensureKnownAction(command, actionArgs);
+    throw error;
+  }
 }
 
 /**
