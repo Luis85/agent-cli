@@ -13,7 +13,6 @@ import { vueModule } from './renderers/vue.ts';
 import { svelteModule } from './renderers/svelte.ts';
 import { angularModule } from './renderers/angular.ts';
 
-export { componentArtifact } from './rendering.ts';
 
 const renderers: Record<UiFramework, (definition: UiDefinition, definitions: Map<string, UiDefinition>, interactions: readonly InteractionDefinition[]) => string> = {
   html: domModule, htmx: domModule, vanilla: domModule,

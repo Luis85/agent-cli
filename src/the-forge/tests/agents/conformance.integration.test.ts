@@ -4,11 +4,14 @@ import { join } from 'node:path';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { AgentDefinitions } from '../../src/plugins/agents/application/definitions.ts';
 import { yamlDefinitions } from '../../src/plugins/agents/infrastructure/yaml-definitions.ts';
-import { ajvDefinitionSchema, vendoredSchema } from '../../src/plugins/agents/infrastructure/schema.ts';
+import { ajvDefinitionSchema } from '../../src/plugins/agents/infrastructure/schema.ts';
 import schema from '../../src/plugins/agents/infrastructure/vendor/agent-schema.json';
+import source from '../../src/plugins/agents/infrastructure/vendor/source.json';
 import { dockerAgentExamples } from './agents-workspace.ts';
 
 const fixtures = join(dockerAgentExamples, '..');
+/** The docker-agent commit whose `agent-schema.json` is vendored (see `scripts/vendor-docker-agent.mjs`). */
+const vendoredSchema = { repository: source.repository, commit: source.commit, configVersion: source.configVersion };
 
 describe('docker-agent conformance', () => {
   it('pins the vendored schema and the fixtures to the same docker-agent commit', async () => {
