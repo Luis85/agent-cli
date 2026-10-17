@@ -1,6 +1,6 @@
 import { Command, CommanderError, Option } from 'commander';
 import { forgeError, ensure } from '../../domain/shared/errors.ts';
-import { listOptionItems, option, type CommandOption } from '../../application/plugins/command-metadata.ts';
+import { anyActionOptions, listOptionItems, option, optionTypes, type CommandMetadata, type CommandOption } from '../../application/plugins/command-metadata.ts';
 import { globalOptions } from '../../application/plugins/command-input.ts';
 /** The global options as help and schema describe them; routing options must precede the command. */
 export const globalOptionMetadata = {
@@ -59,6 +59,16 @@ export function declaredValues(options: Readonly<Record<string, CommandOption>>,
     if (schema.list) values[key] = items.join(',');
   }
   return values;
+}
+
+/**
+ * The arguments after the command id, found with every option any action declares so that an option before the
+ * action words cannot hide them. When those options do not parse (a repeated or valueless option), the command's
+ * own options find them, as the full parse with the selected action's options then reports.
+ */
+export function actionArguments(tokens: string[], command: CommandMetadata): string[] {
+  try { return parseArguments(tokens, { ...globalOptions, ...anyActionOptions(command) }, true).args.slice(1); }
+  catch { return parseArguments(tokens, { ...globalOptions, ...optionTypes(command.options) }, true).args.slice(1); }
 }
 
 /** Commander owns tokenization; normalize its options and errors into the agent protocol. */

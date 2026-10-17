@@ -1,5 +1,4 @@
 import type { CorePlugin } from '../../application/plugins/core-plugins.ts';
-import type { PluginContext } from '../../application/plugins/registry.ts';
 import { searchFiles } from './application/search.ts';
 import { vmSearchBudget } from './infrastructure/budget.ts';
 import { searchCommand } from './presentation/command.ts';
@@ -23,7 +22,7 @@ export const searchPlugin: CorePlugin = {
       files: context.workspace.files,
       paths: () => context.metadata.vaultFiles(),
       parse: file => context.metadata.parseFile(file),
-      budget: vmSearchBudget(Number((context as PluginContext).settings?.timeoutMs ?? defaultTimeoutMs)),
+      budget: vmSearchBudget(Number(context.settings?.timeoutMs ?? defaultTimeoutMs)),
     }, query, page))],
     settings: {
       type: 'object', additionalProperties: false,

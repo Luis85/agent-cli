@@ -81,7 +81,7 @@ describe('portable native Bases repositories', () => {
       { args: ['query', '../tasks.base'], code: 'INVALID_PATH' },
       { args: ['query', 'tasks.base', '--context', '../Note.md'], code: 'INVALID_PATH' },
       { args: ['inspect', 'Note.md'], code: 'INVALID_BASE' },
-      { args: ['list', '--view', 'All open'], code: 'INVALID_ARGUMENT' },
+      { args: ['list', '--view', 'All open'], code: 'UNKNOWN_OPTION' },
       { args: ['query', 'absent.base'], code: 'NOT_FOUND' },
     ];
     for (const { args, code } of errors) {

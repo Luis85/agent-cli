@@ -1,5 +1,5 @@
 import { ensure } from '../../../domain/shared/errors.ts';
-import type { Command } from '../../../application/plugins/registry.ts';
+import type { Command, PluginContext } from '../../../application/plugins/registry.ts';
 import { arity, value } from '../../../application/plugins/command-input.ts';
 import { option } from '../../../application/plugins/command-metadata.ts';
 import { libraryMetadata, libraryOptions, localizedLibraryResult } from '../../../application/plugins/library-commands.ts';
@@ -8,19 +8,16 @@ import { defaultInteractionIds } from '../application/interactions/defaults.ts';
 import type { UiServicesFactory } from './components.ts';
 
 /** Reusable behavior definitions share workspace scope with the component library. */
-export function interactionsCommand(services: UiServicesFactory): Command {
+export function interactionsCommand(services: UiServicesFactory): Command<PluginContext> {
   return {
     id: 'interactions', description: 'Manage reusable Markdown interaction definitions for executable UI behavior.',
     usage: 'interactions [list | init | inspect <id> | validate | create <id> [--event event] | import [--from directory] | export [--out directory]] [--library directory]',
-    ...libraryMetadata('interaction'),
-    options: { ...libraryOptions, event: option.string('Browser event for create.', { enum: interactionEvents }) },
+    ...libraryMetadata('interactions', 'interaction', { event: option.string('Browser event for create.', { enum: interactionEvents }) }),
+    options: libraryOptions,
     errors: ['INVALID_INTERACTION', 'DUPLICATE_INTERACTION', 'UNKNOWN_INTERACTION', 'EMPTY_INTERACTION_LIBRARY', 'CONFLICT'],
     async run(args, flags, context) {
       const { settings, interactions: library } = services(context);
       const action = args[0] ?? 'list', directory = value(flags, 'library') ?? settings.interactions;
-      ensure(flags.from === undefined || action === 'import', 'INVALID_ARGUMENT', '--from requires interactions import.');
-      ensure(flags.out === undefined || action === 'export', 'INVALID_ARGUMENT', '--out requires interactions export.');
-      ensure(flags.event === undefined || action === 'create', 'INVALID_ARGUMENT', '--event requires interactions create.');
       if (action === 'list') {
         arity(args, 0, 1);
         const definitions = await library.list(directory);

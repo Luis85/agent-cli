@@ -1,5 +1,5 @@
 import { ensure } from '../../../domain/shared/errors.ts';
-import type { CommandContext, Generator } from '../../../application/plugins/registry.ts';
+import type { Generator, PluginContext } from '../../../application/plugins/registry.ts';
 import { option, type CommandFlags } from '../../../application/plugins/command-metadata.ts';
 import { value } from '../../../application/plugins/command-input.ts';
 import { generationControls, generationOutputPath, libraryGenerationOptions } from '../../../application/generation/controls.ts';
@@ -16,7 +16,7 @@ const uiGenerationOptions = {
 
 const { stories: _stories, ...storiesOptions } = uiGenerationOptions;
 
-async function makeUi(kind: 'ui' | 'stories', id: string, flags: CommandFlags, context: CommandContext, services: UiServicesFactory) {
+async function makeUi(kind: 'ui' | 'stories', id: string, flags: CommandFlags, context: PluginContext, services: UiServicesFactory) {
   const ui = services(context), settings = ui.settings;
   const framework = value(flags, 'framework') ?? settings.framework;
   const storybook = kind === 'stories' || flags.stories === true;
@@ -49,7 +49,7 @@ const uiGenerationErrors = [
  * `make ui` and `make stories` render the workspace component library into the output project: the selected one, or
  * the one `--project` names for this invocation. `make` adds `--out` and the review controls.
  */
-export function uiGenerators(services: UiServicesFactory): Generator[] {
+export function uiGenerators(services: UiServicesFactory): Generator<PluginContext>[] {
   const library = { projectOption: 'project', review: true, idempotent: true, options: uiGenerationOptions, errors: uiGenerationErrors } as const;
   return [
     {

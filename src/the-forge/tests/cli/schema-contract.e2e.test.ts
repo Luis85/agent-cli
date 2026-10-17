@@ -83,11 +83,14 @@ describe('the published schema contract', () => {
       ['backlog', 'set', true, true], ['backlog', 'move', true, true], ['backlog', 'depend', true, true], ['backlog', 'undepend', true, true], ['backlog', 'ranks', true, true],
       // An optional --if-match does not make these repeatable: backlog init, add, iteration add and release add create
       // another note, backlog sync talks to a remote tracker, and the claude plugins, marketplaces and runtime
-      // sections run the installed CLI. tests/cli/idempotency.e2e.test.ts runs every mutating mode twice.
-      ['backlog', 'init', true, false], ['backlog', 'add', true, false], ['backlog', 'iteration', true, false], ['backlog', 'release', true, false], ['backlog', 'sync', true, false],
-      ['claude', 'plugins', true, false], ['claude', 'marketplaces', true, false], ['claude', 'runtime', true, false],
+      // actions run the installed CLI. tests/cli/idempotency.e2e.test.ts runs every mutating mode twice.
+      ['backlog', 'init', true, false], ['backlog', 'add', true, false], ['backlog', 'iteration add', true, false], ['backlog', 'release add', true, false], ['backlog', 'sync', true, false],
+      ['backlog', 'iteration assign', true, true], ['backlog', 'release join', true, true], ['backlog', 'release mark-released', true, true],
+      ['claude', 'plugins install', true, false], ['claude', 'marketplaces add', true, false], ['claude', 'runtime install', true, false],
       // These require --if-match once their file exists, so a repeat fails with CONFLICT.
-      ['claude', 'hooks', true, true], ['claude', 'agents', true, true], ['agents', 'create', true, true], ['agents', 'import', true, true],
+      ['claude', 'hooks add', true, true], ['claude', 'agents create', true, true], ['claude', 'plugins write-asset', true, true], ['agents', 'create', true, true], ['agents', 'import', true, true],
+      // Reads: the bare sections list or inspect.
+      ['claude', 'agents', false, true], ['claude', 'hooks', false, true], ['backlog', 'sync status', false, true],
     ];
     for (const [id, action, destructive, idempotent] of expected) expect(hints(id, action), `${id} ${action ?? ''}`).toEqual([destructive, idempotent]);
     for (const id of ['backlog', 'claude']) expect(hints(id), id).toEqual([true, false]);

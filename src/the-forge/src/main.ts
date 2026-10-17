@@ -56,7 +56,7 @@ import { ObsidianMetadataParser, metadataParserVersion } from './infrastructure/
 import { NodeMetadataSnapshotStore, snapshotFile } from './infrastructure/metadata/snapshot-store.ts';
 import { createApp } from './application/vault/app.ts';
 import { commands } from './presentation/cli/commands.ts';
-import { declaredValues, parseArguments, parseBootstrap } from './presentation/cli/arguments.ts';
+import { actionArguments, declaredValues, parseArguments, parseBootstrap } from './presentation/cli/arguments.ts';
 import { invocationPolicy } from './presentation/cli/invocation-policy.ts';
 import { language, Localizer } from './presentation/localization/localization.ts';
 import { kernelMessage, type KernelMessage } from './domain/shared/kernel-messages.ts';
@@ -140,9 +140,8 @@ async function run(): Promise<void> {
       await registry.publishRegistered(events);
       const id = bootstrap.args[0] ?? 'help';
       const command = registry.resolveCommand(id);
-      // An action's own options (make <generator>) parse only once the action is known: the first argument after
-      // the command id, unless an option precedes it.
-      const actionArgs = hasActionOptions(command) ? parseArguments(tokens, { ...globalOptions, ...optionTypes(command.options) }, true).args.slice(1) : [];
+      // An action's own options (make <generator>) parse only once the action is known from the leading arguments.
+      const actionArgs = hasActionOptions(command) ? actionArguments(tokens, command) : [];
       const parsed = (() => {
         try { return parseArguments(tokens, { ...globalOptions, ...optionTypes(commandOptions(command, actionArgs)) }); }
         catch (error) {

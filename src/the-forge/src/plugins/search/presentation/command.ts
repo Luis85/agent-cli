@@ -1,4 +1,4 @@
-import type { Command, CommandContext } from '../../../application/plugins/registry.ts';
+import type { Command, PluginContext } from '../../../application/plugins/registry.ts';
 import { option } from '../../../application/plugins/command-metadata.ts';
 import { arity, integer, value } from '../../../application/plugins/command-input.ts';
 import type { JsonSchema } from '../../../domain/schema/json-schema.ts';
@@ -27,7 +27,7 @@ const output: JsonSchema = {
 };
 
 /** `service` binds the search to one command context: its files, metadata cache and configured time budget. */
-export function searchCommand(service: (context: CommandContext) => (query: SearchQuery, page: PageRequest) => Promise<SearchResult>): Command {
+export function searchCommand(service: (context: PluginContext) => (query: SearchQuery, page: PageRequest) => Promise<SearchResult>): Command<PluginContext> {
   return {
     id: 'search', description: 'Search text files for a literal or regular-expression pattern and return hits with line, column, snippet and revision.',
     usage: 'search <pattern> [--regex] [--case-sensitive] [--in body|frontmatter|all] [--skip-code] [--kind markdown|canvas|base|text] [--path glob] [--exclude glob] [--tag tag] [--property key[=value]] [--context lines] [--limit count] [--cursor token]',

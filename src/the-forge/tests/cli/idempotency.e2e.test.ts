@@ -35,10 +35,16 @@ views:
     membershipProperty: note.release
     versionProperty: note.version
     releaseFolder: plan/releases
+    releaseStatusProperty: note.status
+    releasedDateProperty: note.released
+    releasedStatusValues: Released
+    releasedTransitionValue: Released
+    releaseNotesFolder: plan/release-notes
 `;
 const agent = '---\nname: reviewer\ndescription: Review changes\n---\n\nReview the change without modifying files.\n';
 const hook = JSON.stringify({ matcher: 'Bash', hooks: [{ type: 'command', command: 'true' }] });
 const workflow = 'name: web check\non:\n  pull_request:\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npm ci\n';
+const manifest = (version: string) => JSON.stringify({ name: 'team-tools', description: 'Team helpers', version });
 const appendPlan = JSON.stringify({ version: 1, operations: [{ op: 'edit', path: 'notes/log.md', append: 'again' }] });
 
 type Args = readonly string[] | (() => Promise<readonly string[]>);
@@ -84,9 +90,23 @@ const probes: Array<{ mode: string; args: Args; input?: string; prepare?: Array<
   { mode: 'skills install', args: ['skills', 'install'] },
   { mode: 'agents create', args: ['agents', 'create', 'helper', '--from-template', 'basic'] },
   { mode: 'agents generate', args: ['agents', 'generate', '--target', 'claude', '--settings'] },
-  { mode: 'claude hooks', args: async () => ['claude', 'hooks', 'add', 'PreToolUse', '--if-match', await revision('.claude/settings.json'), '--stdin'], input: hook },
-  { mode: 'claude agents', args: ['claude', 'agents', 'create', 'reviewer', '--stdin'], input: agent },
+  { mode: 'claude hooks add', args: async () => ['claude', 'hooks', 'add', 'PreToolUse', '--if-match', await revision('.claude/settings.json'), '--stdin'], input: hook },
+  { mode: 'claude hooks set', args: async () => ['claude', 'hooks', 'set', '--if-match', await revision('.claude/settings.json'), '--stdin'], input: JSON.stringify({ PostToolUse: [JSON.parse(hook)] }) },
+  { mode: 'claude hooks configure', args: async () => ['claude', 'hooks', 'configure', '--if-match', await revision('.claude/settings.json'), '--stdin'], input: JSON.stringify({ allowedHttpHookUrls: ['https://hooks.example/*'] }) },
+  { mode: 'claude hooks disable', args: async () => ['claude', 'hooks', 'disable', '--if-match', await revision('.claude/settings.json')] },
+  { mode: 'claude hooks enable', args: async () => ['claude', 'hooks', 'enable', '--if-match', await revision('.claude/settings.json')] },
+  { mode: 'claude hooks remove', args: async () => ['claude', 'hooks', 'remove', 'PostToolUse', '--if-match', await revision('.claude/settings.json')] },
+  { mode: 'claude agents create', args: ['claude', 'agents', 'create', 'reviewer', '--stdin'], input: agent },
+  { mode: 'claude agents update', args: async () => ['claude', 'agents', 'update', 'reviewer', '--if-match', await revision('.claude/agents/reviewer.md'), '--stdin'], input: agent.replace('Review changes', 'Review diffs') },
+  { mode: 'claude agents disable', args: async () => ['claude', 'agents', 'disable', 'reviewer', '--if-match', await revision('.claude/settings.json')] },
+  { mode: 'claude agents enable', args: async () => ['claude', 'agents', 'enable', 'reviewer', '--if-match', await revision('.claude/settings.json')] },
+  { mode: 'claude agents export', args: ['claude', 'agents', 'export', 'reviewer', '--out', 'exported/reviewer.md'] },
   { mode: 'agents import', args: ['agents', 'import', 'reviewer', '--from', 'claude'] },
+  { mode: 'claude agents remove', args: async () => ['claude', 'agents', 'remove', 'reviewer', '--if-match', await revision('.claude/agents/reviewer.md')] },
+  { mode: 'claude plugins create', args: ['claude', 'plugins', 'create', 'plugins/team', '--stdin'], input: manifest('1.0.0') },
+  { mode: 'claude plugins manifest', args: async () => ['claude', 'plugins', 'manifest', 'plugins/team', '--if-match', await revision('plugins/team/.claude-plugin/plugin.json'), '--stdin'], input: manifest('1.0.1') },
+  { mode: 'claude plugins write-asset', args: ['claude', 'plugins', 'write-asset', 'plugins/team', 'assets/raw.txt', '--content', 'raw'] },
+  { mode: 'claude plugins remove-asset', args: async () => ['claude', 'plugins', 'remove-asset', 'plugins/team', 'assets/raw.txt', '--if-match', await revision('plugins/team/assets/raw.txt')] },
   { mode: 'backlog init', args: ['backlog', 'init', '--folder', 'scratch'] },
   { mode: 'backlog add', args: backlog('add', 'PBI', 'Alpha'), prepare: [[['create', base, '--content', backlogBase]], [backlog('add', 'PBI', 'Beta')]] },
   { mode: 'backlog set', args: backlog('set', 'Beta', '--state', 'Active', '--today', '2026-10-01') },
@@ -94,8 +114,12 @@ const probes: Array<{ mode: string; args: Args; input?: string; prepare?: Array<
   { mode: 'backlog depend', args: backlog('depend', 'Beta', '--on', 'Alpha') },
   { mode: 'backlog undepend', args: backlog('undepend', 'Beta', '--on', 'Alpha') },
   { mode: 'backlog ranks', args: backlog('ranks', 'respace') },
-  { mode: 'backlog iteration', args: backlog('iteration', 'add', '--today', '2026-10-01') },
-  { mode: 'backlog release', args: backlog('release', 'add', '2.0') },
+  { mode: 'backlog iteration add', args: backlog('iteration', 'add', '--today', '2026-10-01') },
+  { mode: 'backlog iteration assign', args: backlog('iteration', 'assign', 'Beta', 'Sprint'), prepare: [[backlog('iteration', 'add', '--name', 'Sprint', '--today', '2026-10-01')]] },
+  { mode: 'backlog release add', args: backlog('release', 'add', '2.0') },
+  { mode: 'backlog release join', args: backlog('release', 'join', 'Beta', '2.0', '--today', '2026-10-01') },
+  { mode: 'backlog release notes', args: backlog('release', 'notes', '2.0') },
+  { mode: 'backlog release mark-released', args: backlog('release', 'mark-released', '2.0', '--today', '2026-10-02') },
   { mode: 'webview publish', args: ['webview', 'publish'], prepare: [
     [['project', 'create', 'repeat-view', '--type', 'webview']],
     [['project', 'open', 'repeat-view']],
@@ -106,11 +130,15 @@ const probes: Array<{ mode: string; args: Args; input?: string; prepare?: Array<
 ];
 
 /** Mutating modes no probe runs, and why their repeat is not provably free of effects. */
+const nativeModes = [
+  'plugins install', 'plugins update', 'plugins uninstall', 'plugins enable', 'plugins disable', 'plugins configure', 'plugins prune',
+  'plugins init', 'plugins tag', 'plugins test', 'plugins eval', 'plugins eval init', 'marketplaces add', 'marketplaces remove',
+  'marketplaces update', 'runtime install', 'runtime update',
+];
 const unprobed: Record<string, string> = {
   'backlog sync': 'reads and writes a remote work tracker whose state changes independently',
-  'claude plugins': 'runs the installed Claude Code CLI',
-  'claude marketplaces': 'runs the installed Claude Code CLI',
-  'claude runtime': 'runs the installed Claude Code CLI',
+  'backlog sync resolve': 'reads and writes a remote work tracker whose state changes independently',
+  ...Object.fromEntries(nativeModes.map(mode => [`claude ${mode}`, 'runs the installed Claude Code CLI'])),
 };
 
 /** Browser modes require explicit opt-in runtime setup; never download a browser in this general CLI suite.

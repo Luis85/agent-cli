@@ -128,7 +128,7 @@ export const germanErrors = {
   INVALID_CLAUDE_SETTINGS: { summary: 'Die Claude-Einstellungsdatei ist ungültig.', hint: 'Korrigieren Sie die JSON-Struktur der in der Meldung genannten Einstellungsdatei. Nennt sie das Generierungsmanifest .claude/forge-generated.json, stammt es von einer älteren Forge-Version: Löschen Sie .claude/forge-generated.json und führen Sie agents generate erneut aus; die darin aufgeführten Regeln bleiben in .claude/settings.json, bis Sie sie entfernen.' },
   INVALID_CLAUDE_COMMAND: { summary: 'Dieser Claude-Befehl wird nicht unterstützt.', hint: 'Unterstützte Befehle zeigt claude capabilities.' },
   INVALID_CLAUDE_ARGUMENT: { summary: 'Ein Argument des Claude-Befehls ist ungültig.', hint: argumentsHint },
-  INVALID_CLAUDE_OPTION: { summary: 'Diese Option ist für den Claude-Befehl nicht zulässig.', hint: 'Prüfen Sie help claude und entfernen Sie die Option.' },
+  INVALID_CLAUDE_OPTION: { summary: 'Eine Claude-Option hat einen ungültigen Wert oder eine ungültige Kombination.', hint: 'Prüfen Sie help claude und korrigieren Sie die in der Meldung genannte Option.' },
   INVALID_CLAUDE_SCOPE: { summary: 'Der Claude-Geltungsbereich ist ungültig.', hint: 'Prüfen Sie help claude und übergeben Sie einen für diese Aktion unterstützten --scope.' },
   INVALID_CLAUDE_INPUT: { summary: 'Die Claude-Eingabe ist ungültig oder zu groß.', hint: 'Übergeben Sie gültige Eingaben innerhalb des Größenlimits.' },
   INVALID_CLAUDE_OUTPUT: { summary: 'Das Claude-Ausgabeformat ist ungültig.', hint: 'Verwenden Sie text, json oder json-last-line.' },

@@ -1,5 +1,5 @@
 import { ensure } from '../../../domain/shared/errors.ts';
-import type { Command, CommandContext } from '../../../application/plugins/registry.ts';
+import type { Command, PluginContext } from '../../../application/plugins/registry.ts';
 import { arity, value } from '../../../application/plugins/command-input.ts';
 import { option } from '../../../application/plugins/command-metadata.ts';
 import { libraryMetadata, libraryOptions, localizedLibraryResult } from '../../../application/plugins/library-commands.ts';
@@ -10,23 +10,20 @@ import type { UiSettings } from '../application/settings.ts';
 
 /** What the ui plugin's commands and generators work with in one invocation, wired by `plugin.ts`. */
 export interface UiServices { settings: UiSettings; components: UiLibrary; interactions: InteractionLibrary }
-export type UiServicesFactory = (context: CommandContext) => UiServices;
+export type UiServicesFactory = (context: PluginContext) => UiServices;
 
 /** The shared library is managed at workspace scope even while a project is open. */
-export function componentsCommand(services: UiServicesFactory): Command {
+export function componentsCommand(services: UiServicesFactory): Command<PluginContext> {
   return {
     id: 'components', description: 'Manage and validate a shared Markdown UI component library.',
     usage: 'components [list | init | inspect <id> | validate | create <id> [--tag div] | import [--from directory] | export [--out directory]] [--library directory] [--interactions-library directory]',
-    ...libraryMetadata('component'),
-    options: { ...libraryOptions, tag: option.string('Root element tag for create.', { default: 'div' }), 'interactions-library': option.string('Interaction library directory used to validate component interactions.') },
+    ...libraryMetadata('components', 'component', { tag: option.string('Root element tag for create.', { default: 'div' }) }),
+    options: { ...libraryOptions, 'interactions-library': option.string('Interaction library directory used to validate component interactions.') },
     errors: ['INVALID_UI', 'INVALID_UI_LIBRARY', 'DUPLICATE_UI_COMPONENT', 'UNKNOWN_UI_COMPONENT', 'CYCLIC_UI_COMPONENT', 'UNKNOWN_INTERACTION', 'EMPTY_UI_LIBRARY', 'CONFLICT'],
     async run(args, flags, context) {
       const { settings, components: library } = services(context);
       const action = args[0] ?? 'list', directory = value(flags, 'library') ?? settings.components;
       const interactionDirectory = value(flags, 'interactions-library') ?? settings.interactions;
-      ensure(flags.from === undefined || action === 'import', 'INVALID_ARGUMENT', '--from requires components import.');
-      ensure(flags.out === undefined || action === 'export', 'INVALID_ARGUMENT', '--out requires components export.');
-      ensure(flags.tag === undefined || action === 'create', 'INVALID_ARGUMENT', '--tag requires components create.');
       if (action === 'list') {
         arity(args, 0, 1);
         const definitions = await library.list(directory, interactionDirectory);

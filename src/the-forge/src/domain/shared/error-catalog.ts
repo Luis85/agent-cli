@@ -144,7 +144,7 @@ export const errorCatalog = {
   INVALID_CLAUDE_SETTINGS: entry('input', 'The Claude settings file is invalid.', 'Fix the JSON structure of the settings file named in the message. When it names the generation manifest .claude/forge-generated.json, an older Forge wrote it: delete .claude/forge-generated.json and run agents generate again; the rules it listed stay in .claude/settings.json until you remove them.'),
   INVALID_CLAUDE_COMMAND: entry('input', 'The Claude command is not supported.', 'Run claude capabilities.'),
   INVALID_CLAUDE_ARGUMENT: entry('input', 'A Claude command argument is invalid.', argumentsHint),
-  INVALID_CLAUDE_OPTION: entry('input', 'The option is not allowed for this Claude command.', 'Run help claude and remove the option.'),
+  INVALID_CLAUDE_OPTION: entry('input', 'A Claude option has an invalid value or combination.', 'Run help claude and correct the option the message names.'),
   INVALID_CLAUDE_SCOPE: entry('input', 'The Claude scope is invalid.', 'Run help claude and pass a --scope value supported by that action.'),
   INVALID_CLAUDE_INPUT: entry('input', 'The Claude input is invalid or too large.', 'Pass valid input within the size limit.'),
   INVALID_CLAUDE_OUTPUT: entry('input', 'The Claude output format is invalid.', 'Use text, json or json-last-line.'),

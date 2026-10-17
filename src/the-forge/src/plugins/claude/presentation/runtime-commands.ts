@@ -71,6 +71,13 @@ export const claudeRuntimeOptions: Record<string, CommandOption> = (() => {
   } satisfies CommandOption]));
 })();
 
+/** One installed-CLI action, `claude <section> <action>`, with the native options it passes through. */
+export interface ClaudeRuntimeAction { section: RuntimeSection; action: string; scoped: boolean; managed: boolean; options: Record<string, CommandOption> }
+export const claudeRuntimeActions: readonly ClaudeRuntimeAction[] = Object.entries(commands).flatMap(([section, actions]) => Object.entries(actions).map(([action, command]) => ({
+  section: section as RuntimeSection, action, scoped: command.scope === true, managed: command.managed === true,
+  options: Object.fromEntries(Object.keys(command.options ?? {}).map(name => [name, claudeRuntimeOptions[name]!])),
+})));
+
 function actionArgs(section: RuntimeSection, args: string[]): { action: string; operands: string[] } {
   const nested = section === 'plugins' && args[0] === 'eval' && args[1] === 'init';
   return { action: nested ? 'eval init' : args[0] ?? '', operands: args.slice(nested ? 2 : 1) };

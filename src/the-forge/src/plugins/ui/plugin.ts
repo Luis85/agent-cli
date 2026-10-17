@@ -1,5 +1,4 @@
 import type { CorePlugin } from '../../application/plugins/core-plugins.ts';
-import type { PluginContext } from '../../application/plugins/registry.ts';
 import type { UiRenderer } from './application/components/library.ts';
 import { UiLibrary } from './application/components/library.ts';
 import { InteractionLibrary } from './application/interactions/library.ts';
@@ -25,7 +24,7 @@ const renderer: UiRenderer = {
 
 /** The libraries live at workspace scope (`context.environment`), even while a project is selected. */
 const services: UiServicesFactory = context => {
-  const settings = uiSettings((context as PluginContext).settings), workspace = context.environment;
+  const settings = uiSettings(context.settings), workspace = context.environment;
   const interactions = new InteractionLibrary(workspace, new MarkdownInteractionDefinitions(workspace.codec));
   const components = new UiLibrary(workspace, new MarkdownUiDefinitions(workspace.codec), standardUiCatalog, renderer, interactions, settings.interactions);
   return { settings, components, interactions };

@@ -9,7 +9,7 @@ import type { DocumentTemplates } from '../application/templates.ts';
  * `make document`: renders a shared template from the workspace's bin/templates into the command scope. Template
  * dates use `plugins.settings.templates.dateFormat` and `timeFormat` unless a placeholder names its own format.
  */
-export function documentGenerator(templates: (context: CommandContext) => DocumentTemplates): Generator {
+export function documentGenerator(templates: (context: CommandContext) => DocumentTemplates): Generator<PluginContext> {
   return {
     id: 'document', description: 'Render an Obsidian Markdown/frontmatter template with typed values.', usage: 'make document Title --template name.md [--values JSON | --values-from path] [--date ISO] [--out notes]',
     // Create-only: the document is written without a revision, so a repeat fails with CONFLICT.
@@ -30,7 +30,7 @@ export function documentGenerator(templates: (context: CommandContext) => Docume
       ensure(inline === undefined || from === undefined, 'INVALID_INPUT', 'Use either --values or --values-from.');
       const data = from === undefined ? parseJson(inline ?? '{}') : parseJson(new TextDecoder('utf-8', { fatal: true }).decode((await context.workspace.files.read(from)).bytes));
       ensure(isRecord(data), 'INVALID_INPUT', 'Template values must be a JSON object.');
-      const settings = (context as PluginContext).settings ?? {};
+      const settings = context.settings ?? {};
       const bytes = templates(context).render(source.bytes, { title, values: data, date: value(flags, 'date'), dateFormat: settings.dateFormat as string | undefined, timeFormat: settings.timeFormat as string | undefined });
       const path = `${value(flags, 'out') ?? 'notes'}/${title}.md`;
       const result = await context.workspace.write([{ path, bytes }]);

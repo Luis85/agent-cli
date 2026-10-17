@@ -9,17 +9,18 @@ export function workflowsCommands(services: WorkflowServices): Command[] {
   return [{
     id: 'workflows', description: 'Discover project-owned CI workflows and synchronize their generated GitHub entrypoints; --check reports drift.',
     usage: 'workflows [list | sync [--check] [--dry-run]]',
-    scope: 'workspace', discovery: false, mutating: true, defaultAction: 'list',
+    scope: 'workspace', discovery: false, mutating: true, defaultAction: 'list', unknownAction: 'INVALID_ARGUMENT',
     actions: {
-      list: { description: 'List every managed project\'s authored workflows and their generated entrypoints.', mutating: false },
-      sync: { description: 'Write the generated .github/workflows entrypoints; with --check, report drift without writing.', idempotent: true },
+      list: { description: 'List every managed project\'s authored workflows and their generated entrypoints.', usage: 'workflows [list]', mutating: false },
+      sync: {
+        description: 'Write the generated .github/workflows entrypoints; with --check, report drift without writing.', usage: 'workflows sync [--check] [--dry-run]', idempotent: true,
+        options: { check: option.boolean('With sync: fail with WORKFLOW_DRIFT instead of writing when generated workflows differ.') },
+      },
     },
     args: [{ name: 'action', description: 'list (default) or sync.', enum: ['list', 'sync'] }],
-    options: { check: option.boolean('With sync: fail with WORKFLOW_DRIFT instead of writing when generated workflows differ.') },
     errors: ['INVALID_WORKFLOW', 'WORKFLOW_DRIFT', 'CONFLICT'],
     async run(args, flags) {
       const action = args[0] ?? 'list';
-      ensure(flags.check === undefined || action === 'sync', 'INVALID_ARGUMENT', '--check requires workflows sync.');
       if (action === 'list') { arity(args, 0, 1); return services.workflows.list(); }
       ensure(action === 'sync', 'INVALID_ARGUMENT', 'Use workflows list or workflows sync [--check].');
       arity(args, 1);

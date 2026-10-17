@@ -14,8 +14,8 @@ describe('the skills core plugin', () => {
     expect((await cli(['skills'])).body.data).toEqual({ skills: ['forge-workflow', 'forge-vault', 'forge-development', 'forge-agents', 'forge-backlog', 'forge-webviews', 'forge-browser'] });
     expect((await cli(['skills', 'show', 'forge-vault'])).body.data).toEqual({ id: 'forge-vault', content: expect.stringContaining('name: forge-vault') });
     expect((await cli(['skills', 'show', 'missing'])).body.error.code).toBe('UNKNOWN_SKILL');
-    expect((await cli(['skills', 'list', '--out', 'x'])).body.error.code).toBe('INVALID_ARGUMENT');
-    expect((await cli(['skills', 'list', '--target', 'claude'])).body.error.code).toBe('INVALID_ARGUMENT');
+    expect((await cli(['skills', 'list', '--out', 'x'])).body.error.code).toBe('UNKNOWN_OPTION');
+    expect((await cli(['skills', 'list', '--target', 'claude'])).body.error.code).toBe('UNKNOWN_OPTION');
     const installed = await cli(['skills', 'install']);
     expect(installed.status).toBe(0);
     // Both agent skill roots by default: Claude Code reads .claude/skills, other agents .agents/skills.

@@ -29,7 +29,7 @@ beforeAll(async () => {
   modes = commands.flatMap(command => [
     { tokens: [command.id], options: command.options },
     ...Object.entries(command.annotations.actions ?? {}).filter(([, action]) => action.options !== undefined)
-      .map(([id, action]) => ({ tokens: [command.id, id], options: { ...command.options, ...action.options } })),
+      .map(([id, action]) => ({ tokens: [command.id, ...id.split(' ')], options: { ...command.options, ...action.options } })),
   ]);
 });
 
@@ -43,13 +43,14 @@ describe('declared option constraints', () => {
     for (const { tokens, options } of modes) {
       for (const [key, schema] of Object.entries(options)) {
         if (schema.enum === undefined) continue;
-        const result = await cli([...tokens, ...requiredValues(options), `--${key}`, 'not-a-declared-value']);
+        const result = await cli([...tokens, ...requiredValues(options, key), `--${key}`, 'not-a-declared-value']);
         expect(result.body.error, `${tokens.join(' ')} --${key}`).toMatchObject({ code: 'INVALID_OPTION_VALUE', details: { option: key, value: 'not-a-declared-value', allowed: schema.enum } });
         checked.push(`${tokens.join(' ')} --${key}`);
       }
     }
-    expect(checked).toEqual(expect.arrayContaining(['list --kind', 'create --encoding', 'make ui --framework', 'agents --mcp', 'backlog --direction', 'vault tags --sort']));
-  });
+    expect(checked).toEqual(expect.arrayContaining(['list --kind', 'create --encoding', 'make ui --framework', 'agents generate --mcp', 'backlog sync status --direction', 'claude plugins update --scope', 'vault tags --sort']));
+  // One invocation per declared enum of every action, such as each claude action's --scope.
+  }, 120_000);
 
   it('rejects an invocation without a declared required option with MISSING_ARGUMENT', async () => {
     const checked: string[] = [];
@@ -61,8 +62,8 @@ describe('declared option constraints', () => {
         checked.push(`${tokens.join(' ')} --${key}`);
       }
     }
-    expect(checked).toEqual(expect.arrayContaining(['edit --if-match', 'patch --pointer', 'make document --template']));
-  });
+    expect(checked).toEqual(expect.arrayContaining(['edit --if-match', 'patch --pointer', 'make document --template', 'backlog depend --on', 'backlog sync resolve --take', 'agents import --from']));
+  }, 120_000);
 
   it('checks every item of a comma-separated list option and publishes the list as a pattern', async () => {
     expect((await cli(['create', 'notes/parts.md', '--content', '# Parts\n'])).status).toBe(0);

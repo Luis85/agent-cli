@@ -1,6 +1,5 @@
 import type { CorePlugin } from '../../application/plugins/core-plugins.ts';
 import type { EventDefinition } from '../../application/plugins/events.ts';
-import type { PluginContext } from '../../application/plugins/registry.ts';
 import { isRecord } from '../../domain/shared/errors.ts';
 import type { BasesQueryService } from './application/session.ts';
 import type { ConnectorHub } from '../../application/connectors/contract.ts';
@@ -38,10 +37,18 @@ const de = {
     'backlog set': 'Status (mit started/finished-Stempeln), Horizont, Priorität, Risiko, Daten, Zuständige oder Typ setzen; ein leerer Wert löscht.',
     'backlog depend': 'Einen dependsOn-Link hinzufügen, sofern er keine Abhängigkeitsschleife schließt.',
     'backlog undepend': 'Einen dependsOn-Eintrag entfernen; der Schlüssel entfällt, wenn die Liste leer wird.',
-    'backlog iteration': 'add legt eine Iteration mit den Namens- und Datumsvorgaben des Plugins an, assign <item> <iteration> plant einen Eintrag ein.',
-    'backlog release': 'add, join <item> <release>, mark-released, readiness, notes (generierte Release Notes) oder list für Releases.',
+    'backlog iteration add': 'Eine Iteration mit den Namens- und Datumsvorgaben des Plugins anlegen.',
+    'backlog iteration assign': 'Einen Eintrag in einer Iteration einplanen.',
+    'backlog release add': 'Eine Release-Notiz anlegen.',
+    'backlog release join': 'Einen Eintrag in einem Release einplanen.',
+    'backlog release mark-released': 'Ein Release als veröffentlicht markieren.',
+    'backlog release readiness': 'Melden, wie bereit ein Release ist.',
+    'backlog release notes': 'Die generierten Release Notes eines Releases schreiben; eine unveränderte Wiederholung schreibt nichts.',
+    'backlog release list': 'Die Releases auflisten.',
     'backlog check': 'Eltern- und Abhängigkeitszyklen, defekte Links, unaufgelöste Zugehörigkeiten, Konfigurations- und Feldprobleme sowie Rang-Gleichstände melden.',
-    'backlog sync': 'Jede an eine Verbindung gebundene Ansicht (Ansichtsoption connection: <id>) in beide Richtungen mit ausdrücklichen Konflikten abgleichen; status liest beide Seiten ohne zu schreiben, resolve löst einen Konflikt.',
+    'backlog sync': 'Jede an eine Verbindung gebundene Ansicht (Ansichtsoption connection: <id>) in beide Richtungen mit ausdrücklichen Konflikten abgleichen.',
+    'backlog sync status': 'Beide Seiten jeder gebundenen Ansicht lesen, ohne zu schreiben.',
+    'backlog sync resolve': 'Einen Abgleichskonflikt eines Eintrags mit dem lokalen oder dem entfernten Wert lösen.',
   },
   events: {
     'backlog.item-created': 'Ein Backlog-Eintrag, eine Iteration oder ein Release wurde angelegt.',
@@ -79,7 +86,7 @@ export const backlogPlugin: CorePlugin = {
       requires: ['bases.query'],
       optional: ['connector.hub'],
       commands: [backlogCommand(context => {
-        const { services } = context as PluginContext;
+        const { services } = context;
         const ports = { stringifyYaml, editFrontmatter, today, hash: hashText };
         return { bases: services.get<BasesQueryService>('bases.query'), ports, sync: () => ({ bases: services.get<BasesQueryService>('bases.query'), ports, hub: services.get<ConnectorHub>('connector.hub'), activity, lock: host.locks(context.workspaceRoot), interrupts: watchSignals }) };
       })],

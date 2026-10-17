@@ -1,5 +1,4 @@
 import type { CorePlugin } from '../../application/plugins/core-plugins.ts';
-import type { PluginContext } from '../../application/plugins/registry.ts';
 import { isRecord } from '../../domain/shared/errors.ts';
 import { AgentDefinitions } from './application/definitions.ts';
 import { AgentAuthoring } from './application/authoring.ts';
@@ -30,7 +29,7 @@ export const agentsPlugin: CorePlugin = {
   strings: agentsStrings,
   create: () => ({
     commands: [agentsCommand(context => {
-      const settings = (context as PluginContext).settings ?? {};
+      const settings = context.settings ?? {};
       const directory = String(settings.directory ?? defaults.directory), defaultModel = String(settings.defaultModel ?? defaults.defaultModel);
       const definitions = new AgentDefinitions(context.workspace.files, ports, directory);
       const authoring = new AgentAuthoring(context.workspace, definitions, ports, defaultModel);

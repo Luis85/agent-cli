@@ -30,7 +30,6 @@ describe('choosing the backlog', () => {
     expect((await runBacklog(vault.root, ['list'], {}, { settings: { base: 'a/Backlog.base' } })).data.total).toBe(1);
     await expect(runBacklog(vault.root, ['list'], { base: 'a/Backlog.base', view: 'Board' })).rejects.toMatchObject({ code: 'BACKLOG_NOT_FOUND', details: { views: ['Backlog'] } });
     await expect(runBacklog(vault.root, ['list'], { base: 'missing.base' })).rejects.toMatchObject({ code: 'BACKLOG_NOT_FOUND' });
-    await expect(runBacklog(vault.root, ['list'], { folder: 'x' })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
   });
 
   it('becomes unavailable when the bases plugin whose service it requires is disabled, and its command reports why', async () => {

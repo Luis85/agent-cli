@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { commandAnnotations, commandInputSchema, commandMode, commandOutputSchema, ensureKnownAction, hasActionOptions, validateCommandMetadata, type CommandMetadata } from '../../src/application/plugins/command-metadata.ts';
+import { anyActionOptions, commandAnnotations, commandInputSchema, commandMode, commandOptions, commandOutputSchema, ensureKnownAction, hasActionOptions, option, validateCommandMetadata, type CommandMetadata } from '../../src/application/plugins/command-metadata.ts';
 import { errorCodes } from '../../src/domain/shared/error-catalog.ts';
 import { jsonSchemaDialect, schemaIssues, validateJsonValue, type JsonSchema } from '../../src/domain/schema/json-schema.ts';
 import { builtinCommands } from '../support/builtin-commands.ts';
@@ -127,6 +127,42 @@ describe('command modes', () => {
     for (const args of [[], ['publish'], ['--template', 'x.md']]) expect(() => ensureKnownAction(closed, args)).not.toThrow();
     expect(() => ensureKnownAction(command, ['missing'])).not.toThrow();
     expect(commands.get('make')!.unknownAction).toBe('UNKNOWN_GENERATOR');
+  });
+
+  it('selects the longest action id of several words that the leading arguments spell, with exactly its options', () => {
+    const grouped: CommandMetadata = {
+      id: 'plan', description: 'Plan', usage: 'plan', unknownAction: 'INVALID_ARGUMENT',
+      options: { base: option.string('Base.') },
+      actions: {
+        sync: { description: 'Sync', options: { direction: option.string('Direction.') } },
+        'sync resolve': { description: 'Resolve', idempotent: true, options: { take: option.string('Take.', { required: true }) } },
+        'iteration add': { description: 'Add', options: { goal: option.string('Goal.') } },
+        'iteration assign': { description: 'Assign', mutating: false, options: { goal: option.boolean('Not a goal.') } },
+      },
+      args: [{ name: 'action', description: 'Action.' }, { name: 'operands', description: 'Operands.', variadic: true }],
+    };
+    expect(() => validateCommandMetadata(grouped as unknown as Record<string, unknown>)).not.toThrow();
+    expect(commandMode(grouped, ['sync', 'resolve', 'Item'])).toMatchObject({ action: 'sync resolve' });
+    expect(commandMode(grouped, ['sync', 'Item'])).toMatchObject({ action: 'sync' });
+    expect(commandMode(grouped, ['iteration', 'assign', 'Item'])).toMatchObject({ action: 'iteration assign', mutating: false });
+    expect(commandMode(grouped, ['iteration'])).toEqual({ scope: 'project', discovery: false, mutating: true });
+    expect(Object.keys(commandOptions(grouped, ['sync', 'resolve']))).toEqual(['base', 'take']);
+    expect(Object.keys(commandOptions(grouped, ['sync']))).toEqual(['base', 'direction']);
+    // The first parsing pass knows every option whose type the actions agree on, so it can find the action words.
+    expect(anyActionOptions(grouped)).toEqual({ base: 'string', direction: 'string', take: 'string' });
+    expect(() => ensureKnownAction(grouped, ['iteration', 'remove'])).toThrow(expect.objectContaining({ code: 'INVALID_ARGUMENT', message: 'iteration remove' }));
+    expect(() => ensureKnownAction(grouped, ['iteration'])).toThrow(expect.objectContaining({ message: 'iteration' }));
+    for (const args of [['sync'], ['sync', 'status'], ['iteration', 'add'], ['--goal', 'x']]) expect(() => ensureKnownAction(grouped, args), args.join(' ')).not.toThrow();
+    expect(commandAnnotations(grouped).actions).toMatchObject({ 'sync resolve': { idempotentHint: true }, 'iteration assign': { readOnlyHint: true } });
+    const schema = commandInputSchema(grouped);
+    const valid = (args: string[], options: Record<string, unknown> = {}) => validateJsonValue(schema, { args, options }, 'input').issues.length === 0;
+    expect(valid(['sync'], { direction: 'pull' })).toBe(true);
+    expect(valid(['sync', 'resolve', 'Item'], { take: 'local' })).toBe(true);
+    // The bare sync branch never matches the words of a longer id, so each invocation matches exactly one branch.
+    expect(valid(['sync', 'resolve', 'Item'], { direction: 'pull' })).toBe(false);
+    expect(valid(['iteration', 'add'], { goal: 'x' })).toBe(true);
+    expect(valid(['iteration', 'assign', 'Item'], { goal: 'x' })).toBe(false);
+    expect(valid(['iteration'])).toBe(false);
   });
 
   it.each([

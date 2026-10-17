@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { localizedLibraryResult } from '../../src/application/plugins/library-commands.ts';
-import type { CommandContext } from '../../src/application/plugins/registry.ts';
+import type { PluginContext } from '../../src/application/plugins/registry.ts';
 
 const context = (language: 'en' | 'de', messages: Record<string, string>) =>
-  ({ language, t: (key: string) => messages[key] ?? key }) as unknown as CommandContext;
+  ({ language, t: (key: string) => messages[key] ?? key }) as unknown as PluginContext;
 const empty = { directory: 'my library', status: 'empty', count: 0, nextStep: 'Run things init --library my library, or add a Markdown thing definition.' };
 
 describe('definition library command helpers for core plugins', () => {
