@@ -49,7 +49,7 @@ import { updatesPlugin } from './plugins/updates/plugin.ts';
 import distributionPolicy from '../configs/distribution-policy.json';
 import { nodeLockFiles } from './infrastructure/workspace/lock-files.ts';
 import { FetchHttpClient } from './infrastructure/connectors/http-client.ts';
-import type { WorkflowServices } from './presentation/cli/services.ts';
+import type { KernelServices } from './presentation/cli/services.ts';
 import { loadConfig } from './infrastructure/workspace/config.ts';
 import { readSetupArtifacts } from './infrastructure/workspace/setup-artifacts.ts';
 import { VaultMetadata } from './application/metadata/vault-metadata.ts';
@@ -116,7 +116,7 @@ async function run(): Promise<void> {
       const skipUserPlugins = bootstrap.flags['no-plugins'] === true;
       // Project files come from the scaffolds core plugin; project scope management stays in the kernel.
       const scaffolder: ProjectScaffolderLookup = action => registry.requireService<ProjectScaffolder>(projectScaffolderService, `project ${action}`);
-      const services: WorkflowServices = {
+      const services: KernelServices = {
         loaded, files,
         server: new NodeServerController({ workspaceRoot: files.root, distributionPath: __dirname, version: metadata.version }),
         get projects() { return projects ??= new ProjectService(files, environment, config.paths.projects, scaffolder, events); },

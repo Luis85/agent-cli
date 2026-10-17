@@ -10,7 +10,7 @@ import { registerHostEvents } from '../../src/application/plugins/host-events.ts
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { commands } from '../../src/presentation/cli/commands.ts';
 import { Registry } from '../../src/application/plugins/registry.ts';
-import type { WorkflowServices } from '../../src/presentation/cli/services.ts';
+import type { KernelServices } from '../../src/presentation/cli/services.ts';
 import { registerCorePlugins, registrySkills } from '../../src/application/plugins/core-plugins.ts';
 import { basesPlugin } from '../../src/plugins/bases/plugin.ts';
 import { skillsPlugin } from '../../src/plugins/skills/plugin.ts';
@@ -40,7 +40,7 @@ describe('built-in localization catalog coverage', () => {
     const root = await mkdtemp(join(tmpdir(), 'forge-locale-catalog-'));
     try {
       const loaded = await loadConfig({ defaultPath: join(root, 'bin/config.json'), cwd: root });
-      const services: WorkflowServices = {
+      const services: KernelServices = {
         loaded,
         server: { async start() { throw new Error('Catalog must not start servers'); }, async status() { throw new Error('Catalog must not inspect servers'); }, async stop() { throw new Error('Catalog must not stop servers'); } },
         get files(): never { throw new Error('Catalog must not access files'); },

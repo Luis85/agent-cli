@@ -1,8 +1,8 @@
 import { serverCommands } from '../server/commands.ts';
 import type { Command, Registry } from '../../application/plugins/registry.ts';
-import type { WorkflowServices } from './services.ts';
+import type { KernelServices } from './services.ts';
 import { catalogCommands, extensionCommands } from './catalog-commands.ts';
-import { workflowCommands } from '../workspace/commands.ts';
+import { workspaceCommands } from '../workspace/commands.ts';
 import { workflowsCommands } from '../workflows/commands.ts';
 import { readManyCommand } from '../documents/read-many-command.ts';
 import { documentCommands } from '../documents/commands.ts';
@@ -11,9 +11,9 @@ import { vaultCommands } from '../documents/vault-commands.ts';
 import { generationCommand } from '../generation/commands.ts';
 
 /** Kernel commands in catalog order; core and user plugins contribute theirs through the registry. */
-export function commands(registry: Registry, services: WorkflowServices): Command[] {
+export function commands(registry: Registry, services: KernelServices): Command[] {
   return [
-    ...workflowCommands(services),
+    ...workspaceCommands(services),
     ...workflowsCommands(services),
     ...serverCommands(services.server),
     ...catalogCommands(registry),
