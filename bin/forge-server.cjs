@@ -1,9 +1,9 @@
 "use strict";
 const promises = require("node:fs/promises");
 const path = require("node:path");
-const node_crypto = require("node:crypto");
-const node_http = require("node:http");
 const node_child_process = require("node:child_process");
+const node_http = require("node:http");
+const node_crypto = require("node:crypto");
 const node_fs = require("node:fs");
 require("node:os");
 require("node:timers/promises");
@@ -182,6 +182,9 @@ function forgeError(code, message, details, exitCode = errorCatalog[code].exitCo
   return new AppError(code, message, exitCode, details, retryable);
 }
 const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+function isWebviewManifest(value, id) {
+  return isRecord(value) && value.id === id && typeof value.name === "string" && value.name.trim().length > 0 && value.entry === "index.html";
+}
 function hasUnsafePathCharacters(value) {
   return value.includes("\\") || value.includes(":") || [...value].some((character) => {
     const code = character.charCodeAt(0);
@@ -200,7 +203,7 @@ async function discoverWebviews(distributionPath) {
       try {
         if (!(await promises.lstat(manifestPath)).isFile()) continue;
         const manifest = JSON.parse(await promises.readFile(manifestPath, "utf8"));
-        if (!manifest || typeof manifest !== "object" || !("id" in manifest) || manifest.id !== entry2.name || !("name" in manifest) || typeof manifest.name !== "string" || !manifest.name.trim() || !("entry" in manifest) || manifest.entry !== "index.html") continue;
+        if (!isWebviewManifest(manifest, entry2.name)) continue;
         const asset = { id: entry2.name, name: manifest.name, directory };
         if (await readAsset([asset], `/views/${entry2.name}/`)) assets.push(asset);
       } catch (error) {
@@ -265,8 +268,159 @@ async function readAsset(assets, pathname) {
     throw error;
   }
 }
+const nativeFormats = {
+  markdown: ["md"],
+  canvas: ["canvas"],
+  base: ["base"],
+  image: ["avif", "bmp", "gif", "jpeg", "jpg", "png", "svg", "webp"],
+  audio: ["flac", "m4a", "mp3", "ogg", "wav", "webm", "3gp"],
+  video: ["mkv", "mov", "mp4", "ogv", "webm"],
+  pdf: ["pdf"]
+};
+[...Object.keys(nativeFormats), "text", "attachment"];
+const missing = (error) => error.code === "ENOENT";
+const invalid = () => forgeError("SERVER_STATE_INVALID", "Server state is unsafe or invalid. Inspect .forge/server.json and its permissions.");
+async function stateDirectory(root, create = false) {
+  const path$1 = path.join(root, ".forge");
+  if (create) await promises.mkdir(path$1, { recursive: true, mode: 448 });
+  try {
+    const info = await promises.lstat(path$1);
+    if (!info.isDirectory() || info.isSymbolicLink()) throw invalid();
+  } catch (error) {
+    if (!missing(error)) throw error;
+  }
+  return path$1;
+}
+async function readState(root) {
+  const path$1 = path.join(await stateDirectory(root), "server.json");
+  let handle;
+  try {
+    if (!(await promises.lstat(path$1)).isFile()) throw invalid();
+    handle = await promises.open(path$1, node_fs.constants.O_RDONLY | node_fs.constants.O_NOFOLLOW | node_fs.constants.O_NONBLOCK);
+    const info = await handle.stat();
+    if (!info.isFile() || info.size > 64 * 1024 || process.platform !== "win32" && ((info.mode & 63) !== 0 || info.uid !== process.getuid?.())) throw invalid();
+    const value = JSON.parse(await handle.readFile("utf8"));
+    if (!isRecord(value) || value.schemaVersion !== 1 || value.workspaceRoot !== root || typeof value.instanceId !== "string" || !/^[a-f0-9-]{36}$/.test(value.instanceId) || typeof value.token !== "string" || !/^[a-f0-9]{64}$/.test(value.token) || !Number.isInteger(value.pid) || Number(value.pid) < 1 || !Number.isInteger(value.port) || Number(value.port) < 1 || Number(value.port) > 65535 || typeof value.startedAt !== "string" || !Number.isFinite(Date.parse(value.startedAt)) || typeof value.version !== "string" || typeof value.nodeVersion !== "string" || !Array.isArray(value.webviews) || !value.webviews.every((view) => isRecord(view) && typeof view.id === "string" && /^[a-z][a-z0-9-]*$/.test(view.id) && typeof view.name === "string" && view.path === `/views/${view.id}/`)) throw invalid();
+    return value;
+  } catch (error) {
+    if (missing(error)) return null;
+    if (error instanceof AppError) throw error;
+    throw invalid();
+  } finally {
+    await handle?.close();
+  }
+}
+async function writeState(root, state) {
+  const directory = await stateDirectory(root, true);
+  const temporary = path.join(directory, `.server-${node_crypto.randomUUID()}.tmp`);
+  const handle = await promises.open(temporary, "wx", 384);
+  try {
+    await handle.writeFile(JSON.stringify(state));
+    await handle.sync();
+    await handle.close();
+    await promises.rename(temporary, path.join(directory, "server.json"));
+  } finally {
+    await handle.close();
+    await promises.unlink(temporary).catch(() => void 0);
+  }
+}
+async function removeState(root, instanceId) {
+  const state = await readState(root);
+  if (state?.instanceId === instanceId) await promises.unlink(path.join(root, ".forge/server.json")).catch((error) => {
+    if (!missing(error)) throw error;
+  });
+}
 function viewToken(serverToken, viewId) {
   return node_crypto.createHmac("sha256", serverToken).update(`forge-view:${viewId}`).digest("hex");
+}
+function serverInfo(state) {
+  return {
+    pid: state.pid,
+    startedAt: state.startedAt,
+    host: "127.0.0.1",
+    port: state.port,
+    version: state.version,
+    nodeVersion: state.nodeVersion,
+    uptimeSeconds: Math.max(0, Math.floor((Date.now() - Date.parse(state.startedAt)) / 1e3))
+  };
+}
+function validConfiguration(value) {
+  return isRecord(value) && typeof value.workspaceRoot === "string" && typeof value.distributionPath === "string" && typeof value.version === "string" && typeof value.instanceId === "string" && typeof value.token === "string" && /^[a-f0-9]{64}$/.test(value.token) && Number.isInteger(value.port) && Number(value.port) >= 0 && Number(value.port) <= 65535;
+}
+function runServerDaemon(start) {
+  if (!process.send) {
+    process.exitCode = 1;
+    return;
+  }
+  const releases = [];
+  let initialization;
+  let stopping;
+  let closing;
+  let cancelled = false;
+  let ready = false;
+  const inspection = new AbortController();
+  const notify = (message) => {
+    if (process.connected) process.send?.(message, () => void 0);
+  };
+  const cleanup = () => {
+    closing ??= (async () => {
+      inspection.abort();
+      for (const release of releases) await release();
+      if (process.connected) process.disconnect?.();
+    })();
+    return closing;
+  };
+  const stop = () => {
+    cancelled = true;
+    clearTimeout(startupTimeout);
+    inspection.abort();
+    stopping ??= (async () => {
+      await initialization;
+      await cleanup();
+    })();
+    return stopping;
+  };
+  const control = { signal: inspection.signal, cancelled: () => cancelled, onClose: (release) => {
+    releases.push(release);
+  }, stop };
+  const startupTimeout = setTimeout(() => {
+    process.exitCode = 1;
+    void stop();
+  }, 1e4);
+  process.once("SIGTERM", () => {
+    void stop().catch(() => {
+      process.exitCode = 1;
+    });
+  });
+  process.once("SIGINT", () => {
+    void stop().catch(() => {
+      process.exitCode = 1;
+    });
+  });
+  process.once("disconnect", () => {
+    if (!ready) void stop();
+  });
+  process.once("message", (message) => {
+    if (!validConfiguration(message)) {
+      process.exitCode = 1;
+      void stop();
+      return;
+    }
+    initialization = (async () => {
+      try {
+        await start(message, control);
+        if (cancelled) return;
+        clearTimeout(startupTimeout);
+        ready = true;
+        notify({ type: "ready", instanceId: message.instanceId });
+      } catch (error) {
+        clearTimeout(startupTimeout);
+        notify({ type: "error", code: isRecord(error) && typeof error.code === "string" ? error.code : "START_FAILED" });
+        await cleanup();
+        process.exitCode = 1;
+      }
+    })();
+  });
 }
 const csp = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
 function json(response, status, value) {
@@ -406,79 +560,6 @@ async function startHttpServer(options) {
     })
   };
 }
-const nativeFormats = {
-  markdown: ["md"],
-  canvas: ["canvas"],
-  base: ["base"],
-  image: ["avif", "bmp", "gif", "jpeg", "jpg", "png", "svg", "webp"],
-  audio: ["flac", "m4a", "mp3", "ogg", "wav", "webm", "3gp"],
-  video: ["mkv", "mov", "mp4", "ogv", "webm"],
-  pdf: ["pdf"]
-};
-[...Object.keys(nativeFormats), "text", "attachment"];
-const missing = (error) => error.code === "ENOENT";
-const invalid = () => forgeError("SERVER_STATE_INVALID", "Server state is unsafe or invalid. Inspect .forge/server.json and its permissions.");
-async function stateDirectory(root, create = false) {
-  const path$1 = path.join(root, ".forge");
-  if (create) await promises.mkdir(path$1, { recursive: true, mode: 448 });
-  try {
-    const info = await promises.lstat(path$1);
-    if (!info.isDirectory() || info.isSymbolicLink()) throw invalid();
-  } catch (error) {
-    if (!missing(error)) throw error;
-  }
-  return path$1;
-}
-async function readState(root) {
-  const path$1 = path.join(await stateDirectory(root), "server.json");
-  let handle;
-  try {
-    if (!(await promises.lstat(path$1)).isFile()) throw invalid();
-    handle = await promises.open(path$1, node_fs.constants.O_RDONLY | node_fs.constants.O_NOFOLLOW | node_fs.constants.O_NONBLOCK);
-    const info = await handle.stat();
-    if (!info.isFile() || info.size > 64 * 1024 || process.platform !== "win32" && ((info.mode & 63) !== 0 || info.uid !== process.getuid?.())) throw invalid();
-    const value = JSON.parse(await handle.readFile("utf8"));
-    if (!isRecord(value) || value.schemaVersion !== 1 || value.workspaceRoot !== root || typeof value.instanceId !== "string" || !/^[a-f0-9-]{36}$/.test(value.instanceId) || typeof value.token !== "string" || !/^[a-f0-9]{64}$/.test(value.token) || !Number.isInteger(value.pid) || Number(value.pid) < 1 || !Number.isInteger(value.port) || Number(value.port) < 1 || Number(value.port) > 65535 || typeof value.startedAt !== "string" || !Number.isFinite(Date.parse(value.startedAt)) || typeof value.version !== "string" || typeof value.nodeVersion !== "string" || !Array.isArray(value.webviews) || !value.webviews.every((view) => isRecord(view) && typeof view.id === "string" && /^[a-z][a-z0-9-]*$/.test(view.id) && typeof view.name === "string" && view.path === `/views/${view.id}/`)) throw invalid();
-    return value;
-  } catch (error) {
-    if (missing(error)) return null;
-    if (error instanceof AppError) throw error;
-    throw invalid();
-  } finally {
-    await handle?.close();
-  }
-}
-async function writeState(root, state) {
-  const directory = await stateDirectory(root, true);
-  const temporary = path.join(directory, `.server-${node_crypto.randomUUID()}.tmp`);
-  const handle = await promises.open(temporary, "wx", 384);
-  try {
-    await handle.writeFile(JSON.stringify(state));
-    await handle.sync();
-    await handle.close();
-    await promises.rename(temporary, path.join(directory, "server.json"));
-  } finally {
-    await handle.close();
-    await promises.unlink(temporary).catch(() => void 0);
-  }
-}
-async function removeState(root, instanceId) {
-  const state = await readState(root);
-  if (state?.instanceId === instanceId) await promises.unlink(path.join(root, ".forge/server.json")).catch((error) => {
-    if (!missing(error)) throw error;
-  });
-}
-function serverInfo(state) {
-  return {
-    pid: state.pid,
-    startedAt: state.startedAt,
-    host: "127.0.0.1",
-    port: state.port,
-    version: state.version,
-    nodeVersion: state.nodeVersion,
-    uptimeSeconds: Math.max(0, Math.floor((Date.now() - Date.parse(state.startedAt)) / 1e3))
-  };
-}
 function command(options, inspection) {
   return new Promise((resolve, reject) => {
     const child = node_child_process.execFile(
@@ -591,108 +672,35 @@ function createSnapshotProvider(options) {
     return pending;
   };
 }
-function validConfiguration(value) {
-  return isRecord(value) && typeof value.workspaceRoot === "string" && typeof value.distributionPath === "string" && typeof value.version === "string" && typeof value.instanceId === "string" && typeof value.token === "string" && /^[a-f0-9]{64}$/.test(value.token) && Number.isInteger(value.port) && Number(value.port) >= 0 && Number(value.port) <= 65535;
-}
-function runServerDaemon() {
-  if (!process.send) {
-    process.exitCode = 1;
-    return;
-  }
-  let runtime;
+runServerDaemon(async (configuration, daemon) => {
+  const assets = await discoverWebviews(configuration.distributionPath);
+  if (daemon.cancelled()) return;
   let state;
-  let configuration;
-  let initialization;
-  let stopping;
-  let closing;
-  let cancelled = false;
-  let ready = false;
-  const inspection = new AbortController();
-  const notify = (message) => {
-    if (process.connected) process.send?.(message, () => void 0);
+  const webviews = assets.map((asset) => ({ id: asset.id, name: asset.name, path: `/views/${asset.id}/` }));
+  const snapshot = createSnapshotProvider({ ...configuration, webviews, signal: daemon.signal, server: () => serverInfo(state) });
+  const runtime = await startHttpServer({
+    port: configuration.port,
+    token: configuration.token,
+    instanceId: configuration.instanceId,
+    assets,
+    snapshot,
+    shutdown: daemon.stop
+  });
+  daemon.onClose(() => runtime.close());
+  if (daemon.cancelled()) return;
+  const recorded = {
+    schemaVersion: 1,
+    instanceId: configuration.instanceId,
+    token: configuration.token,
+    workspaceRoot: configuration.workspaceRoot,
+    pid: process.pid,
+    port: runtime.port,
+    startedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    version: configuration.version,
+    nodeVersion: process.version,
+    webviews
   };
-  const cleanup = () => {
-    closing ??= (async () => {
-      inspection.abort();
-      if (runtime) await runtime.close();
-      if (configuration && state) await removeState(configuration.workspaceRoot, state.instanceId);
-      if (process.connected) process.disconnect?.();
-    })();
-    return closing;
-  };
-  const stop = () => {
-    cancelled = true;
-    clearTimeout(startupTimeout);
-    inspection.abort();
-    stopping ??= (async () => {
-      await initialization;
-      await cleanup();
-    })();
-    return stopping;
-  };
-  const startupTimeout = setTimeout(() => {
-    process.exitCode = 1;
-    void stop();
-  }, 1e4);
-  process.once("SIGTERM", () => {
-    void stop().catch(() => {
-      process.exitCode = 1;
-    });
-  });
-  process.once("SIGINT", () => {
-    void stop().catch(() => {
-      process.exitCode = 1;
-    });
-  });
-  process.once("disconnect", () => {
-    if (!ready) void stop();
-  });
-  process.once("message", (message) => {
-    if (!validConfiguration(message)) {
-      process.exitCode = 1;
-      void stop();
-      return;
-    }
-    configuration = message;
-    initialization = (async () => {
-      try {
-        const assets = await discoverWebviews(message.distributionPath);
-        if (cancelled) return;
-        const webviews = assets.map((asset) => ({ id: asset.id, name: asset.name, path: `/views/${asset.id}/` }));
-        const snapshot = createSnapshotProvider({ ...message, webviews, signal: inspection.signal, server: () => serverInfo(state) });
-        runtime = await startHttpServer({
-          port: message.port,
-          token: message.token,
-          instanceId: message.instanceId,
-          assets,
-          snapshot,
-          shutdown: stop
-        });
-        if (cancelled) return;
-        state = {
-          schemaVersion: 1,
-          instanceId: message.instanceId,
-          token: message.token,
-          workspaceRoot: message.workspaceRoot,
-          pid: process.pid,
-          port: runtime.port,
-          startedAt: (/* @__PURE__ */ new Date()).toISOString(),
-          version: message.version,
-          nodeVersion: process.version,
-          webviews
-        };
-        await writeState(message.workspaceRoot, state);
-        if (cancelled) return;
-        clearTimeout(startupTimeout);
-        ready = true;
-        notify({ type: "ready", instanceId: message.instanceId });
-      } catch (error) {
-        clearTimeout(startupTimeout);
-        notify({ type: "error", code: isRecord(error) && typeof error.code === "string" ? error.code : "START_FAILED" });
-        await cleanup();
-        process.exitCode = 1;
-      }
-    })();
-  });
-}
-runServerDaemon();
+  state = recorded;
+  daemon.onClose(() => removeState(configuration.workspaceRoot, recorded.instanceId));
+  await writeState(configuration.workspaceRoot, recorded);
+});
