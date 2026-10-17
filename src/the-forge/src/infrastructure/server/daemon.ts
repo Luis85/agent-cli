@@ -1,9 +1,5 @@
 import { isRecord } from '../../domain/shared/errors.ts';
-import { discoverWebviews } from './assets.ts';
-import { startHttpServer, type RunningHttpServer } from './http-server.ts';
-import { serverInfo, type DaemonConfiguration } from './controller.ts';
-import { createSnapshotProvider } from './snapshot.ts';
-import { removeState, writeState, type ServerState } from './state.ts';
+import type { DaemonConfiguration } from './controller.ts';
 
 function validConfiguration(value: unknown): value is DaemonConfiguration {
   return isRecord(value) && typeof value.workspaceRoot === 'string' && typeof value.distributionPath === 'string'
@@ -11,12 +7,25 @@ function validConfiguration(value: unknown): value is DaemonConfiguration {
     && /^[a-f0-9]{64}$/.test(value.token) && Number.isInteger(value.port) && Number(value.port) >= 0 && Number(value.port) <= 65535;
 }
 
+/** What the daemon lifecycle offers the runtime it starts. */
+export interface DaemonControl {
+  /** Aborted when the daemon stops; pending inspections end with it. */
+  readonly signal: AbortSignal;
+  /** True once a stop was requested; the start returns early instead of publishing more resources. */
+  cancelled(): boolean;
+  /** Registers a release step; steps run once, in registration order, when the daemon closes. */
+  onClose(release: () => Promise<void>): void;
+  /** Stops the daemon, for example from the HTTP shutdown endpoint. */
+  stop(): Promise<void>;
+}
+
+/** Starts the runtime for a validated configuration; a rejection reports its `code` (or `START_FAILED`) to the parent. */
+export type DaemonStart = (configuration: DaemonConfiguration, control: DaemonControl) => Promise<void>;
+
 /** The detached process receives its secret over IPC, never argv or inherited environment. */
-export function runServerDaemon(): void {
+export function runServerDaemon(start: DaemonStart): void {
   if (!process.send) { process.exitCode = 1; return; }
-  let runtime: RunningHttpServer | undefined;
-  let state: ServerState | undefined;
-  let configuration: DaemonConfiguration | undefined;
+  const releases: (() => Promise<void>)[] = [];
   let initialization: Promise<void> | undefined;
   let stopping: Promise<void> | undefined;
   let closing: Promise<void> | undefined;
@@ -29,8 +38,7 @@ export function runServerDaemon(): void {
   const cleanup = (): Promise<void> => {
     closing ??= (async () => {
       inspection.abort();
-      if (runtime) await runtime.close();
-      if (configuration && state) await removeState(configuration.workspaceRoot, state.instanceId);
+      for (const release of releases) await release();
       if (process.connected) process.disconnect?.();
     })();
     return closing;
@@ -45,26 +53,16 @@ export function runServerDaemon(): void {
     })();
     return stopping;
   };
+  const control: DaemonControl = { signal: inspection.signal, cancelled: () => cancelled, onClose: release => { releases.push(release); }, stop };
   const startupTimeout = setTimeout(() => { process.exitCode = 1; void stop(); }, 10_000);
   process.once('SIGTERM', () => { void stop().catch(() => { process.exitCode = 1; }); });
   process.once('SIGINT', () => { void stop().catch(() => { process.exitCode = 1; }); });
   process.once('disconnect', () => { if (!ready) void stop(); });
   process.once('message', message => {
     if (!validConfiguration(message)) { process.exitCode = 1; void stop(); return; }
-    configuration = message;
     initialization = (async () => {
       try {
-        const assets = await discoverWebviews(message.distributionPath);
-        if (cancelled) return;
-        const webviews = assets.map(asset => ({ id: asset.id, name: asset.name, path: `/views/${asset.id}/` }));
-        const snapshot = createSnapshotProvider({ ...message, webviews, signal: inspection.signal, server: () => serverInfo(state!) });
-        runtime = await startHttpServer({ port: message.port, token: message.token,
-          instanceId: message.instanceId, assets, snapshot, shutdown: stop });
-        if (cancelled) return;
-        state = { schemaVersion: 1, instanceId: message.instanceId, token: message.token,
-          workspaceRoot: message.workspaceRoot, pid: process.pid, port: runtime.port,
-          startedAt: new Date().toISOString(), version: message.version, nodeVersion: process.version, webviews };
-        await writeState(message.workspaceRoot, state);
+        await start(message, control);
         if (cancelled) return;
         clearTimeout(startupTimeout);
         ready = true;
