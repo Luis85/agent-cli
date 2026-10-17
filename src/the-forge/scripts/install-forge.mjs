@@ -7,22 +7,27 @@ import { join, resolve } from 'node:path';
 
 const execute = promisify(execFile);
 const repository = 'Luis85/agent-cli';
+/** @type {Map<string, string>} */
 const options = new Map();
 for (let index = 2; index < process.argv.length; index += 2) {
-  const key = process.argv[index], value = process.argv[index + 1];
+  const key = process.argv[index] ?? '', value = process.argv[index + 1];
   if (!['--version', '--workspace', '--assets'].includes(key) || !value || options.has(key)) throw new Error('Usage: node install-forge.mjs --version <x.y.z> --workspace <path> [--assets <download-directory>]');
   options.set(key, value);
 }
 const version = options.get('--version');
-if (!/^\d+\.\d+\.\d+$/.test(version ?? '') || !options.get('--workspace')) throw new Error('A pinned release version and workspace path are required.');
-const [major, minor] = process.versions.node.split('.').map(Number);
+const requested = options.get('--workspace');
+if (!/^\d+\.\d+\.\d+$/.test(version ?? '') || !requested) throw new Error('A pinned release version and workspace path are required.');
+const [major = 0, minor = 0] = process.versions.node.split('.').map(Number);
 if (major < 22 || major === 22 && minor < 12) throw new Error('The Forge requires Node 22.12 or newer.');
-const workspace = resolve(options.get('--workspace'));
+const workspace = resolve(requested);
 const archiveName = `forge-${version}.tar.gz`;
+/** @type {string | undefined} */
 let staging;
+/** @param {string} path */
 async function absent(path) {
-  try { await lstat(path); return false; } catch (error) { if (error.code === 'ENOENT') return true; throw error; }
+  try { await lstat(path); return false; } catch (error) { if (/** @type {NodeJS.ErrnoException} */ (error).code === 'ENOENT') return true; throw error; }
 }
+/** @param {string} root @param {string[]} args */
 async function invoke(root, args) {
   const { stdout } = await execute(process.execPath, [join(root, 'bin/forge.js'), '--root', root, '--json', ...args], { timeout: 30_000, maxBuffer: 8 * 1024 * 1024 });
   const result = JSON.parse(stdout);
@@ -33,7 +38,8 @@ try {
   if (!await absent(join(workspace, 'bin'))) throw new Error('The workspace already has bin/. Install into a new directory; existing installations require a reviewed upgrade.');
   await mkdir(workspace, { recursive: true });
   staging = await mkdtemp(join(workspace, '.forge-install-'));
-  let assets = options.get('--assets') ? resolve(options.get('--assets')) : staging;
+  const downloads = options.get('--assets');
+  const assets = downloads ? resolve(downloads) : staging;
   if (!options.has('--assets')) {
     for (const filename of [archiveName, `${archiveName}.sha256`]) {
       await execute('curl', ['--fail', '--location', '--silent', '--show-error', '--proto', '=https', '--max-time', '180', '--max-filesize', '67108864',
@@ -52,7 +58,7 @@ try {
   const paths = listing.trim().split(/\r?\n/);
   if (!paths.length || paths.some(path => !path.startsWith('bin/') || path.includes('\\') || path.includes(':') || path.split('/').some(part => part === '.' || part === '..'))) throw new Error('Release archive contains an unsafe path.');
   const { stdout: detailed } = await execute('tar', ['-tvzf', archiveName], { cwd: staging, maxBuffer: 8 * 1024 * 1024 });
-  if (detailed.trim().split(/\r?\n/).some(line => !['-', 'd'].includes(line[0]))) throw new Error('Release archive contains a link or special file.');
+  if (detailed.trim().split(/\r?\n/).some(line => !['-', 'd'].includes(line[0] ?? ''))) throw new Error('Release archive contains a link or special file.');
   await execute('tar', ['-xzf', archiveName, '--no-same-owner', '--no-same-permissions'], { cwd: staging });
   const manifest = JSON.parse(await readFile(join(staging, 'bin/package.json'), 'utf8'));
   if (manifest.version !== version || (await invoke(staging, ['--version'])).version !== version) throw new Error('Release executable version differs from the requested version.');
@@ -66,7 +72,7 @@ try {
   await invoke(workspace, ['setup']);
   console.log(JSON.stringify({ ok: true, version, workspace, checksum: match[1], next: ['node bin/forge.js project create my-project --dry-run', 'node bin/forge.js project create my-project', 'node bin/forge.js project open my-project'] }));
 } catch (error) {
-  console.error(JSON.stringify({ ok: false, error: error.message }));
+  console.error(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }));
   process.exitCode = 1;
 } finally {
   if (staging) await rm(staging, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });

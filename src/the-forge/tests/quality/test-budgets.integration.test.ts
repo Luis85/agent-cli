@@ -1,8 +1,8 @@
 import { expect, it } from 'vitest';
-import { spawnSync } from 'node:child_process';
 import { cp, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { runProcess } from '../support/processes.ts';
 
 /** Resolve the configuration exactly as a bare `vitest run <file>` does, with no command-line overrides. */
 const resolveProjects = `import { createVitest } from 'vitest/node';
@@ -22,7 +22,7 @@ it('gives every pyramid level the same explicit budgets in a focused run as in n
     await cp(resolve('vitest.config.ts'), join(root, 'vitest.config.ts'));
     await symlink(resolve('node_modules'), join(root, 'node_modules'), 'junction');
     await writeFile(join(root, 'package.json'), '{"type":"module"}\n');
-    const result = spawnSync(process.execPath, ['--input-type=module', '-e', resolveProjects], { cwd: root, encoding: 'utf8', timeout: 20_000 });
+    const result = await runProcess(process.execPath, ['--input-type=module', '-e', resolveProjects], { cwd: root, timeout: 20_000 });
     expect(result.error).toBeUndefined();
     expect(result.status, result.stderr).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual([

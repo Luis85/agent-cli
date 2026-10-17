@@ -1,6 +1,7 @@
 import { sourceFiles, finish } from './shared.mjs';
 
 const errors = [];
+/** @type {{ violations: Array<{ path: string, rule: string, expected: string }> }} */
 const report = { violations: [] };
 let scope;
 try {

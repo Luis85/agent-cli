@@ -7,7 +7,7 @@ let directory;
 try {
   // TypeScript globs omit hidden directories and prefer .ts over same-named .js.
   // Explicit files keep every accepted test and test helper in the compiler program.
-  const files = sourceFiles().filter(file => file.startsWith('tests/')).map(file => resolve(file));
+  const files = sourceFiles().filter(file => file.startsWith('tests/') || file.startsWith('scripts/')).map(file => resolve(file));
   // Keep the generated config beneath the project so normal @types resolution is unchanged.
   mkdirSync('.quality-reports', { recursive: true });
   directory = mkdtempSync(resolve('.quality-reports', 'typecheck-'));

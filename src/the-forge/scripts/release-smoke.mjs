@@ -8,6 +8,7 @@ const execute = promisify(execFile);
 const assets = resolve(process.argv[2] ?? 'release');
 const version = process.argv[3] ?? JSON.parse(await readFile('package.json', 'utf8')).version;
 const workspace = await mkdtemp(join(tmpdir(), 'forge-release-smoke-'));
+/** @param {string[]} args */
 async function cli(...args) {
   const { stdout } = await execute(process.execPath, [join(workspace, 'bin/forge.js'), '--root', workspace, '--json', ...args], { timeout: 30_000 });
   const body = JSON.parse(stdout);
