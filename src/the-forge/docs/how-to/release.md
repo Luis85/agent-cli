@@ -31,7 +31,7 @@ A manual copy of the repository's entire `bin` folder includes its self-manageme
 
 ## Publish a version with an agent
 
-The authored workflow `src/infrastructure/workflows/release/release.yml` generates `.github/workflows/the-forge--release.yml`. Pull requests and manual dispatches build and test a candidate without publishing. Tags matching `v<package version>` publish only after checks and six fresh-installation jobs pass on Linux, macOS and Windows with Node 22.12 and 24. The tag commit must be on main.
+The authored workflow `src/infrastructure/workflows/release/release.yml` generates `.github/workflows/the-forge--release.yml`. Manual dispatches, and pull requests that change the release process (the release, packaging, installer and smoke scripts, the distribution policy, release notes, `package.json` or the workflow itself), build and test a candidate without publishing; the check workflow builds the archive and tests fresh installations for every other change. Tags matching `v<package version>` publish only after checks and six fresh-installation jobs pass on Linux, macOS and Windows with Node 22.12 and 24. The tag commit must be on main.
 
 1. Update `package.json`, its lockfile, authored skill version metadata and `docs/releases/<version>.md` together when changing the version. Rebuild the complete app and showcase, synchronize workflows, run the full gate, and merge the reviewed changes to main with green CI. For 0.1.0, the source version is already set.
 2. Run the release workflow through a pull request or `gh workflow run the-forge--release.yml --ref main`, then inspect the run and every installation job. Manual dispatch never publishes.
