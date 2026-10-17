@@ -26,7 +26,7 @@ function templateValues(details: Details): MessageParams {
   return values;
 }
 
-const device = '{segment} ist ein unter Windows reservierter Gerätename (CON, PRN, AUX, NUL, COM1-COM9 oder LPT1-LPT9, mit beliebiger Endung); benennen Sie die Datei oder den Ordner um.';
+const device = '{segment} ist ein unter Windows reservierter Gerätename (CON, PRN, AUX, NUL, CONIN$, CONOUT$, COM1-COM9, COM¹-COM³, LPT1-LPT9 oder LPT¹-LPT³, mit beliebiger Endung); benennen Sie die Datei oder den Ordner um.';
 const stdin = (details: Details) => details.suggestion === '--stdin';
 
 /**

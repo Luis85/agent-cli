@@ -29,11 +29,12 @@ describe('portable vault paths', () => {
   it.each([
     ['CON', 'CON'], ['con.md', 'con.md'], ['notes/Nul.md', 'Nul.md'], ['PRN.tar.gz', 'PRN.tar.gz'], ['aux/notes.md', 'aux'], ['Com1', 'Com1'],
     ['lpt9.txt', 'lpt9.txt'], ['nul. ', 'nul. '], ['con .md', 'con .md'], ['COM3.md.', 'COM3.md.'], ['n\u200bul.md', 'n\u200bul.md'],
+    ['notes/com¹.md', 'com¹.md'], ['COM³', 'COM³'], ['lpt².txt', 'lpt².txt'], ['CONIN$', 'CONIN$'], ['conout$.log', 'conout$.log'], ['ConOut$ .md', 'ConOut$ .md'],
   ])('rejects the Windows reserved device name in %s on every platform', (path, segment) => {
     expect(() => vaultPath(path)).toThrowError(expect.objectContaining({ code: 'INVALID_PATH', message: expect.stringContaining('Windows reserved device name'), details: { segment } }));
   });
 
-  it.each(['console.md', 'nul-checks.md', 'notes/com10.md', 'lpt0.txt', 'com.md', 'auxiliary/x.md', '.con', 'my con.md'])('keeps the ordinary name %s that only resembles a device name', path => {
+  it.each(['console.md', 'nul-checks.md', 'notes/com10.md', 'lpt0.txt', 'com.md', 'auxiliary/x.md', '.con', 'my con.md', 'com⁴.md', 'lpt⁰.md', 'conin.md', 'con$.md', 'conerr$.md'])('keeps the ordinary name %s that only resembles a device name', path => {
     expect(vaultPath(path)).toBe(path);
   });
 
