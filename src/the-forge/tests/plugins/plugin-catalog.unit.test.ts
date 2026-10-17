@@ -6,12 +6,13 @@ import { registerCorePlugins, registrySkills, type CorePlugin } from '../../src/
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { pluginCatalog } from '../../src/presentation/cli/plugin-catalog.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
+import { forgeVersion } from '../support/workspace.ts';
 
 const manifest = (id: string): PluginManifest => ({ id, name: id, version: '1.0.0', minAppVersion: '0.1.0', description: 'Catalog test', author: 'Test' });
 const core = (id: string, contributions: ReturnType<CorePlugin['create']> = {}): CorePlugin => ({ manifest: { ...manifest(id), core: true }, create: () => contributions });
 
 it('lists every plugin with one state and a reason for each state but enabled, and rejects user plugins that reuse a core id', async () => {
-  const registry = new Registry(skillFrontmatter), events = new EventBus(new NodeEventScope());
+  const registry = new Registry(skillFrontmatter, forgeVersion), events = new EventBus(new NodeEventScope());
   const plugins = [core('bases', { provides: { 'bases.query': {} } }), core('search'), core('backlog', { requires: ['bases.query'] })];
   registerCorePlugins(registry, events, plugins, testHost({ skills: registrySkills(registry), fileDates: () => () => Promise.reject(new Error('unused')) }), ['bases']);
   registry.register({ manifest: manifest('quality') }, events);

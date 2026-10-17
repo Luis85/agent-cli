@@ -50,4 +50,34 @@ describe('Commander integration', () => {
       }));
     }
   });
+  it('says where a missing --if-match revision comes from', () => {
+    const options = { 'if-match': option.string('Revision.', { required: true }) };
+    expect(() => declaredValues(options, {})).toThrowError(expect.objectContaining({
+      code: 'MISSING_ARGUMENT', message: expect.stringMatching(/^--if-match is required: .*data\.revision from read or stat/), details: { option: 'if-match' },
+    }));
+  });
+});
+
+describe('option values that are flags', () => {
+  const options = { ...globalOptions, content: 'string', replace: 'string', 'if-match': 'string', stdin: 'boolean' } as const;
+  it.each([
+    [['create', 'x.md', '--content', '--json'], 'content', '--json'],
+    [['edit', 'f.md', '--replace', '--dry-run', '--if-match', 'r'], 'replace', '--dry-run'],
+    [['edit', 'f.md', '--replace', '--if-match=r'], 'replace', '--if-match=r'],
+    [['create', 'x.md', '--content', '--stdin'], 'content', '--stdin'],
+    [['create', 'x.md', '--content', '-h'], 'content', '-h'],
+    [['create', 'x.md', '--content', '--'], 'content', '--'],
+    [['--root', '--no-plugins', 'list'], 'root', '--no-plugins'],
+  ])('never take a known flag as the value: %j', (tokens, key, next) => {
+    expect(() => parseArguments(tokens, options)).toThrowError(expect.objectContaining({
+      code: 'MISSING_ARGUMENT', details: { option: key },
+      message: `--${key} needs a value, but ${next} follows it; write a literal value that starts with - as --${key}=<value>.`,
+    }));
+  });
+  it('keep inline literal values, values after --, and flag-like values this parse does not know', () => {
+    expect(parseArguments(['create', 'x.md', '--content=--json', '--dry-run'], options)).toEqual({ args: ['create', 'x.md'], flags: { content: '--json', 'dry-run': true } });
+    expect(parseArguments(['create', 'x.md', '--content', '--unknown-to-this-command'], options)).toEqual({ args: ['create', 'x.md'], flags: { content: '--unknown-to-this-command' } });
+    expect(parseArguments(['create', 'x.md', '--content', '-5'], options)).toEqual({ args: ['create', 'x.md'], flags: { content: '-5' } });
+    expect(parseArguments(['create', '--', 'x.md', '--content', '--json'], options)).toEqual({ args: ['create', 'x.md', '--content', '--json'], flags: {} });
+  });
 });

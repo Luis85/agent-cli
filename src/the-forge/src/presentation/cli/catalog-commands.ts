@@ -1,4 +1,5 @@
 import metadata from '../../../package.json';
+import { forgeIdentity } from './identity.ts';
 import { errorCatalog, errorCodes } from '../../domain/shared/error-catalog.ts';
 import { nativeFormats, textExtensions, textFilenames } from '../../domain/documents/file.ts';
 import { eventOutputLevels } from '../../application/plugins/event-output.ts';
@@ -25,7 +26,7 @@ const helpNext = 'Run help <command> for its usage, options, arguments, errors a
  * reads the saved project selection, which fails with INVALID_PROJECT_CONTEXT or STALE_PROJECT_CONTEXT.
  */
 export const commonErrors = [
-  'UNKNOWN_COMMAND', 'UNKNOWN_OPTION', 'MISSING_ARGUMENT', 'INVALID_ARGUMENT', 'INVALID_OPTION_VALUE', 'DUPLICATE_OPTION', 'INVALID_LANGUAGE', 'INVALID_CONFIG',
+  'UNKNOWN_COMMAND', 'UNKNOWN_OPTION', 'MISSING_ARGUMENT', 'INVALID_ARGUMENT', 'INVALID_OPTION_VALUE', 'DUPLICATE_OPTION', 'INVALID_LANGUAGE', 'INVALID_ROOT', 'INVALID_CONFIG',
   'INVALID_PATH', 'UNSAFE_PATH', 'INVALID_PROJECT_CONTEXT', 'STALE_PROJECT_CONTEXT', 'WORKSPACE_BUSY', 'INVALID_RESULT', 'OPERATION_FAILED',
 ];
 
@@ -46,7 +47,7 @@ function describe(command: Command, includeOutput = true) {
 }
 
 export function catalogCommands(registry: Registry): Command[] {
-  const identity = { name: 'The Forge', version: metadata.version, apiVersion: 1, node: metadata.engines.node };
+  const identity = { ...forgeIdentity, node: metadata.engines.node };
   const catalog = () => ({
     ...identity, dialect: jsonSchemaDialect,
     globalOptions: globalOptionMetadata, envelope: envelopeSchema,

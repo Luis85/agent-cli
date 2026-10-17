@@ -29,6 +29,7 @@ import { claudePlugin } from '../../src/plugins/claude/plugin.ts';
 import { connectorPlugin } from '../../src/plugins/connector/plugin.ts';
 import { azureDevOpsPlugin } from '../../src/plugins/connector-azure-devops/plugin.ts';
 import { offlineHost, testHost } from './core-plugins.ts';
+import { forgeVersion } from './workspace.ts';
 
 /** The bundled core plugins in bundle order, as `src/main.ts` registers them. */
 export const corePlugins: readonly CorePlugin[] = [
@@ -44,7 +45,7 @@ export async function fullRegistry(): Promise<Registry> {
   const root = await mkdtemp(join(tmpdir(), 'forge-full-registry-'));
   try {
     const loaded = await loadConfig({ defaultPath: join(root, 'bin/config.json'), cwd: root });
-    const registry = new Registry(skillFrontmatter);
+    const registry = new Registry(skillFrontmatter, forgeVersion);
     const services: WorkflowServices = {
       loaded,
       server: { async start() { throw new Error('Catalog must not start servers'); }, async status() { throw new Error('Catalog must not inspect servers'); }, async stop() { throw new Error('Catalog must not stop servers'); } },

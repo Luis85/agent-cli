@@ -32,6 +32,7 @@ import { updatesPlugin } from '../../src/plugins/updates/plugin.ts';
 import distributionPolicy from '../../configs/distribution-policy.json';
 import { bundledCorePlugins, offlineHost, testHost } from '../support/core-plugins.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
+import { forgeVersion } from '../support/workspace.ts';
 
 // Error-code coverage, including German summaries, lives in error-catalog tests.
 describe('built-in localization catalog coverage', () => {
@@ -49,7 +50,7 @@ describe('built-in localization catalog coverage', () => {
         configSections: () => [],
         async installedPlugins() { throw new Error('Catalog must not list plugin directories'); },
       };
-      const registry = new Registry(skillFrontmatter);
+      const registry = new Registry(skillFrontmatter, forgeVersion);
       const kernel = commands(registry, services);
       const ids = kernel.map(command => command.id).sort();
       expect(Object.keys(germanCommands).sort()).toEqual(ids);
@@ -65,7 +66,7 @@ describe('built-in localization catalog coverage', () => {
   });
 
   it('covers every command and error code of the bundled core plugins in German', () => {
-    const registry = new Registry(skillFrontmatter), bus = new EventBus(new NodeEventScope());
+    const registry = new Registry(skillFrontmatter, forgeVersion), bus = new EventBus(new NodeEventScope());
     registerHostEvents(bus);
     const plugins = [
       templatesPlugin, scaffoldsPlugin, uiPlugin, dataSourcesPlugin, claudePlugin,

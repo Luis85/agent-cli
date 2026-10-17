@@ -82,6 +82,7 @@ export const errorCatalog = {
   INVALID_BASE_PROPERTY_TYPES: entry('input', 'The Obsidian property type registry is invalid.', 'Fix .obsidian/types.json so it is a JSON object of property types.'),
   UNSUPPORTED_BASE_PROPERTY_TYPE: entry('input', 'An Obsidian property type is not supported.', 'Use a supported type in .obsidian/types.json.'),
   // Configuration, setup and projects
+  INVALID_ROOT: entry('not-found', 'The workspace root does not exist or is not a directory.', 'Pass --root (or set FORGE_ROOT) to the existing workspace directory that contains bin/; --root wins over FORGE_ROOT.'),
   INVALID_CONFIG: entry('input', 'The configuration is invalid or unreadable.', 'Fix bin/config.json at the location named in the message, then run config.'),
   INVALID_SETUP: entry('input', 'Setup cannot complete with the current distribution files.', 'Repair the bin path named in the message, then run setup again.'),
   INVALID_PROJECT: entry('input', 'The project metadata is invalid.', 'Fix .forge/project.json in the project directory.'),

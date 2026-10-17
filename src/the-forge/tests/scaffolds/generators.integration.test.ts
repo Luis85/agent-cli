@@ -14,6 +14,7 @@ import { Registry, validatePluginManifest } from '../../src/application/plugins/
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { Workspace } from '../../src/application/workspace/workspace.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
+import { forgeVersion } from '../support/workspace.ts';
 
 it('standalone entity, value-object, use-case and event scaffolds compile without runtime dependencies', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'agent-generators-'));
@@ -68,10 +69,10 @@ it('generates an installable plugin with a validated manifest and runnable lifec
       '.agent-cli/plugins/http-tools/manifest.json', '.agent-cli/plugins/http-tools/main.mjs',
     ]);
     const manifest = JSON.parse(new TextDecoder().decode(plan[0]!.bytes));
-    expect(() => validatePluginManifest(manifest)).not.toThrow();
+    expect(() => validatePluginManifest(manifest, forgeVersion)).not.toThrow();
     expect(manifest).toMatchObject({ id: 'http-tools', name: 'HTTPTools', version: '0.1.0', minAppVersion: '0.1.0' });
     await files.writeBatch(plan, false);
-    const registry = new Registry(skillFrontmatter);
+    const registry = new Registry(skillFrontmatter, forgeVersion);
     const events = new EventBus(new NodeEventScope());
     const workspace = new Workspace(files, new ObsidianDocuments(), events, false);
     const context = { workspace, events, root, workspaceRoot: root, project: null, ...scopeServices(workspace, events), input: async () => new Uint8Array() };

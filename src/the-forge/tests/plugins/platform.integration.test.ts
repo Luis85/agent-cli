@@ -11,10 +11,11 @@ import { skillsPlugin } from '../../src/plugins/skills/plugin.ts';
 import { reviewOptions } from '../../src/application/generation/controls.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 import { englishWarning } from '../support/events.ts';
+import { forgeVersion } from '../support/workspace.ts';
 
 const manifest = (id: string): PluginManifest => ({ id, name: id, version: '1.0.0', minAppVersion: '0.1.0', description: 'Platform test', author: 'Test' });
 const setup = () => {
-  const registry = new Registry(skillFrontmatter), events = new EventBus(new NodeEventScope());
+  const registry = new Registry(skillFrontmatter, forgeVersion), events = new EventBus(new NodeEventScope());
   registerHostEvents(events);
   return { registry, events };
 };

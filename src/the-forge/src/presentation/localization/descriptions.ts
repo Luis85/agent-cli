@@ -7,14 +7,14 @@ import { germanServerDescriptions } from '../server/messages.ts';
 export const germanDescriptions: Record<string, string> = {
   ...germanServerDescriptions,
   // Global options.
-  'Workspace root to load bin/config.json from; must precede the command.': 'Workspace-Stammverzeichnis, aus dem bin/config.json geladen wird; muss vor dem Befehl stehen.',
+  'Workspace root to load bin/config.json from; overrides FORGE_ROOT.': 'Workspace-Stammverzeichnis, aus dem bin/config.json geladen wird; hat Vorrang vor FORGE_ROOT.',
   'Response language for descriptions, hints and summaries.': 'Antwortsprache für Beschreibungen, Hinweise und Zusammenfassungen.',
   'Events included in the response; delivery to listeners is unaffected.': 'Ereignisse in der Antwort; die Zustellung an Listener bleibt unverändert.',
   'Compact JSON output.': 'Kompakte JSON-Ausgabe.',
   'Indented JSON output.': 'Eingerückte JSON-Ausgabe.',
   'Validate and preview writes without changing files.': 'Schreibvorgänge prüfen und als Vorschau zeigen, ohne Dateien zu ändern.',
   'Write even when settings.dryRun is true.': 'Auch dann schreiben, wenn settings.dryRun true ist.',
-  'Skip loading user plugins; core plugins stay. Must precede the command.': 'Benutzer-Plugins nicht laden; Kern-Plugins bleiben aktiv. Muss vor dem Befehl stehen.',
+  'Skip loading user plugins; core plugins stay.': 'Benutzer-Plugins nicht laden; Kern-Plugins bleiben aktiv.',
   'Milliseconds (0 to 600000, default 0) a write waits for another Forge writer\'s lock while WORKSPACE_BUSY is retryable.': 'Millisekunden (0 bis 600000, Standard 0), die ein Schreibvorgang auf die Sperre eines anderen Forge-Schreibvorgangs wartet, solange WORKSPACE_BUSY wiederholbar ist.',
   'Describe the command instead of running it.': 'Den Befehl beschreiben, statt ihn auszuführen.',
   'Report the Forge version; used without a command.': 'Die Forge-Version melden; ohne Befehl verwenden.',

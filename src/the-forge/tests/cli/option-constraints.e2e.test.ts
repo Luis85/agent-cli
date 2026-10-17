@@ -57,7 +57,11 @@ describe('declared option constraints', () => {
       for (const [key, schema] of Object.entries(options)) {
         if (!schema.required) continue;
         const result = await cli([...tokens, ...requiredValues(options, key)]);
-        expect(result.body.error, `${tokens.join(' ')} --${key}`).toMatchObject({ code: 'MISSING_ARGUMENT', message: `--${key} is required.`, details: { option: key } });
+        expect(result.body.error, `${tokens.join(' ')} --${key}`).toMatchObject({
+          code: 'MISSING_ARGUMENT', details: { option: key },
+          // A missing revision guard also says where to get the revision.
+          message: key === 'if-match' ? expect.stringMatching(/^--if-match is required: pass the current revision, data\.revision from read or stat/) : `--${key} is required.`,
+        });
         checked.push(`${tokens.join(' ')} --${key}`);
       }
     }

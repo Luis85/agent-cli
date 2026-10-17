@@ -5,3 +5,5 @@ import metadata from '../../package.json';
 export const distribution = resolve(metadata.config.distribution);
 /** The workspace containing the distribution, sibling managed projects and generated GitHub workflows. */
 export const workspaceRoot = dirname(distribution);
+/** The Forge version the source declares, which a registry under test checks plugin manifests against. */
+export const forgeVersion = metadata.version;
