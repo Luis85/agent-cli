@@ -3,7 +3,7 @@ import { vaultPath, type WriteRequest } from '../../domain/documents/file.ts';
 import type { AppConfig } from './config.ts';
 import type { Skill } from '../plugins/registry.ts';
 import type { Workspace } from './workspace.ts';
-import { skillPaths, skillTargets } from '../../domain/skills/skill.ts';
+import { skillFiles, skillTargets } from '../../domain/skills/skill.ts';
 
 export interface SetupArtifact { path: string; bytes: Uint8Array }
 /** An editable Markdown template; `path` is relative to the workspace's `bin/templates`. */
@@ -52,7 +52,7 @@ export class SetupService {
       ...this.artifacts.map(artifact => ({ path: `bin/${vaultPath(artifact.path)}`, bytes: Uint8Array.from(artifact.bytes) })),
       { path: 'bin/config.json', bytes: encode(JSON.stringify(this.config, null, 2) + '\n') },
       // Every skill goes to both agent skill roots: .claude/skills for Claude Code and .agents/skills for other agents.
-      ...this.skills.flatMap(skill => skillPaths(vaultPath(skill.id), Object.values(skillTargets)).map(path => ({ path, bytes: encode(skill.content) }))),
+      ...this.skills.flatMap(skill => skillFiles({ ...skill, id: vaultPath(skill.id) }, Object.values(skillTargets)).map(file => ({ path: file.path, bytes: encode(file.content) }))),
       ...(this.templates ?? []).map(template => ({ path: `bin/templates/${vaultPath(template.path)}`, bytes: encode(template.content) })),
       { path: 'bin/plugins/.gitkeep', bytes: new Uint8Array() },
       { path: `${this.config.paths.projects}/.gitkeep`, bytes: new Uint8Array() },

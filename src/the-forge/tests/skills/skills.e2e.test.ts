@@ -13,17 +13,26 @@ describe('the skills core plugin', () => {
   it('lists, shows and installs the bundled skills with an unchanged CLI contract', async () => {
     // Feature plugins contribute their skills after the shared workflow skills.
     expect((await cli(['skills'])).body.data).toEqual({ skills: ['forge-workflow', 'forge-vault', 'forge-development', 'forge-agents', 'forge-backlog', 'forge-webviews', 'forge-browser'] });
-    expect((await cli(['skills', 'show', 'forge-vault'])).body.data).toEqual({ id: 'forge-vault', content: expect.stringContaining('name: forge-vault') });
+    const references = ['references/editing.md', 'references/finding.md', 'references/moving-and-locks.md'];
+    expect((await cli(['skills', 'show', 'forge-vault'])).body.data).toEqual({ id: 'forge-vault', path: 'SKILL.md', content: expect.stringContaining('name: forge-vault'), files: ['SKILL.md', ...references] });
+    const reference = (await cli(['skills', 'show', 'forge-vault', '--file', 'references/editing.md'])).body.data;
+    expect(reference).toEqual({ id: 'forge-vault', path: 'references/editing.md', content: expect.stringContaining('# Editing vault files'), files: ['SKILL.md', ...references] });
+    expect((await cli(['skills', 'show', 'forge-vault', '--file', 'references/none.md'])).body.error).toMatchObject({ code: 'INVALID_OPTION_VALUE', details: { option: 'file', value: 'references/none.md', allowed: ['SKILL.md', ...references] } });
+    expect((await cli(['skills', 'list', '--file', 'SKILL.md'])).body.error.code).toBe('UNKNOWN_OPTION');
     expect((await cli(['skills', 'show', 'missing'])).body.error.code).toBe('UNKNOWN_SKILL');
     expect((await cli(['skills', 'list', '--out', 'x'])).body.error.code).toBe('UNKNOWN_OPTION');
     expect((await cli(['skills', 'list', '--target', 'claude'])).body.error.code).toBe('UNKNOWN_OPTION');
     const installed = await cli(['skills', 'install']);
     expect(installed.status).toBe(0);
-    // Both agent skill roots by default: Claude Code reads .claude/skills, other agents .agents/skills.
-    expect(installed.body.data.changes.map((change: { path: string }) => change.path)).toEqual(['forge-workflow', 'forge-vault', 'forge-development', 'forge-agents', 'forge-backlog', 'forge-webviews', 'forge-browser']
-      .flatMap(id => [`.claude/skills/${id}/SKILL.md`, `.agents/skills/${id}/SKILL.md`]));
+    // Both agent skill roots by default: Claude Code reads .claude/skills, other agents .agents/skills. Each skill
+    // folder holds SKILL.md and the reference files it links.
+    const ids = ['forge-workflow', 'forge-vault', 'forge-development', 'forge-agents', 'forge-backlog', 'forge-webviews', 'forge-browser'];
+    const files = await Promise.all(ids.map(async id => (await cli(['skills', 'show', id])).body.data.files as string[]));
+    expect(installed.body.data.changes.map((change: { path: string }) => change.path)).toEqual(ids
+      .flatMap((id, index) => ['.claude/skills', '.agents/skills'].flatMap(root => files[index]!.map(file => `${root}/${id}/${file}`))));
     for (const root of ['.claude/skills', '.agents/skills']) {
       expect(await readFile(join(fixture.project, root, 'forge-workflow/SKILL.md'), 'utf8')).toBe((await cli(['skills', 'show', 'forge-workflow'])).body.data.content);
+      expect(await readFile(join(fixture.project, root, 'forge-vault/references/editing.md'), 'utf8')).toBe(reference.content);
     }
     expect(unchangedRepeat(await cli(['skills', 'install']))).toBe(true);
     await rm(join(fixture.project, '.agents'), { recursive: true, force: true });
@@ -73,8 +82,8 @@ describe('the skills core plugin', () => {
       properties: { skills: { type: 'array', items: { type: 'string' } } },
     });
     expect(skills.annotations.actions.show.outputSchema).toMatchObject({
-      $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object', required: ['id', 'content'],
-      properties: { id: { type: 'string' }, content: { type: 'string' } },
+      $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object', required: ['id', 'path', 'content', 'files'],
+      properties: { id: { type: 'string' }, path: { type: 'string' }, content: { type: 'string' }, files: { type: 'array', items: { type: 'string' } } },
     });
     const { inputSchema: _inputSchema, ...described } = skills;
     const actions = Object.fromEntries(Object.entries<Record<string, unknown>>(skills.annotations.actions).map(([id, action]) => {

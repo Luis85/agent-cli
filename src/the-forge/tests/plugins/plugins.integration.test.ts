@@ -32,6 +32,14 @@ it.each([
   registry.register({ ...plugin('two'), skills: [{ id: 'two-review', content: skill('two-review') }, { id: 'two-folded', content: '---\nname: "two-folded"\ndescription: >-\n  Folded text.\n---\n' }] }, events);
   expect([...registry.skills.keys()]).toEqual(['two-review', 'two-folded']);
 });
+it('registers a skill with reference files and rejects files outside its folder', () => {
+  const registry = new Registry(skillFrontmatter, forgeVersion), events = new EventBus(new NodeEventScope());
+  const files = { 'references/steps.md': '# Steps\n' };
+  expect(() => registry.register({ ...plugin('two'), skills: [{ id: 'two-review', content: skill('two-review'), files: { '../escape.md': 'x' } }] }, events))
+    .toThrow(expect.objectContaining({ code: 'INVALID_PLUGIN', message: expect.stringContaining('file ../escape.md must be a relative path inside the skill folder') }));
+  registry.register({ ...plugin('two'), skills: [{ id: 'two-review', content: skill('two-review'), files }] }, events);
+  expect(registry.skills.get('two-review')?.files).toEqual(files);
+});
 it('rejects skill ids that are not Agent Skills names', () => {
   for (const id of ['two-Review', 'two--review', 'two-review-', `two-${'a'.repeat(61)}`]) {
     const registry = new Registry(skillFrontmatter, forgeVersion), events = new EventBus(new NodeEventScope());

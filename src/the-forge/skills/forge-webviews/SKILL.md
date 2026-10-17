@@ -8,15 +8,36 @@ metadata:
   version: "0.1.0"
 ---
 
-1. Establish the prototype's audience, main task, sample content and observable acceptance criteria from the user's request. Make reasonable defaults for a quick prototype; ask only when a missing decision blocks useful work. Keep fixtures clearly identified as sample data. A prototype is editable project code, not evidence of production readiness.
-2. Read workspace/project AGENTS.md. Discover `schema project --json`, `schema webview --json` and `schema server --json` through `node bin/forge.js` as needed. Inspect `project list` and `project current` before changing anything. The configured projects directory may be `src`, `projects` or another contained path. Prefer explicit `--project <id>` routing for publication; avoid changing shared selection while other agents use it.
-3. Preview `node bin/forge.js project create <kebab-name> --type webview --dry-run`, inspect its complete file plan, then create it. This makes an independent Vue 3, Nuxt UI and Vite project with local fixtures and its own package, tests, scripts and Playwright setup. Creation preserves project selection. Use the returned project directory; never assume a sibling project's dependencies or source are available. Do not use `project component` to add library scaffolds to a webview.
-4. Read the generated README, AGENTS.md and package scripts. Customize the ordinary Vue source and local sample model, preserving a usable empty state, realistic long labels and a meaningful primary interaction. Use local assets and relative build URLs; mounted views live at `/views/<id>/`. The server supplies no SPA history fallback or external-CDN access. Keep lifecycle control in the CLI and avoid adding a browser command-execution API.
-5. In that project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installs. Install browser support with `npm run browsers:install`. Iterate with `npm run check:fast`, finish with `npm run check`, and build the static output with `npm run build` when needed. Follow the actual scripts for an existing project. A standalone `npm run dev` preview helps iteration; the shipped webview is served by the Forge server. Dependency installation and project scripts execute trusted project code and are separate from Forge's dry-run guarantee.
-6. Use Playwright against the built view through the real portable CLI. Verify the primary interaction, empty/no-results state, keyboard focus, narrow layout and absence of unexpected browser errors. Preserve meaningful assertions while adapting the starter. Inspect desktop and mobile screenshots, then attach or link the saved image files so the user can see them; a screenshot path in a test log is not a delivered image. Generated browser tests use an isolated temporary workspace and stop the server they started.
-7. From the workspace root, preview `node bin/forge.js webview publish --project <id> --dry-run`, inspect the destination and revisions, then publish with the same explicit project. Use `webview publish --project <id> --check` to verify the packaged output. Before replacing a changed installed view, run `node bin/forge.js webview inspect --project <id> --json` and pass its `data.revision` as `--if-match <revision>` to both preview and publication; reread and reconcile a conflict instead of blindly approving a newer revision. Publication copies already-built assets; it does not install dependencies or run build scripts. Do not hand-edit published assets under `bin/webviews`.
-8. Inspect `server status`, then run `node bin/forge.js server start --webview <id> --json` when the user's request authorizes a local preview. Return `data.url`; the CLI does not open a browser. A running server keeps its mounted catalog, so a newly published view needs a stop/start before discovery. Coordinate a restart when the server is serving other work. Updating an existing mounted view's files needs a browser reload. Keep launch tokens out of commits, shared logs and screenshots. Stop the server when the session no longer needs it and shutdown is within the agreed task.
-9. Default to local sample data without API access. If the task explicitly benefits from real workspace inspection, use only the versioned read-only system API described in `bin/data/docs/reference/server.md`. Consume the launch token from the URL fragment, remove it from the address bar, send it as a bearer header to the same origin, and validate `ok`, `schemaVersion` and availability flags. Show missing/expired access, loading, unavailable data and stale snapshots clearly. Leave configuration changes, filesystem mutations and server shutdown to the CLI.
-10. Report the created project, preview location, checks run, visible screenshots and remaining prototype limitations. For repeat iterations, edit source and fixtures, test, rebuild, review guarded publication and reload. Keep the project self-contained and commit source, lockfile and intended distribution changes together. See `bin/data/docs/how-to/prototype-webviews.md` for the end-to-end workflow and `bin/data/docs/reference/webviews.md` for the publishing contract.
+A prototype is editable project code, not evidence of production readiness. Keep its fixtures clearly marked as sample data.
 
-For on-demand captures and illustrated problem reports or walkthroughs, follow `forge-browser`. Its `browser screenshot` and explicit-plan `browser tutorial` commands complement the project's Playwright regression suite.
+## Plan
+- Settle the audience, main task, sample content and observable acceptance criteria. Choose sensible defaults; ask only when a missing decision blocks useful work.
+- Read AGENTS.md, then `schema project`, `schema webview` and `schema server` as needed. Check `project list` and `project current`.
+- Prefer `--project <id>` over changing the shared selection while other agents work.
+
+## Create
+- Preview `project create <kebab-name> --type webview --dry-run`, review the file plan, then create it. It is an independent Vue 3, Nuxt UI and Vite project with its own package, tests, scripts, Playwright setup and local fixtures.
+- Never assume a sibling project's dependencies or source, and do not add library scaffolds with `project component`.
+- Read the generated README, AGENTS.md and scripts. Customize the Vue source and sample model; keep a usable empty state, long labels and a meaningful primary interaction.
+- Use local assets and relative URLs: views are served at `/views/<id>/` with no SPA history fallback or external CDN.
+
+## Build and test
+- In the project: `npm install` once, commit the lockfile, then `npm ci`. `npm run browsers:install` installs browser support.
+- Iterate with `npm run check:fast`, finish with `npm run check`, and `npm run build` for the static output. Project scripts run trusted code outside Forge's dry-run guarantee.
+- Test the built view through the real CLI with Playwright: the primary interaction, the empty state, keyboard focus, a narrow layout and no unexpected browser errors.
+- Inspect desktop and mobile screenshots and attach or link them; a path in a test log is not a delivered image.
+
+## Publish and preview
+- From the workspace: `webview publish --project <id> --dry-run`, review the destination and revisions, then publish. `webview publish --project <id> --check` verifies the installed output (`WEBVIEW_DRIFT`, exit 5).
+- Replacing a changed installed view: pass `data.revision` from `webview inspect --project <id>` as `--if-match` to the preview and the publish. Never hand-edit `bin/webviews`.
+- Publishing copies built assets; it never installs dependencies or runs build scripts.
+- When the user agrees to a preview: `server status`, then `server start --webview <id>`, and return `data.url`. A running server needs a stop and start to discover a newly published view; changed files of a mounted view need a browser reload.
+- Keep launch tokens out of commits, logs and screenshots. Stop the server when the session no longer needs it.
+
+## Data
+- Default to local sample data. For real workspace data, use only the read-only system API in `bin/data/docs/reference/server.md`: take the token from the URL fragment, remove it from the address bar and send it as a bearer header to the same origin.
+- Show missing access, loading, unavailable and stale data clearly. Configuration changes, file writes and shutdown stay with the CLI.
+
+## Report
+- Name the project, preview location, checks run, screenshots and remaining limits. See `bin/data/docs/how-to/prototype-webviews.md` and `bin/data/docs/reference/webviews.md`.
+- Captures and illustrated walkthroughs: the `forge-browser` skill.

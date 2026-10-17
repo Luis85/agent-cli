@@ -84,6 +84,15 @@ it('previews every new destination without creating directories or publishing ev
   expect(result.dryRun).toBe(true); expect(result.changes).toHaveLength(21);
   expect(await readdir(root)).toEqual([]); expect(events.history).toEqual([]);
 });
+it('installs every file of a skill folder into both agent skill roots', async () => {
+  const { root, workspace, config, artifacts, skills, templates } = await fixture();
+  const withReference = [{ ...skills[0]!, files: { 'references/editing.md': '# Editing\n' } }];
+  await new SetupService(workspace, config, artifacts, withReference, templates).run();
+  for (const skills of ['.claude/skills', '.agents/skills']) {
+    expect(await readdir(join(root, skills, 'forge-workflow'))).toEqual(['SKILL.md', 'references']);
+    expect(await readFile(join(root, skills, 'forge-workflow/references/editing.md'), 'utf8')).toBe('# Editing\n');
+  }
+});
 it('fills missing setup files while retaining an existing AGENTS.md', async () => {
   const { root, setup } = await fixture();
   await writeFile(join(root, 'AGENTS.md'), 'Existing project instructions');
