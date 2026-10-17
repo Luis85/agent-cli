@@ -59,6 +59,7 @@ export const germanErrors = {
   INVALID_BASE_PROPERTY_TYPES: { summary: 'Das Register der Obsidian-Eigenschaftstypen ist ungültig.', hint: 'Korrigieren Sie .obsidian/types.json zu einem JSON-Objekt mit Eigenschaftstypen.' },
   UNSUPPORTED_BASE_PROPERTY_TYPE: { summary: 'Ein Obsidian-Eigenschaftstyp wird nicht unterstützt.', hint: 'Verwenden Sie in .obsidian/types.json einen unterstützten Typ.' },
   // Konfiguration, Installation und Projekte
+  INVALID_ROOT: { summary: 'Das Workspace-Stammverzeichnis existiert nicht oder ist kein Verzeichnis.', hint: 'Übergeben Sie mit --root (oder FORGE_ROOT) das vorhandene Workspace-Verzeichnis, das bin/ enthält; --root hat Vorrang vor FORGE_ROOT.' },
   INVALID_CONFIG: { summary: 'Die Konfiguration ist ungültig oder nicht lesbar.', hint: 'Korrigieren Sie bin/config.json an der in der Meldung genannten Stelle und prüfen Sie mit config.' },
   INVALID_SETUP: { summary: 'Die Installation kann mit den aktuellen Distributionsdateien nicht abgeschlossen werden.', hint: 'Reparieren Sie den in der Meldung genannten bin-Pfad und führen Sie setup erneut aus.' },
   INVALID_PROJECT: { summary: 'Die Projektmetadaten sind ungültig.', hint: 'Korrigieren Sie .forge/project.json im Projektverzeichnis.' },

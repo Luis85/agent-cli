@@ -9,10 +9,17 @@ export const globalOptions = {
   help: 'boolean', version: 'boolean',
 } as const;
 
+/** The MISSING_ARGUMENT message of an absent required option; a missing revision guard says where revisions come from. */
+export function requiredOptionMessage(key: string): string {
+  return key === 'if-match'
+    ? '--if-match is required: pass the current revision, data.revision from read or stat (a move, rename or delete dry run reports it too).'
+    : `--${key} is required.`;
+}
+
 /** A string option's value; `required` reports MISSING_ARGUMENT when it is absent. */
 export function value(flags: CommandFlags, key: string, required = false): string | undefined {
   const result = flags[key];
-  ensure(!required || typeof result === 'string', 'MISSING_ARGUMENT', `--${key} is required.`);
+  if (required && typeof result !== 'string') throw forgeError('MISSING_ARGUMENT', requiredOptionMessage(key), { option: key });
   return typeof result === 'string' ? result : undefined;
 }
 

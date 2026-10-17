@@ -29,7 +29,7 @@ Plugins can register their own codes with a category, summary, hint and retryabi
 | `external` | 1 | Claude Code could not run or failed |
 | `input` | 2 | Invalid arguments, definitions or edit requests |
 | `conflict` | 2 | The target exists or changed since it was read |
-| `not-found` | 3 | A file, project or selected project is missing |
+| `not-found` | 3 | A file, project, selected project or the workspace root is missing |
 | `busy` | 4 | Another Forge writer holds the workspace lock, or another command holds the server lifecycle lock |
 | `drift` | 5 | Generated UI, data-source or workflow output differs from its sources |
 | `interrupted` | 130 | Claude Code was interrupted by SIGINT; SIGTERM reports 143 |
@@ -122,6 +122,7 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 | `BASE_CONTEXT_NOT_FOUND` | 2 | input | no | The context file is not an indexed vault file. | Pass an existing vault file to `--context`. |
 | `INVALID_BASE_PROPERTY_TYPES` | 2 | input | no | The Obsidian property type registry is invalid. | Fix `.obsidian/types.json` so it is a JSON object of property types. |
 | `UNSUPPORTED_BASE_PROPERTY_TYPE` | 2 | input | no | An Obsidian property type is not supported. | Use a supported type in `.obsidian/types.json`. |
+| `INVALID_ROOT` | 3 | not-found | no | The workspace root does not exist or is not a directory. | Pass --root (or set FORGE_ROOT) to the existing workspace directory that contains bin/; --root wins over FORGE_ROOT. |
 | `INVALID_CONFIG` | 2 | input | no | The configuration is invalid or unreadable. | Fix `bin/config.json` at the location named in the message, then run config. |
 | `INVALID_SETUP` | 2 | input | no | Setup cannot complete with the current distribution files. | Repair the bin path named in the message, then run setup again. |
 | `INVALID_PROJECT` | 2 | input | no | The project metadata is invalid. | Fix `.forge/project.json` in the project directory. |

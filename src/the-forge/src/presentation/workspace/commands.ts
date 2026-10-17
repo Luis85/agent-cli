@@ -26,7 +26,7 @@ export function workflowCommands(services: WorkflowServices): Command[] {
   return [
     { id: 'config', description: 'Inspect the validated effective configuration and its source path.', usage: 'config', ...discovery, mutating: false, errors: ['INVALID_CONFIG'], output: configOutput,
       run(args) { arity(args, 0); return { ...services.loaded, sections: services.configSections() }; } },
-    { id: 'setup', description: 'Install The Forge into this workspace and initialize missing configuration, skills, templates and project guidance.', usage: '[--root project] setup [--dry-run]', ...discovery, mutating: true, ...additive, errors: ['INVALID_SETUP'],
+    { id: 'setup', description: 'Install The Forge into this workspace and initialize missing configuration, skills, templates and project guidance.', usage: '[--root workspace] setup [--dry-run]', ...discovery, mutating: true, ...additive, errors: ['INVALID_SETUP'],
       run(args) { arity(args, 0); return services.setup(); } },
     { id: 'project', description: 'Manage self-contained library and webview projects and add tested domain/application components.', usage: 'project list | create <id> [--type library|webview] | open <id> | current | close | inspect [id] | component [id] <Name> [--kind domain|application]',
       scope: 'workspace', discovery: false, mutating: true, defaultAction: 'list',

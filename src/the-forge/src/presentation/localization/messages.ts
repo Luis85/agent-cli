@@ -20,6 +20,7 @@ export const germanKernelMessages: Record<KernelMessageCode, string> = {
   PLUGIN_STATE_IGNORED: 'Ungültige Datei {path} ignoriert; Plugins mit Aktivierungs-Hooks gelten als neu aktiviert.',
   PLUGIN_STATE_UNSAVED: 'Der Aktivierungszustand der Plugins konnte nicht in {path} gespeichert werden: {diagnostic}',
   SETUP_TEMPLATES_UNAVAILABLE: 'Das Kern-Plugin templates ist deaktiviert oder nicht verfügbar; setup hat keine Vorlagen in bin/templates installiert.',
+  CWD_OUTSIDE_WORKSPACE: 'Das Arbeitsverzeichnis {cwd} liegt außerhalb des Workspace-Stammverzeichnisses {workspaceRoot}; relative Pfade beziehen sich auf das Workspace-Stammverzeichnis (context.root), nicht auf das Arbeitsverzeichnis. Übergeben Sie --root oder setzen Sie FORGE_ROOT, um einen anderen Workspace zu verwenden.',
   METADATA_CACHE_UNSAVED: 'Der Metadaten-Cache konnte nicht unter {file} gespeichert werden; der nächste Befehl liest und analysiert den Vault daher erneut: {diagnostic}',
   LOCK_RECOVERED: 'Die verwaiste Sperre {path} von PID {pid} auf {host} (seit {since}{command}) wurde entfernt: {reason}. Prüfen Sie, was dieser Lauf unvollendet hinterlassen hat (zum Beispiel mit git status oder backlog sync status).',
   LOCK_HOLDER_COMMAND: ', Befehl {command}',

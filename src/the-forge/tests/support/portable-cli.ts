@@ -6,7 +6,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { distribution } from './workspace.ts';
 
-/** `env` adds variables to the test process's environment; an undefined value removes that variable. */
+/**
+ * `env` adds variables to the test process's environment; an undefined value removes that variable. The working
+ * directory is `cwd`, else the selected root (as for an agent working in its workspace), else the project.
+ */
 interface Invocation { root?: string | null; entry?: string; cwd?: string; env?: Record<string, string | undefined> }
 interface CliResult { status: number | null; body: any; stdout: string }
 
@@ -94,7 +97,7 @@ export function portableCli() {
   async function cli(args: string[], input?: string | Buffer, invocation: Invocation = {}): Promise<CliResult> {
     const root = invocation.root === undefined ? project : invocation.root;
     const entry = invocation.entry ?? join(bundle, 'bin/forge.js');
-    const result = await runNode([entry, ...(root === null ? [] : ['--root', root]), '--json', ...args], { cwd: invocation.cwd ?? project, input, env: invocation.env });
+    const result = await runNode([entry, ...(root === null ? [] : ['--root', root]), '--json', ...args], { cwd: invocation.cwd ?? root ?? project, input, env: invocation.env });
     expect(result.stderr).toBe('');
     return { status: result.status, body: JSON.parse(result.stdout), stdout: result.stdout };
   }

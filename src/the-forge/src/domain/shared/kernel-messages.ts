@@ -26,6 +26,7 @@ export const kernelMessages = {
   PLUGIN_STATE_IGNORED: 'Ignored invalid {path}; plugins with activation hooks are treated as newly enabled.',
   PLUGIN_STATE_UNSAVED: 'Could not record plugin activation state in {path}: {diagnostic}',
   SETUP_TEMPLATES_UNAVAILABLE: 'The templates core plugin is disabled or unavailable; setup did not install templates into bin/templates.',
+  CWD_OUTSIDE_WORKSPACE: 'The working directory {cwd} is outside the workspace root {workspaceRoot}; relative paths resolve against the workspace root (context.root), not the working directory. Pass --root or set FORGE_ROOT to use another workspace.',
   METADATA_CACHE_UNSAVED: 'The metadata cache could not be saved to {file}, so the next command reads and parses the vault again: {diagnostic}',
   // Writer and sync locks: a stale lock an acquisition removed, and a lock its writer could not release cleanly.
   LOCK_RECOVERED: 'Removed the stale lock {path} of pid {pid} on {host} (since {since}{command}): {reason}. Inspect what that run left unfinished (for example git status or backlog sync status).',

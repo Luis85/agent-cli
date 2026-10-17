@@ -46,27 +46,36 @@ it.each([
     expect(committedEvents(result.body.events)).toEqual([]);
   });
 
-it('treats flag-shaped command values as literal data without overriding configured dry runs or routing', async () => {
+it('takes flag-shaped command values only inline, as literal data, without overriding configured dry runs or routing', async () => {
     const isolated = join(project, 'literal-values-workspace');
     await mkdir(join(isolated, 'bin'), { recursive: true });
     const config = join(isolated, 'bin/config.json');
     await writeFile(config, JSON.stringify({ settings: { dryRun: true } }));
     const args: string[] = [];
     const invocation = { root: isolated };
-    for (const literal of ['--no-dry-run', '--root', '--config', '--version', '--no-plugins', '--help', '--json']) {
-      const result = await cli([...args, 'create', 'preview.md', '--content', literal], undefined, invocation);
+    for (const literal of ['--no-dry-run', '--root', '--version', '--no-plugins', '--help', '--json']) {
+      // A flag after a value-taking option is never its value, so it cannot become content or switch a mode.
+      const separate = await cli([...args, 'create', 'preview.md', '--content', literal], undefined, invocation);
+      expect(separate.status, literal).toBe(2);
+      expect(separate.body.error, literal).toMatchObject({ code: 'MISSING_ARGUMENT' });
+      expect(separate.body.events, literal).toEqual([]);
+      const result = await cli([...args, 'create', 'preview.md', `--content=${literal}`], undefined, invocation);
       expect(result.status, literal).toBe(0);
       expect(result.body.data.dryRun, literal).toBe(true);
       expect(result.body.data.changes[0]).toMatchObject({ path: 'preview.md', bytes: Buffer.byteLength(literal), revision: createHash('sha256').update(literal).digest('hex') });
       expect(committedEvents(result.body.events), literal).toEqual([]);
       expect(await readdir(isolated)).toEqual(['bin']);
     }
-    const committed = await cli([...args, 'create', 'literal.md', '--content', '--version', '--no-dry-run'], undefined, invocation);
+    // A flag-like value no option of this command declares stays a literal value.
+    const undeclared = await cli([...args, 'create', 'preview.md', '--content', '--config'], undefined, invocation);
+    expect(undeclared.status).toBe(0); expect(undeclared.body.data.changes[0]).toMatchObject({ bytes: Buffer.byteLength('--config') });
+    const committed = await cli([...args, 'create', 'literal.md', '--content=--version', '--no-dry-run'], undefined, invocation);
     expect(committed.status).toBe(0); expect(committed.body.data.dryRun).toBe(false);
     expect(committedEvents(committed.body.events)).toHaveLength(1);
     expect(await readFile(join(isolated, 'literal.md'), 'utf8')).toBe('--version');
+    // Routing after the command selects the workspace too, so a second --root repeats the option.
     const lateRouting = await cli([...args, 'create', 'late-routing.md', '--content', 'text', '--no-dry-run', '--root', project], undefined, invocation);
-    expect(lateRouting.status).not.toBe(0); expect(lateRouting.body.events).toEqual([]);
+    expect(lateRouting.status).toBe(2); expect(lateRouting.body.error.code).toBe('DUPLICATE_OPTION'); expect(lateRouting.body.events).toEqual([]);
     await expect(readFile(join(isolated, 'late-routing.md'))).rejects.toThrow();
     await expect(readFile(join(project, 'late-routing.md'))).rejects.toThrow();
   });
