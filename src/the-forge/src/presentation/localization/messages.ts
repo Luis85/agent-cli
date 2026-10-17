@@ -40,4 +40,7 @@ export const germanKernelMessages: Record<KernelMessageCode, string> = {
   LAYOUT_CALLBACK_FAILED: 'Layout bereit: {diagnostic}',
   QUIT_TASK_FAILED: 'Beendigungsaufgabe: {diagnostic}',
   PLUGIN_CLEANUP_FAILED: 'Plugin-Bereinigung: {diagnostic}',
+  PATH_MATCHED_NOTHING: '{option} {pattern} trifft in diesem Bereich keine Datei. Pfade sind relativ zu context.root und unterscheiden Groß- und Kleinschreibung, und ein Ordnerpfad ohne Glob-Zeichen umfasst alles darunter; list zeigt die vorhandenen Pfade.',
+  READ_TRUNCATED: '{path} wurde auf die Zeilen {start}-{end} von {total} gekürzt ({returned} von {bytes} Bytes); lesen Sie mit --lines {next}- weiter oder erhöhen Sie --max-bytes.',
+  READ_BYTES_TRUNCATED: '{path} wurde auf die ersten {returned} von {bytes} Bytes gekürzt; erhöhen Sie --max-bytes, um den Rest zu lesen.',
 };

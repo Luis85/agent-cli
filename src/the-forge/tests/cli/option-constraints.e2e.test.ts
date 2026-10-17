@@ -25,7 +25,7 @@ beforeAll(async () => {
   await writeFile(join(fixture.project, 'bin/plugins/lister/manifest.json'), JSON.stringify({ id: 'lister', name: 'Lister', version: '1.0.0', minAppVersion: '0.1.0', description: 'List option fixture', author: 'Tests' }));
   await writeFile(join(fixture.project, 'bin/plugins/lister/main.mjs'), lister);
   await writeFile(join(fixture.project, 'bin/config.json'), JSON.stringify({ plugins: { enabled: ['lister'] } }));
-  const commands = (await cli(['schema'])).body.data.commands as Contract[];
+  const commands = (await cli(['schema', '--all'])).body.data.commands as Contract[];
   modes = commands.flatMap(command => [
     { tokens: [command.id], options: command.options },
     ...Object.entries(command.annotations.actions ?? {}).filter(([, action]) => action.options !== undefined)
@@ -72,12 +72,12 @@ describe('declared option constraints', () => {
       expect(read.body.data.document.body).toBeDefined();
     }
     expect((await cli(['read', 'notes/parts.md', '--parts', 'body,nope'])).body.error)
-      .toMatchObject({ code: 'INVALID_OPTION_VALUE', details: { option: 'parts', value: 'body,nope', allowed: ['body'] } });
+      .toMatchObject({ code: 'INVALID_OPTION_VALUE', details: { option: 'parts', value: 'body,nope', allowed: ['content', 'properties', 'body'] } });
     const german = (await cli(['--lang', 'de', 'read', 'notes/parts.md', '--parts', 'body,nope'])).body.error;
     expect(german.message).toContain('kommagetrennten Listenoption');
-    expect(german.details.localization.originalMessage).toBe('--parts must be a comma-separated list of: body.');
+    expect(german.details.localization.originalMessage).toBe('--parts must be a comma-separated list of: content, properties, body.');
     const contract = (await cli(['schema', 'read'])).body.data.commands[0];
-    expect(contract.options.parts).toMatchObject({ type: 'string', enum: ['body'], list: true });
+    expect(contract.options.parts).toMatchObject({ type: 'string', enum: ['content', 'properties', 'body'], list: true });
     const published = contract.inputSchema.properties.options.properties.parts as { enum?: string[]; pattern: string };
     expect(published.enum).toBeUndefined();
     expect(['body', 'body,body', 'body, body', ' body ,body '].map(value => new RegExp(published.pattern, 'u').test(value))).toEqual([true, true, true, true]);

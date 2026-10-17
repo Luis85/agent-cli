@@ -50,6 +50,8 @@ describe('portable native Bases repositories', () => {
     expect(all.body.data).toMatchObject({ path: 'queries/tasks.base', view: 'All open', context: 'queries/tasks.base',
       files: ['Notes/B.md', 'Notes/A.md', 'Notes/C.md'], total: 3, scope: root,
       repository: { path: 'queries/tasks.base', view: 'All open' } });
+    // The static compatibility profile is published once by bases capabilities, not with every query.
+    expect(all.body.data).not.toHaveProperty('compatibility');
     const named = await cli(['query', 'queries/tasks.base', '--view', 'For context', '--context', 'Projects/Context.md', '--limit', '1']);
     expect(named.status).toBe(0);
     expect(named.body.data).toMatchObject({ view: 'For context', context: 'Projects/Context.md', files: ['Notes/A.md'], total: 2 });

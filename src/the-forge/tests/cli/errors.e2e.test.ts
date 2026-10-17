@@ -45,13 +45,13 @@ describe('actionable failures', () => {
   }, workflowTimeout);
 
   it('publishes the error catalog through schema and localizes it without changing codes', async () => {
-    const english = (await cli(['schema'])).body.data.errors as Array<Record<string, unknown>>;
+    const english = (await cli(['schema', '--all'])).body.data.errors as Array<Record<string, unknown>>;
     expect(english).toEqual(expect.arrayContaining([
       { code: 'NO_MATCH', exitCode: 2, category: 'input', retryable: false, summary: expect.any(String) },
       { code: 'WORKSPACE_BUSY', exitCode: 4, category: 'busy', retryable: true, summary: expect.any(String) },
       { code: 'NOT_FOUND', exitCode: 3, category: 'not-found', retryable: false, summary: expect.any(String) },
     ]));
-    const german = (await cli(['--lang', 'de', 'schema'])).body.data.errors as Array<Record<string, unknown>>;
+    const german = (await cli(['--lang', 'de', 'schema', '--all'])).body.data.errors as Array<Record<string, unknown>>;
     expect(german.map(entry => entry.code)).toEqual(english.map(entry => entry.code));
     expect(german.find(entry => entry.code === 'NO_MATCH')!.summary).toBe('Der --find-Text kommt in der Datei nicht vor.');
     expect((await cli(['help'])).body.data).not.toHaveProperty('errors');

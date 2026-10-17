@@ -48,6 +48,10 @@ export const kernelMessages = {
   LAYOUT_CALLBACK_FAILED: 'Layout ready: {diagnostic}',
   QUIT_TASK_FAILED: 'Quit task: {diagnostic}',
   PLUGIN_CLEANUP_FAILED: 'Plugin cleanup: {diagnostic}',
+  // Read results an agent could misread: a path filter that selected nothing, and content cut at the read limit.
+  PATH_MATCHED_NOTHING: '{option} {pattern} matched no file in this scope. Paths are relative to context.root and case-sensitive, and a folder path without glob characters matches everything below it; run list to see the existing paths.',
+  READ_TRUNCATED: '{path} was truncated to lines {start}-{end} of {total} ({returned} of {bytes} bytes); continue with --lines {next}-, or raise --max-bytes.',
+  READ_BYTES_TRUNCATED: '{path} was truncated to the first {returned} of {bytes} bytes; raise --max-bytes to read the rest.',
 } as const satisfies Record<string, string>;
 
 export type KernelMessageCode = keyof typeof kernelMessages;

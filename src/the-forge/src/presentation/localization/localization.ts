@@ -118,6 +118,7 @@ export class Localizer {
 
   result(command: string, data: unknown): unknown {
     if (this.language === 'en' || !isRecord(data)) return data;
+    if (command === 'schema' && typeof data.more === 'string') return { ...data, generators: this.catalogued('generators', data.generators), more: germanGuidance.schemaMore };
     if (command === 'schema' && Array.isArray(data.errors)) return { ...data, eventOutput: this.eventOutput(data.eventOutput), ...this.globalOptions(data), generators: this.catalogued('generators', data.generators), errors: this.errors(data.errors) };
     if (['help', 'schema', 'make'].includes(command) && Array.isArray(data.generators)) return { ...data, ...(data.eventOutput === undefined ? {} : { eventOutput: this.eventOutput(data.eventOutput) }), ...this.globalOptions(data), generators: this.catalogued('generators', data.generators) };
     if (command === 'help' && isRecord(data.globalOptions)) return { ...data, ...this.globalOptions(data) };

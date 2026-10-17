@@ -102,7 +102,7 @@ describe('precise edits through the portable CLI', () => {
     const help = await fixture.cli(['help', 'apply']);
     expect(help.body.data).toMatchObject({ id: 'apply', usage: 'apply <plan.json|-> [--project id]', annotations: { mutating: true, scope: 'project' } });
     expect(help.body.data.args[0].schema).toMatchObject({ $schema: 'https://json-schema.org/draft/2020-12/schema', title: 'Forge apply plan', required: ['version', 'operations'] });
-    const schema = (await fixture.cli(['schema'])).body.data;
+    const schema = (await fixture.cli(['schema', '--all'])).body.data;
     const edit = schema.commands.find((command: { id: string }) => command.id === 'edit');
     expect(edit.options.edits.schema).toMatchObject({ type: 'array', minItems: 1 });
     expect(edit.errors).toEqual(expect.arrayContaining(['SECTION_NOT_FOUND', 'AMBIGUOUS_SECTION']));

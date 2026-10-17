@@ -35,14 +35,14 @@ beforeAll(async () => {
   await writeFile(join(project, 'src/latin1.ts'), Buffer.from([0x63, 0x61, 0x66, 0xe9, 0x0a]));
   await mkdir(join(project, 'projects/demo/.forge'), { recursive: true });
   await writeFile(join(project, 'projects/demo/.forge/project.json'), JSON.stringify({ schemaVersion: 1, name: 'demo', type: 'library' }));
-  const schema = await cli(['schema']);
+  const schema = await cli(['schema', '--all']);
   expect(schema.status).toBe(0);
   document = schema.body.data;
   validator = responseValidator(document);
 });
 
 describe('the published schema contract', () => {
-  it('publishes only documents that the JSON Schema 2020-12 meta-schema accepts and that compile in strict mode', () => {
+  it('publishes only documents that the JSON Schema 2020-12 meta-schema accepts and that compile in strict mode', async () => {
     const schemas = publishedSchemas(document);
     expect(schemas.length).toBeGreaterThan(document.commands.length + 10);
     const ajv = strictAjv();
@@ -52,6 +52,11 @@ describe('the published schema contract', () => {
       expect(() => strictAjv().compile(schema), where).not.toThrow();
     }
     expect(validator.output(['schema'], document)).toEqual([]);
+    // Without a command or --all, schema is an index that the same output schema describes.
+    const index = await cli(['schema']);
+    expect(validator.output(['schema'], index.body.data)).toEqual([]);
+    expect(index.body.data.commands.map((command: { id: string }) => command.id)).toEqual(document.commands.map(command => command.id));
+    expect(index.body.data).not.toHaveProperty('errors');
   });
 
   it('derives behavior annotations for every command from its metadata', () => {

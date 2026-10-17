@@ -29,7 +29,7 @@ describe('localized portable CLI', () => {
   });
 
   it('keeps capability IDs, options and usage stable while translating built-in descriptions', async () => {
-    const english = await cli(['schema', '--lang', 'en']), german = await cli(['--lang', 'de', 'schema']);
+    const english = await cli(['schema', '--all', '--lang', 'en']), german = await cli(['--lang', 'de', 'schema', '--all']);
     expect(german.status).toBe(0);
     expect(Object.keys(german.body)).toEqual(Object.keys(english.body));
     // Option names, types, enums, defaults and document schemas stay; their descriptions, nested ones included, are German.

@@ -59,7 +59,7 @@ describe('the skills core plugin', () => {
   });
 
   it('publishes per-command JSON Schema and annotations from the same metadata as help', async () => {
-    const schema = (await cli(['schema'])).body.data;
+    const schema = (await cli(['schema', '--all'])).body.data;
     const skills = schema.commands.find((command: { id: string }) => command.id === 'skills');
     expect(skills.inputSchema).toMatchObject({ $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object', required: ['args', 'options'] });
     expect(skills.inputSchema.oneOf.map((branch: { title: string }) => branch.title)).toEqual(['skills (list)', 'skills list', 'skills show', 'skills install']);

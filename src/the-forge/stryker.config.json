@@ -11,9 +11,9 @@
   "ignoreStatic": false,
   "mutate": [
     "src/plugins/backlog/domain/**/*.ts",
-    "src/domain/documents/{diff,apply-plan,literal-edit,sections,blocks,text-edit,path-glob}.ts",
+    "src/domain/documents/{diff,apply-plan,literal-edit,sections,blocks,text-edit,path-glob,text-window}.ts",
     "src/domain/shared/paging.ts",
-    "src/domain/metadata/{link-resolution,link-text}.ts",
+    "src/domain/metadata/{link-resolution,link-text,note-filters}.ts",
     "src/application/vault/link-plan.ts",
     "src/domain/workflows/workflow.ts",
     "src/plugins/vault-check/domain/*.ts",

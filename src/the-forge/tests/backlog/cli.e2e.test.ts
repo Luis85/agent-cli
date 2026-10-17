@@ -93,7 +93,7 @@ describe('the backlog core plugin through the portable CLI', () => {
   });
 
   it('describes itself in schema and German, and disappears with the bases service it requires', async () => {
-    const schema = (await cli(['schema'])).body.data;
+    const schema = (await cli(['schema', '--all'])).body.data;
     expect(JSON.stringify(schema)).toContain('BACKLOG_NO_GAP');
     expect((await cli(['--lang', 'de', 'help', 'backlog'])).stdout).toContain('Hierarchie, Ränge');
     expect((await cli(['skills', 'show', 'forge-backlog'])).body.data.content).toContain('name: forge-backlog');

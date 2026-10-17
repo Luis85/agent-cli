@@ -3,9 +3,10 @@ import { errorCatalog, errorCodes } from '../../domain/shared/error-catalog.ts';
 import { nativeFormats, textExtensions, textFilenames } from '../../domain/documents/file.ts';
 import { eventOutputLevels } from '../../application/plugins/event-output.ts';
 import { hostEventNamespaces } from '../../application/plugins/host-events.ts';
-import { commandAnnotations, commandInputSchema, outputDocument } from '../../application/plugins/command-metadata.ts';
+import { commandAnnotations, commandInputSchema, option, outputDocument } from '../../application/plugins/command-metadata.ts';
 import { jsonSchemaDialect } from '../../domain/schema/json-schema.ts';
 import { arity } from '../../application/plugins/command-input.ts';
+import { ensure } from '../../domain/shared/errors.ts';
 import type { Command, Registry } from '../../application/plugins/registry.ts';
 import { globalOptionMetadata } from './arguments.ts';
 import { declaredErrors } from './invocation-policy.ts';
@@ -68,8 +69,17 @@ export function catalogCommands(registry: Registry): Command[] {
       const command = registry.resolveCommand(args[0]);
       return { ...describe(command, false), globalOptions: globalOptionMetadata };
     } },
-    { id: 'schema', description: 'Machine-readable contract: JSON Schema 2020-12 input and output schemas, annotations and error codes of every command, or of one.', usage: 'schema [command]', ...discovery, args: commandArgument, errors: ['UNKNOWN_COMMAND'], output: schemaOutput, run(args) {
+    { id: 'schema', description: 'Machine-readable contract: JSON Schema 2020-12 input and output schemas, annotations and error codes of one command, or with --all of every command; without either, an index of command, generator and skill ids.', usage: 'schema [command | --all]', ...discovery, args: commandArgument,
+      options: { all: option.boolean('Return the complete contract of every command instead of the index.') }, errors: ['UNKNOWN_COMMAND'], output: schemaOutput, run(args, flags) {
       arity(args, 0, 1);
+      ensure(args[0] === undefined || flags.all !== true, 'INVALID_ARGUMENT', 'Pass a command or --all, not both.');
+      // The index names every command, generator and skill without schemas; schema <command> or --all returns the contracts.
+      if (args[0] === undefined && flags.all !== true) return {
+        ...identity, dialect: jsonSchemaDialect,
+        commands: [...registry.commands.values()].map(({ id, description }) => ({ id, description })),
+        generators: generatorCatalog(registry), skills: [...registry.skills.keys()],
+        more: 'Run schema <command> for one command\'s contract, or schema --all for every command.',
+      };
       // Built-in failure codes, then plugin-registered codes; hints arrive with each failure as error.hint.
       const builtIn = errorCodes.map(code => { const { exitCode, category, retryable, summary } = errorCatalog[code]; return { code, exitCode, category, retryable, summary }; });
       const contributed = registry.catalog.errors().map(({ code, exitCode, category, retryable, summary, pluginId }) => ({ code, exitCode, category, retryable, summary, plugin: pluginId }));

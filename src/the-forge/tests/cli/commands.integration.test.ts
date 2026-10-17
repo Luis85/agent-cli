@@ -45,7 +45,9 @@ describe('extracted command boundaries', () => {
       'help', 'schema', 'formats', 'list', 'read', 'validate', 'create', 'write', 'edit', 'properties', 'patch', 'apply', 'read-many', 'stat', 'delete', 'move', 'rename', 'make', 'events', 'plugins']);
     registry.add(registry.generators, { id: 'custom.fixture', description: 'Late generator', generate: () => [] });
     registry.add(registry.commands, { id: 'custom.run', description: 'Late command', usage: 'custom.run', run: () => null });
-    const schema = await registry.commands.get('schema')!.run([], {}, context);
+    // The index names the late command; --all carries its contract.
+    expect(await registry.commands.get('schema')!.run([], {}, context)).toMatchObject({ commands: expect.arrayContaining([{ id: 'custom.run', description: 'Late command' }]) });
+    const schema = await registry.commands.get('schema')!.run([], { all: true }, context);
     expect(schema).toMatchObject({ commands: expect.arrayContaining([expect.objectContaining({ id: 'custom.run', description: 'Late command', usage: 'custom.run', options: {}, args: [], errors: [],
       annotations: { scope: 'project', discovery: false, mutating: true, readOnlyHint: false, destructiveHint: true, idempotentHint: false } })]),
       generators: expect.arrayContaining([{ id: 'custom.fixture', description: 'Late generator' }]) });

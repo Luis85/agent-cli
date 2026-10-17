@@ -8,7 +8,7 @@ import { option } from '../../src/application/plugins/command-metadata.ts';
 
 const read = {
   id: 'read', description: 'Read a document.', usage: 'read <path>',
-  options: { parts: option.string('Comma-separated optional parts of a Markdown read.', { enum: ['body'] }) },
+  options: { parts: option.string('Comma-separated parts of a Markdown read; content and properties by default.', { enum: ['body'] }) },
   args: [{ name: 'path', description: 'Vault path relative to the command scope.', required: true }],
 };
 const owned = { commands: ['quality'], actions: [], generators: [], events: [] };
@@ -23,7 +23,7 @@ function pluginCatalog() {
 describe('German output by category', () => {
   it('translates option and argument descriptions and keeps names, types and enums', () => {
     const german = new Localizer('de').command(read);
-    expect(german.options.parts).toEqual({ type: 'string', enum: ['body'], description: 'Kommagetrennte optionale Teile eines Markdown-Lesevorgangs.' });
+    expect(german.options.parts).toEqual({ type: 'string', enum: ['body'], description: 'Kommagetrennte Teile eines Markdown-Lesevorgangs; standardmäßig content und properties.' });
     expect(german.args).toEqual([{ name: 'path', required: true, description: 'Vault-Pfad relativ zum Geltungsbereich des Befehls.' }]);
     expect(new Localizer('en').command(read)).toBe(read);
   });

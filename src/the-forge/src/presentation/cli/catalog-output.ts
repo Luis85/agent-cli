@@ -45,9 +45,9 @@ const errorEntry: JsonSchema = {
   properties: { code: text, exitCode: { type: 'integer', minimum: 0 }, category: text, retryable: flag, summary: text, plugin: text },
 };
 
-/** The `schema` document: the full catalog, or one command's contract with only the error codes it can report. */
-export const schemaOutput: JsonSchema = {
-  type: 'object', required: ['name', 'version', 'apiVersion', 'dialect', 'globalOptions', 'envelope', 'commands', 'commonErrors', 'errors'],
+/** The complete `schema` document: every command's contract with --all, or one command's with only the error codes it can report. */
+const schemaDocumentOutput: JsonSchema = {
+  title: 'contract', type: 'object', required: ['name', 'version', 'apiVersion', 'dialect', 'globalOptions', 'envelope', 'commands', 'commonErrors', 'errors'],
   properties: {
     name: text, version: text, apiVersion: { type: 'integer', minimum: 1 }, node: text,
     dialect: { type: 'string', const: 'https://json-schema.org/draft/2020-12/schema' },
@@ -59,3 +59,18 @@ export const schemaOutput: JsonSchema = {
     errors: { type: 'array', items: errorEntry },
   },
 };
+/** `schema` without a command or --all: the command and generator ids with descriptions and the skill ids, without schemas. */
+const schemaIndex: JsonSchema = {
+  title: 'index', type: 'object', required: ['name', 'version', 'apiVersion', 'dialect', 'commands', 'generators', 'skills', 'more'], additionalProperties: false,
+  properties: {
+    name: text, version: text, apiVersion: { type: 'integer', minimum: 1 }, node: text,
+    dialect: { type: 'string', const: 'https://json-schema.org/draft/2020-12/schema' },
+    commands: { type: 'array', items: { type: 'object', required: ['id', 'description'], additionalProperties: false, properties: { id: text, description: text } } },
+    generators: { type: 'array', items: { type: 'object', required: ['id', 'description'], properties: { id: text, description: text } } },
+    skills: texts,
+    more: { ...text, description: 'How to request the contracts.' },
+  },
+};
+
+/** The `schema` output: the index, or the contract document of one command or, with --all, of every command. */
+export const schemaOutput: JsonSchema = { type: 'object', oneOf: [schemaIndex, schemaDocumentOutput] };
