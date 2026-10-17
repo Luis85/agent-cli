@@ -4,7 +4,7 @@ Read this for bounded reads, search and list paging, link reports and vault chec
 
 ## Reads
 - Markdown `read` returns `content` and `properties`; `--parts properties` returns only the frontmatter and `--parts body` only the body.
-- Text and attachment content beyond 256 KiB (`--max-bytes`) is cut with `truncated: true`, `lines: {start, end, total}` and a warning. `--lines <start>-<end>` (1-based, inclusive; also `<start>-` or `<start>`) reads a range; `search` hits report the line numbers.
+- Text and attachment content beyond 256 KiB (`--max-bytes`) is cut with `truncated: true`, `lines: {start, end, total}` and a warning. `--lines <start>-<end>` (1-based, inclusive; also `<start>-` or `<start>`) reads a range; `search` hits report the line numbers. When one line alone exceeds the limit (warning `READ_LINE_TRUNCATED`), `--lines` returns the same prefix again: raise `--max-bytes` to `details.lineBytes`.
 - `read-many <paths…>` reads 1-32 paths in order, each counting at most `--max-bytes` toward an 8 MiB total. Any failure rejects the whole bundle, with `details.index` and `details.path`. It is not an atomic snapshot.
 - `stat <path>` returns a file's revision and byte count, or a folder's revision and counts, without parsing. It also works when `read` fails on malformed frontmatter.
 

@@ -8,16 +8,16 @@ metadata:
   version: "0.1.0"
 ---
 
-Every command prints one JSON envelope and never prompts. Check the exit code and `ok`, and match `error.code`, never message text.
+Every command prints one JSON envelope and never prompts. Check the exit code and `ok`; match `error.code`, never message text.
 
 ## Root and scope
-- The workspace is the folder holding `bin/`, not your working directory. Pick another with `--root <dir>` or `FORGE_ROOT=<dir>`; `--root` wins, and a missing root fails with `INVALID_ROOT`.
+- The workspace is the folder holding `bin/`, not your working directory. Pick another with `--root <dir>` or `FORGE_ROOT=<dir>`; `--root` wins; a missing root fails with `INVALID_ROOT`.
 - Paths are relative to `context.root`: the open project, or the workspace. Check `project current`. `project open <id>` changes the selection for every agent, and `project close` clears it.
 - With parallel agents, leave the selection alone and pass `--project <id>` to file commands (`read`, `search`, `edit`, `apply`…).
 
 ## Discover
 - `help` lists commands. `help <command>` gives usage, examples, options and error codes. `schema <command>` gives the JSON Schema input and output.
-- Avoid `schema --all`: it is every command at once.
+- Avoid `schema --all` (every command at once).
 - Global flags such as `--root`, `--dry-run` and `--wait` may come before or after the command.
 
 ## Safe edit loop
@@ -43,13 +43,13 @@ Every command prints one JSON envelope and never prompts. Check the exit code an
 
 ## Errors
 Exit codes: 1 runtime, 2 input or conflict, 3 not found, 4 busy, 5 drift, 130/143 interrupted. Every error has a `hint`.
-- `CONFLICT`: reread the file and reapply your change to its current content. If `details.alreadyApplied` is true, the change is already there. Never resend the old change unchanged.
+- `CONFLICT`: reread the file and reapply your change to its current content; `details.alreadyApplied: true` means it is already there. Never resend the old change unchanged.
 - `NO_MATCH`: copy the exact text, using `details.nearMatch` and `details.lineEndings`.
 - `AMBIGUOUS_EDIT`: extend `--find` until it matches once (`details.lines`).
 - `UNKNOWN_COMMAND`, `UNKNOWN_OPTION`: see `details.suggestions` and `help <command>`.
 - `INVALID_PATH`: use `details.suggestion`.
 - `NOT_FOUND`: check `details.path` and `project current`.
-- `WORKSPACE_BUSY`: wait `details.retryAfterMs`, or pass `--wait <ms>`.
+- `WORKSPACE_BUSY`: wait `details.retryAfterMs` or pass `--wait <ms>` (not for `nestedWriter`).
 - `ROLLBACK_FAILED`: inspect every listed file before continuing.
 
 ## Reference

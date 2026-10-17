@@ -11,9 +11,9 @@ export interface Warning {
 /** The code of a plugin warning that names no code of its own, or names one the plugin may not use. */
 export declare const pluginWarningCode = "PLUGIN_WARNING";
 /**
- * The warning a plugin raised, captured when it was raised: a `{code, message, details?}` record keeps its code, text
- * and JSON details; any other value becomes its text (see `warningText`) under PLUGIN_WARNING. `details.plugin` names
- * the plugin when the warning arrived through its own event channel.
+ * The warning a plugin raised, captured when it was raised: a `{code, message, details?}` record keeps its text, and
+ * its code and JSON details where valid (see `codedWarning`); any other value becomes its text (see `warningText`)
+ * under PLUGIN_WARNING. `details.plugin` names the plugin when the warning arrived through its own event channel.
  */
 export declare function pluginWarning(value: unknown, plugin?: string): Warning;
 /** Whether `value` is a warning `pluginWarning` created. */

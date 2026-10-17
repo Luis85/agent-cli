@@ -46,6 +46,7 @@ export declare const kernelMessages: {
     readonly PATH_MATCHED_NOTHING: "{option} {pattern} matched no file in this scope. Paths are relative to context.root and case-sensitive, and a folder path without glob characters matches everything below it; run list to see the existing paths.";
     readonly READ_TRUNCATED: "{path} was truncated to lines {start}-{end} of {total} ({returned} of {bytes} bytes); continue with --lines {next}-, or raise --max-bytes.";
     readonly READ_BYTES_TRUNCATED: "{path} was truncated to the first {returned} of {bytes} bytes; raise --max-bytes to read the rest.";
+    readonly READ_LINE_TRUNCATED: "{path} was truncated inside line {start} of {total} ({returned} of {bytes} bytes), which alone holds {lineBytes} bytes; raise --max-bytes to at least {lineBytes} to read that line.";
     readonly EXTENSION_DROPPED: "{to} has no extension, so moving {from} drops {extension}. End the destination with / to move into a folder, or add the extension.";
     readonly LITERAL_NEWLINE: "--{option} contains the two characters \\n but no line break, so they are written literally. Pass real line breaks, for example with --stdin.";
     readonly EMPTY_STDIN: "--stdin read no bytes, so {path} is written empty. Pipe the content, or pass --content \"\" to write an empty file on purpose.";

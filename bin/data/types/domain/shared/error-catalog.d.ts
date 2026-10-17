@@ -11,11 +11,11 @@ export interface ErrorDefinition {
     readonly summary: string;
     readonly hint: string;
     readonly retryable: boolean;
-    /** Hints for one occurrence, chosen by the value of `details[detail]`; other values use `hint`. */
+    /** Hints for one occurrence, chosen by the first of `details[...details]` whose value names one; others use `hint`. */
     readonly variants?: HintVariants;
 }
 export interface HintVariants {
-    readonly detail: string;
+    readonly details: readonly string[];
     readonly hints: Readonly<Record<string, string>>;
 }
 /** SIGTERM interruptions report 143 instead of the category's SIGINT status 130. */
@@ -52,7 +52,19 @@ export declare const errorCatalog: {
     readonly INVALID_PATH: ErrorDefinition;
     readonly UNSAFE_PATH: ErrorDefinition;
     readonly NOT_FOUND: ErrorDefinition;
-    readonly CONFLICT: ErrorDefinition;
+    readonly CONFLICT: {
+        readonly variants: {
+            readonly details: readonly ["reason"];
+            readonly hints: {
+                readonly 'changed-while-planning': "A note linking to the moved path (error.details.path) changed while Forge planned the link updates, and nothing was written: rerun the same move; read that note first if you are editing it too.";
+            };
+        };
+        readonly exitCode: number;
+        readonly category: ErrorCategory;
+        readonly summary: string;
+        readonly hint: string;
+        readonly retryable: boolean;
+    };
     readonly NO_MATCH: ErrorDefinition;
     readonly AMBIGUOUS_EDIT: ErrorDefinition;
     readonly UNSUPPORTED_EDIT: ErrorDefinition;
@@ -61,8 +73,9 @@ export declare const errorCatalog: {
     readonly INVALID_PLAN: ErrorDefinition;
     readonly WORKSPACE_BUSY: {
         readonly variants: {
-            readonly detail: "stale";
+            readonly details: readonly ["nestedWriter", "stale"];
             readonly hints: {
+                readonly running: "A running writer of a nested root holds its lock (error.details.path) inside the folder this move or deletion would take along; --wait does not wait for it. Let that writer finish, then retry after error.details.retryAfterMs milliseconds or later.";
                 readonly active: "The holder runs, or another running writer is removing a stale lock: retry after error.details.retryAfterMs milliseconds, or rerun with --wait <ms> to wait for the lock.";
                 readonly unknown: "Forge cannot verify the holder (another host, pid namespace or boot, or an unreadable lock) and never removes its lock, so waiting does not help: confirm in error.details.lock that it no longer runs, inspect its unfinished changes, then delete the file named in error.details.path (relative to the workspace root) and retry.";
                 readonly stale: "The holder provably no longer runs, but removing its lock failed: confirm no Forge process uses it, then delete the file named in error.details.path (relative to the workspace root) and retry.";

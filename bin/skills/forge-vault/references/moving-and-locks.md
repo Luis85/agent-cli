@@ -22,6 +22,7 @@ Read this before restructuring notes, and when a write fails with `WORKSPACE_BUS
 - All writers in a workspace share one lock, `.agent-cli.lock`, whatever their project.
 - `WORKSPACE_BUSY` (exit 4): `details.lock` names the holder (pid, hostname, startedAt, command), `details.path` the lock file and `details.stale` is `active`, `unknown` or `stale`.
 - `active` (`retryable: true`): wait `details.retryAfterMs` and retry, or rerun with the global `--wait <ms>`. Never delete an active lock.
+- `details.nestedWriter: "running"`: a moved or deleted folder contains a nested root whose writer runs. `--wait` does not wait for it; retry once that writer finished.
 - `unknown` (`retryable: false`): another host, container or boot, or an unreadable lock. Do not retry in a loop. Delete the file in `details.path` only after you verify the recorded process is not a running Forge writer and inspect its changes.
 - `stale` (`retryable: false`): the holder no longer runs but Forge could not remove the file. Confirm no Forge process uses it, delete the file and retry.
 - When Forge removes a stale lock itself, it adds a warning: inspect the interrupted changes with `git status` and read-back before continuing.

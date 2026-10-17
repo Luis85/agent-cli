@@ -40,9 +40,13 @@ the argument's position in `details.index`. Symlink traversal remains forbidden.
 
 A missing, unsafe or invalid document, or exceeding the byte limit, fails the
 whole command. No partial `data.files` payload is returned. Per-file failures keep
-the original error code and add `error.details.index` (the zero-based position of
-the path argument) and `error.details.path`; the message names the same index, as
-in `read-many path at index 1: ...`. Duplicate errors also identify `duplicateOf`. Limit and
+the original error code and add `error.details.argument` (`paths`),
+`error.details.index` (the zero-based position of the path argument) and
+`error.details.path`; the message names the same index, as in
+`read-many path at index 1: ...`, and with `--lang de` as
+`Argument <paths> an Position 1: ...`. An exceeded budget reports
+`details.aggregateLimit` (8 MiB), `details.maxBytes` (the per-file
+`--max-bytes`) and `details.bytes`. Duplicate errors also identify `duplicateOf`. Limit and
 argument-count violations use `INVALID_ARGUMENT`. The command stops at the first
 read failure. Standard read events for preceding successful reads may already
 have been delivered; no file writes or committed vault-change events occur.
