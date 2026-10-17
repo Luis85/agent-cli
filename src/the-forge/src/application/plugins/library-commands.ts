@@ -1,9 +1,10 @@
 import { isRecord } from '../../domain/shared/errors.ts';
 import { option, type CommandAction, type CommandArgument, type CommandMetadata, type CommandOption } from './command-metadata.ts';
 import type { PluginContext } from './registry.ts';
+import { changesOutput } from './output-schemas.ts';
 
 /** The writing actions only add files: existing definitions are skipped (init) or refused as duplicates. */
-const createOnly = { destructive: false, idempotent: true } as const;
+const createOnly = { destructive: false, idempotent: true, output: changesOutput() } as const;
 
 /**
  * Shared metadata of Markdown definition library commands (the `ui` plugin's `components` and `interactions`, the

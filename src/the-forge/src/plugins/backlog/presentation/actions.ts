@@ -1,5 +1,6 @@
 import { option, type CommandAction, type CommandOption } from '../../../application/plugins/command-metadata.ts';
 import { SYNC_FIELDS } from '../../../domain/connectors/items.ts';
+import { changesOutput } from '../../../application/plugins/output-schemas.ts';
 
 /** The backlog selection every action accepts: `--base`, `--view` and `--today`. */
 export const selectionOptions: Readonly<Record<string, CommandOption>> = {
@@ -10,8 +11,10 @@ export const selectionOptions: Readonly<Record<string, CommandOption>> = {
 
 const ifMatch = option.string('The revision of the item note the write is planned against.');
 const read = { mutating: false };
+/** Every write returns its guarded batch, `{dryRun, changes}`, beside the item it wrote. */
+const written = { output: changesOutput() };
 /** Writes that converge: repeating the identical invocation finds the target state and changes nothing. */
-const settled = { idempotent: true };
+const settled = { idempotent: true, ...written };
 const direction = option.string('Push vault changes, pull remote changes, or both (default).', { enum: ['push', 'pull', 'both'] });
 
 /**
@@ -20,7 +23,7 @@ const direction = option.string('Push vault changes, pull remote changes, or bot
  */
 export const backlogActions: Readonly<Record<string, CommandAction>> = {
   init: {
-    description: 'Write the plugin\'s Product Backlog.base scaffold into a folder (default docs).', usage: 'backlog init [--folder docs]',
+    description: 'Write the plugin\'s Product Backlog.base scaffold into a folder (default docs).', usage: 'backlog init [--folder docs]', ...written,
     options: { folder: option.string('The backlog folder (default docs).') },
   },
   list: {
@@ -33,7 +36,7 @@ export const backlogActions: Readonly<Record<string, CommandAction>> = {
   check: { description: 'Report parent and dependency cycles, broken links, unresolved memberships, configuration and field problems, rank ties.', usage: 'backlog check', ...read },
   add: {
     description: 'Create an item note exactly as the plugin does: sanitized name, type folder, pbl-id, key order and end-of-siblings rank.',
-    usage: 'backlog add <type> <title> [--parent item] [--folder directory] [--state state] [--iteration iteration] [--release release] [--assignee resource] [--tags tags]',
+    usage: 'backlog add <type> <title> [--parent item] [--folder directory] [--state state] [--iteration iteration] [--release release] [--assignee resource] [--tags tags]', ...written,
     options: {
       parent: option.string('The parent item.'),
       folder: option.string('The folder of the new note instead of its type folder.'),
@@ -82,7 +85,7 @@ export const backlogActions: Readonly<Record<string, CommandAction>> = {
     options: { on: option.string('The prerequisite item.', { required: true }), 'if-match': ifMatch },
   },
   'iteration add': {
-    description: 'Add an iteration with the plugin\'s name and date defaults.', usage: 'backlog iteration add [--name name] [--goal goal] [--start date] [--due date] [--length days]',
+    description: 'Add an iteration with the plugin\'s name and date defaults.', usage: 'backlog iteration add [--name name] [--goal goal] [--start date] [--due date] [--length days]', ...written,
     options: {
       name: option.string('The name instead of "<N> - Iteration".'),
       goal: option.string('The iteration goal.'),
@@ -96,7 +99,7 @@ export const backlogActions: Readonly<Record<string, CommandAction>> = {
     options: { 'if-match': ifMatch },
   },
   'release add': {
-    description: 'Add a release note.', usage: 'backlog release add <name> [--release-version version] [--target-date date] [--status status] [--description text]',
+    description: 'Add a release note.', usage: 'backlog release add <name> [--release-version version] [--target-date date] [--status status] [--description text]', ...written,
     options: {
       'release-version': option.string('The version (the release view\'s versionProperty).'),
       'target-date': option.string('The target date.'),

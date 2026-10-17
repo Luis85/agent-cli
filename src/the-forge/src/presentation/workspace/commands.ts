@@ -5,6 +5,7 @@ import type { WorkflowServices } from '../cli/services.ts';
 import { option } from '../../application/plugins/command-metadata.ts';
 import type { JsonSchema } from '../../domain/schema/json-schema.ts';
 import { projectInfoSchema, selectedProjectSchema } from '../cli/envelope.ts';
+import { changesOutput } from '../../application/plugins/output-schemas.ts';
 
 const discovery = { scope: 'workspace', discovery: true } as const;
 /** Mutating project actions that only add files or change the selection: repeating one has no further effect. */
@@ -44,13 +45,14 @@ export function workflowCommands(services: WorkflowServices): Command[] {
       errors: ['INVALID_PROJECT', 'INVALID_PROJECT_NAME', 'INVALID_PROJECT_CONTEXT', 'PROJECT_EXISTS', 'PROJECT_NOT_FOUND', 'PROJECT_REQUIRED', 'STALE_PROJECT_CONTEXT', 'INVALID_NAME', 'INVALID_COMPONENT_KIND', 'PLUGIN_UNAVAILABLE'],
       actions: {
         list: { description: 'List managed projects, and the directories whose project marker is invalid.', usage: 'project [list]', mutating: false, output: projectListOutput },
-        create: { description: 'Create a self-contained TypeScript library or Vue webview project.', usage: 'project create <id> [--type library|webview]', ...additive, options: { type: option.string('Project scaffold type for project create.', { enum: ['library', 'webview'], default: 'library' }) } },
-        open: { description: 'Select a project for file commands and generators.', usage: 'project open <id>', ...additive },
+        create: { description: 'Create a self-contained TypeScript library or Vue webview project.', usage: 'project create <id> [--type library|webview]', ...additive, output: changesOutput({ project: projectInfoSchema, nextSteps: { type: 'array', items: { type: 'object' } } }, ['project', 'nextSteps']), options: { type: option.string('Project scaffold type for project create.', { enum: ['library', 'webview'], default: 'library' }) } },
+        open: { description: 'Select a project for file commands and generators.', usage: 'project open <id>', ...additive, output: changesOutput({ project: projectInfoSchema }, ['project']) },
         current: { description: 'Report the selected project.', usage: 'project current', mutating: false, output: { type: 'object', required: ['project'], properties: { project: selectedProjectSchema } } },
-        close: { description: 'Clear the project selection.', usage: 'project close', ...additive },
+        close: { description: 'Clear the project selection.', usage: 'project close', ...additive, output: changesOutput({ project: { type: 'null' } }, ['project']) },
         inspect: { description: 'Describe a project, or the selected one.', usage: 'project inspect [id]', mutating: false },
         component: {
           description: 'Add a tested domain or application component to a project.', usage: 'project component [id] <Name> [--kind domain|application]', ...additive,
+          output: changesOutput({ project: projectInfoSchema, component: { type: 'object', required: ['name', 'kind'], properties: { name: { type: 'string' }, kind: { type: 'string', enum: ['domain', 'application'] } } } }, ['project', 'component']),
           options: { kind: option.string('Component kind for project component.', { enum: ['domain', 'application'], default: 'domain' }) },
         },
       },

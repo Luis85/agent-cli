@@ -3,6 +3,7 @@ import { vaultPath } from '../../../domain/documents/file.ts';
 import type { CommandContext, Generator, PluginContext } from '../../../application/plugins/registry.ts';
 import { option } from '../../../application/plugins/command-metadata.ts';
 import { parseJson, value } from '../../../application/plugins/command-input.ts';
+import { changesOutput } from '../../../application/plugins/output-schemas.ts';
 import type { DocumentTemplates } from '../application/templates.ts';
 
 /**
@@ -14,6 +15,7 @@ export function documentGenerator(templates: (context: CommandContext) => Docume
     id: 'document', description: 'Render an Obsidian Markdown/frontmatter template with typed values.', usage: 'make document Title --template name.md [--values JSON | --values-from path] [--date ISO] [--out notes]',
     // Create-only: the document is written without a revision, so a repeat fails with CONFLICT.
     directory: 'notes', destructive: false, idempotent: true,
+    output: changesOutput({ generator: { type: 'string', const: 'document' }, template: { type: 'string', description: 'The workspace path of the rendered template.' } }, ['generator', 'template']),
     errors: ['INVALID_TEMPLATE', 'INVALID_TEMPLATE_VALUES', 'INVALID_TEMPLATE_DATE', 'UNKNOWN_TEMPLATE_VARIABLE', 'INVALID_INPUT', 'INVALID_JSON', 'INVALID_ENCODING', 'INVALID_NAME', 'NOT_FOUND', 'CONFLICT'],
     options: {
       template: option.string('Markdown template under bin/templates.', { required: true }),

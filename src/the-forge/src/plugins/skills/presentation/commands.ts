@@ -1,6 +1,7 @@
 import type { Command } from '../../../application/plugins/registry.ts';
 import type { SkillCatalog } from '../../../application/plugins/core-plugins.ts';
 import { option } from '../../../application/plugins/command-metadata.ts';
+import { changesOutput } from '../../../application/plugins/output-schemas.ts';
 import { arity, value } from '../../../application/plugins/command-input.ts';
 import type { JsonSchema } from '../../../domain/schema/json-schema.ts';
 import { ensure } from '../../../domain/shared/errors.ts';
@@ -23,7 +24,7 @@ export function skillsCommand(skills: SkillCatalog): Command {
       show: { description: 'Return one skill with its SKILL.md content.', usage: 'skills show <id>', output: showOutput },
       install: {
         description: 'Write every skill to .claude/skills/<id>/SKILL.md and .agents/skills/<id>/SKILL.md in the selected project, or to one --target or an --out directory; existing files are refused.',
-        usage: 'skills install [--target both|claude|agents | --out directory]', scope: 'project', mutating: true, destructive: false, idempotent: true,
+        usage: 'skills install [--target both|claude|agents | --out directory]', scope: 'project', mutating: true, destructive: false, idempotent: true, output: changesOutput(),
         options: {
           target: option.string('skills install: the skill roots, .claude/skills (claude), .agents/skills (agents) or both (the default).', { enum: skillTargetChoices }),
           out: option.string('skills install: one custom directory instead of the --target roots.'),
