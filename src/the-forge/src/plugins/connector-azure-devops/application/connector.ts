@@ -3,6 +3,7 @@ import type { ConnectorMapping, RemoteDraft, RemoteItem, RemotePatch } from '../
 import type { HttpClient, HttpResponse } from '../../../application/connectors/http.ts';
 import type { JsonSchema } from '../../../domain/schema/json-schema.ts';
 import { isRecord } from '../../../domain/shared/errors.ts';
+import { PluginFailure } from '../../../domain/shared/plugin-failure.ts';
 import { redact } from '../../../domain/connectors/secrets.ts';
 import { PROCESSES, processMapping, unknownFields, type MappingOverrides, type Process } from '../domain/processes.ts';
 import { createOperations, relationsLanded, remoteItem, updateOperations, type DescriptionFormat, type PatchContext } from '../domain/work-items.ts';
@@ -27,8 +28,8 @@ const connectionSchema: JsonSchema = {
   },
 };
 
-type ErrorCode = 'CONNECTOR_AUTH_FAILED' | 'CONNECTOR_REQUEST_FAILED';
-const failure = (code: ErrorCode, message: string, details: Record<string, unknown>) => Object.assign(new Error(message), { code, details });
+type ErrorCode = 'CONNECTOR_AUTH_FAILED' | 'CONNECTOR_REQUEST_FAILED' | 'CONNECTION_INVALID';
+const failure = (code: ErrorCode, message: string, details: Record<string, unknown>) => new PluginFailure(code, message, details);
 const setting = (connection: Connection, key: string) => (typeof connection.settings[key] === 'string' ? connection.settings[key] : undefined);
 const organizationOf = (connection: Connection) => setting(connection, 'organization')!.replace(/\/+$/, '');
 /** The connection's default area: its `areaPath`, else the project root. */
@@ -85,7 +86,7 @@ export class AzureDevOpsConnector implements BacklogConnector {
   mapping(connection: Connection): ConnectorMapping {
     const overrides = (isRecord(connection.settings.mappings) ? connection.settings.mappings : {}) as MappingOverrides;
     const unknown = unknownFields(overrides);
-    if (unknown.length > 0) throw Object.assign(new Error(`Connection ${connection.id} maps unknown fields: ${unknown.join(', ')}.`), { code: 'CONNECTION_INVALID', details: { connection: connection.id, issues: unknown.map(name => `mappings.fields.${name}: not a neutral field`) } });
+    if (unknown.length > 0) throw failure('CONNECTION_INVALID', `Connection ${connection.id} maps unknown fields: ${unknown.join(', ')}.`, { connection: connection.id, issues: unknown.map(name => `mappings.fields.${name}: not a neutral field`) });
     return processMapping((setting(connection, 'process') ?? 'agile') as Process, overrides);
   }
 
@@ -172,8 +173,8 @@ export class AzureDevOpsConnector implements BacklogConnector {
     const contentType = options.contentType ?? 'application/json';
     const host = hostOf(url);
     if (host === null || !this.trusted(host)) {
-      throw Object.assign(new Error(`Connection ${connection.id} targets the untrusted host ${host ?? url}; no request was sent. Add the host to ${ALLOWED_HOSTS_ENV} to trust it.`), {
-        code: 'CONNECTION_INVALID', details: { connection: connection.id, host, issues: [`plugins.settings.connector.connections.${connection.id}.organization: host ${host ?? url} is not trusted; list it in ${ALLOWED_HOSTS_ENV}`] },
+      throw failure('CONNECTION_INVALID', `Connection ${connection.id} targets the untrusted host ${host ?? url}; no request was sent. Add the host to ${ALLOWED_HOSTS_ENV} to trust it.`, {
+        connection: connection.id, host, issues: [`plugins.settings.connector.connections.${connection.id}.organization: host ${host ?? url} is not trusted; list it in ${ALLOWED_HOSTS_ENV}`],
       });
     }
     const token = connection.token();

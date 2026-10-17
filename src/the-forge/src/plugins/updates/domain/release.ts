@@ -1,9 +1,9 @@
-import { codedError } from '../../../domain/shared/errors.ts';
+import { PluginFailure } from '../../../domain/shared/plugin-failure.ts';
 import { vaultPath } from '../../../domain/documents/file.ts';
 export interface DistributionPolicy { schemaVersion: number; requiredAssets: string[]; ownedAssetPattern: string }
 
 export type UpdateCode = 'UPDATE_DOWNLOAD_FAILED' | 'UPDATE_INVALID' | 'UPDATE_SCOPE_INVALID';
-export function updateError(code: UpdateCode, message: string) { return codedError(code, message, code === 'UPDATE_DOWNLOAD_FAILED' ? 1 : 2); }
+export function updateError(code: UpdateCode, message: string): PluginFailure { return new PluginFailure(code, message); }
 export function requireUpdate(condition: unknown, message: string): asserts condition {
   if (!condition) throw updateError('UPDATE_INVALID', message);
 }

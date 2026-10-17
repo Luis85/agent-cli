@@ -46,7 +46,8 @@ it('publishes two independent views, refreshes an existing mount, and mounts new
     expect(firstUrl.pathname).toBe('/views/first-view/');
     expect(await (await fetch(firstUrl)).text()).toContain('<h1>first-view</h1>');
     await buildFixture('first-view', 'Updated prototype');
-    expect((await invoke(['webview', 'publish', '--check'])).body.error.code).toBe('WEBVIEW_DRIFT');
+    const drift = await invoke(['webview', 'publish', '--check']);
+    expect([drift.status, drift.body.error.code]).toEqual([5, 'WEBVIEW_DRIFT']);
     expect((await invoke(['webview', 'publish'])).body.error.code).toBe('CONFLICT');
     await cli(['webview', 'publish', '--if-match', firstInspect.data.revision]);
     expect(await (await fetch(firstUrl)).text()).toContain('<h1>Updated prototype</h1>');

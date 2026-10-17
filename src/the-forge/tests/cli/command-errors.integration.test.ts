@@ -104,12 +104,12 @@ describe('declared command errors', async () => {
   it('resolves every plugin failure code statically', () => {
     expect(inventory.unresolved, 'error codes must resolve statically; see tests/support/error-codes.ts').toEqual([]);
     // The scan is not vacuous: each plugin family's helper and the host's built-in codes are found.
-    for (const [pluginId, code] of [['backlog', 'SYNC_INTERRUPTED'], ['agents', 'AGENT_DRIFT'], ['search', 'SEARCH_TIMEOUT'], ['connector-azure-devops', 'CONNECTOR_AUTH_FAILED'], ['claude', 'CLAUDE_OUTPUT_LIMIT'], ['ui', 'UI_DRIFT']] as const) {
+    for (const [pluginId, code] of [['backlog', 'SYNC_INTERRUPTED'], ['agents', 'AGENT_DRIFT'], ['search', 'SEARCH_TIMEOUT'], ['connector-azure-devops', 'CONNECTOR_AUTH_FAILED'], ['claude', 'CLAUDE_OUTPUT_LIMIT'], ['ui', 'UI_DRIFT'], ['webviews', 'WEBVIEW_DRIFT'], ['browser', 'BROWSER_FLOW_FAILED'], ['updates', 'UPDATE_DOWNLOAD_FAILED'], ['vault-check', 'VAULT_CHECK_FAILED']] as const) {
       expect(raisedIn(pluginId), pluginId).toContain(code);
     }
   });
 
-  it.each(['templates', 'scaffolds', 'ui', 'data-sources', 'claude', 'bases', 'skills', 'search', 'links', 'vault-check', 'agents', 'connector', 'connector-azure-devops', 'backlog', 'webviews', 'browser'])(
+  it.each(['templates', 'scaffolds', 'ui', 'data-sources', 'claude', 'bases', 'skills', 'search', 'links', 'vault-check', 'agents', 'connector', 'connector-azure-devops', 'backlog', 'webviews', 'browser', 'updates'])(
     'declares every code the %s plugin raises on the commands that report it', pluginId => {
       expect(pluginIds).toContain(pluginId);
       const own = pluginErrors(registry, pluginId);

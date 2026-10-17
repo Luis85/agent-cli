@@ -1,8 +1,10 @@
+import { PluginFailure } from '../../../domain/shared/plugin-failure.ts';
+
 /** The `backlog` plugin's registered failure codes; the host maps them to their catalog entries. */
 export type BacklogErrorCode = 'BACKLOG_NOT_FOUND' | 'BACKLOG_AMBIGUOUS' | 'BACKLOG_CONFIG_PROBLEM' | 'BACKLOG_WRITE_REFUSED' | 'BACKLOG_NO_GAP' | 'SYNC_CONFLICT' | 'SYNC_INTERRUPTED';
 
-export function backlogError(code: BacklogErrorCode, message: string, details?: Record<string, unknown>): Error {
-  return Object.assign(new Error(message), { code, ...(details ? { details } : {}) });
+export function backlogError(code: BacklogErrorCode, message: string, details?: Record<string, unknown>): PluginFailure {
+  return new PluginFailure(code, message, details);
 }
 
 /** Why a write was refused; `details.reason` carries it. */
@@ -11,6 +13,6 @@ export type RefusalReason =
   | 'parent-cycle' | 'projection' | 'marker' | 'dependency-cycle' | 'reserved-type' | 'use-release-add' | 'already-released'
   | 'unreadable' | 'foreign-release-notes' | 'unbound-property' | 'hidden-type';
 
-export function refused(reason: RefusalReason, message: string, details: Record<string, unknown> = {}): Error {
+export function refused(reason: RefusalReason, message: string, details: Record<string, unknown> = {}): PluginFailure {
   return backlogError('BACKLOG_WRITE_REFUSED', message, { reason, ...details });
 }

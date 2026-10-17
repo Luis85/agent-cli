@@ -6,7 +6,7 @@ import { lstat, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ReleaseSource } from '../application/update.ts';
 import { distributionFiles, releaseVersion, requireArchiveListing, requireUpdate, updateError, type DistributionPolicy } from '../domain/release.ts';
-import { AppError } from '../../../domain/shared/errors.ts';
+import { isCodedFailure } from '../../../domain/shared/plugin-failure.ts';
 
 const execute = promisify(execFile);
 export type ReleaseTool = (file: string, args: string[], options: { timeout?: number; maxBuffer?: number; cwd?: string }) => Promise<{ stdout: string }>;
@@ -25,7 +25,7 @@ export function githubReleases(policy: DistributionPolicy, run: ReleaseTool = ru
         requireUpdate(version, 'GitHub did not return a stable Forge release.');
         return releaseVersion(version);
       } catch (error) {
-        if (error instanceof AppError) throw error;
+        if (isCodedFailure(error)) throw error;
         throw updateError('UPDATE_DOWNLOAD_FAILED', 'Could not check GitHub Releases. Check network access and curl, then retry.');
       }
     },
@@ -57,7 +57,7 @@ export function githubReleases(policy: DistributionPolicy, run: ReleaseTool = ru
         }
         return { version, checksum, files };
       } catch (error) {
-        if (error instanceof AppError) throw error;
+        if (isCodedFailure(error)) throw error;
         throw updateError('UPDATE_DOWNLOAD_FAILED', 'Could not download or unpack the release. Check network access, curl, tar and available disk space; existing app files were preserved.');
       } finally { await rm(staging, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); }
     },
