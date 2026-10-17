@@ -38,7 +38,7 @@ The level shapes only the serialized response. Listener delivery, `replay` and t
 
 | Command | Arguments/options | Behavior |
 | --- | --- | --- |
-| `help` | `[command]` | A concise catalog of command descriptions, usage and behavior hints, or one command's described options, arguments, action details and error codes. Response schemas are available through `schema <command>`; see [command metadata](plugins.md#command-metadata) |
+| `help` | `[command]` | A compact index of command ids with their descriptions, the mutating commands and the global flags, or one command's usage, examples, described options, arguments, action details and error codes. Response schemas are available through `schema <command>`; see [command metadata](plugins.md#command-metadata) |
 | `schema` | `[command]` | Machine-readable contract: every command (or one) with a JSON Schema 2020-12 `inputSchema`, its `outputSchema` where declared, annotations and error codes; the response `envelope` schema; generator and skill IDs; built-in and plugin error codes. See the [schema contract](schema.md) |
 | `browser` | `status / install / screenshot <url> --out image.png / validate <source> [--out directory] / tutorial <source> --out directory` | Capture on-demand webpage evidence or generate an illustrated tutorial from an explicit JSON/Markdown/Canvas plan. Scoped writes, dry runs and revision guards; see [browser reference](browser.md). Contributed by the `browser` core plugin |
 | `webview` | `inspect / publish [--if-match revision] [--check] [--dry-run]` | Inspect or publish the selected webview project's `dist/` into `bin/webviews/<id>`. Use `--project <id>` for an explicit invocation target; see [webviews](webviews.md). Contributed by the `webviews` core plugin |

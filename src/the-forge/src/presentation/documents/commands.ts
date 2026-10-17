@@ -51,6 +51,7 @@ const defaultable = ['markdown', 'canvas', 'base', 'text'];
 export function documentCommands(): Command[] {
   return [
     { id: 'list', description: 'List regular files in stable path order; skip symlinks, Git and node_modules.', usage: 'list [--kind markdown|canvas|base|image|audio|video|pdf|text|attachment] [--path glob] [--limit count] [--cursor token]', ...reading,
+      examples: ['list --kind markdown --path "notes/**"', 'list --limit 100'],
       options: {
         kind: option.string('Only files of this kind.', { enum: fileKinds }),
         path: option.string('Only files whose root-relative path matches this glob (*, **, ?, [abc], {a,b}).'),
@@ -65,6 +66,7 @@ export function documentCommands(): Command[] {
       return { files: pager.items.map(path => ({ path, kind: fileKind(path) })), ...(nextCursor === undefined ? {} : { nextCursor }) };
     } },
     { id: 'read', description: 'Read a document, UTF-8 text or base64 attachment with its SHA-256 revision.', usage: 'read <path> [--parts body] [--project id]', ...reading, projectOption: 'project', args: [pathArgument()], errors: ['NOT_FOUND', 'INVALID_FRONTMATTER'],
+      examples: ['read notes/idea.md', 'read notes/idea.md --parts body'],
       options: { parts: option.string('Comma-separated optional parts of a Markdown read.', { enum: readParts, list: true }), project: option.string('Use this project instead of the selected project.') }, output: readOutput, async run(args, flags, { workspace }) {
       arity(args, 1); const parts = selectedParts(flags, fileKind(args[0]!));
       const result = await workspace.read(args[0]!);
@@ -78,6 +80,7 @@ export function documentCommands(): Command[] {
       return { path: file.path, valid: true, kind, validation: ['markdown', 'canvas', 'base'].includes(kind) ? 'structure' : kind === 'text' ? 'utf8' : 'opaque-bytes' };
     } },
     { id: 'create', description: 'Create a note, Canvas, Base, or file. Existing files are refused.', usage: 'create <path> [--content text | --from path | --stdin] [--encoding base64]', ...writing, destructive: false, idempotent: true, args: [pathArgument('New vault path.')], options: contentOptions,
+      examples: ['create notes/idea.md --content "# Idea"', 'create notes/idea.md --stdin'],
       errors: ['CONFLICT', 'INVALID_INPUT', 'INVALID_ENCODING', 'INVALID_FRONTMATTER', 'INVALID_CANVAS', 'INVALID_BASE'], async run(args, flags, context) {
       arity(args, 1); const path = args[0]!;
       const hasInput = flags.content !== undefined || flags.from !== undefined || flags.stdin === true;
@@ -90,11 +93,13 @@ export function documentCommands(): Command[] {
     // Idempotent although --if-match is optional: it is required once the file exists, so a repeat is refused with
     // CONFLICT, or writes the same bytes when the revision still matches.
     { id: 'write', description: 'Create or replace a file; replacement requires its current revision.', usage: 'write <path> (--content text | --from path | --stdin) [--encoding base64] [--if-match sha256]', ...writing, idempotent: true, args: [pathArgument()],
+      examples: ['write notes/idea.md --from drafts/idea.md --if-match <revision>'],
       options: { ...contentOptions, 'if-match': ifMatch() }, errors: ['CONFLICT', 'INVALID_INPUT', 'INVALID_ENCODING', 'INVALID_FRONTMATTER', 'INVALID_CANVAS', 'INVALID_BASE'], async run(args, flags, context) {
       arity(args, 1); return context.workspace.write([{ path: args[0]!, bytes: await content(flags, context), expectedRevision: value(flags, 'if-match') }], { diff: true });
     } },
     editCommand(),
     { id: 'properties', description: 'Merge YAML frontmatter properties while preserving the Markdown body.', usage: 'properties <note.md> --set JSON --if-match sha256', ...writing, args: [pathArgument('Markdown note path.')], errors: ['CONFLICT', 'UNSUPPORTED_EDIT', 'INVALID_JSON', 'INVALID_INPUT', 'INVALID_KEY', 'INVALID_FRONTMATTER'],
+      examples: ['properties notes/idea.md --set \'{"status":"done","tags":["plan"]}\' --if-match <revision>'],
       options: { set: option.string('JSON object of properties to set.', { required: true }), 'if-match': ifMatch(true) }, async run(args, flags, { workspace }) {
       arity(args, 1); ensure(fileKind(args[0]!) === 'markdown', 'UNSUPPORTED_EDIT', 'Properties require a Markdown note.');
       const changes = parseJson(value(flags, 'set', true)!); ensure(isRecord(changes), 'INVALID_INPUT', '--set must be a JSON object.');

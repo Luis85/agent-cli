@@ -43,6 +43,7 @@ export const germanActions: Record<string, string> = {
 };
 
 export const germanGuidance = {
+  helpNext: 'Verwendung, Optionen, Argumente, Fehler und Beispiele eines Befehls zeigt help <command>, seine JSON-Schemas schema <command>. make listet die Generatoren, skills die Agent-Skills.',
   attachments: 'Dateien verlustfrei als Bytes lesen, kopieren, ersetzen und einbetten; keine integrierte Konvertierung, Darstellung oder PDF-Inhaltsbearbeitung.',
   otherFiles: 'Uninterpretierte Bytes; Plugins können weitere Verarbeitung bereitstellen.',
   textFiles: 'textFilenames gelten ohne Beachtung der Groß- und Kleinschreibung, auch mit Punkt-Suffixen, die mit einem anderen Zeichen als einem Punkt beginnen; native Erweiterungen haben Vorrang. UTF-8 lesen, wörtlich bearbeiten, ergänzen und vollständig ersetzen, mit Unified-Diffs im Probelauf; ungültiges UTF-8 und Inhalte mit NUL-Zeichen werden als Base64-Anhang gelesen.',

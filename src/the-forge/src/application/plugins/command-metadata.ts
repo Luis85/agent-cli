@@ -23,6 +23,7 @@ import { actionSuggestions } from './suggestions.ts';
  *   idempotent, and so is one that requires `--if-match`: the repeat fails on the changed revision. A mode whose
  *   `--if-match` is optional declares `idempotent` itself when a repeat is refused or changes nothing.
  * - `output`: the JSON Schema of `data` in a successful response, on the command or, overriding it, on an action.
+ * - `examples`: one to three complete invocations that start with the command id, which `help <command>` shows.
  */
 export type CommandScope = 'workspace' | 'project';
 const unknownActionCodes = ['UNKNOWN_GENERATOR', 'INVALID_ARGUMENT'] as const;
@@ -61,6 +62,8 @@ export interface CommandMetadata extends CommandMode {
   output?: JsonSchema;
   /** Failure codes the command reports itself, beyond the input and routing codes every command can raise. */
   errors?: readonly string[];
+  /** One to three invocations after `forge`, each starting with the command id; examples are not translated. */
+  examples?: readonly string[];
 }
 export interface ResolvedMode { action?: string; scope: CommandScope; discovery: boolean; mutating: boolean; projectOption?: string }
 
@@ -292,5 +295,7 @@ export function validateCommandMetadata(command: Record<string, unknown>): void 
   }
   ensure(command.defaultAction === undefined || (typeof command.defaultAction === 'string' && isRecord(command.actions) && Object.hasOwn(command.actions, command.defaultAction)), 'INVALID_PLUGIN', `${where} defaultAction must name a declared action.`);
   ensure(command.unknownAction === undefined || (unknownActionCodes.includes(command.unknownAction as UnknownActionCode) && isRecord(command.actions)), 'INVALID_PLUGIN', `${where} unknownAction must be ${unknownActionCodes.join(' or ')} for a command with actions.`);
+  ensure(command.examples === undefined || (Array.isArray(command.examples) && command.examples.length >= 1 && command.examples.length <= 3
+    && command.examples.every(example => typeof example === 'string' && (example === command.id || example.startsWith(`${String(command.id)} `)))), 'INVALID_PLUGIN', `${where} examples must list one to three invocations that start with the command id.`);
   ensure(command.errors === undefined || (Array.isArray(command.errors) && command.errors.every(code => typeof code === 'string' && /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code))), 'INVALID_PLUGIN', `${where} errors must list UPPER_SNAKE_CASE codes.`);
 }

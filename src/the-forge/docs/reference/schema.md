@@ -9,7 +9,7 @@ node bin/forge.js schema --json          # the complete contract
 node bin/forge.js schema read --json     # one command, with only the error codes it can report
 ```
 
-Start with `help` for a concise catalog of command ids, descriptions, usage and behavior hints. It also lists global options, generators and skills. Use `help <command>` for that command's options, positional arguments, errors and action details, including JSON input document schemas where declared. Help omits response schemas and the envelope; use `schema <command>` when you need those contracts, or `schema` for the complete installed inventory. See [command metadata](plugins.md#command-metadata) for how a command declares them.
+Start with `help` (also `forge` without arguments, `--help` and `-h`) for a compact index of a few kilobytes: `commands` maps each command id to its description, `mutating` lists the commands that can change files or external state, `globalOptions` lists the global flags and `next` points to the details. `make` lists the generators and `skills` the agent skills. Use `help <command>` for that command's usage, examples, options, positional arguments, errors and action details, including JSON input document schemas where declared. Help omits response schemas and the envelope; use `schema <command>` when you need those contracts, or `schema` for the complete installed inventory. See [command metadata](plugins.md#command-metadata) for how a command declares them.
 
 ## Document
 

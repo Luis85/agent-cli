@@ -57,6 +57,11 @@ const applyErrors = ['INVALID_PLAN', 'INVALID_JSON', 'INPUT_REQUIRED', 'NOT_FOUN
 export function editCommand(): Command {
   return {
     id: 'edit', description: 'Edit Markdown or UTF-8 text in place: literal replacements, an append, or a section or block edit.',
+    examples: [
+      'edit notes/idea.md --find Draft --replace Final --if-match <revision>',
+      'edit notes/idea.md --section "Plan > Risks" --append --content "- Late data" --if-match <revision>',
+      'edit notes/idea.md --edits @edits.json --if-match <revision> --dry-run',
+    ],
     usage: 'edit <note.md|text-file> --if-match sha256 (--find text --replace text | --edits json|@file|- | --append --content text | (--section "A > B" [--section-line n] | --block id) (--replace text | --append --content text | --prepend --content text))',
     scope: 'project', discovery: false, mutating: true, args: [{ name: 'path', description: 'Vault path relative to the command scope.', required: true }], errors: editErrors, output: editOutput,
     options: {
@@ -83,6 +88,7 @@ export function editCommand(): Command {
 export function applyCommand(): Command {
   return {
     id: 'apply', description: 'Run a JSON plan of writes, edits, frontmatter changes, moves and deletions as one guarded batch.', usage: 'apply <plan.json|-> [--project id]',
+    examples: ['apply plan.json --dry-run', 'apply plan.json'],
     // Destructive: write, edit and delete replace or remove content. Not idempotent: an operation without ifMatch,
     // such as an append, applies again on a repeat; only a plan whose every operation carries ifMatch fails instead.
     scope: 'project', projectOption: 'project', discovery: false, mutating: true, destructive: true, idempotent: false, errors: applyErrors, output: applyOutput,
