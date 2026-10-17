@@ -57,11 +57,17 @@ export interface WriteRequest {
     bytes: Uint8Array;
     expectedRevision?: string;
 }
+/**
+ * One file change in batch order. `unchanged` is a write whose bytes equal the stored file: nothing is written or
+ * published. `alreadyApplied` marks such a write whose revision guard did not match (an existing file for a create,
+ * or a stale revision): the file already holds exactly the requested bytes, as after a retried request.
+ */
 export interface FileChange {
     path: string;
     revision: string;
-    operation: 'created' | 'updated' | 'deleted';
+    operation: 'created' | 'updated' | 'deleted' | 'unchanged';
     bytes: number;
+    alreadyApplied?: true;
 }
 /** A guarded move of a file or folder. A folder's `expectedRevision` is its folder revision (see `FileStat`). */
 export interface RenameRequest {

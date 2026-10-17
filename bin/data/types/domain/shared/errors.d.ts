@@ -19,6 +19,8 @@ export declare function forgeError(code: ErrorCode, message: string, details?: R
 export declare function codedError(code: string, message: string, exitCode: number, details?: Record<string, unknown>): AppError;
 /** The same failure located inside a larger request: its message gains `prefix` and its details gain `details`. */
 export declare function locatedError(error: AppError, prefix: string, details: Record<string, unknown>): AppError;
+/** The same failure restated for another frame of reference, such as paths relative to a narrower scope. */
+export declare function restatedError(error: AppError, message: string, details: Record<string, unknown> | undefined): AppError;
 /** Event diagnostics deliberately omit messages, input and arbitrary error details. */
 export declare function summarizeError(error: unknown): {
     code: string;

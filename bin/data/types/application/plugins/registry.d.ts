@@ -65,6 +65,8 @@ export interface Generator<Context extends CommandContext = CommandContext> exte
     review?: boolean;
     /** Failure codes the generator reports itself; `make` publishes them with its own. */
     errors?: readonly string[];
+    /** JSON Schema of a `run` generator's result; a `generate` generator without `review` returns the written batch. */
+    output?: JsonSchema;
     generate?(request: GeneratorRequest<Context>): readonly WriteRequest[] | Promise<readonly WriteRequest[]>;
     run?(request: GeneratorRequest<Context>): unknown | Promise<unknown>;
 }

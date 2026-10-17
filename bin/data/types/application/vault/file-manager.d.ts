@@ -43,8 +43,26 @@ export declare class FileManager {
     private readonly metadata;
     private readonly scope;
     constructor(workspace: Workspace, metadata: MetadataIndex, scope: FileManagerScope);
-    /** Moves a file or folder and, unless `updateLinks` is false, rewrites every link to it in the same batch. */
+    /**
+     * Moves a file or folder and, unless `updateLinks` is false, rewrites every link to it in the same batch. A
+     * destination that ends with `/` or names an existing folder receives the source under its own name. A retry
+     * whose source is gone while the destination holds the `ifMatch` revision reports `alreadyApplied` and writes nothing.
+     */
     move(from: string, to: string, options?: MoveOptions): Promise<{
+        dryRun: boolean;
+        from: string;
+        to: string;
+        kind: "file" | "folder";
+        revision: string;
+        renames: never[];
+        changes: never[];
+        links: {
+            updated: number;
+            files: number;
+            unrewritten: UnrewrittenLink[];
+        };
+        alreadyApplied: true;
+    } | {
         dryRun: boolean;
         from: string;
         to: string;
@@ -58,8 +76,27 @@ export declare class FileManager {
             unrewritten: UnrewrittenLink[];
         };
     }>;
-    /** Renames in place: `name` has no slash; a file keeps its extension when `name` omits it. */
+    /** Moves `from` to exactly `to`. */
+    private relocate;
+    /**
+     * Renames in place: `name` has no slash; a file keeps its extension when `name` omits it. A retry after the
+     * rename (the source is gone and `ifMatch` is given) treats the source as a file, like `move` reports it.
+     */
     rename(path: string, name: string, options?: MoveOptions): Promise<{
+        dryRun: boolean;
+        from: string;
+        to: string;
+        kind: "file" | "folder";
+        revision: string;
+        renames: never[];
+        changes: never[];
+        links: {
+            updated: number;
+            files: number;
+            unrewritten: UnrewrittenLink[];
+        };
+        alreadyApplied: true;
+    } | {
         dryRun: boolean;
         from: string;
         to: string;
@@ -98,6 +135,20 @@ export declare class FileManager {
     }>;
     /** Obsidian's `renameFile`: a move that updates links. */
     renameFile(path: string, newPath: string, options?: Omit<MoveOptions, 'updateLinks'>): Promise<{
+        dryRun: boolean;
+        from: string;
+        to: string;
+        kind: "file" | "folder";
+        revision: string;
+        renames: never[];
+        changes: never[];
+        links: {
+            updated: number;
+            files: number;
+            unrewritten: UnrewrittenLink[];
+        };
+        alreadyApplied: true;
+    } | {
         dryRun: boolean;
         from: string;
         to: string;
@@ -143,6 +194,8 @@ export declare class FileManager {
     }>;
     /** Links from outside `path` that resolve to it or into it. */
     private brokenLinks;
+    /** The trash name of `path` for a given copy number, ignoring trash folders that are files on the way. */
+    private trashCandidate;
     /**
      * `.trash/<path>`, or with ` 1`, ` 2`… before the extension when that name is taken, as Obsidian names trash copies.
      * A trash folder on the way that is a file (an extensionless file trashed earlier) is passed by such a name too.
@@ -150,6 +203,15 @@ export declare class FileManager {
     private trashDestination;
     /** The first copy name of `name` in `folder` that is a folder or free; reading tells a file from a folder without walking it. */
     private trashFolderName;
+    private isFolder;
+    /** The move's source, or the result of a move that already happened: the source is gone and `to` has `ifMatch`. */
+    private source;
+    /**
+     * NOT_FOUND for a delete whose path is gone. When `ifMatch` names the revision of an entry in `.trash` under the
+     * name this delete would have given it, details report `alreadyDeleted` and that `trashPath`: an earlier identical
+     * delete (or another one) moved it there. The code stays NOT_FOUND, so a mistyped path never reads as success.
+     */
+    private missing;
     private ensureAbsent;
     /** Protect every alias of the reserved roots: letter case, Windows trailing dots, spaces and short names, HFS+ ignorable code points. */
     private ensureMovable;

@@ -30,7 +30,7 @@ export declare class GenerationService {
         outputs: ({
             currentContent?: string | undefined;
             path: string;
-            status: "changed" | "unchanged";
+            status: "unchanged" | "changed";
             revision: string;
             content: string;
         } | {
@@ -56,7 +56,7 @@ export declare class GenerationService {
         outputs: ({
             currentContent?: string | undefined;
             path: string;
-            status: "changed" | "unchanged";
+            status: "unchanged" | "changed";
             revision: string;
             content: string;
         } | {

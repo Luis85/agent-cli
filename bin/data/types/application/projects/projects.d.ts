@@ -12,6 +12,12 @@ export interface ProjectMetadata {
 export interface ProjectInfo extends ProjectMetadata {
     directory: string;
 }
+/** A directory with a project marker that does not describe a valid project, with the failure it reports. */
+export interface InvalidProject {
+    directory: string;
+    code: string;
+    reason: string;
+}
 /**
  * The files of a new project and of a project component. The `scaffolds` core plugin provides it as the service
  * `scaffolds.projects`; `project create` and `project component` fail with PLUGIN_UNAVAILABLE without it.
@@ -32,7 +38,15 @@ export declare class ProjectService {
     private readonly scaffolder;
     private readonly events;
     constructor(files: FileRepository, workspace: Workspace, projectsDirectory: string, scaffolder: ProjectScaffolderLookup, events: EventBus);
+    /** Every valid project, and every directory whose project marker is invalid, so one bad project hides no other. */
+    discover(): Promise<{
+        projects: ProjectInfo[];
+        invalid: InvalidProject[];
+    }>;
+    /** Every project; an invalid one fails, so callers that act on all projects never act on a partial set. */
     list(): Promise<ProjectInfo[]>;
+    /** Each marked project directory in name order: its project, or the INVALID_PROJECT(_NAME) failure it reports. */
+    private inspectAll;
     inspect(name: string): Promise<ProjectInfo>;
     current(): Promise<ProjectInfo | null>;
     requireCurrent(): Promise<ProjectInfo>;
