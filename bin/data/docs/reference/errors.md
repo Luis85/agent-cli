@@ -2,7 +2,7 @@
 
 [Documentation](../index.md) · Reference
 
-Every built-in failure has a stable `code` from this catalog. The catalog is the single source of exit statuses, categories, retryability and recovery hints. `node bin/forge.js schema --json` lists it at `data.errors` as `{code, exitCode, category, retryable, summary}`, so agents can discover it from the installed executable. A test fails when Forge source throws a code missing here, or when a catalogued code is no longer thrown.
+Every built-in failure has a stable `code` from this catalog. The catalog is the single source of exit statuses, categories, retryability and recovery hints. `node bin/forge.js schema --all --json` lists it at `data.errors` as `{code, exitCode, category, retryable, summary}`, and `schema <command> --json` lists the codes that command can report, so agents can discover it from the installed executable. A test fails when Forge source throws a code missing here, or when a catalogued code is no longer thrown.
 
 ## Failure envelope
 
@@ -31,8 +31,8 @@ Plugins can register their own codes with a category, summary, hint and retryabi
 | `conflict` | 2 | The target exists or changed since it was read |
 | `not-found` | 3 | A file, project, selected project or the workspace root is missing |
 | `busy` | 4 | Another Forge writer holds the workspace lock, or another command holds the server lifecycle lock |
-| `drift` | 5 | Generated UI, data-source or workflow output differs from its sources |
-| `interrupted` | 130 | Claude Code was interrupted by SIGINT; SIGTERM reports 143 |
+| `drift` | 5 | Generated UI, data-source, generator, workflow, webview or agent output differs from its sources |
+| `interrupted` | 130 | A signal stopped a Claude Code command or a `backlog sync` (SIGINT; SIGTERM reports 143) |
 
 ## Recovering commands and arguments
 

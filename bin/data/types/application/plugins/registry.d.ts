@@ -76,9 +76,11 @@ export interface Generator<Context extends CommandContext = CommandContext> exte
  * the host's own review option definitions, which places them among its options without changing them.
  */
 export declare const hostGeneratorOptions: readonly ["out", "plan", "plan-out", "check", "revisions-from"];
+/** An Agent Skill: SKILL.md `content` and optional further `files` by path inside its folder (`references/x.md`). */
 export interface Skill {
     id: string;
     content: string;
+    files?: Readonly<Record<string, string>>;
 }
 /** `core: true` marks a bundled core plugin; the loader rejects it for user plugins. */
 export interface PluginManifest {

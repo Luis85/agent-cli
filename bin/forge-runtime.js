@@ -1705,8 +1705,8 @@ const utf8 = (path2, bytes) => {
 };
 class Workspace {
   /** `observer` follows each committed batch of this scope, such as the metadata cache of the same root. */
-  constructor(files, codec, events2, dryRun, root = null, observer) {
-    this.files = files;
+  constructor(files2, codec, events2, dryRun, root = null, observer) {
+    this.files = files2;
     this.codec = codec;
     this.events = events2;
     this.dryRun = dryRun;
@@ -1723,8 +1723,8 @@ class Workspace {
    * The same invocation (events, codec, dry run) over another repository scope, such as a selected project.
    * Commit observers are bound to one scope, so the new scope has only the `observer` given here.
    */
-  within(files, root, observer) {
-    return new Workspace(files, this.codec, this.events, this.dryRun, root, observer);
+  within(files2, root, observer) {
+    return new Workspace(files2, this.codec, this.events, this.dryRun, root, observer);
   }
   // CLI handlers and external plugins call this through the typed CommandContext workspace.
   // A successful read is Obsidian's file-open: it emits `workspace.file-open` with the scoped path.
@@ -1883,8 +1883,8 @@ class Workspace {
 }
 const escaped = (text2) => text2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 class ScopedFiles {
-  constructor(files, directory) {
-    this.files = files;
+  constructor(files2, directory) {
+    this.files = files2;
     this.prefix = `${vaultPath(directory)}/`;
     this.inMessage = new RegExp(`(?<![\\w./-])${escaped(this.prefix)}`, "g");
   }
@@ -2549,13 +2549,29 @@ const skillTargets = { claude: ".claude/skills", agents: ".agents/skills" };
 const skillTargetChoices = ["both", ...Object.keys(skillTargets)];
 const skillName = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const isSkillName = (value2) => value2.length <= 64 && skillName.test(value2);
-function skillPaths(id2, roots) {
-  return roots.map((root) => `${root}/${id2}/SKILL.md`);
+const isRecord = (value2) => value2 !== null && typeof value2 === "object" && !Array.isArray(value2);
+function skillFileNames(skill) {
+  return ["SKILL.md", ...Object.keys(skill.files ?? {}).sort()];
+}
+function skillFiles(skill, roots) {
+  const texts2 = { ...skill.files, "SKILL.md": skill.content };
+  return roots.flatMap((root) => skillFileNames(skill).map((name2) => ({ path: `${root}/${skill.id}/${name2}`, content: texts2[name2] })));
+}
+function skillFolderFiles(id2, modules) {
+  return Object.fromEntries(Object.entries(modules).map(([path2, content2]) => [path2.slice(path2.lastIndexOf(`/${id2}/`) + id2.length + 2), content2]));
+}
+const skillFileName = /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/;
+function skillFileIssues(id2, files2) {
+  if (files2 === void 0) return [];
+  if (!isRecord(files2)) return [`Skill ${id2} files must map paths inside the skill folder to text.`];
+  return Object.entries(files2).flatMap(([path2, content2]) => [
+    ...skillFileName.test(path2) && path2.length <= 255 && path2.toUpperCase() !== "SKILL.MD" ? [] : [`Skill ${id2} file ${path2} must be a relative path inside the skill folder other than SKILL.md.`],
+    ...typeof content2 === "string" ? [] : [`Skill ${id2} file ${path2} must be text.`]
+  ]);
 }
 function targetRoots(target2) {
   return target2 === "both" ? Object.values(skillTargets) : [skillTargets[target2]];
 }
-const isRecord = (value2) => value2 !== null && typeof value2 === "object" && !Array.isArray(value2);
 const text$j = (value2, maximum) => typeof value2 === "string" && value2.trim().length > 0 && value2.length <= maximum;
 function optionalIssues(id2, frontmatter) {
   const { license: license2, compatibility, metadata: metadata2 } = frontmatter, tools = frontmatter["allowed-tools"];
@@ -2599,7 +2615,7 @@ function validateContributions(plugin2, pluginId, origin, frontmatter) {
   for (const generator of plugin2.generators ?? []) validateGenerator(generator);
   for (const skill of plugin2.skills ?? []) {
     ensure(typeof skill.content === "string", "INVALID_PLUGIN", "Invalid skill.");
-    const issues2 = skillIssues(skill.id, frontmatter(skill.content));
+    const issues2 = [...skillIssues(skill.id, frontmatter(skill.content)), ...skillFileIssues(skill.id, skill.files)];
     ensure(issues2.length === 0, "INVALID_PLUGIN", issues2.join(" "));
   }
   ensure(plugin2.provides === void 0 || isRecord$1(plugin2.provides), "INVALID_PLUGIN", "provides must map service ids to implementations.");
@@ -2865,14 +2881,14 @@ const reviewOptions = {
   "plan-out": option$1.string("Write the plan's revision manifest to this path."),
   check: option$1.boolean("Fail with a drift code when outputs are missing or differ.")
 };
-async function generationControls(flags, files) {
+async function generationControls(flags, files2) {
   const revisionsPath = value$2(flags, "revisions-from"), manifestPath2 = value$2(flags, "plan-out");
   const planning = flags.plan === true || manifestPath2 !== void 0;
   ensure(!(planning && flags.check), "INVALID_ARGUMENT", "Choose --plan/--plan-out or --check.");
   ensure(!(revisionsPath !== void 0 && (planning || flags.check)), "INVALID_ARGUMENT", "Planning and checks do not accept --revisions-from. Review a plan before authorizing regeneration.");
   let revisions;
   if (revisionsPath !== void 0) {
-    const text2 = new TextDecoder("utf-8", { fatal: true }).decode((await files.read(revisionsPath)).bytes);
+    const text2 = new TextDecoder("utf-8", { fatal: true }).decode((await files2.read(revisionsPath)).bytes);
     let parsed2;
     try {
       parsed2 = JSON.parse(text2);
@@ -10545,8 +10561,8 @@ function projectName(name2, type2 = "library") {
   return name2;
 }
 class ProjectService {
-  constructor(files, workspace2, projectsDirectory, scaffolder, events2) {
-    this.files = files;
+  constructor(files2, workspace2, projectsDirectory, scaffolder, events2) {
+    this.files = files2;
     this.workspace = workspace2;
     this.projectsDirectory = projectsDirectory;
     this.scaffolder = scaffolder;
@@ -10707,22 +10723,22 @@ const templateInstallerService = "templates.installer";
 const encode$4 = (value2) => new TextEncoder().encode(value2);
 const instructions = `# The Forge workflow
 
-Read bin/data/README.md and bin/data/docs/reference/cli.md before using the CLI.
-Run \`node bin/forge.js help\` or \`node bin/forge.js schema --json\` to discover commands.
-Environment settings and enabled plugins live in bin/config.json.
-Shared templates live in bin/templates and plugins live in bin/plugins.
+Work on this workspace's files through \`node bin/forge.js\`; every command returns one JSON envelope.
+Before your first command, read the forge-workflow skill in .claude/skills or .agents/skills; the
+other installed forge-* skills cover notes, code generation, backlogs, agents, webviews and the browser.
+Run \`node bin/forge.js help\` for the command index and \`node bin/forge.js help <command>\` for usage and examples.
+Environment settings and enabled plugins live in bin/config.json; shared templates live in bin/templates
+and plugins in bin/plugins.
 
-Run \`node bin/forge.js project list\` to discover projects, then
-\`node bin/forge.js project open <id>\` to select a project before working on its files.
-Check \`node bin/forge.js project current\` before scoped operations; paths resolve inside the open project.
-Run \`node bin/forge.js project close\` when finished with that project.
+Run \`node bin/forge.js project list\`, then \`node bin/forge.js project open <id>\` before working on a project's files.
+Check \`node bin/forge.js project current\`: paths resolve inside the open project. Run
+\`node bin/forge.js project close\` when finished with it.
 
 Establish acceptance criteria before generating or editing files. Read existing files first,
-preview mutations with --dry-run, and supply the current revision with --if-match when replacing files.
+preview mutations with --dry-run, and pass the current revision with --if-match when changing files.
 Treat conflicts as a request to reread and reconcile. Verify changes with the project's checks.
 Keep domain invariants explicit, application use cases dependent on injected ports, and adapters at the edges.
 Use clear names and focused functions; verify acceptance criteria and failure behavior with meaningful tests.
-Use the installed agent skills in .claude/skills or .agents/skills for the development and file-editing workflows.
 Enable only reviewed plugins: plugins execute with Node's permissions.
 `;
 class SetupService {
@@ -10744,7 +10760,7 @@ class SetupService {
       ...this.artifacts.map((artifact) => ({ path: `bin/${vaultPath(artifact.path)}`, bytes: Uint8Array.from(artifact.bytes) })),
       { path: "bin/config.json", bytes: encode$4(JSON.stringify(this.config, null, 2) + "\n") },
       // Every skill goes to both agent skill roots: .claude/skills for Claude Code and .agents/skills for other agents.
-      ...this.skills.flatMap((skill) => skillPaths(vaultPath(skill.id), Object.values(skillTargets)).map((path2) => ({ path: path2, bytes: encode$4(skill.content) }))),
+      ...this.skills.flatMap((skill) => skillFiles({ ...skill, id: vaultPath(skill.id) }, Object.values(skillTargets)).map((file) => ({ path: file.path, bytes: encode$4(file.content) }))),
       ...(this.templates ?? []).map((template) => ({ path: `bin/templates/${vaultPath(template.path)}`, bytes: encode$4(template.content) })),
       { path: "bin/plugins/.gitkeep", bytes: new Uint8Array() },
       { path: `${this.config.paths.projects}/.gitkeep`, bytes: new Uint8Array() },
@@ -11600,7 +11616,7 @@ class NodeFiles {
    * is not valid UTF-8 is INVALID_PATH.
    */
   async folder(path2) {
-    const files = [], folders2 = [], special = [], locks = [];
+    const files2 = [], folders2 = [], special = [], locks = [];
     let git = false, entered = false;
     const walk2 = async (directory, prefix) => {
       const entries2 = await promises.readdir(directory, { withFileTypes: true, encoding: "buffer" });
@@ -11624,7 +11640,7 @@ class NodeFiles {
           await walk2(absolute, relative + "/");
         } else if (entry2.isFile()) {
           const bytes = await promises.readFile(absolute);
-          files.push({ path: relative, revision: revisionOf(bytes), bytes: bytes.length });
+          files2.push({ path: relative, revision: revisionOf(bytes), bytes: bytes.length });
         } else special.push({ path: relative, kind: "other" });
       }
     };
@@ -11636,17 +11652,17 @@ class NodeFiles {
       throw forgeError("CONFLICT", `Folder changed while Forge read it; read it again: ${path2}`, { path: path2 });
     }
     const order2 = (a, b) => a < b ? -1 : a > b ? 1 : 0;
-    files.sort((a, b) => order2(a.path, b.path));
+    files2.sort((a, b) => order2(a.path, b.path));
     folders2.sort(order2);
     special.sort((a, b) => order2(a.path, b.path));
     const digest = node_crypto.createHash("sha256");
-    for (const file of files) digest.update(`${file.path}\0${file.revision}
+    for (const file of files2) digest.update(`${file.path}\0${file.revision}
 `);
     for (const folder of folders2) digest.update(`${folder}/\0folder
 `);
     for (const entry2 of special) digest.update(`${entry2.path}\0${entry2.kind}${entry2.target === void 0 ? "" : `\0${entry2.target}`}
 `);
-    return { revision: digest.digest("hex"), files, folders: folders2, special, git, locks: locks.sort(order2) };
+    return { revision: digest.digest("hex"), files: files2, folders: folders2, special, git, locks: locks.sort(order2) };
   }
   /** @internal */
   revision(bytes) {
@@ -11732,7 +11748,7 @@ class NodeFiles {
     }
   }
 }
-async function stampedFiles(files, directory, stamped = () => true) {
+async function stampedFiles(files2, directory, stamped = () => true) {
   const checkedAtMs = Date.now();
   const listed = [];
   const scope2 = directory === void 0 ? "" : `${vaultPath(directory)}/`;
@@ -11751,16 +11767,16 @@ async function stampedFiles(files, directory, stamped = () => true) {
       }
     }
   };
-  walk2(directory === void 0 ? files.root : await files.resolvePath(directory, true), "");
+  walk2(directory === void 0 ? files2.root : await files2.resolvePath(directory, true), "");
   return { checkedAtMs, files: listed.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0) };
 }
 function nodeFileDates(root) {
-  let files;
+  let files2;
   const folders2 = /* @__PURE__ */ new Map();
   const folder = (path2) => {
     let checked2 = folders2.get(path2);
     if (checked2 === void 0) {
-      checked2 = (files ??= NodeFiles.at(root)).then(async (repository) => {
+      checked2 = (files2 ??= NodeFiles.at(root)).then(async (repository) => {
         if (path2 === "") return repository.root;
         const absolute = await repository.resolvePath(path2, true);
         const info = await promises.lstat(absolute).catch(() => null);
@@ -12170,8 +12186,8 @@ class ObsidianDocuments {
     return replaceInYamlStrings(yaml, yamlDocument(yaml), replacements);
   }
 }
-async function readManifest(path2, files, appVersion) {
-  const text2 = new TextDecoder("utf-8", { fatal: true }).decode((await files.read(path2)).bytes);
+async function readManifest(path2, files2, appVersion) {
+  const text2 = new TextDecoder("utf-8", { fatal: true }).decode((await files2.read(path2)).bytes);
   let value2;
   try {
     value2 = JSON.parse(text2);
@@ -12181,15 +12197,15 @@ async function readManifest(path2, files, appVersion) {
   validatePluginManifest(value2, appVersion);
   return value2;
 }
-async function loadModule(directory, files) {
+async function loadModule(directory, files2) {
   const esm = `${directory}/main.mjs`;
   try {
-    await files.read(esm);
+    await files2.read(esm);
   } catch (error2) {
     if (!(error2 instanceof AppError) || error2.code !== "NOT_FOUND") throw error2;
     const commonjs = `${directory}/main.js`;
-    const source2 = new TextDecoder("utf-8", { fatal: true }).decode((await files.read(commonjs)).bytes);
-    const filename = await files.resolvePath(commonjs);
+    const source2 = new TextDecoder("utf-8", { fatal: true }).decode((await files2.read(commonjs)).bytes);
+    const filename = await files2.resolvePath(commonjs);
     const module = { exports: {} };
     const execute2 = node_vm.compileFunction(source2, ["exports", "require", "module", "__filename", "__dirname"], { filename });
     execute2.call(module.exports, module.exports, node_module.createRequire(filename), module, filename, path$3.dirname(filename));
@@ -12197,14 +12213,14 @@ async function loadModule(directory, files) {
   }
   const loaded = await import(
     /* @vite-ignore */
-    node_url.pathToFileURL(await files.resolvePath(esm)).href
+    node_url.pathToFileURL(await files2.resolvePath(esm)).href
   );
   return loaded.default;
 }
-async function installedPlugins(directory, enabled2, skipped, files, appVersion, warn) {
+async function installedPlugins(directory, enabled2, skipped, files2, appVersion, warn) {
   let folder;
   try {
-    folder = await files.stat(directory);
+    folder = await files2.stat(directory);
   } catch (error2) {
     if (error2 instanceof AppError && error2.code === "NOT_FOUND") return [];
     throw error2;
@@ -12214,7 +12230,7 @@ async function installedPlugins(directory, enabled2, skipped, files, appVersion,
   const installed = [];
   for (const id2 of ids) {
     try {
-      const manifest = await readManifest(`${directory}/${id2}/manifest.json`, files, appVersion);
+      const manifest = await readManifest(`${directory}/${id2}/manifest.json`, files2, appVersion);
       ensure(manifest.id === id2, "INVALID_PLUGIN", `Manifest id must match plugin directory ${id2}.`);
       installed.push({ manifest, skipped: skipped && enabled2.includes(id2) });
     } catch (error2) {
@@ -12223,14 +12239,14 @@ async function installedPlugins(directory, enabled2, skipped, files, appVersion,
   }
   return installed;
 }
-async function loadEnabledPlugins(directory, ids, files, registry2, events2) {
+async function loadEnabledPlugins(directory, ids, files2, registry2, events2) {
   ensure(Array.isArray(ids) && ids.every((id2) => typeof id2 === "string" && /^[a-z][a-z0-9-]*$/.test(id2)) && new Set(ids).size === ids.length, "INVALID_PLUGIN_CONFIG", "Enabled plugins must contain unique lowercase kebab-case IDs.");
   const manifests = [];
   for (const id2 of ids) {
     const path2 = `${directory}/${id2}/manifest.json`;
     let manifest;
     try {
-      manifest = await readManifest(path2, files, registry2.appVersion);
+      manifest = await readManifest(path2, files2, registry2.appVersion);
     } catch (error2) {
       if (!(error2 instanceof AppError) || error2.code !== "NOT_FOUND") throw error2;
       registry2.recordMissing(id2, path2, events2);
@@ -12240,17 +12256,17 @@ async function loadEnabledPlugins(directory, ids, files, registry2, events2) {
     manifests.push(manifest);
   }
   for (const manifest of manifests) {
-    const exported = await loadModule(`${directory}/${manifest.id}`, files);
+    const exported = await loadModule(`${directory}/${manifest.id}`, files2);
     const instance = typeof exported === "function" ? new exported(manifest) : exported;
     ensure(isRecord$1(instance), "INVALID_PLUGIN", `Plugin ${manifest.id} must export an object or class.`);
     registry2.register(Object.assign(instance, { manifest }), events2);
   }
 }
-async function recordMissingPlugins(directory, ids, files, registry2, events2) {
+async function recordMissingPlugins(directory, ids, files2, registry2, events2) {
   for (const id2 of ids.filter((entry2) => /^[a-z][a-z0-9-]*$/.test(entry2))) {
     const path2 = `${directory}/${id2}/manifest.json`;
     try {
-      await files.stat(path2);
+      await files2.stat(path2);
     } catch (error2) {
       if (error2 instanceof AppError && error2.code === "NOT_FOUND") registry2.recordMissing(id2, path2, events2);
     }
@@ -17315,9 +17331,9 @@ function normalizeFrontmatterValue(value2, type2, linkResolutions = {}) {
 function frontmatterLink(target2, display, resolvedPath) {
   return linkValue$1(target2, display === void 0 ? void 0 : fromJs(display), resolvedPath);
 }
-function createLinkResolutionMap(files = [], entries2 = []) {
+function createLinkResolutionMap(files2 = [], entries2 = []) {
   const map2 = {};
-  for (const file of files)
+  for (const file of files2)
     addFileResolution(map2, file);
   for (const entry2 of entries2)
     addLinkResolution(map2, entry2.target, entry2.resolvedPath);
@@ -17937,14 +17953,14 @@ class Evaluator {
     return file?.path;
   }
   findFileByLinkTarget(target2) {
-    const files = this.context.files ?? [];
+    const files2 = this.context.files ?? [];
     const normalizedTarget = normalizePath$1(target2);
     const markdownTarget = normalizePath$1(ensureMarkdownExtension(target2));
     const basenameTarget = withoutMarkdownExtension(target2);
     const normalizedTargetLower = normalizedTarget.toLowerCase();
     const markdownTargetLower = markdownTarget.toLowerCase();
     const basenameTargetLower = basenameTarget.toLowerCase();
-    return files.find((file) => normalizePath$1(file.path) === normalizedTarget) ?? files.find((file) => normalizePath$1(file.path) === markdownTarget) ?? files.find((file) => normalizePath$1(file.path).endsWith(`/${markdownTarget}`)) ?? files.find((file) => file.basename === target2 || withoutMarkdownExtension(file.name ?? "") === target2) ?? files.find((file) => normalizePath$1(file.path).toLowerCase() === normalizedTargetLower) ?? files.find((file) => normalizePath$1(file.path).toLowerCase() === markdownTargetLower) ?? files.find((file) => normalizePath$1(file.path).toLowerCase().endsWith(`/${markdownTargetLower}`)) ?? files.find((file) => (file.basename ?? "").toLowerCase() === basenameTargetLower || withoutMarkdownExtension(file.name ?? "").toLowerCase() === basenameTargetLower);
+    return files2.find((file) => normalizePath$1(file.path) === normalizedTarget) ?? files2.find((file) => normalizePath$1(file.path) === markdownTarget) ?? files2.find((file) => normalizePath$1(file.path).endsWith(`/${markdownTarget}`)) ?? files2.find((file) => file.basename === target2 || withoutMarkdownExtension(file.name ?? "") === target2) ?? files2.find((file) => normalizePath$1(file.path).toLowerCase() === normalizedTargetLower) ?? files2.find((file) => normalizePath$1(file.path).toLowerCase() === markdownTargetLower) ?? files2.find((file) => normalizePath$1(file.path).toLowerCase().endsWith(`/${markdownTargetLower}`)) ?? files2.find((file) => (file.basename ?? "").toLowerCase() === basenameTargetLower || withoutMarkdownExtension(file.name ?? "").toLowerCase() === basenameTargetLower);
   }
   linkMatchesTarget(link2, target2) {
     const targetPath = target2.type === "File" ? target2.value.path : target2.type === "Link" ? target2.value.path : parseLinkText(stringifyValue(target2)).target;
@@ -18351,10 +18367,10 @@ const compatibilityProfile = {
   ]
 };
 class BaseRowContexts {
-  constructor(files, shared) {
-    this.files = files;
+  constructor(files2, shared) {
+    this.files = files2;
     this.shared = shared;
-    this.contexts = files.map(createFileContext);
+    this.contexts = files2.map(createFileContext);
     this.table = createLinkResolutionMap(this.contexts);
     const writers = /* @__PURE__ */ new Map();
     this.writtenKeys = this.contexts.map((file) => {
@@ -18408,11 +18424,11 @@ class BaseRowContexts {
       }
     }
   }
-  context(file, current, files, linkResolutions) {
+  context(file, current, files2, linkResolutions) {
     const propertyTypes2 = this.propertyTypes(file);
     const note = normalizeFrontmatterProperties(file.properties ?? {}, { linkResolutions, propertyTypes: propertyTypes2 });
     const { formulas, objects, now } = this.shared;
-    return { note, file: current, files, linkResolutions: this.table, objects, thisFile: this.thisFile, formulas, propertyTypes: propertyTypes2, now };
+    return { note, file: current, files: files2, linkResolutions: this.table, objects, thisFile: this.thisFile, formulas, propertyTypes: propertyTypes2, now };
   }
   // Date types apply only where the row has a value, so empty dates evaluate as null rather than invalid dates.
   propertyTypes(file) {
@@ -18613,10 +18629,10 @@ function baseFile(path2, cache, problems, warnings) {
     warnings.push({ code: "unparseable-note", path: path2, message: fill$1(indexMessages.unparseableNote, { path: path2, problem }) });
     return bare;
   }
-  const references = cache.references(path2), metadata2 = cache.getFileCache(path2);
-  const links2 = references.map((item) => baseLink(item, path2, warnings));
+  const references2 = cache.references(path2), metadata2 = cache.getFileCache(path2);
+  const links2 = references2.map((item) => baseLink(item, path2, warnings));
   const embeds2 = links2.filter((_, position2) => {
-    const item = references[position2];
+    const item = references2[position2];
     return item.kind === "embed" || item.kind === "frontmatter" && item.reference.embed === true;
   });
   return { path: path2, properties: typedLinks(metadata2?.frontmatter ?? {}, path2, cache), links: links2, embeds: embeds2, tags: allTags(metadata2), backlinks: [] };
@@ -18625,17 +18641,17 @@ async function indexBaseFiles(cache, dates) {
   const problems = new Map(cache.issues().map((issue2) => [issue2.path, issue2.message]));
   const warnings = [];
   const indexed2 = cache.files().map((path2) => baseFile(path2, cache, problems, warnings));
-  const files = await mapInOrder(indexed2, pendingFileReads$1, async (file) => {
+  const files2 = await mapInOrder(indexed2, pendingFileReads$1, async (file) => {
     const { size, ctime, mtime } = await dates(file.path);
     return { ...file, size, ctime, mtime };
   });
-  const byPath2 = new Map(files.map((file) => [file.path, file]));
-  for (const source2 of files) {
+  const byPath2 = new Map(files2.map((file) => [file.path, file]));
+  for (const source2 of files2) {
     for (const target2 of new Set(source2.links?.map((link2) => link2.resolvedPath).filter((path2) => Boolean(path2)))) {
       byPath2.get(target2)?.backlinks?.push({ path: source2.path, resolvedPath: source2.path });
     }
   }
-  return { files, warnings };
+  return { files: files2, warnings };
 }
 const indexes = /* @__PURE__ */ new WeakMap();
 function sharedBaseIndex(cache, dates) {
@@ -18648,10 +18664,10 @@ function sharedBaseIndex(cache, dates) {
   });
   return index2;
 }
-async function basePropertyTypes(files) {
+async function basePropertyTypes(files2) {
   let data;
   try {
-    data = JSON.parse(new TextDecoder().decode((await files.read(".obsidian/types.json")).bytes));
+    data = JSON.parse(new TextDecoder().decode((await files2.read(".obsidian/types.json")).bytes));
   } catch (error2) {
     if (error2 instanceof AppError && error2.code === "NOT_FOUND") return {};
     if (error2 instanceof SyntaxError) throw forgeError("INVALID_BASE_PROPERTY_TYPES", ".obsidian/types.json must contain valid JSON.");
@@ -18801,8 +18817,8 @@ class NodeBasesQueryEngine {
    * the same root, and `dates` reads a file's size and filesystem dates in that root. `timeoutMs` bounds the
    * evaluation time of one query over all its files; exceeding it fails with BASE_TIMEOUT.
    */
-  constructor(files, codec, metadata2, dates, timeoutMs = defaultBaseTimeoutMs) {
-    this.files = files;
+  constructor(files2, codec, metadata2, dates, timeoutMs = defaultBaseTimeoutMs) {
+    this.files = files2;
     this.codec = codec;
     this.metadata = metadata2;
     this.dates = dates;
@@ -18982,8 +18998,8 @@ function basesCommand(service) {
     }
   };
 }
-async function validateBaseFile(files, codec, definitionIssues, path2) {
-  const { bytes } = await files.read(path2);
+async function validateBaseFile(files2, codec, definitionIssues, path2) {
+  const { bytes } = await files2.read(path2);
   let base2;
   try {
     base2 = codec.inspect(path2, bytes).data;
@@ -19076,13 +19092,23 @@ const basesPlugin = {
     };
   }
 };
-const workflow = "---\nname: forge-workflow\ndescription: Drive the portable Forge CLI (node bin/forge.js) safely. Discover commands and their JSON Schema contract with schema, select projects, preview with --dry-run, guard writes with --if-match revisions and recover from CONFLICT and other error codes. Use when a workspace has bin/forge.js, when starting any Forge task, or when a Forge command fails.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\nTo bootstrap another project, download a pinned GitHub release rather than copying the source checkout's saved selection. Follow `bin/data/docs/how-to/install.md`: download the trusted release's `install-forge.mjs`, execute it with `--version` and `--workspace`, check its exit status and JSON `ok`, then preview `project create` and verify `project current`. The installer verifies the archive checksum, installs generic defaults and runs setup; it refuses an existing `bin/`. Upgrades preserve configuration, plugins, templates and project selection through a separately reviewed change.\n\nFor self-upgrades, run `update check --json`, review a pinned `update apply --release-version <version> --if-match <revision> --dry-run --json`, then apply with the same version and revision. Upgrades preserve local configuration, project selection, installed plugins, templates and custom webviews. A conflict requires new inspection. Check the next `--version` and `project current`, and restart any running server. See `bin/data/docs/reference/updates.md`.\n\n1. Locate the complete `bin` distribution: `forge.js`, `forge-runtime.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/forge.js config --json` to confirm the projects path, defaults, enabled plugins and their effective `plugins.settings.<plugin-id>` sections, then use `node bin/forge.js help --json` to discover the installed command catalog if needed. For a known task, start with `help <command>` and request `schema <command> --json` for its machine-readable contract. `schema --json` alone is a compact index of command ids; reserve the complete `schema --all --json` for discovering the entire API, and do not load it again on every task. `schema <command>` returns one command's contract: its JSON Schema 2020-12 `inputSchema`, its `outputSchema` (or `annotations.actions.<action>.outputSchema`) for `data`, the error codes it can report, and `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `scope`); `data.envelope` is the response schema. Prefer read-only commands for discovery and treat `destructiveHint: true` commands as needing a reviewed `--dry-run` first. If the bundle is elsewhere, use its absolute path. Select another workspace with `--root` (`node bin/forge.js --root <workspace> schema --json`) or, without it, the `FORGE_ROOT` environment variable; relative paths resolve against that workspace root, not your working directory, and a response warns when the working directory is outside it. The selected workspace always uses its own `bin/config.json`; `--root`, `--no-plugins`, dry-run and formatting flags may appear on either side of the command. A flag after a value-taking option is never its value: write a literal value that starts with `-` as `--key=value`.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Keep shared selection fixed while parallel agents use file commands: checking the context does not lock it for the next invocation. Coordinate selection changes first; use separate workspaces when agents need different selections. Only commands that declare `--project` support a per-invocation target. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` (document commands include a unified `diff` per text file) and generator `preview` before applying. Edit only what changes: `edit --section \"A > B\"` or `--block <id>` for one part of a note, `edit --edits <list>` for several replacements in one file. When several files must change together (a move plus edits and property changes), write one plan for `apply <plan.json|->` and review `apply --dry-run`: it commits as one guarded batch or not at all. The plan's JSON Schema is the `contentSchema` of `apply`'s argument in `schema apply`. Every plan operation on a path that existed before the plan needs the `ifMatch` from your reads, so a repeated plan fails with `CONFLICT` instead of applying twice. When you lost track of a mutation, rerun it: a write of bytes the file already holds reports `operation: \"unchanged\"` (with `alreadyApplied: true` when its guard was stale), a repeated `move` or `rename` succeeds with `alreadyApplied: true`, a `CONFLICT` with `details.alreadyApplied: true` means your edit is already in the file, and a `NOT_FOUND` with `details.alreadyDeleted: true` names the `trashPath` of your earlier delete.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A `CONFLICT` reports `error.details.currentRevision`: reread and reconcile; never blindly retry with the new revision. `NO_MATCH` means `--find` text is absent and `AMBIGUOUS_EDIT` that it matches several lines (`details.lines`); with `--edits`, `details.edit` names the failing entry. `SECTION_NOT_FOUND` lists the note's `details.headings` or `details.blocks`, and `AMBIGUOUS_SECTION` its `details.candidates`: add an ancestor heading or pass a candidate's line as `--section-line`. An `apply` failure adds `details.operation`, the index of the failing operation, and `INVALID_PLAN` lists `details.issues`. Validation failures write nothing. On `ROLLBACK_FAILED`, inspect every reported path and the actual saved contents before doing more work; recovery could not restore every file.\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. On failure follow `error.hint`; only `error.retryable: true` permits an unchanged retry (for example `WORKSPACE_BUSY` or `SERVER_BUSY`); inspect `server status` before repeating `SERVER_STOP_FAILED`. `schema --all` lists every code at `data.errors`. The envelope's `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`; new parent folders appear as `kind: \"folder\"` records); reads and dry runs return `[]`. Use `--events all` on the original invocation when you need lifecycle records, or `--events none`. History is invocation-local; never rerun a mutation just to obtain more events. Warnings may report failed notification listeners after a successful write; inspect committed events and read back before considering any repeat.\n6. Read back the result and validate documents; after vault changes run `vault check --strict` and fix each error finding by its `hint` until it passes (`VAULT_CHECK_FAILED` lists them in `error.details.findings`). For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory's manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/forge.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a visual workspace overview, the agent may offer to start the read-only admin view. Once startup is authorized, run `node bin/forge.js server start --webview admin --json` and share `data.url` locally; the CLI never prompts or opens a browser. `server status` is read-only discovery, `server start` reuses an existing workspace server, and `server stop` ends it. Start/stop support `--dry-run`; a preview never starts or stops a process. These commands always use workspace scope and preserve project selection. Treat the launch URL as local session access information because its fragment contains a bearer token; retrieve a fresh link after restart. Use `help server`, `schema server --json` and `bin/data/docs/reference/server.md` for the lifecycle contract. The view inspects state and cannot change configuration.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying. Templates and `make document` come from the bundled `templates` core plugin, and the project and code scaffolds from `scaffolds`; when `plugins` lists one as disabled, its commands and generators are unknown, `setup` skips the templates with a warning and `project create`/`project component` fail with `PLUGIN_UNAVAILABLE`.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured folders and default framework in `plugins.settings.ui` (`framework`, `components`, `interactions`, `output`, `stories` and their import/export folders; `config --json` shows the effective values). The `ui` core plugin owns `components`, `interactions`, `make ui` and `make stories`; the `data-sources` core plugin owns `data-sources` and `make data-source`, with its folders in `plugins.settings.data-sources`. Feature folders never live under `paths`, which holds only `projects`. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project's framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor agent definitions, follow the forge-agents skill: definitions are docker-agent YAML in `agents/*.yaml`, `agents validate` checks them, and `agents generate --target claude` (with `--plan`, `--check` or `--revisions-from`) maintains `.claude/agents/`; never hand-edit generated agents.\n\nFor agent skills, `skills list` names the skills of the enabled plugins, `skills show <id>` returns one `SKILL.md`, and `skills install [--target both|claude|agents | --out <directory>]` writes them into the selected project's `.claude/skills` and `.agents/skills`; existing files are refused, so a repeat never overwrites an edited skill.\n\nFor native Claude Code configuration, use the `claude` command instead of hand-written JSON. `claude capabilities` lists the supported hook events, handler types, plugin components and runtime operations. `claude hooks inspect` returns the settings document (`--scope project|local|user|plugin`, default `project`) with its `revision`; `claude hooks check` validates it without running handlers; `hooks add <event> --stdin`, `set`, `remove <event> [--index n]`, `enable`, `disable` and `configure` edit it and need `--if-match <revision>` once the file exists. `claude agents list|inspect|create|update|remove|enable|disable|export` manages `.claude/agents/*.md`. `claude plugins create|inspect|manifest|check|asset|write-asset|remove-asset <directory>` authors a plugin folder without running Claude. `claude plugins list|details|install|update|uninstall|enable|disable|validate|configure|prune|init|tag|test|eval`, `claude marketplaces add|list|remove|update` and `claude runtime version|doctor|install|update` run the installed `claude` executable (`--claude-bin`, `--timeout`) and can change the user's Claude Code installation: preview them with `--dry-run`, keep `--scope project` unless the user asks otherwise, never pass `--scope user` without their consent, and expect `idempotentHint: false`. Hooks and plugins run commands; review them like code.\n\nAdd `--lang de` for German descriptions, hints, warnings and findings; commands, options, ids, codes and JSON keys stay the same, so match codes rather than message text.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values '{\"owner\":\"Team\"}' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n\nFor a self-contained browser prototype, use the `forge-webviews` skill and `project create <id> --type webview`. Build and test inside that independent project; `node bin/forge.js webview inspect --project <id>` reports publication state, `webview publish --dry-run` previews the build-output changes, and `server start --webview <id>` returns the packaged preview URL.\n\nFor on-demand webpage screenshots or illustrated flow documentation, follow `forge-browser`. Discover `schema browser`; screenshot and tutorial dry runs validate without launching a browser. Tutorials execute explicit reviewed JSON plans from JSON, Markdown or Canvas, then write guarded document folders.\n";
-const vault = '---\nname: forge-vault\ndescription: Read, search, link-check, create and edit Obsidian Markdown notes, frontmatter properties, Canvas, Bases and attachments through Forge with revision guards, link-preserving moves and trash deletes. Use when working with notes, wikilinks, backlinks, tags, .canvas or .base files, or any vault file edit in a Forge workspace.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nRun `node bin/forge.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. A leading `./`, `\\` separators and absolute paths inside the scope root are accepted and reported as the relative path; symlinks, traversal, paths outside the scope and Git internals are rejected with `INVALID_PATH`, whose `details` name the argument or option and may give a `suggestion`.\n\nFor parallel work, use `read <path> --project <id>`, `read-many <paths...> --project <id>`, `stat <path> --project <id>` and `apply <plan.json|-> --project <id>` to target each invocation without changing saved selection. Keep the same explicit project for reads, preview and apply, and verify `context.root`. An `ifMatch` hash binds file bytes, not project identity; unknown targets fail without fallback. A plan filename and its operations resolve inside the named project. Writes in different projects still share the workspace writer lock, so an overlapping write may fail with `WORKSPACE_BUSY`; retry while `error.retryable` is true. Other file commands still follow saved selection unless their help declares `--project`.\n\nUse `read-many` for 1–32 explicit paths, each counting at most `--max-bytes` toward an 8 MiB aggregate limit, returning ordered `data.files` with normal read documents/revisions and `data.bytes`. Any failure rejects the whole bundle; per-file failures identify `details.index` and `details.path`. Reads are sequential, not an atomic snapshot. The cap is not a hard memory bound and JSON/base64 output can be larger; split large reads. No `--parts` option is offered; use single-file `read --parts body` when needed.\n\nUse `stat <path>` to obtain a file\'s raw revision and byte count or a folder\'s revision and descendant counts without returning content or parsing structured documents. This also works when `read` fails on malformed frontmatter. The command hashes whole files and walks folders; it is not a cheap filesystem stat or validation. `stat <path> --project <id>` targets one project without changing selection; later mutations must use the same scope, and only commands whose help declares `--project` accept it. See `bin/data/docs/how-to/inspect-file-metadata.md`.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`; `--unset key[,key]` removes properties (`null` in `--set` stores YAML null), and untouched YAML keeps its bytes. Use `edit` for an exact single literal replacement or append; see precise edits below for sections, blocks and several replacements. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar, plus files named `Dockerfile` or `Containerfile` in any case, also with a suffix such as `Dockerfile.release`; see `formats` `textFilenames`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 or content with NUL characters reads as base64 and cannot be edited; edits cannot introduce NUL characters.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nPrecise edits change only what you address, in memory, with one guarded write:\n- Section: `edit notes/plan.md --section "Plan > Risks" --append --content "- Staffing" --if-match <revision>`; also `--prepend --content` or `--replace <text>`. The path lists headings outermost first, separated by ` > `; the section runs to the next heading of the same or a higher level, its heading line and the blank lines around its content stay. `SECTION_NOT_FOUND` lists `details.headings`; `AMBIGUOUS_SECTION` lists `details.candidates`: add an ancestor heading, or pass the candidate\'s `line` as `--section-line <n>` (`sectionLine` in a plan), the only way to pick between headings with the same full path. Write a ` > ` inside a heading as ` \\> `.\n- Block: `edit notes/plan.md --block ship --replace "New text" --if-match <revision>` addresses `^ship`; replacing keeps the marker so block links keep working. A list item or task keeps its indentation, marker and checkbox and its nested items: pass only the new text, or start it with a marker (`- [x] Done`) to change the checkbox. `--append`/`--prepend --content` add a separate block (blank lines around it) next to a paragraph or section; next to a list item the content must start with a list marker and becomes sibling items, else `INVALID_INPUT`.\n- Several literal replacements: `edit <file> --edits \'[{"find":"a","replace":"b"},{"find":"x","replace":"y","all":true}]\' --if-match <revision>` (or `--edits @edits.json`, `--edits -`). They apply in order; a failure names `details.edit` and writes nothing.\n- Several files as one unit: write a plan `{"version":1,"operations":[...]}` with `write`, `edit` (`edits`, `append`, or `section`/`block` with `replace`/`append`/`prepend`), `frontmatter` (`set`, `unset`), `move` (`from`, `to`) and `delete` (to `.trash`) operations, each with the `ifMatch` from your reads (required for every path that existed before the plan; only paths the plan creates take none), and run `apply plan.json --dry-run`, then `apply plan.json` (or pipe it to `apply -`). Operations see the effects of earlier ones (edit a note after moving it by its new path); the plan commits as one batch or not at all. A failure keeps its code and adds `details.operation`; `INVALID_PLAN` lists schema `details.issues`. `help apply` shows the plan\'s JSON Schema, and `schema apply` publishes it as the argument\'s `contentSchema` with the result\'s `outputSchema`. Split a plan that writes to a path it also moves or deletes.\n\nFind before you edit: `search "release plan"` returns `data.hits` (`path`, 1-based `line` and `column`, `match`, `snippet`, `revision`) in path, line and column order, plus `total`. Narrow with `--path "notes/**"`, `--kind markdown`, `--tag project`, `--property status=active`, `--in body` (skip frontmatter) or `--skip-code`; add `--context 2` for surrounding lines. Exclude generated files before they are read with `--exclude "**/{dist,coverage}/**"` (one root-relative glob, brace alternatives allowed); exclusion wins over `--path`. Search does not interpret `.gitignore`, and pagination requires the same exclusion filter. Literal matching ignores case unless `--case-sensitive`; `--regex` takes a JavaScript regular expression matched per line. A hit\'s `revision` is the `--if-match` for an `edit` of that file. Pages hold 100 hits: repeat the same command with `--cursor <nextCursor>` until `nextCursor` is absent. `SEARCH_TIMEOUT` means the expression backtracks too much: simplify it or search literally. `list --path notes --kind markdown` lists files the same way (a plain folder path selects everything below it; `list --tag`/`--property` find notes without a pattern), 500 per page with `total`; `search --files-only` or `--count` return only the files or counts. A `--path` that matches nothing adds a warning.\n\nCheck the link graph before restructuring: `links back notes/plan.md` lists every file that links to it (`source`, 1-based `line`/`column`, `original`); `links out notes/plan.md` lists its own links with `status` and `target`. `links unresolved --path "notes/**"` reports broken links with `reason` `missing`, or `ambiguous` with `candidates` (use a longer link path that names one candidate). `links orphans` lists notes nothing links to and `links deadends` notes that link nowhere; list deliberate entry notes in `plugins.settings.links.roots`. Every report has `issues`: files whose metadata could not be parsed, whose links are missing from the report, so fix those first.\n\nVerify the vault before you finish: `vault check` returns `data.findings` (`rule`, `severity` `error`/`warning`/`info`, `path`, 1-based `line`/`column` or `null`, `message`, `hint`, and for a missing target `suggestion`, the closest existing file) in path and line order, plus `summary` counts. Rules: `unresolved-link`, `unresolved-embed`, `ambiguous-link`, `unresolved-anchor` (a missing `#Heading` or `#^block`), `invalid-frontmatter`, `invalid-canvas`, `invalid-base`, `property-type-mismatch` (against `.obsidian/types.json`, else the type most notes use), `duplicate-block-id`, `empty-file` and `orphan-attachment`. Narrow with `--path "notes/**"` and `--rule unresolved-link,invalid-frontmatter`. `vault check --strict` fails with `VAULT_CHECK_FAILED` (exit 2) while an `error` finding remains and lists them in `error.details.findings`: fix each by its `hint` and run it again until it passes. Before setting a property, run `vault properties --name <property>` to see its inferred and declared type, so values keep one type; `vault tags --sort count` lists tags with their files (nested tags count for their parents). Rule severities and ignore globs live in `plugins.settings.vault-check`.\n\nMove, rename and delete with the link-aware commands, never by writing a copy and removing the original:\n- Move or rename: `move notes/plan.md specs/plan.md --dry-run` (or `rename notes/plan.md Roadmap --dry-run`; a file keeps its extension) returns `data.revision` and a `diff` for every file whose links change: wikilinks and embeds keep `#Heading`, `#^block` and `|display` text, relative Markdown links are recomputed, frontmatter links and Canvas `file` nodes follow. Review `data.links.unrewritten`, then repeat without `--dry-run` and with `--if-match <revision>`. One batch commits the move and every rewritten file. `DESTINATION_EXISTS` means the target exists: Forge never overwrites it. A folder moves the same way; its `--if-match` is the folder revision the dry run reports.\n- Delete: `delete notes/scratch.md --if-match <revision>` moves the file to `.trash/` (numbered ` 1`, ` 2`… if taken); `--permanent` removes it; a folder needs `--recursive`. `HAS_BACKLINKS` lists the files still linking to it in `details.backlinks` (`source`, 1-based `line`, `original`): rewrite or remove those links first, or move the note instead. Pass `--allow-broken-links` only when broken links are intended. `.obsidian`, `.forge` and, at workspace scope, `bin` are protected in any letter case (`PROTECTED_PATH`). `--permanent` also refuses folders holding symlinks or `node_modules` (`PROTECTED_PATH`): trash them instead. `data.deleted` lists every removed file (`kind: "file"`) and folder (`kind: "folder"`).\n\nMarkdown `read` returns `content` and `properties`; `--parts properties` returns only the frontmatter and `--parts body` only the body. Content beyond 256 KiB (`--max-bytes`) is cut with `truncated: true`, `lines` and a warning; read further with `--lines <start>-<end>` (1-based, inclusive), the line numbers `search` hits report. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nForge removes a lock whose holder provably no longer runs (same host, container and boot; pid gone or reused; or written before the last restart) by itself and returns a warning: then inspect the interrupted changes with `git status` and read-back before continuing. On `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command, and on Linux pidNamespace, bootId and processStart), `path` the lock file and `stale` is `active`, `unknown` or `stale`. Wait `details.retryAfterMs` and retry while it is `active` (`retryable: true`), also when `details.breaker` shows another writer removing a stale lock, or rerun with the global `--wait <ms>` so the write waits for the lock itself; never delete an `active` lock. `unknown` (`retryable: false`) covers another host, container or boot and unreadable locks: do not retry in a loop and never delete the lock blindly; delete the file in `details.path` only after verifying that the recorded pid on the recorded host and container is not a running Forge writer and inspecting its changes, then retry. `stale` (`retryable: false`) means the holder provably no longer runs but Forge could not remove the file: confirm no Forge process uses it, then delete the file in `details.path` and retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n\nFor documents explaining a webpage, UI problem or workflow with screenshots, follow `forge-browser` to capture and inspect evidence. Embed the actual saved PNG relative to the Markdown note, cite the clean source URL and capture metadata, and keep the guarded document-editing loop above.\n';
-const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript projects with Forge scaffolds (project create, project component, make entity, make use-case, make form, make plugin) and prove them with acceptance tests and quality gates. Use when adding domain or application code, forms or Forge plugins, or when running npm run check in a Forge-managed project.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. When several agents share a workspace, keep selection stable and use `read`, `read-many`, `stat` and `apply` with `--project <id>` for each read/preview/write. Writes in different projects still share the workspace writer lock and may return retryable `WORKSPACE_BUSY`. Bundle up to 32 explicit paths and 8 MiB raw bytes with `read-many`; revisions remain individual reads. Other commands only support an explicit target when their help declares it. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/forge.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --dry-run` (use cases default to `src/application`). These code generators belong to the bundled `scaffolds` core plugin and `make document` to `templates`; `plugins` shows whether they are enabled.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills, events and services under the plugin ID and error codes under its UPPER_SNAKE_CASE prefix. Declare each command's metadata (`scope`, `mutating`, described `options` and `args`, `errors`, and `destructive` or `idempotent` where the derived hints are wrong) so `help`, `schema` and the invocation policy describe it; declare `output`, the JSON Schema of `data`, on the command or per action, and `schema` on a string option or argument that holds or names a JSON document; declare settings as a JSON Schema read from `plugins.settings.<id>` via `context.settings`, German text in `strings.de` (descriptions of commands, actions, options, arguments and settings, the manifest name and description, error summaries and hints, and messages read with `context.t`), and shared capabilities through `provides`/`requires` instead of imports. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures; use `onUserEnable(context)` for idempotent one-time setup after enabling (it runs at least once, not exactly once) and `context.events.onLayoutReady`/`onQuit` for work that needs active plugins or invocation-end cleanup. Plugins may emit only `<plugin-id>.*` events; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`) and other plugins' events (such as `claude.*`) fail with `EVENT_OWNERSHIP`. To run the installed Claude Code CLI, require the `claude.lifecycle` service of the `claude` core plugin. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. Each project owns its CI: author GitHub workflows in the project's `src/infrastructure/workflows/<concern>/*.yml`, then run `node bin/forge.js workflows sync --dry-run`, review, and `workflows sync` from the workspace to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints. Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ from their sources.\n8. For changes to The Forge itself, work in its project directory (`src/the-forge` in the source checkout): run `npm ci`, iterate with `npm run check:fast` (including `check:contracts`), update docs and skills, then run `npm run check` and commit the rebuilt workspace executable and packaged assets with the source. `npm run check` also replays every agent evaluation task in `evals/tasks` with the reference driver; when you add an agent-facing command, add or extend an evaluation task with reference steps and deterministic checks, respecting the suite budget in `docs/how-to/evaluate-agents.md`, and validate it with `npm run eval -- --task <id>`. Preserve existing acceptance checks when extending a task. Measure an agent with the opt-in `npm run eval -- --driver claude`. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Use `npm run check:contracts` to diagnose source command/schema, localization, reference-doc and evaluation-budget failures without a built distribution; keep its seven selected suites source-only and the evaluation suite at most 35 tasks. Portable help and artifact behavior still require the full gate after build. Mutation testing, which measures how well unit tests detect injected faults in selected domain code, runs in CI only and is not part of `check`; run the focused `npm run mutate -- --mutate <file>` form from `docs/how-to/develop-and-test.md` locally only to investigate a file's surviving mutants. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n\nFor an independent browser prototype, follow `forge-webviews`: `project create <id> --type webview` scaffolds Vue/Nuxt UI with local fixtures and Playwright; `webview publish` maintains built assets and `server start --webview <id>` manages the local preview. Library component generators do not target webview projects.\n";
+const __vite_glob_0_0$1 = "# Changing The Forge itself\n\nRead this when you change The Forge's own source (`src/the-forge` in the source checkout).\n\n- Work in the project folder: `npm ci` once, then iterate with `npm run check:fast`. `npm run check:contracts` diagnoses command, schema, localization, reference-doc and evaluation-budget failures without a build.\n- Update docs and skills with every user-visible change, then run `npm run check` and commit the rebuilt workspace executable and packaged assets with the source. Do not ship a stale bundle.\n- `npm run check` replays every agent evaluation task in `evals/tasks` with the reference driver. When you add an agent-facing command, add or extend a task with reference steps and deterministic checks, keep the suite within its budget (`docs/how-to/evaluate-agents.md`, at most 35 tasks) and validate it with `npm run eval -- --task <id>`. Keep existing acceptance checks.\n- Measure a real agent with the opt-in `npm run eval -- --driver claude`.\n- Keep the seven `check:contracts` suites source-only. Portable help and artifacts still need the full gate after the build.\n- Mutation testing runs in CI only. To investigate one file's surviving mutants, run `npm run mutate -- --mutate <file>` as `docs/how-to/develop-and-test.md` shows.\n- Preserve local configuration, shared plugins and templates, and project selection.\n- `npm run release` builds a downloadable archive.\n";
+const __vite_glob_0_1 = "# Forge plugins and project CI\n\nRead this when you write a Forge plugin or a project's CI workflows.\n\n## Create a plugin\n- `make plugin MyTools` writes `manifest.json` and `main.mjs` into workspace `bin/plugins/my-tools` (shared by every project; `--out` is not accepted). Review both, then add `my-tools` to `plugins.enabled` in `bin/config.json`.\n- Plugins run trusted Node code with Node's permissions.\n\n## Contributions\n- Namespace commands, generators, events and services as `<plugin-id>.…`, skills as `<plugin-id>-…`, and error codes with the UPPER_SNAKE_CASE prefix.\n- Declare each command's metadata: `scope`, `mutating`, described `options` and `args`, `errors`, and `destructive` or `idempotent` where the derived hints are wrong. `help`, `schema` and the invocation policy read it.\n- Declare `output`, the JSON Schema of `data`, on the command or per action. Put options on the action that takes them. Add `schema` to a string option or argument that holds or names a JSON document.\n- Settings: a JSON Schema read from `plugins.settings.<id>` through `context.settings`.\n- German text in `strings.de`: descriptions of commands, actions, options, arguments and settings, the manifest name and description, error summaries and hints, and messages read with `context.t`.\n- A skill is `{id, content}` with optional `files` (`{\"references/x.md\": \"…\"}`) that ship next to its SKILL.md.\n- Share capabilities through `provides` and `requires`, never imports.\n\n## Runtime rules\n- Write through `context.workspace.write` so guards, dry runs and events apply.\n- `onload(context)` and `onunload()` acquire and release resources, including after partial failures. `onUserEnable(context)` runs idempotent one-time setup at least once. `context.events.onLayoutReady` and `onQuit` run after activation and at invocation end.\n- Emit only `<plugin-id>.*` events. Host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`) and other plugins' events fail with `EVENT_OWNERSHIP`.\n- To run the installed Claude Code CLI, require the `claude.lifecycle` service.\n- Never log to stdout. Return JSON data and emit only JSON-safe event payloads.\n- See `bin/data/docs/reference/plugins.md`.\n\n## Project CI workflows\n- Each project authors its workflows in `src/infrastructure/workflows/<concern>/*.yml`.\n- From the workspace: `workflows sync --dry-run`, review, then `workflows sync` to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints.\n- Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ.\n";
+const __vite_glob_0_2 = '# Editing vault files\n\nRead this for precise edits, apply plans, frontmatter, Canvas, Bases, text files, attachments and templates. Every mutation takes `--dry-run`; review `data.changes[].diff` (a unified diff, `null` for binary files). A stale `--if-match` fails with `CONFLICT` already in the preview. `node bin/forge.js formats` lists the supported formats.\n\n## Precise edits\nEach edit changes only what it addresses, in memory, with one guarded write.\n- Section: `edit notes/plan.md --section "Plan > Risks" --append --content "- Staffing" --if-match <rev>`; also `--prepend --content` or `--replace <text>`. List headings outermost first, separated by ` > `; write a ` > ` inside a heading as ` \\> `. The section runs to the next heading of the same or higher level.\n- `SECTION_NOT_FOUND` lists `details.headings` or `details.blocks`. `AMBIGUOUS_SECTION` lists `details.candidates`: add an ancestor heading, or pass the candidate\'s `line` as `--section-line <n>` (`sectionLine` in a plan).\n- Block: `edit notes/plan.md --block ship --replace "New text" --if-match <rev>` addresses `^ship` and keeps the marker. A list item keeps its indentation, marker, checkbox and nested items; start the text with a marker (`- [x] Done`) to change the checkbox. `--append` or `--prepend --content` add a separate block; next to a list item the content must start with a list marker, else `INVALID_INPUT`.\n- Several literal replacements: `edit <file> --edits \'[{"find":"a","replace":"b"},{"find":"x","replace":"y","all":true}]\' --if-match <rev>`, or `--edits @edits.json` or `--edits -`. They apply in order; a failure names `details.edit` and writes nothing.\n- `NO_MATCH` has `details.matches: 0`, `details.lineEndings` and possibly `details.nearMatch`. Reread and copy the exact text, including CRLF or LF line endings.\n- `AMBIGUOUS_EDIT` counts every match in `details.matches`, lists `details.lines` and `details.snippets`. Extend `--find` with surrounding text.\n- An edit that would change nothing reports `operation: "unchanged"` and writes nothing. `--content` holding a literal `\\n` but no line break adds a warning: use `--stdin` for multiline text.\n\n## Apply plans\n- A plan is `{"version":1,"operations":[...]}` with `write`, `edit` (`edits`, `append`, or `section`/`block` with `replace`/`append`/`prepend`), `frontmatter` (`set`, `unset`), `move` (`from`, `to`) and `delete` (to `.trash`) operations.\n- Every operation on a path that existed before the plan needs the `ifMatch` from your reads; a repeated plan then fails with `CONFLICT` instead of applying twice. Only paths the plan creates take none.\n- Run `apply plan.json --dry-run`, then `apply plan.json` (or pipe the plan to `apply -`). Operations see earlier ones: edit a moved note by its new path. The plan commits as one batch or not at all.\n- A failure keeps its code and adds `details.operation`; `INVALID_PLAN` lists `details.issues`. `schema apply` publishes the plan schema as the argument\'s `contentSchema`.\n- Split a plan that writes to a path it also moves or deletes.\n\n## Frontmatter\n- `properties <note> --set \'<json>\' --unset a,b --if-match <rev>`. `null` in `--set` stores YAML `null`; `--unset` removes the key.\n- Only touched entries are rewritten: untouched YAML keeps its bytes and comments, and new frontmatter is block style.\n- Before setting a property, `vault properties --name <property>` shows its inferred and declared type, so values keep one type.\n\n## Canvas and Bases\n- Canvas: `create planning.canvas`, read its revision, then `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <rev>`. Edge endpoints must already exist. For a larger change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` makes a table view; edit it with pointers such as `/views/0/name`. `bases query tasks.base --view "Table"` returns the view\'s matching files without Obsidian. `bases capabilities` describes the evaluator\'s limits; a query that takes too long fails with `BASE_TIMEOUT`.\n- Unknown Canvas and Base keys are kept. Structural validation does not run formulas.\n\n## Text files and attachments\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.txt`, `.csv`, `Dockerfile` and others; see `formats` `textFilenames`) read as `document: {kind: "text", content}`. Edit them with `edit --find` or `--append`, or replace them with `write --stdin --if-match <rev>`.\n- A file that is not valid UTF-8 or holds NUL characters reads as base64 and cannot be edited.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root; pipe outside bytes with `--stdin`, or pass `--encoding base64`. `read` returns attachments as base64 with size and hash.\n- Embed an attachment in a note with `![[assets/diagram.png]]`.\n\n## Templates\n- `templates inspect <template.md>`, then `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply every non-built-in placeholder; `--date <ISO>` makes dates repeatable. Output defaults to `notes` in the active scope, or `--out`.\n- Templates live in workspace `bin/templates` and cannot run code.\n';
+const __vite_glob_0_3 = '# Finding and checking vault files\n\nRead this for bounded reads, search and list paging, link reports and vault checks.\n\n## Reads\n- Markdown `read` returns `content` and `properties`; `--parts properties` returns only the frontmatter and `--parts body` only the body.\n- Text and attachment content beyond 256 KiB (`--max-bytes`) is cut with `truncated: true`, `lines: {start, end, total}` and a warning. `--lines <start>-<end>` (1-based, inclusive; also `<start>-` or `<start>`) reads a range; `search` hits report the line numbers.\n- `read-many <paths…>` reads 1-32 paths in order, each counting at most `--max-bytes` toward an 8 MiB total. Any failure rejects the whole bundle, with `details.index` and `details.path`. It is not an atomic snapshot.\n- `stat <path>` returns a file\'s revision and byte count, or a folder\'s revision and counts, without parsing. It also works when `read` fails on malformed frontmatter.\n\n## Search and list\n- `search "release plan"` returns `data.hits` (`path`, 1-based `line` and `column`, `match`, `snippet`, `revision`) in path, line and column order, with `total`. A hit\'s `revision` is the `--if-match` for an `edit` of that file.\n- Narrow with `--path notes` (a folder path selects everything below it; globs such as `notes/**/*.md` work too), `--kind markdown`, `--tag project`, `--property status=active`, `--in body`, `--skip-code` and `--context 2`.\n- `--exclude "**/{dist,coverage}/**"` skips files before they are read and wins over `--path`. Search ignores `.gitignore`.\n- Matching ignores case unless `--case-sensitive`; `--regex` takes a JavaScript regular expression per line. `SEARCH_TIMEOUT` means the expression backtracks too much.\n- `--files-only` returns `files: [{path, revision, hits}]` and `--count` only `total` and `fileCount`.\n- `list --path notes --kind markdown` lists files; `list --tag` and `--property` find notes without a pattern. `.trash` is hidden unless `--include-trash`.\n- Pages hold 500 files or 100 hits: repeat the same command with `--cursor <nextCursor>` until it is absent. A `--path` that matches nothing adds a warning.\n\n## Links\n- `links back <note>` lists every file that links to it (`source`, `line`, `column`, `original`); `links out <note>` lists its links with `status` and `target`.\n- `links unresolved --path "notes/**"` reports broken links with `reason` `missing`, or `ambiguous` with `candidates`: use a longer link path.\n- `links orphans` lists notes nothing links to and `links deadends` notes that link nowhere; list intended entry notes in `plugins.settings.links.roots`.\n- Every report has `issues`: files whose metadata could not be parsed. Fix those first.\n\n## Vault check\n- `vault check` returns `data.findings` (`rule`, `severity`, `path`, `line`, `column`, `message`, `hint`, and `suggestion` for a missing target) and `summary` counts.\n- Rules: `unresolved-link`, `unresolved-embed`, `ambiguous-link`, `unresolved-anchor`, `invalid-frontmatter`, `invalid-canvas`, `invalid-base`, `property-type-mismatch`, `duplicate-block-id`, `empty-file`, `orphan-attachment`.\n- Narrow with `--path "notes/**"` and `--rule unresolved-link,invalid-frontmatter`.\n- `vault check --strict` fails with `VAULT_CHECK_FAILED` (exit 2) while an `error` finding remains, listed in `error.details.findings`.\n- `vault tags --sort count` lists tags with their files; `vault properties --name <property>` shows a property\'s types. Severities and ignore globs live in `plugins.settings.vault-check`.\n';
+const __vite_glob_0_4 = "# Moving, deleting and the writer lock\n\nRead this before restructuring notes, and when a write fails with `WORKSPACE_BUSY` or `ROLLBACK_FAILED`.\n\n## Move and rename\n- Always use the link-aware commands, never a copy plus delete.\n- `move notes/plan.md specs/plan.md --dry-run`, or `rename notes/plan.md Roadmap --dry-run` (a file keeps its extension), returns `data.revision` and a `diff` for every file whose links change.\n- Wikilinks and embeds keep `#Heading`, `#^block` and `|display` text; relative Markdown links are recomputed; frontmatter links and Canvas `file` nodes follow.\n- Review `data.links.unrewritten`, then repeat without `--dry-run` and with `--if-match <revision>`. One batch commits the move and every rewritten file.\n- A `<to>` that ends with `/` or names an existing folder moves the source into it under its own name. Moving a file with an extension to an extensionless name adds a warning.\n- `DESTINATION_EXISTS`: Forge never overwrites the target.\n- A folder moves the same way; its `--if-match` is the folder revision the dry run reports.\n- A repeated move whose source is gone and whose destination holds the revision succeeds with `alreadyApplied: true`.\n\n## Delete\n- `delete notes/scratch.md --if-match <revision>` moves the file to `.trash/` (numbered ` 1`, ` 2`… when taken). A folder needs `--recursive`; `--permanent` removes instead of trashing.\n- `HAS_BACKLINKS` lists the linking files in `details.backlinks`: rewrite or remove those links first, or move the note instead. Pass `--allow-broken-links` only when broken links are intended.\n- `PROTECTED_PATH`: `.obsidian`, `.forge` and, at workspace scope, `bin` are protected in any letter case. `--permanent` also refuses folders with symlinks or `node_modules`: trash them instead.\n- `data.deleted` lists every removed file and folder. A repeated delete fails with `NOT_FOUND`; `details.alreadyDeleted: true` and `details.trashPath` show where the first one put it.\n\n## The writer lock\n- All writers in a workspace share one lock, `.agent-cli.lock`, whatever their project.\n- `WORKSPACE_BUSY` (exit 4): `details.lock` names the holder (pid, hostname, startedAt, command), `details.path` the lock file and `details.stale` is `active`, `unknown` or `stale`.\n- `active` (`retryable: true`): wait `details.retryAfterMs` and retry, or rerun with the global `--wait <ms>`. Never delete an active lock.\n- `unknown` (`retryable: false`): another host, container or boot, or an unreadable lock. Do not retry in a loop. Delete the file in `details.path` only after you verify the recorded process is not a running Forge writer and inspect its changes.\n- `stale` (`retryable: false`): the holder no longer runs but Forge could not remove the file. Confirm no Forge process uses it, delete the file and retry.\n- When Forge removes a stale lock itself, it adds a warning: inspect the interrupted changes with `git status` and read-back before continuing.\n- `ROLLBACK_FAILED`: inspect every listed path and the saved contents before doing more work.\n";
+const __vite_glob_0_5 = "# Generated output and feature commands\n\nRead this when you generate UI or data-source code, manage agents, skills or Claude Code configuration, sync CI workflows, or build webviews and browser evidence. Each feature also has its own skill or reference page.\n\n## UI components and data sources\n- Inspect `components list`, `components inspect <id>` and `plugins.settings.ui` in `config --json` (framework and folders). The `ui` core plugin owns `components`, `interactions`, `make ui` and `make stories`; `data-sources` owns `data-sources` and `make data-source`.\n- Component definitions are workspace-scoped; generated UI uses the active project or `--project <id>`. Start with `components init --dry-run` if there are none, and run `components validate` after edits.\n- Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, check `context.root` and review the generated text.\n- `--plan` compares proposed and current output, `--check` detects drift read-only (exit 5, `UI_DRIFT`) and `--plan-out <file.json>` writes a revision map. Intentional regeneration takes `--revisions-from <file.json>` with the inspected hashes.\n- Generic file commands follow the open project: close it before guarded edits to the shared workspace library.\n- CLI generation does not prove browser behavior or accessibility; test with the project's own toolchain. See `bin/data/docs/reference/ui-components.md`.\n\n## Agents and skills\n- Agent definitions are docker-agent YAML in `agents/*.yaml`: follow the `forge-agents` skill. `agents generate --target claude` maintains `.claude/agents/`; never hand-edit generated agents.\n- `skills list` names the registered skills. `skills show <id>` returns SKILL.md and the list of the skill's `files`; `--file references/<name>.md` returns one of them.\n- `skills install [--target both|claude|agents | --out <dir>]` writes each skill folder into the selected project's `.claude/skills` and `.agents/skills`. Existing different files are refused, so an edited skill is never overwritten.\n\n## Claude Code configuration\n- Use the `claude` command instead of hand-written JSON. `claude capabilities` lists hook events, handler types, plugin components and runtime operations.\n- `claude hooks inspect` returns the settings document (`--scope project|local|user|plugin`, default `project`) with its `revision`; `hooks check` validates it; `hooks add|set|remove|enable|disable|configure` need `--if-match <revision>` once the file exists.\n- `claude agents …` manages `.claude/agents/*.md`; `claude plugins create|inspect|manifest|check|asset|write-asset|remove-asset <dir>` authors a plugin folder without running Claude.\n- `claude plugins list|install|…`, `claude marketplaces …` and `claude runtime …` run the installed `claude` executable and can change the user's installation: preview with `--dry-run`, keep `--scope project` and never pass `--scope user` without consent.\n- Hooks and plugins run commands: review them like code. See `bin/data/docs/reference/claude.md`.\n\n## CI workflows\n- Each project authors workflows in its `src/infrastructure/workflows/<concern>/*.yml`. From the workspace run `workflows sync --dry-run`, review, then `workflows sync`.\n- Never edit the generated `.github/workflows` entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ.\n\n## Webviews and browser evidence\n- Prototype: follow the `forge-webviews` skill. `project create <id> --type webview`, build and test inside that project, `webview inspect --project <id>`, `webview publish --project <id> --dry-run`, then `server start --webview <id>`.\n- Screenshots and illustrated tutorials: follow the `forge-browser` skill and `schema browser`. Dry runs validate without launching a browser.\n";
+const __vite_glob_0_6 = "# Forge protocol\n\nRead this when you need more than the core loop in [SKILL.md](../SKILL.md): the response envelope, discovery details, events, warnings, language and plugins.\n\n## Envelope\n- Success: `{ok: true, data, context, events, warnings}`. Failure: `{ok: false, error: {code, message, hint?, retryable?, details?}, context?, events, warnings}`; built-in codes always carry `hint` and `retryable`.\n- `context.workspaceRoot` is the workspace, `context.root` the root this command used and `context.project` the selected project or `null`. Check `context.root` before reading paths in `changes` or `events`.\n- `--json` prints compact JSON and `--no-json` indented JSON; both are JSON.\n- Exit codes: 0 success, 1 runtime, I/O, plugin or Claude failure, 2 invalid input or conflict, 3 missing file, project or workspace root, 4 writer or server lock busy, 5 generated output drift, 130 (SIGINT) or 143 (SIGTERM) interrupted.\n- `bin/data/docs/reference/errors.md` lists every code with its exit status, hint and `retryable` flag. `schema <command>` publishes its codes in `data.commands[0].errors` and `data.commonErrors`, and `data.errors` describes them.\n\n## Discovery\n- `help` (also no arguments, `--help` and `-h`) returns `{name, version, apiVersion, commands, mutating, globalOptions, next}`: one line per command and the ids of the mutating commands.\n- `help <command>` adds usage, 1-3 `examples`, options, arguments, `annotations.actions` and error codes. Options marked `path: true` accept `./x`, `x\\y` and absolute paths inside the root.\n- `schema <command>` returns the command's JSON Schema 2020-12 `inputSchema`, the `outputSchema` of `data` (or `annotations.actions.<action>.outputSchema`), `errors` and `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `scope`), plus the response `envelope` schema. `schema` alone is a compact index of ids; `schema --all` is the complete catalog.\n- Actions declare their own options: an option of another action fails with `UNKNOWN_OPTION`. Typos and common words (`ls`, `cat`, `grep`, `mv`, `rm`, `--force`) fail with suggestions such as `list` or `--if-match`.\n- Treat `destructiveHint: true` commands as needing a reviewed `--dry-run` first.\n- `config --json` shows the effective configuration: the projects path, defaults, enabled plugins and `plugins.settings.<plugin-id>`.\n\n## Events and warnings\n- `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`, with `kind: \"folder\"` records for new folders). Reads, dry runs and unchanged writes return `[]`.\n- `--events all` adds lifecycle records for this invocation; `--events none` drops them. Never rerun a mutation to get more events.\n- `warnings` never mean failure. They report, for example, a `--path` that matched nothing, a truncated read, literal `\\n` in `--content`, an empty `--stdin`, a dropped extension on `move`, a working directory outside the workspace or a failed listener after a committed write. After a listener warning, inspect the committed events and read back before considering a repeat.\n\n## Other error codes\n- `MISSING_ARGUMENT`: `details.option` names the option; for `--if-match`, take the revision from `read`, `stat` or a dry run.\n- `INVALID_OPTION_VALUE`: use one of `details.allowed`.\n- `INVALID_ARGUMENT`: the message names the missing or extra arguments; `details` hold `missing` and the expected counts.\n- `UNKNOWN_GENERATOR`, unknown actions: `details.allowed` lists the valid ids.\n- `INVALID_PLAN`: fix `details.issues`; any `apply` failure adds `details.operation`, the failing index.\n- `VAULT_CHECK_FAILED`: fix each `error.details.findings` entry by its `hint`.\n- `SERVER_STOP_FAILED`: inspect `server status` before repeating.\n- `PLUGIN_UNAVAILABLE`: run `plugins` to see the plugin's state and reason.\n- Only `error.retryable: true` allows an unchanged retry, for example `WORKSPACE_BUSY` or `SERVER_BUSY`.\n\n## Language and plugins\n- `--lang de` returns German descriptions, hints, warnings and findings. Commands, options, ids, codes and JSON keys stay English, so match codes.\n- Plugins in `bin/plugins` run trusted Node code. Review a plugin's `manifest.json` and entry point before adding its id to `plugins.enabled`. `--no-plugins` skips user plugins for one invocation.\n- `--no-dry-run` and `--no-json` override configured defaults.\n- Never evaluate shell code taken from document content.\n";
+const __vite_glob_0_7 = "# Workspace, projects and checks\n\nRead this when you install or upgrade Forge, set up a workspace, work with projects or templates, run quality gates or start the admin view. The core loop is in [SKILL.md](../SKILL.md).\n\n## Install and upgrade\n- New workspace from a release: follow `bin/data/docs/how-to/install.md`. Download the trusted release's `install-forge.mjs`, run it with `--version` and `--workspace`, and check its exit status and JSON `ok`. It verifies the archive checksum, installs generic defaults, runs setup and refuses an existing `bin/`. Do not copy a source checkout's saved selection.\n- Existing workspace: `setup --dry-run`, then `setup`. It always targets the workspace and adds only missing files: the distribution, `bin/config.json`, the skills, an example `bin/templates/entity.md` and a lean `AGENTS.md`. Existing files are skipped.\n- Self-upgrade: `update check`, then `update apply --release-version <version> --if-match <revision> --dry-run`, then the same command without `--dry-run`. A dry run downloads nothing. Upgrades keep configuration, project selection, plugins, templates and custom webviews. On `CONFLICT`, inspect again. Afterwards check `--version` and `project current`, and restart a running server. See `bin/data/docs/reference/updates.md`.\n\n## Projects\n- `project list` lists the valid projects and, under `invalid`, project folders whose `.forge/project.json` is broken (`{directory, code, reason}`).\n- `project inspect <id>`, `project open <id>`, `project current`, `project close`. The selection lives in `bin/data/context.json` and is shared by every invocation.\n- With `--project <id>`, use the same project for the read, the preview and the write: a revision identifies bytes, not the project. An unknown project fails instead of falling back.\n- Checking `project current` does not lock the selection. Coordinate selection changes with other agents, or use separate workspaces when agents need different selections.\n- `STALE_PROJECT_CONTEXT` names the selected `project` and `directory` with the cause: open a valid project or `project close`.\n- New code project: `project create <kebab-name> --dry-run` (`--type webview` for a prototype). New domain or application file: `project component [id] <PascalName> --kind domain|application --dry-run`; omit the id for the open project.\n- Shared templates always live in workspace `bin/templates` and plugins in `bin/plugins`.\n\n## Templates and documents\n- `templates list`, then `templates inspect <name.md>` for its required values.\n- `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`; review the full text before applying. `--date <ISO>` makes dates repeatable.\n- Workflow stages: `templates inspect workflow/prd.md`, `templates install workflow --dry-run`, then `make document <Title> --template workflow/<kind>.md --values '{\"owner\":\"Team\"}' --dry-run`. See `bin/data/docs/tutorials/idea-to-production.md`. A drafted document is not a completed requirement.\n- When the `templates` or `scaffolds` core plugin is disabled, its commands and generators are unknown, `setup` skips the templates with a warning and `project create` fails with `PLUGIN_UNAVAILABLE`.\n\n## Checks and reporting\n- For generated TypeScript projects, run `npm run check:fast` from the project folder while you work, fix the cause of each failure, rerun the failed stage and finish with `npm run check`. For other projects, read their scripts first.\n- Never weaken a gate to hide a failure.\n- Summarize changed files, acceptance evidence, checks run and remaining limits.\n\n## Admin view\n- Only after the user agrees: `server start --webview admin` and share `data.url`. The CLI never opens a browser.\n- `server status` is read-only, `server start` reuses a running server and `server stop` ends it. Start and stop support `--dry-run`.\n- The URL fragment holds a bearer token: treat it as local session access, and fetch a fresh link after a restart. See `bin/data/docs/reference/server.md`.\n";
+const workflow = '---\nname: forge-workflow\ndescription: Drive the portable Forge CLI (node bin/forge.js) safely. Discover commands with help and schema, pick the workspace and project, preview writes with --dry-run, guard them with --if-match, retry lost writes and recover from error codes. Use when a workspace has bin/forge.js, when starting any Forge task, or when a Forge command fails.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nEvery command prints one JSON envelope and never prompts. Check the exit code and `ok`, and match `error.code`, never message text.\n\n## Root and scope\n- The workspace is the folder holding `bin/`, not your working directory. Pick another with `--root <dir>` or `FORGE_ROOT=<dir>`; `--root` wins, and a missing root fails with `INVALID_ROOT`.\n- Paths are relative to `context.root`: the open project, or the workspace. Check `project current`. `project open <id>` changes the selection for every agent, and `project close` clears it.\n- With parallel agents, leave the selection alone and pass `--project <id>` to file commands (`read`, `search`, `edit`, `apply`…).\n\n## Discover\n- `help` lists commands. `help <command>` gives usage, examples, options and error codes. `schema <command>` gives the JSON Schema input and output.\n- Avoid `schema --all`: it is every command at once.\n- Global flags such as `--root`, `--dry-run` and `--wait` may come before or after the command.\n\n## Safe edit loop\n1. `read <path>` and keep `data.revision`.\n2. Run the change with `--dry-run --if-match <revision>` and review `data.changes[].diff`.\n3. Rerun it without `--dry-run`, then read the file back.\n4. Change several files at once with one `apply <plan.json>`: all or nothing, with `ifMatch` on every existing path.\n5. After note changes, run `vault check --strict` until it passes.\n\n## Arguments\n- Quote every value, and quote empty variables (`--replace "$X"`). An option never takes the next flag as its value: it fails with `MISSING_ARGUMENT`.\n- Write a value that starts with `-` as `--key=value` (`--find=--draft`). Pass multiline or shell-sensitive text with `--stdin`.\n\n## Bounded output\n- `read` truncates at 256 KiB (`truncated: true`); read on with `--lines <a>-<b>`.\n- `list` returns 500 files per page and `search` 100 hits. Repeat with `--cursor <nextCursor>` until it is absent.\n- Narrow with `--path <folder or glob>`, `--kind`, or `search --files-only` / `--count`. Check `warnings` too.\n\n## Retries\n- Lost track of a write? Run it again. `operation: "unchanged"` or `alreadyApplied: true` means it already happened.\n- A repeated `delete` fails with `NOT_FOUND`; `details.alreadyDeleted` and `details.trashPath` show it already succeeded.\n- Retry an unchanged command only when `error.retryable` is true.\n\n## Errors\nExit codes: 1 runtime, 2 input or conflict, 3 not found, 4 busy, 5 drift, 130/143 interrupted. Every error has a `hint`.\n- `CONFLICT`: reread the file and reapply your change to its current content. If `details.alreadyApplied` is true, the change is already there. Never resend the old change unchanged.\n- `NO_MATCH`: copy the exact text, using `details.nearMatch` and `details.lineEndings`.\n- `AMBIGUOUS_EDIT`: extend `--find` until it matches once (`details.lines`).\n- `UNKNOWN_COMMAND`, `UNKNOWN_OPTION`: see `details.suggestions` and `help <command>`.\n- `INVALID_PATH`: use `details.suggestion`.\n- `NOT_FOUND`: check `details.path` and `project current`.\n- `WORKSPACE_BUSY`: wait `details.retryAfterMs`, or pass `--wait <ms>`.\n- `ROLLBACK_FAILED`: inspect every listed file before continuing.\n\n## Reference\n- [Protocol](references/protocol.md): envelope, events, warnings, language, plugins and other error codes.\n- [Workspace](references/workspace.md): install, setup, updates, projects, templates, quality gates and the admin server.\n- [Generation](references/generation.md): UI, data sources, agents, skills, Claude Code, workflows, webviews and browser.\n- Notes, Canvas, Bases and attachments: the `forge-vault` skill.\n';
+const vault = '---\nname: forge-vault\ndescription: Read, search, link-check, create and edit Obsidian Markdown notes, frontmatter properties, Canvas, Bases and attachments through Forge with revision guards, link-preserving moves and trash deletes. Use when working with notes, wikilinks, backlinks, tags, .canvas or .base files, or any vault file edit in a Forge workspace.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nEdit vault files only through Forge, so links, frontmatter and revisions stay intact. Root rules, the read → `--dry-run` → `--if-match` loop and retries are in the `forge-workflow` skill.\n\n## Paths\n- Paths are relative to `context.root`: the open project, or the workspace. `--project <id>` targets another project for one call.\n- `./x`, `x\\y` and absolute paths inside the root are accepted. Traversal, symlinks and `.git` fail with `INVALID_PATH`.\n\n## Read and find\n- `read <path>` returns `revision`; a note also returns `content` and `properties` (`--parts body` for the body only).\n- Content over 256 KiB is cut (`truncated: true`, `lines.total`): continue with `--lines <a>-<b>`. A note with broken frontmatter still reads, with `properties: null` and an `issue`.\n- `search "text"` returns hits with `path`, `line` and `revision`. Narrow with `--path notes`, `--tag`, `--property status=active`, `--regex`, `--files-only` or `--count`.\n- `list --path notes --kind markdown` lists files. Page both with `--cursor <nextCursor>`.\n- `read-many <paths…>` reads up to 32 files; `stat <path>` gives a revision without content.\n- `links back <note>` lists notes that link to it; `links unresolved` lists broken links.\n\n## Change\n- New file: `create notes/idea.md --content \'# Idea\'`; existing files are refused.\n- One replacement: `edit <file> --find <old> --replace <new> --if-match <rev>`. Several: `--edits \'[{"find":"a","replace":"b"}]\'`.\n- Part of a note: `--section "Plan > Risks" --append --content "- Item"` or `--block <id> --replace <text>` instead of `--find`.\n- Frontmatter: `properties <note> --set \'{"status":"draft"}\' --unset old --if-match <rev>`. Untouched YAML keeps its bytes.\n- Whole file: `write <path> --stdin --if-match <rev>`. Canvas or Base JSON: `patch <file> --pointer /nodes/- --value \'<json>\' --if-match <rev>`.\n- Several files: one `apply plan.json`, with `--dry-run` first and `ifMatch` on every existing path.\n- Move or rename: `move <from> <to>` rewrites every link. A `<to>` ending in `/` or naming a folder moves into it.\n- Delete: `delete <path>` moves the file to `.trash/`. Never copy and delete to move.\n- Dry-run `move`, `rename` and `delete` first: the preview reports the `revision` for `--if-match`.\n\n## Verify\n- Read the file back and run `validate <path>`.\n- Run `vault check --strict` and fix each finding by its `hint` until it passes.\n\n## Errors\n- `NO_MATCH`: copy the exact current text, including whitespace and line endings.\n- `AMBIGUOUS_EDIT`: extend `--find` until it matches once (`details.lines`).\n- `SECTION_NOT_FOUND`: pick from `details.headings` or `details.blocks`.\n- `AMBIGUOUS_SECTION`: pass a `details.candidates` line as `--section-line`.\n- `CONFLICT`: reread and reapply your change to the current content.\n- `DESTINATION_EXISTS`: Forge never overwrites; choose another target.\n- `HAS_BACKLINKS`: fix the links in `details.backlinks` first, or move the note instead.\n- `PROTECTED_PATH`: `.obsidian`, `.forge` and workspace `bin` cannot move or be deleted.\n\n## Reference\n- [Editing](references/editing.md): sections, blocks, apply plans, properties, Canvas, Bases, text, attachments and templates.\n- [Finding and checking](references/finding.md): read limits, search, list, links and vault check rules.\n- [Moving, deleting and locks](references/moving-and-locks.md): link rewriting, the trash and `WORKSPACE_BUSY` recovery.\n- Screenshots in notes: the `forge-browser` skill.\n';
+const development = '---\nname: forge-development\ndescription: Generate and extend TypeScript projects with Forge scaffolds (project create, project component, make entity, make use-case, make form, make plugin) and prove them with acceptance tests and quality gates. Use when adding domain or application code, forms or Forge plugins, or when running npm run check in a Forge-managed project.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nScaffolds are starting points, not finished features. The safe edit loop and error recovery are in the `forge-workflow` skill.\n\n## Before generating\n- Define the domain language, acceptance examples, invariants and dependencies first.\n- `project list`, `project inspect <id>`, then `project open <id>` and `project current`. Check `context.root` on every response.\n- With parallel agents, keep the selection fixed and pass `--project <id>` to file commands. Writes in different projects still share one writer lock (`WORKSPACE_BUSY`, retryable).\n\n## Generate\n- New library: `project create <kebab-name> --dry-run`. New domain or application file: `project component [id] <PascalName> --kind domain|application --dry-run`.\n- Generators: `make` lists them. Output is relative to the open project: `make entity WorkItem --out src/domain --dry-run`, `make use-case FindWorkItem --dry-run` (default `src/application`).\n- Forms: `make form <PascalName> --dry-run` writes a typed definition and unit test; adapt the fields and Zod rules to the acceptance criteria. See `bin/data/docs/reference/forms.md`.\n- Review the generated source, apply, then replace generic behavior with the real domain rules.\n- Code generators come from the `scaffolds` core plugin and `make document` from `templates`; `plugins` shows whether they are enabled.\n\n## Architecture\n- Domain code is independent of Node, plugins, CLI parsing and storage.\n- Application services orchestrate injected ports; infrastructure implements them; the composition root wires them.\n\n## Test and check\n- Test observable behavior: invalid state, success, failure, stale writes and edge cases. Use `.unit.test.ts`, `.integration.test.ts` and `.e2e.test.ts`; focus one with `npm test -- --project unit`.\n- New project: `npm install` once, commit the lockfile, then `npm ci`.\n- Iterate with `npm run check:fast`, fix the cause of each finding, rerun the failed stage, and finish with `npm run check`.\n- Source files stay within 400 code lines and tests within 450: split cohesive responsibilities, never compress code.\n- Never suppress findings or delete tests to pass. For existing projects, follow their own scripts.\n\n## Finish\n- `project close` when you return to workspace work. Do not assume another agent left the selection unchanged.\n\n## Reference\n- [Plugins](references/plugins.md): `make plugin`, command metadata, settings, strings, lifecycle, events and project CI workflows.\n- [Changing The Forge](references/forge-itself.md): the Forge source checkout, its gates, evaluations and releases.\n- Browser prototypes: the `forge-webviews` skill.\n';
+const references$1 = /* @__PURE__ */ Object.assign({ "../../../../skills/forge-development/references/forge-itself.md": __vite_glob_0_0$1, "../../../../skills/forge-development/references/plugins.md": __vite_glob_0_1, "../../../../skills/forge-vault/references/editing.md": __vite_glob_0_2, "../../../../skills/forge-vault/references/finding.md": __vite_glob_0_3, "../../../../skills/forge-vault/references/moving-and-locks.md": __vite_glob_0_4, "../../../../skills/forge-workflow/references/generation.md": __vite_glob_0_5, "../../../../skills/forge-workflow/references/protocol.md": __vite_glob_0_6, "../../../../skills/forge-workflow/references/workspace.md": __vite_glob_0_7 });
+const files = (id2) => skillFolderFiles(id2, Object.fromEntries(Object.entries(references$1).filter(([path2]) => path2.includes(`/${id2}/`))));
 const bundledSkills = [
-  { id: "forge-workflow", content: workflow },
-  { id: "forge-vault", content: vault },
-  { id: "forge-development", content: development }
+  { id: "forge-workflow", content: workflow, files: files("forge-workflow") },
+  { id: "forge-vault", content: vault, files: files("forge-vault") },
+  { id: "forge-development", content: development, files: files("forge-development") }
 ];
 const pathSchema = { type: "string", description: "Path relative to context.root, with / separators." };
 const revisionSchema = { type: "string", pattern: "^[0-9a-f]{64}$", description: "SHA-256 of the file bytes; pass it as --if-match." };
@@ -19120,8 +19146,13 @@ function changesOutput(properties2 = {}, required2 = []) {
 const listOutput$1 = { type: "object", required: ["skills"], properties: { skills: { type: "array", items: { type: "string" } } } };
 const showOutput = {
   type: "object",
-  required: ["id", "content"],
-  properties: { id: { type: "string" }, content: { type: "string", description: "The SKILL.md text with its Agent Skills frontmatter." } }
+  required: ["id", "path", "content", "files"],
+  properties: {
+    id: { type: "string" },
+    path: { type: "string", description: "The returned file inside the skill folder: SKILL.md or the --file path." },
+    content: { type: "string", description: "The file text; SKILL.md carries the Agent Skills frontmatter." },
+    files: { type: "array", items: { type: "string" }, description: "Every file of the skill folder, SKILL.md first, such as references/editing.md." }
+  }
 };
 function skillsCommand(skills2) {
   return {
@@ -19135,9 +19166,14 @@ function skillsCommand(skills2) {
     unknownAction: "INVALID_ARGUMENT",
     actions: {
       list: { description: "List the ids of every registered skill.", usage: "skills [list]", output: listOutput$1 },
-      show: { description: "Return one skill with its SKILL.md content.", usage: "skills show <id>", output: showOutput },
+      show: {
+        description: "Return one skill with its SKILL.md content and the list of its files, or with --file one of its reference files.",
+        usage: "skills show <id> [--file references/name.md]",
+        output: showOutput,
+        options: { file: option$1.string("skills show: a file of the skill folder from files, such as references/editing.md; SKILL.md by default.") }
+      },
       install: {
-        description: "Write every skill to .claude/skills/<id>/SKILL.md and .agents/skills/<id>/SKILL.md in the selected project, or to one --target or an --out directory; existing files are refused.",
+        description: "Write every skill folder (SKILL.md and its reference files) to .claude/skills/<id>/ and .agents/skills/<id>/ in the selected project, or to one --target or an --out directory; existing files are refused.",
         usage: "skills install [--target both|claude|agents | --out directory]",
         scope: "project",
         mutating: true,
@@ -19165,14 +19201,16 @@ function skillsCommand(skills2) {
         arity(args, 2);
         const skill = skills2.get(args[1]);
         ensure(skill, "UNKNOWN_SKILL", args[1]);
-        return skill;
+        const files2 = skillFileNames(skill), path2 = value$2(flags, "file") ?? "SKILL.md";
+        ensure(files2.includes(path2), "INVALID_OPTION_VALUE", `--file must be one of: ${files2.join(", ")}.`, { option: "file", value: path2, allowed: files2 });
+        return { id: skill.id, path: path2, content: path2 === "SKILL.md" ? skill.content : skill.files[path2], files: files2 };
       }
       ensure(action2 === "install", "INVALID_ARGUMENT", "Use skills list, show, or install.");
       arity(args, 1);
       const out2 = value$2(flags, "out"), target2 = value$2(flags, "target");
       ensure(out2 === void 0 || target2 === void 0, "INVALID_ARGUMENT", "Use either --target or --out.");
       const roots = out2 === void 0 ? targetRoots(target2 ?? "both") : [out2];
-      return workspace2.write(skills2.list().flatMap((skill) => skillPaths(skill.id, roots).map((path2) => ({ path: path2, bytes: new TextEncoder().encode(skill.content) }))));
+      return workspace2.write(skills2.list().flatMap((skill) => skillFiles(skill, roots).map((file) => ({ path: file.path, bytes: new TextEncoder().encode(file.content) }))));
     }
   };
 }
@@ -19182,6 +19220,7 @@ const skillsStrings = {
     descriptions: {
       "skills install: the skill roots, .claude/skills (claude), .agents/skills (agents) or both (the default).": "skills install: die Skill-Stammordner .claude/skills (claude), .agents/skills (agents) oder beide (Standard).",
       "skills install: one custom directory instead of the --target roots.": "skills install: ein eigenes Verzeichnis statt der --target-Stammordner.",
+      "skills show: a file of the skill folder from files, such as references/editing.md; SKILL.md by default.": "skills show: eine Datei des Skill-Ordners aus files, etwa references/editing.md; standardmäßig SKILL.md.",
       "list (default), show or install.": "list (Standard), show oder install.",
       "The skill id for show.": "Die Skill-ID für show."
     }
@@ -19206,8 +19245,8 @@ const skillsPlugin = {
         commands: { skills: "Mitgelieferte und von Plugins bereitgestellte Agent-Skills auflisten, lesen oder installieren." },
         actions: {
           "skills list": "Die IDs aller registrierten Skills auflisten.",
-          "skills show": "Einen Skill mit seinem SKILL.md-Inhalt zurückgeben.",
-          "skills install": "Jeden Skill im ausgewählten Projekt nach .claude/skills/<id>/SKILL.md und .agents/skills/<id>/SKILL.md schreiben, oder in ein --target bzw. ein --out-Verzeichnis; vorhandene Dateien werden abgelehnt."
+          "skills show": "Einen Skill mit seinem SKILL.md-Inhalt und der Liste seiner Dateien zurückgeben, oder mit --file eine seiner Referenzdateien.",
+          "skills install": "Jeden Skill-Ordner (SKILL.md und seine Referenzdateien) im ausgewählten Projekt nach .claude/skills/<id>/ und .agents/skills/<id>/ schreiben, oder in ein --target bzw. ein --out-Verzeichnis; vorhandene Dateien werden abgelehnt."
         }
       }
     }
@@ -19575,9 +19614,9 @@ function decode$5({ path: path2, bytes }) {
   }
   return isTextContent(path2, text2) ? text2 : void 0;
 }
-async function readExisting(files, path2) {
+async function readExisting(files2, path2) {
   try {
-    return await files.read(path2);
+    return await files2.read(path2);
   } catch (error2) {
     if (error2 instanceof AppError && error2.code === "NOT_FOUND") return void 0;
     throw error2;
@@ -19750,10 +19789,10 @@ function searchCommand(service) {
       const filters = noteFilters(value$2(flags, "tag"), value$2(flags, "property"));
       const contextLines = integer$2(flags, "context") ?? 0;
       ensure(contextLines <= maxContextLines, "INVALID_ARGUMENT", `--context must be at most ${maxContextLines}.`);
-      const files = flags["files-only"] === true, counting = flags.count === true;
-      ensure(!(files && counting), "INVALID_ARGUMENT", "Choose one of --files-only and --count.");
+      const files2 = flags["files-only"] === true, counting = flags.count === true;
+      ensure(!(files2 && counting), "INVALID_ARGUMENT", "Choose one of --files-only and --count.");
       ensure(!counting || flags.limit === void 0 && flags.cursor === void 0, "INVALID_ARGUMENT", "--count returns no page; omit --limit and --cursor.");
-      ensure(!(files || counting) || flags.context === void 0, "INVALID_ARGUMENT", "--context applies only to hits; omit it with --files-only or --count.");
+      ensure(!(files2 || counting) || flags.context === void 0, "INVALID_ARGUMENT", "--context applies only to hits; omit it with --files-only or --count.");
       const query = {
         pattern: args[0],
         regex: flags.regex === true,
@@ -19772,7 +19811,7 @@ function searchCommand(service) {
         return { total: total2, fileCount: fileCount2 };
       }
       const page = { limit: integer$2(flags, "limit", 1) ?? defaultSearchLimit, ...cursor === void 0 ? {} : { cursor } };
-      return files ? search2.files(query, page) : search2.hits(query, page);
+      return files2 ? search2.files(query, page) : search2.hits(query, page);
     }
   };
 }
@@ -19937,12 +19976,12 @@ function unresolvedLinks(cache, include) {
   return { links: links2, issues: cache.issues() };
 }
 function orphanNotes(cache, include, root) {
-  const files = cache.files().filter((path2) => include(path2) && isNote(path2) && !root(path2) && cache.backlinks(path2).length === 0);
-  return { files, issues: cache.issues() };
+  const files2 = cache.files().filter((path2) => include(path2) && isNote(path2) && !root(path2) && cache.backlinks(path2).length === 0);
+  return { files: files2, issues: cache.issues() };
 }
 function deadendNotes(cache, include) {
-  const files = cache.files().filter((path2) => include(path2) && isNote(path2) && cache.getFileCache(path2) !== null && !cache.references(path2).some((reference) => outbound(path2, reference)));
-  return { files, issues: cache.issues() };
+  const files2 = cache.files().filter((path2) => include(path2) && isNote(path2) && cache.getFileCache(path2) !== null && !cache.references(path2).some((reference) => outbound(path2, reference)));
+  return { files: files2, issues: cache.issues() };
 }
 const actions$5 = ["out", "back", "unresolved", "orphans", "deadends"];
 const noteActions = ["out", "back"];
@@ -20099,12 +20138,12 @@ function typeRegistry(text2) {
   for (const [name2, type2] of Object.entries(data.types)) if (typeof type2 === "string") types2[name2] = type2;
   return { status: "loaded", types: types2 };
 }
-function scopeSources(files, metadata2, bases, size) {
+function scopeSources(files2, metadata2, bases, size) {
   return {
     cache: () => metadata2.load(),
     async text(path2) {
       try {
-        return new TextDecoder().decode((await files.read(path2)).bytes);
+        return new TextDecoder().decode((await files2.read(path2)).bytes);
       } catch (error2) {
         if (error2 instanceof AppError && error2.code === "NOT_FOUND") return null;
         throw error2;
@@ -20471,8 +20510,8 @@ async function checkVault(sources, request) {
     if (runs(detection.rule)) detections.push(detection);
   };
   for (const path2 of checked2) {
-    const references = referenceDetections(cache, path2, runs, locator2, suggest);
-    (Array.isArray(references) ? references : await references).forEach(add);
+    const references2 = referenceDetections(cache, path2, runs, locator2, suggest);
+    (Array.isArray(references2) ? references2 : await references2).forEach(add);
     const parsed2 = cache.getFileCache(path2);
     if (parsed2 && runs("duplicate-block-id")) duplicateBlockIds(path2, parsed2).forEach(add);
     if (runs("empty-file") && await isEmpty(path2, cache, sources.size)) add({ rule: "empty-file", path: path2, line: null, column: null, message: "empty-file", params: {} });
@@ -21398,8 +21437,8 @@ const decoder$4 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false });
 const byPosition = (left, right) => (left.line ?? 0) - (right.line ?? 0) || (left.column ?? 0) - (right.column ?? 0);
 const parent = (path2) => path2.includes("/") ? path2.slice(0, path2.lastIndexOf("/") + 1) : "";
 class AgentDefinitions {
-  constructor(files, ports2, directory) {
-    this.files = files;
+  constructor(files2, ports2, directory) {
+    this.files = files2;
     this.ports = ports2;
     this.directory = directory;
     vaultPath(directory);
@@ -21453,10 +21492,10 @@ class AgentDefinitions {
     const instructions2 = {}, missing2 = [];
     if (checked2.config && !hasErrors(checked2.diagnostics)) {
       for (const [name2, agent] of agentEntries(checked2.config)) {
-        const files = instructionFiles(agent);
-        if (files.length === 0) continue;
+        const files2 = instructionFiles(agent);
+        if (files2.length === 0) continue;
         const parts = [];
-        for (const [index2, file] of files.entries()) {
+        for (const [index2, file] of files2.entries()) {
           const at = typeof agent.instruction_file === "string" ? pointer("agents", name2, "instruction_file") : pointer("agents", name2, "instruction_file", index2);
           try {
             parts.push(decoder$4.decode((await this.files.read(vaultPath(`${parent(path2)}${localPath(file)}`))).bytes));
@@ -21472,7 +21511,7 @@ class AgentDefinitions {
   }
   /** Every definition file with its agents, the default agent and diagnostic counts. */
   async list() {
-    const files = await Promise.all((await this.paths()).map(async (path2) => {
+    const files2 = await Promise.all((await this.paths()).map(async (path2) => {
       const loaded = await this.load(path2);
       const config2 = loaded.config;
       return {
@@ -21491,7 +21530,7 @@ class AgentDefinitions {
         warnings: loaded.diagnostics.filter((entry2) => entry2.severity === "warning").length
       };
     }));
-    return { directory: this.directory, files };
+    return { directory: this.directory, files: files2 };
   }
   /** One file, or one agent of it with `file#agent`. */
   async inspect(target2) {
@@ -21517,15 +21556,15 @@ class AgentDefinitions {
   /** Validates one file or every file; any error-severity diagnostic fails with INVALID_AGENT_DEFINITION. */
   async validate(file) {
     const paths2 = file === void 0 ? await this.paths() : [this.resolve(file)];
-    const files = await Promise.all(paths2.map(async (path2) => {
+    const files2 = await Promise.all(paths2.map(async (path2) => {
       const loaded = await this.load(path2);
       return { path: path2, revision: loaded.revision, valid: !hasErrors(loaded.diagnostics), diagnostics: loaded.diagnostics };
     }));
-    const invalid2 = files.filter((entry2) => !entry2.valid);
+    const invalid2 = files2.filter((entry2) => !entry2.valid);
     if (invalid2.length > 0) {
       throw agentError("INVALID_AGENT_DEFINITION", `${invalid2.map((entry2) => `${entry2.path} (${entry2.diagnostics.filter((item) => item.severity === "error").length} errors)`).join(", ")} failed validation; see details.files[].diagnostics.`, { files: invalid2 });
     }
-    return { directory: this.directory, valid: true, files };
+    return { directory: this.directory, valid: true, files: files2 };
   }
 }
 const execution = ["command", "http", "mcp_tool"];
@@ -22951,10 +22990,10 @@ function mergeSettings(text2, settings2, manifest, coverage = { files: null }) {
   if (Object.keys(merged2).length === 0 && (current.permissions === void 0 || revoked.length > 0)) delete next.permissions;
   return { text: json$7(next, text2), owned: nonEmpty$1(owned), revoked };
 }
-function nextManifest(previous2, text2, files, written2) {
-  const current = section(".mcp.json", parsed(".mcp.json", files.mcp).mcpServers, "mcpServers");
+function nextManifest(previous2, text2, files2, written2) {
+  const current = section(".mcp.json", parsed(".mcp.json", files2.mcp).mcpServers, "mcpServers");
   const kept = Object.fromEntries(Object.entries(previous2.mcpServers).filter(([name2, config2]) => same$2(current[name2], config2)));
-  const settings2 = parsed(".claude/settings.json", files.settings);
+  const settings2 = parsed(".claude/settings.json", files2.settings);
   const agent = written2.agent ?? (settings2.agent === previous2.settings.agent ? previous2.settings.agent : void 0);
   const present2 = ruleLists(".claude/settings.json", settings2.permissions);
   const permissions = written2.permissions ?? nonEmpty$1(Object.fromEntries(Object.entries(previous2.settings.permissions ?? {}).map(([list2, rules2]) => [list2, rules2.filter((entry2) => present2[list2]?.includes(entry2.rule))])));
@@ -23061,8 +23100,8 @@ class AgentGeneration {
     if (settings2) writes.push({ path: settingsPath, bytes: encode$2(settings2.text) });
     if (writes.length === 0) return { writes, revoked: [] };
     const written2 = { servers: servers2, ...generated.settings?.agent ? { agent: generated.settings.agent } : {}, ...settings2 ? { permissions: settings2.owned } : {} };
-    const files = { ...project2, ...settings2 ? { settings: settings2.text } : {} };
-    return { writes: [...writes, { path: manifestPath$1, bytes: encode$2(nextManifest(project2.manifest, project2.manifestText, files, written2)) }], revoked: settings2?.revoked ?? [] };
+    const files2 = { ...project2, ...settings2 ? { settings: settings2.text } : {} };
+    return { writes: [...writes, { path: manifestPath$1, bytes: encode$2(nextManifest(project2.manifest, project2.manifestText, files2, written2)) }], revoked: settings2?.revoked ?? [] };
   }
   /**
    * A run over some definitions re-derives only their permission origins, so the rules of the others stay. Every
@@ -23071,10 +23110,10 @@ class AgentGeneration {
    */
   async coverage(request, sources, manifest) {
     if (request.file === void 0 && request.agent === void 0) return { files: null };
-    const files = sources.map((source2) => source2.path);
+    const files2 = sources.map((source2) => source2.path);
     const recorded = new Set(Object.values(manifest.settings.permissions ?? {}).flatMap((rules2) => rules2.flatMap((rule2) => rule2.origins.map((origin) => origin.file))));
     const present2 = await Promise.all([...recorded].map(async (file) => await this.isFile(file) ? [file] : []));
-    return { files, ...request.agent ? { agent: request.agent } : {}, existing: [.../* @__PURE__ */ new Set([...files, ...present2.flat()])] };
+    return { files: files2, ...request.agent ? { agent: request.agent } : {}, existing: [.../* @__PURE__ */ new Set([...files2, ...present2.flat()])] };
   }
   /** Whether a recorded scope path names an existing file; an invalid, missing or symlinked path does not. */
   async isFile(path2) {
@@ -30022,7 +30061,7 @@ ${body}`;
   }
 };
 const sha256Digest = (text2) => node_crypto.createHash("sha256").update(text2, "utf8").digest("hex");
-const content$5 = '---\nname: forge-agents\ndescription: Maintain docker-agent definitions in agents/*.yaml and validate, create, import and generate Claude Code agents, skills and MCP settings from them with drift checks. Use when editing agent teams, generating .claude/agents, or when agents validate or agents generate --check reports problems.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nAgent definitions are [docker-agent](https://github.com/docker/docker-agent) YAML files in the scope\'s `agents/` folder (`plugins.settings.agents.directory`). One file is a team: `agents.<name>` entries with `model`, `description`, `instruction`, `toolsets`, `sub_agents` and `commands`, plus shared `models`, `mcps` and `toolsets`. The YAML file is the source of truth; generated `.claude/agents/*.md` files are outputs. Never edit a generated agent by hand: change the definition and regenerate.\n\nInspect before changing anything:\n- `agents list` returns each file\'s `revision`, `agents` (`name`, `description`, `model`, `subAgents`), `default` agent (`root`, else the first) and error/warning counts.\n- `agents inspect team.yaml` returns the parsed `config` and `diagnostics`; `agents inspect team.yaml#reviewer` returns one agent\'s `definition` and resolved `instruction`.\n- `agents validate [team.yaml]` checks the vendored docker-agent JSON Schema and docker-agent\'s semantic rules (references, models, toolsets, `force_handoff` cycles, `instruction` vs `instruction_file`, version `"16"`, `16` or absent). `instruction_file` paths are relative to the definition file and must stay in its folder or below (`./prompt.md` and `prompts/../x.md` are fine, `../x.md` is not). Errors fail with `INVALID_AGENT_DEFINITION`; `details.files[].diagnostics` give `severity`, `code`, JSON `pointer`, 1-based `line`/`column` and `message`.\n\nAuthor agents:\n- `agents create reviewer --file team.yaml --description "Reviews changes" --instruction "..." --toolset filesystem,shell --if-match <revision> --dry-run` adds an agent to an existing team file without touching its other lines or comments; omit `--if-match` for a new file. `--model` defaults to `plugins.settings.agents.defaultModel`. `--from-template basic|team|mcp` starts from a bundled template instead of `--toolset` (`team` adds `<name>-researcher` and `<name>-writer`). MCP, LSP, API and similar toolsets need settings: edit the YAML with `edit agents/team.yaml --find … --replace … --if-match <revision>`, then `agents validate`.\n- `agents import code-reviewer --from claude --file team.yaml` converts `.claude/agents/code-reviewer.md` into a docker-agent agent. The conversion is approximate: read every diagnostic (`fidelity` `A` approximated, `U` dropped) and fix the YAML.\n- `create` and `import` write only `.yaml`/`.yml` files directly in the definitions folder; other paths fail with `INVALID_PATH`.\n\nGenerate Claude Code agents:\n- `agents generate --target claude --plan` reports every output with `status` `missing`, `changed`, `hand-edited` or `unchanged` and the mapping `diagnostics` (each with `fidelity` and a JSON `pointer` into the definition). Review warnings: models other than Anthropic become `inherit`; unsupported toolsets, delegation settings and filesystem `allow_list`/fetch `allowed_domains` limits (`restriction-unsupported`) are dropped.\n- `agents generate --target claude` writes new files. Existing outputs are never overwritten silently: run `--plan-out review.json`, review, then `--revisions-from review.json`.\n- Nothing that runs commands or grants permissions is written without an opt-in: `--mcp inline` (agent frontmatter) or `--mcp project` (`.mcp.json`) writes MCP servers (default `--mcp none`, reported as `mcp-not-generated`); `--hooks` writes hooks (else `hooks-not-generated`); `--settings` merges permission rules and the main agent into `.claude/settings.json`, and allow rules for a whole tool (`Bash`, `Bash(*)` and command-wide rules such as `Bash(:*)`, `Bash(sh -c *)` or `Bash(env *)`, `Edit`, `Write`, `WebFetch`, every tool of an MCP server) also need `--allow-broad-permissions` (else `broad-permission` errors). Before opting in, read every `executes-command` (full command line) and `grants-permission` (exact rule) diagnostic of the plan.\n- `--commands` writes `/commands` as `.claude/skills/<name>/SKILL.md`; `--model-style alias` emits `sonnet`/`opus`/`haiku`/`fable`. Agents without a Claude tool get `tools: []`, never every tool.\n- Merges change only entries Forge wrote, recorded in `.claude/forge-generated.json`, and keep the files\' indentation and key order. With `--settings`, permission rules Forge added are recorded too, with the definitions that grant them, and removed once none of them grants the rule (a `revokes-permission` warning; a `--file` or `--agent` run never removes a rule another definition grants, but every run removes the rules of a renamed or deleted definition file); rules already in the file stay. A server name or main agent you set yourself fails with `AGENT_MERGE_CONFLICT`; `--rename-conflicts` (with `--mcp project`) gives the generated server a numbered name instead. Pass the same options to `--check`.\n- `agents generate --target claude --check` exits 5 with `AGENT_DRIFT` when outputs are `missing`, `changed` (definition, instruction file or options changed), `hand-edited` (output no longer matches what Forge recorded) or `stale` (generated from a definition that no longer defines it). Run it in CI after changing definitions.\n\nGenerated files carry `x-forge-source: {path, agent, sourceHash, optionsHash, outputHash}` provenance and pass Forge\'s Claude agent validation (`claude agents inspect <name>`). A docker-agent → Claude → docker-agent round trip is lossy; the YAML file keeps everything Claude cannot represent.\n';
+const content$5 = '---\nname: forge-agents\ndescription: Maintain docker-agent definitions in agents/*.yaml and validate, create, import and generate Claude Code agents, skills and MCP settings from them with drift checks. Use when editing agent teams, generating .claude/agents, or when agents validate or agents generate --check reports problems.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nAgent definitions are [docker-agent](https://github.com/docker/docker-agent) YAML files in the scope\'s `agents/` folder (`plugins.settings.agents.directory`). The YAML is the source of truth; generated `.claude/agents/*.md` files are outputs. Never edit a generated agent: change the definition and regenerate.\n\n## Inspect\n- `agents list` returns each file\'s `revision`, agents, `default` agent and error and warning counts.\n- `agents inspect team.yaml` returns the parsed `config` and `diagnostics`; `agents inspect team.yaml#reviewer` returns one agent and its resolved `instruction`.\n- `agents validate [team.yaml]` checks the docker-agent schema and semantic rules. Errors fail with `INVALID_AGENT_DEFINITION`; `details.files[].diagnostics` give `severity`, `code`, JSON `pointer`, `line`, `column` and `message`.\n- `instruction_file` paths are relative to the definition and must stay in its folder or below.\n\n## Author\n- `agents create reviewer --file team.yaml --description "Reviews changes" --instruction "..." --toolset filesystem,shell --if-match <revision> --dry-run` adds an agent without touching other lines or comments. Omit `--if-match` for a new file. `--from-template basic|team|mcp` starts from a template.\n- MCP, LSP, API and similar toolsets need settings: `edit agents/team.yaml --find … --replace … --if-match <revision>`, then `agents validate`.\n- `agents import code-reviewer --from claude --file team.yaml` converts `.claude/agents/code-reviewer.md`. The conversion is approximate: read every diagnostic (`fidelity` `A` approximated, `U` dropped) and fix the YAML.\n- `create` and `import` write only `.yaml` or `.yml` files directly in the definitions folder.\n\n## Generate\n- `agents generate --target claude --plan` reports each output\'s `status` (`missing`, `changed`, `hand-edited`, `unchanged`) and mapping `diagnostics`. Models other than Anthropic become `inherit`; unsupported toolsets and limits are dropped with warnings.\n- `agents generate --target claude` writes new files. To replace existing outputs: `--plan-out review.json`, review, then `--revisions-from review.json`.\n- Nothing that runs commands or grants permissions is written without opt-in: `--mcp inline|project`, `--hooks`, `--settings`, and `--allow-broad-permissions` for whole-tool rules. Read every `executes-command` and `grants-permission` diagnostic first.\n- `--commands` writes commands as `.claude/skills/<name>/SKILL.md`; `--model-style alias` emits `opus`, `sonnet`, `haiku` or `fable`.\n- Merges change only entries Forge recorded in `.claude/forge-generated.json`. A server name or main agent you set yourself fails with `AGENT_MERGE_CONFLICT`; `--rename-conflicts` (with `--mcp project`) renames the generated server.\n- `agents generate --target claude --check` exits 5 with `AGENT_DRIFT` for `missing`, `changed`, `hand-edited` or `stale` outputs. Pass the same options as the generating run, and run it in CI.\n\n## Know the limits\n- Generated files carry `x-forge-source` provenance and pass `claude agents inspect <name>`.\n- A docker-agent → Claude → docker-agent round trip is lossy; the YAML keeps what Claude cannot represent. See `bin/data/docs/reference/agents.md`.\n';
 const agentsSkill = { id: "forge-agents", content: content$5 };
 const germanAgentMessages = {
   toolFilterNone: "Der Werkzeugfilter {filter} wird durch keine Claude-Werkzeuge angenähert.",
@@ -30388,7 +30427,7 @@ const agentsPlugin = {
     ],
     strings: {
       de: {
-        commands: { agents: "docker-agent-Definitionen verwalten (auflisten, prüfen, validieren, anlegen, importieren) und daraus Claude-Code-Agenten generieren." },
+        commands: { agents: "docker-agent-Definitionen verwalten (auflisten, untersuchen, validieren, anlegen, importieren) und daraus Claude-Code-Agenten generieren." },
         actions: {
           "agents list": "Definitionsdateien mit ihren Agenten, dem Standardagenten und der Anzahl der Diagnosen auflisten.",
           "agents inspect": "Eine Definitionsdatei oder mit datei#agent einen Agenten samt Diagnosen zurückgeben.",
@@ -30604,8 +30643,10 @@ function editFrontmatter(text2, frontmatter, changes2, removed) {
   if (appended.length > 0 && result.length > 0 && !result.endsWith("\n")) result += newline;
   return `${bom}${source2.slice(0, start2)}${result}${appended.join("")}${source2.slice(end2)}`;
 }
-const backlog = '---\nname: forge-backlog\ndescription: Plan, decompose, rank, release and sync a product backlog stored as Obsidian Product Backlog (backlog-view) compatible notes with the backlog command, including two-way Azure DevOps Boards sync. Use when the user mentions backlog items, epics, features, PBIs, tasks, ranks, iterations, releases or work item sync.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nThe `backlog` command manages a product backlog that the Obsidian Product Backlog view (backlog-view) opens unchanged. The `.base` file\'s `product-backlog` view options are the configuration: which properties hold parent, order, type, state, dates, iteration, release and dependencies. Never edit backlog frontmatter with `properties` or `write`; the backlog command keeps the plugin\'s rules (ranks, stamps, refusals, YAML style).\n\nStart: `backlog check` (or `backlog list`) finds the backlog. With no backlog yet, `backlog init --folder docs/backlog` writes the plugin\'s `Product Backlog.base`; bind the properties you need by editing the view options (`stateProperty: note.status`, `stateValues: Open, Active, Done`, `startedDateProperty`, `finishedDateProperty`, `startedStates`, `dependsOnProperty`, `iterationProperty`, `releaseProperty`, `startProperty`, `targetProperty`) and add a `product-release` view for releases. Several backlogs need `--base <file> --view <name>` (or `plugins.settings.backlog.base`). `BACKLOG_AMBIGUOUS` lists the candidates in `error.details.candidates`.\n\nRead before you write: `backlog tree` (hierarchy in sibling rank order), `backlog list` (global rank; `rank` is 1-based, `context: true` rows are ancestors outside the filter and read-only), `backlog board` (columns by state with `limit` and `over`), `backlog show <item>`. Items are named by vault path, title, link text or `pbl-id` (`#12`).\n\nDecompose top-down with the type ladder Epic → Feature → PBI → Task (Issue, Bug, Idea, Deliverable and Improvement hang under any rung above Task; Milestone, Iteration and Release are markers): `backlog add Epic "Trip planning"`, then `backlog add Feature "Route sharing" --parent "Trip planning"`, then PBIs and Tasks. A new item gets the next `pbl-id`, its type folder, and the rank at the end of its siblings. Preview with `--dry-run`; `data.changes[].diff` shows the exact note.\n\nRank and reparent with `backlog move <item> --before <sibling>` / `--after` / `--first` / `--last`, or `--parent <item>` / `--top`; only `parent` and `order` change. `BACKLOG_NO_GAP` (`details.reason`: `gapSpent`, `tied`, `unranked`) means run `backlog ranks respace` (or `backlog ranks seed` when ranks are missing) and move again.\n\nTrack work with `backlog set <item> --state Active` (stamps `started` on entering a started state and `finished` on crossing into done; leaving done deletes it), `--priority`, `--risk`, `--horizon`, `--start`/`--due` (YYYY-MM-DD), `--assignee <Resource note>` and `--type`. An empty value (`--horizon ""`) deletes the key. States, horizons, priorities and risks are written in the spelling the view declares (`--state "in progress"` writes `In Progress`); Deliverables and test-ladder items use their own workflow values. Dependencies: `backlog depend <item> --on <prerequisite>` refuses loops; `backlog undepend` removes the entry.\n\nIterations: `backlog iteration add --goal "Share a route"` names the note `<N> - Iteration - <goal>` and starts the day after the latest iteration; `backlog iteration assign <item> <iteration>` links it and copies the iteration\'s dates. Releases: `backlog release add "1.0" --release-version 1.0.0 --target-date 2026-12-01`, `backlog release join <item> <release>` (fills empty start/target dates), `backlog release readiness <release>` (estimated, blocked and risk criteria with `outstandingPaths`), `backlog release notes <release>` (regenerates the release notes file it owns, never a foreign one) and `backlog release mark-released <release>`. Pass `--today YYYY-MM-DD` for reproducible stamps.\n\nSync with an external tracker (Azure DevOps Boards): connections live in `bin/config.json` under `plugins.settings.connector.connections.<id>` (`platform`, `organization`, `project`, `process`, `iterationRoot`, `tokenEnv`); the token comes from the environment variable named by `tokenEnv` (default `AZURE_DEVOPS_EXT_PAT`) and never from config or notes, so never print or write it. Check with `connectors list` (`valid`, `tokenSet`), `connectors inspect <id>` (mappings) and `connectors test <id>` (read-only probe). A `product-backlog` view with the option `connection: <id>` is a sync set. Always run `backlog sync status` or `backlog sync --dry-run` first: it reads the remote and lists `created`, `updated`, `pulled`, `conflicts` and `skipped` (each with a `code`) per view, and `left` per connection. A skip is never an error to work around: read its `code` (for example `duplicate-link` for a copied note, `remote-format-unknown` for a remote description that is not Markdown, `server-kept`) and tell the user. Then `backlog sync` (`--direction push|pull`, `--view` to narrow). Never edit the link property (`azure-devops`) or `.forge/sync/<id>.json` by hand, and never copy a note with its link property. Without the state file, notes relink by their link property and every differing field is a conflict; nothing is overwritten. `WORKSPACE_BUSY` naming `.forge/sync/<id>.lock` means another sync of that connection runs (wait and retry while `retryable` is true); a lock left by a killed sync is removed automatically with a warning. `SYNC_INTERRUPTED` means a signal stopped the sync at a safe point: rerun `backlog sync status`, then `backlog sync`. With `dependsOnProperty` bound, `dependsOn` lists sync with predecessor links: edit them with `backlog depend`/`undepend`, never as raw ids; a list naming a note that is not synced on the connection is skipped as `unexpressible`, and a remote predecessor without a note as `unsynced-dependency`. Remote items without a note are never imported; create the note with `backlog add`. A field changed on both sides is a conflict that the sync leaves alone; ask which side wins, then `backlog sync resolve <item> --take local|remote [--field title,state]`. Rename notes with `move`/`rename` so the sync state follows. `CONNECTOR_AUTH_FAILED` means the token variable is unset or rejected; `SYNC_CONFLICT` means the remote item changed during the sync: rerun status and sync; when its links changed during the update, status then lists `parent`/`dependencies` conflicts: compare the links in Azure DevOps with the user before resolving. `PLUGIN_SERVICE_MISSING` for `connector.hub` means the `connector` core plugin is disabled or its settings are invalid; `plugins` shows its state and reason.\n\nFinish with `backlog check`: `ok: false` lists errors (parent or dependency cycles, broken links, unresolved release memberships, configuration problems, fields a type may not hold); warnings cover rank ties, unranked items and unreadable dates. `BACKLOG_WRITE_REFUSED` carries `details.reason` (for example `outside-filter`, `field-not-held`, `not-a-release`, `dependency-cycle`, `unbound-property`); `BACKLOG_CONFIG_PROBLEM` means two roles share one property key or a release option is missing.\n';
-const backlogSkill = { id: "forge-backlog", content: backlog };
+const __vite_glob_0_0 = "# Backlog sync with Azure DevOps Boards\n\nRead this before running `backlog sync` or when a sync reports skips, conflicts or errors.\n\n## Connections and tokens\n- Connections live in `bin/config.json` under `plugins.settings.connector.connections.<id>` (`platform`, `organization`, `project`, `process`, `iterationRoot`, `tokenEnv`).\n- The token comes only from the environment variable that `tokenEnv` names (default `AZURE_DEVOPS_EXT_PAT`). Never print it or write it to config or notes.\n- The token goes only to `dev.azure.com`, `*.visualstudio.com` and loopback. Another host, such as an Azure DevOps Server, must be listed in the user's `FORGE_CONNECTOR_ALLOWED_HOSTS` (comma-separated); until then requests fail with `CONNECTION_INVALID` (`details.host`) before anything is sent.\n- Check with `connectors list` (`valid`, `tokenSet`), `connectors inspect <id>` (mappings) and `connectors test <id>` (a read-only probe).\n- A `product-backlog` view with the option `connection: <id>` is a sync set.\n\n## Sync\n- Always start with `backlog sync status` or `backlog sync --dry-run`. It reads the remote and lists `created`, `updated`, `pulled`, `conflicts` and `skipped` per view, and `left` per connection.\n- A skip is never an error to work around: read its `code` (`duplicate-link` for a copied note, `remote-format-unknown`, `server-kept`, `unexpressible`, `unsynced-dependency`) and tell the user.\n- Then `backlog sync`, optionally `--direction push|pull` and `--view` to narrow.\n- Remote items without a note are never imported: create the note with `backlog add`.\n- Rename notes with `move` or `rename` so the sync state follows. Never edit the link property (`azure-devops`) or `.forge/sync/<id>.json` by hand, and never copy a note with its link property.\n- With `dependsOnProperty` bound, dependencies sync as predecessor links: edit them with `backlog depend` and `undepend`, never as raw ids.\n- Without the state file, notes relink by their link property and every differing field is a conflict; nothing is overwritten.\n\n## Conflicts and errors\n- A field changed on both sides is a conflict the sync leaves alone. Ask which side wins, then `backlog sync resolve <item> --take local|remote [--field title,state]`.\n- `WORKSPACE_BUSY` naming `.forge/sync/<id>.lock`: another sync of that connection runs. Wait and retry while `retryable` is true; a lock left by a killed sync is removed with a warning.\n- `SYNC_INTERRUPTED` (exit 130 or 143): a signal stopped the sync at a safe point. Rerun `backlog sync status`, then `backlog sync`.\n- `SYNC_CONFLICT`: the remote item changed during the sync. Rerun status and sync; if its links changed, compare the `parent` or `dependencies` conflicts in Azure DevOps with the user before resolving.\n- `CONNECTOR_AUTH_FAILED`: the token variable is unset or rejected.\n- `PLUGIN_SERVICE_MISSING` for `connector.hub`: the `connector` core plugin is disabled or its settings are invalid; `plugins` shows why.\n";
+const backlog = '---\nname: forge-backlog\ndescription: Plan, decompose, rank, release and sync a product backlog stored as Obsidian Product Backlog (backlog-view) compatible notes with the backlog command, including two-way Azure DevOps Boards sync. Use when the user mentions backlog items, epics, features, PBIs, tasks, ranks, iterations, releases or work item sync.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nThe `backlog` command manages a backlog that the Obsidian Product Backlog view opens unchanged. The `.base` file\'s `product-backlog` view options say which properties hold parent, order, type, state, dates, iteration, release and dependencies.\n\n- Never edit backlog frontmatter with `properties` or `write`: the backlog command keeps the plugin\'s ranks, stamps, refusals and YAML style.\n- Preview every change with `--dry-run`; `data.changes[].diff` shows the exact note.\n\n## Start\n- `backlog check` or `backlog list` finds the backlog. With none yet, `backlog init --folder docs/backlog` writes `Product Backlog.base`; bind the properties you need in the view options and add a `product-release` view for releases.\n- Several backlogs need `--base <file> --view <name>` (or `plugins.settings.backlog.base`). `BACKLOG_AMBIGUOUS` lists `error.details.candidates`.\n\n## Read\n- `backlog tree` (hierarchy), `backlog list` (global rank; `context: true` rows are read-only ancestors), `backlog board` (columns by state), `backlog show <item>`.\n- Name items by vault path, title, link text or `pbl-id` (`#12`).\n\n## Plan\n- Decompose top-down: Epic → Feature → PBI → Task. `backlog add Epic "Trip planning"`, then `backlog add Feature "Route sharing" --parent "Trip planning"`.\n- Issue, Bug, Idea, Deliverable and Improvement hang under any rung above Task; Milestone, Iteration and Release are markers. A root of an unknown type would be hidden, so `add` refuses it without `--parent` (`BACKLOG_WRITE_REFUSED`, `details.reason: hidden-type`).\n- Rank: `backlog move <item> --before <sibling>`, `--after`, `--first`, `--last`, `--parent <item>` or `--top`. On `BACKLOG_NO_GAP`, run `backlog ranks respace` (or `ranks seed`) and move again.\n- Track: `backlog set <item> --state Active` stamps `started` and `finished`; also `--priority`, `--risk`, `--horizon`, `--start`, `--due`, `--assignee`, `--type`. An empty value (`--horizon ""`) deletes the key.\n- Dependencies: `backlog depend <item> --on <prerequisite>` refuses loops; `backlog undepend <item> --on <prerequisite>` removes one.\n- Iterations: `backlog iteration add --goal "Share a route"`, `backlog iteration assign <item> <iteration>`.\n- Releases: `backlog release add "1.0" --release-version 1.0.0 --target-date 2026-12-01`, `release join <item> <release>`, `release readiness <release>`, `release notes <release>`, `release mark-released <release>`.\n- Pass `--today YYYY-MM-DD` for reproducible stamps.\n\n## Finish\n- `backlog check`: `ok: false` lists errors such as cycles, broken links and fields a type may not hold; warnings cover rank ties, unranked items and `ignored` notes the view hides.\n- `BACKLOG_WRITE_REFUSED` carries `details.reason` (`outside-filter`, `field-not-held`, `not-a-release`, `dependency-cycle`, `unbound-property`, `hidden-type`). `BACKLOG_CONFIG_PROBLEM` means two roles share one property or a release option is missing.\n\n## Reference\n- [Sync with Azure DevOps](references/sync.md): connections, tokens, `backlog sync` status, conflicts and recovery codes.\n';
+const references = /* @__PURE__ */ Object.assign({ "../../../../skills/forge-backlog/references/sync.md": __vite_glob_0_0 });
+const backlogSkill = { id: "forge-backlog", content: backlog, files: skillFolderFiles("forge-backlog", references) };
 function watchSignals() {
   let received = null;
   const interrupt = () => {
@@ -32027,8 +32068,8 @@ function cacheSource(cache) {
 }
 async function evaluate$1(context, bases, cache, base2, view, settings2) {
   const { files: results, warnings } = await bases.query(context, base2, { view });
-  const files = new Set(cache.files());
-  return { results, warnings, model: buildModel(cacheSource(cache), results, settings2, (path2) => files.has(path2)) };
+  const files2 = new Set(cache.files());
+  return { results, warnings, model: buildModel(cacheSource(cache), results, settings2, (path2) => files2.has(path2)) };
 }
 async function openBacklog(context, bases, ports2, selection2) {
   const cache = await context.metadata.load();
@@ -32139,8 +32180,8 @@ async function writeItems(session, writes, ifMatch2) {
   for (const write of writes) ensureInFilter(session, write.path);
   return editNotes(session, writes.map((write) => itemEdit(session, write)), ifMatch2);
 }
-async function createNotes(session, files) {
-  return session.context.workspace.write(files.map((file) => ({ path: file.path, bytes: encoder$2.encode(file.text) })), { diff: true });
+async function createNotes(session, files2) {
+  return session.context.workspace.write(files2.map((file) => ({ path: file.path, bytes: encoder$2.encode(file.text) })), { diff: true });
 }
 const newNoteText = (session, frontmatter) => noteText(session.ports.stringifyYaml(frontmatter));
 async function announce(session, result, id2, payload2) {
@@ -33576,8 +33617,8 @@ async function syncView(session, bound2, store, hash, options2) {
     frontmatter: session.cache.getFileCache(item.path)?.frontmatter ?? {},
     body: mapping.fields.description === null ? null : noteBody(new TextDecoder().decode((await workspace2.files.read(item.path)).bytes))
   })));
-  const files = new Set(session.cache.files());
-  const { members: members2, skipped, adopted } = identify(context, sources, store.state, (url2) => connector.idFromLink(connection, url2), (path2) => files.has(path2));
+  const files2 = new Set(session.cache.files());
+  const { members: members2, skipped, adopted } = identify(context, sources, store.state, (url2) => connector.idFromLink(connection, url2), (path2) => files2.has(path2));
   for (const { from, to } of adopted) {
     const entry2 = store.state.items[from];
     store.remove(from);
@@ -35364,11 +35405,11 @@ const templates = {
 function webviewScaffold(name2, projectsDirectory) {
   const directory = `${vaultPath(projectsDirectory)}/${projectName(name2, "webview")}`;
   const workspaceRelative = "../".repeat(directory.split("/").length);
-  const files = {
+  const files2 = {
     ".forge/project.json": JSON.stringify({ schemaVersion: 1, name: name2, type: "webview" }, null, 2) + "\n",
     ...templates
   };
-  return Object.entries(files).map(([path2, source2]) => ({
+  return Object.entries(files2).map(([path2, source2]) => ({
     path: `${directory}/${path2}`,
     bytes: new TextEncoder().encode(source2.replaceAll("__FORGE_WEBVIEW_ID__", name2).replaceAll("__FORGE_WORKSPACE_RELATIVE__", workspaceRelative))
   }));
@@ -35435,7 +35476,7 @@ function projectScaffold(name2, projectsDirectory, type2 = "library") {
   ensure(type2 === "library" || type2 === "webview", "INVALID_ARGUMENT", "Project type must be library or webview.");
   if (type2 === "webview") return webviewScaffold(name2, projectsDirectory);
   const directory = `${vaultPath(projectsDirectory)}/${projectName(name2)}`;
-  const files = {
+  const files2 = {
     ".forge/project.json": json$5({ schemaVersion: 1, name: name2, type: "library" }),
     "package.json": json$5({
       name: name2,
@@ -35572,7 +35613,7 @@ Run npm commands from this project directory. Install with npm ci after a lockfi
     "tests/public-api.integration.test.ts": "import { expect, it } from 'vitest';\nimport { ProjectIdentity } from '../src/index.ts';\n\nit('exposes identity validation through the public API', () => {\n  expect(() => ProjectIdentity.create('   ')).toThrow('Identity is required');\n  expect(ProjectIdentity.create('project-1').id).toBe('project-1');\n});\n"
   };
   return [
-    ...Object.entries(files).map(([path2, contents]) => textFile(`${directory}/${path2}`, contents)),
+    ...Object.entries(files2).map(([path2, contents]) => textFile(`${directory}/${path2}`, contents)),
     ...componentScaffold(name2, "ProjectIdentity", projectsDirectory)
   ];
 }
@@ -35750,8 +35791,8 @@ function validateUiLibrary(definitions2, interactions = []) {
   }
   const edges = /* @__PURE__ */ new Map();
   for (const definition2 of definitions2) {
-    const references = /* @__PURE__ */ new Set();
-    edges.set(definition2.id, references);
+    const references2 = /* @__PURE__ */ new Set();
+    edges.set(definition2.id, references2);
     let slots = 0;
     const checkBinding = (value2) => validateUiBindings(definition2, value2);
     const walk2 = (node2) => {
@@ -35766,7 +35807,7 @@ function validateUiLibrary(definitions2, interactions = []) {
       } else {
         const target2 = byId2.get(node2.component);
         ensure(target2, "UNKNOWN_UI_COMPONENT", `${definition2.id} references missing component ${node2.component}.`);
-        references.add(node2.component);
+        references2.add(node2.component);
         for (const [name2, value2] of Object.entries(node2.props ?? {})) {
           const targetProp = target2.props[name2];
           ensure(targetProp, "INVALID_UI", `${definition2.id} supplies unknown prop ${node2.component}.${name2}.`);
@@ -42388,9 +42429,9 @@ function ${safeUrl}(value) {`;
 `;
 }
 function reactiveDomModule(definition2, interactions) {
-  const references = componentDependencies(definition2.root);
-  const aliases = new Map(references.map((id2, index2) => [id2, `UiChild_${index2}`]));
-  const imports = references.map((id2) => `import ${aliases.get(id2)} from ${json$3(`./${id2}.js`)};`).join("\n");
+  const references2 = componentDependencies(definition2.root);
+  const aliases = new Map(references2.map((id2, index2) => [id2, `UiChild_${index2}`]));
+  const imports = references2.map((id2) => `import ${aliases.get(id2)} from ${json$3(`./${id2}.js`)};`).join("\n");
   const prefix = interactionPrefix(definition2);
   const used = { slot: false, component: false, element: false, urls: false };
   function nodeCode(node2) {
@@ -43994,9 +44035,9 @@ const claudeTarget = (openFiles) => async (context, flags) => {
         root = parent2;
       }
     }
-    const files = await openFiles(root);
+    const files2 = await openFiles(root);
     const prefix = path$3.relative(root, directory).split("\\").join("/");
-    const scoped2 = prefix ? new ScopedFiles(files, vaultPath(prefix)) : files;
+    const scoped2 = prefix ? new ScopedFiles(files2, vaultPath(prefix)) : files2;
     return {
       workspace: context.workspace.within(scoped2, directory),
       scope: scope2,
@@ -44771,14 +44812,14 @@ class ClaudePluginService {
   }
   async inspect(directory) {
     const root = vaultPath(directory), prefix = `${root}/`;
-    const files = (await this.workspace.files.list()).filter((path2) => path2.startsWith(prefix)).map((path2) => path2.slice(prefix.length)).sort();
+    const files2 = (await this.workspace.files.list()).filter((path2) => path2.startsWith(prefix)).map((path2) => path2.slice(prefix.length)).sort();
     try {
       const snapshot = await this.workspace.files.read(`${prefix}${manifestPath}`);
-      return { directory: root, manifest: json$2(snapshot.bytes, manifestPath), revision: snapshot.revision, files };
+      return { directory: root, manifest: json$2(snapshot.bytes, manifestPath), revision: snapshot.revision, files: files2 };
     } catch (error2) {
       if (!(error2 instanceof AppError) || error2.code !== "NOT_FOUND") throw error2;
-      ensure(files.length > 0, "NOT_FOUND", `No regular plugin files found in ${root}.`);
-      return { directory: root, manifest: null, revision: null, inferredName: root.split("/").at(-1), files };
+      ensure(files2.length > 0, "NOT_FOUND", `No regular plugin files found in ${root}.`);
+      return { directory: root, manifest: null, revision: null, inferredName: root.split("/").at(-1), files: files2 };
     }
   }
   async update(directory, manifest, revision2) {
@@ -44829,8 +44870,8 @@ class ClaudePluginService {
     } catch (error2) {
       return { directory: root, valid: false, diagnostics: [{ path: manifestPath, severity: "error", message: errorMessage(error2) }], validation: "structure" };
     }
-    const references = inspected.manifest === null ? [] : nativeReferences(inspected.manifest);
-    for (const reference of references) {
+    const references2 = inspected.manifest === null ? [] : nativeReferences(inspected.manifest);
+    for (const reference of references2) {
       if (reference.path === "") continue;
       const exists2 = reference.file ? inspected.files.includes(reference.path) : inspected.files.some((path2) => path2 === reference.path || path2.startsWith(`${reference.path}/`));
       if (!exists2) diagnostics2.push({ path: reference.path, severity: reference.file ? "error" : "warning", message: reference.file ? claudeMessages.componentFileMissing : claudeMessages.componentPathEmpty });
@@ -44838,7 +44879,7 @@ class ClaudePluginService {
     for (const path2 of inspected.files) {
       try {
         const snapshot = await this.workspace.files.read(this.path(root, path2));
-        const warnings = this.validateAsset(path2, snapshot.bytes, references);
+        const warnings = this.validateAsset(path2, snapshot.bytes, references2);
         for (const message2 of warnings) diagnostics2.push({ path: path2, severity: "warning", message: message2 });
       } catch (error2) {
         diagnostics2.push({ path: path2, severity: "error", message: errorMessage(error2) });
@@ -44864,13 +44905,13 @@ class ClaudePluginService {
     const result = await this.workspace.write([{ path: path2, bytes: new TextEncoder().encode(content2), expectedRevision: revision2 }]);
     return { directory, manifest, ...result, ...this.workspace.dryRun ? { preview: [{ path: path2, content: content2 }] } : {} };
   }
-  validateAsset(path2, bytes, references) {
+  validateAsset(path2, bytes, references2) {
     const warnings = [];
     if (path2 === manifestPath) {
       validateClaudePlugin(json$2(bytes, path2));
       return warnings;
     }
-    const kinds = new Set(references.filter((reference) => reference.path === path2).map((reference) => reference.kind));
+    const kinds = new Set(references2.filter((reference) => reference.path === path2).map((reference) => reference.kind));
     if (path2.startsWith("agents/") && path2.endsWith(".md")) kinds.add("agent");
     if (path2 === "hooks/hooks.json") kinds.add("hooks");
     if (path2 === ".mcp.json") kinds.add("mcp");
@@ -46277,7 +46318,7 @@ class WebviewPublication {
       const conflict2 = [...existing.keys()].find((previous2) => previous2.startsWith(`${path2}/`) || path2.startsWith(`${previous2}/`));
       ensureWebview(conflict2 === void 0, "WEBVIEW_INVALID", `Build assets change a file/directory boundary at ${path2}. Use a new asset path before publication.`);
     }
-    const files = [.../* @__PURE__ */ new Set([...desired.keys(), ...existing.keys()])].sort().map((path2) => {
+    const files2 = [.../* @__PURE__ */ new Set([...desired.keys(), ...existing.keys()])].sort().map((path2) => {
       const next = desired.get(path2), previous2 = existing.get(path2);
       return {
         path: path2,
@@ -46293,8 +46334,8 @@ class WebviewPublication {
       built: source2 !== null,
       installed: installed !== null,
       revision: installed?.revision ?? null,
-      current: source2 !== null && installed !== null && files.every((file) => file.status === "unchanged"),
-      files
+      current: source2 !== null && installed !== null && files2.every((file) => file.status === "unchanged"),
+      files: files2
     };
     return { report: report2, sourceStat, desired, existing };
   }
@@ -46354,7 +46395,7 @@ const readWebviewAssets = async (root, relative) => {
   });
   if (!info) return null;
   ensureWebview(info.isDirectory() && !info.isSymbolicLink(), "WEBVIEW_INVALID", "dist must be a regular directory.");
-  const files = [], names2 = /* @__PURE__ */ new Set();
+  const files2 = [], names2 = /* @__PURE__ */ new Set();
   async function walk2(parent22, prefix = "") {
     const info2 = await promises.lstat(parent22);
     ensureWebview(info2.isDirectory() && !info2.isSymbolicLink(), "WEBVIEW_INVALID", `Webview assets require regular directories: ${prefix || relative}`);
@@ -46373,16 +46414,16 @@ const readWebviewAssets = async (root, relative) => {
       try {
         ensureWebview((await handle.stat()).isFile(), "WEBVIEW_INVALID", `Build asset is not a regular file: ${path2}`);
         const bytes = await handle.readFile();
-        files.push({ path: path2, bytes, revision: node_crypto.createHash("sha256").update(bytes).digest("hex") });
+        files2.push({ path: path2, bytes, revision: node_crypto.createHash("sha256").update(bytes).digest("hex") });
       } finally {
         await handle.close();
       }
     }
   }
   await walk2(directory);
-  return files.sort((left, right) => left.path.localeCompare(right.path));
+  return files2.sort((left, right) => left.path.localeCompare(right.path));
 };
-const content$4 = "---\nname: forge-webviews\ndescription: Create, customize, test and publish self-contained Vue 3 and Nuxt UI prototypes with Forge project scaffolds, Playwright and the CLI-managed localhost server. Use when a user requests a new webview, a fast interactive prototype, a local dashboard or an iteration on a Forge webview.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder. Building a prototype also needs npm; browser tests need Playwright Chromium.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Establish the prototype's audience, main task, sample content and observable acceptance criteria from the user's request. Make reasonable defaults for a quick prototype; ask only when a missing decision blocks useful work. Keep fixtures clearly identified as sample data. A prototype is editable project code, not evidence of production readiness.\n2. Read workspace/project AGENTS.md. Discover `schema project --json`, `schema webview --json` and `schema server --json` through `node bin/forge.js` as needed. Inspect `project list` and `project current` before changing anything. The configured projects directory may be `src`, `projects` or another contained path. Prefer explicit `--project <id>` routing for publication; avoid changing shared selection while other agents use it.\n3. Preview `node bin/forge.js project create <kebab-name> --type webview --dry-run`, inspect its complete file plan, then create it. This makes an independent Vue 3, Nuxt UI and Vite project with local fixtures and its own package, tests, scripts and Playwright setup. Creation preserves project selection. Use the returned project directory; never assume a sibling project's dependencies or source are available. Do not use `project component` to add library scaffolds to a webview.\n4. Read the generated README, AGENTS.md and package scripts. Customize the ordinary Vue source and local sample model, preserving a usable empty state, realistic long labels and a meaningful primary interaction. Use local assets and relative build URLs; mounted views live at `/views/<id>/`. The server supplies no SPA history fallback or external-CDN access. Keep lifecycle control in the CLI and avoid adding a browser command-execution API.\n5. In that project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installs. Install browser support with `npm run browsers:install`. Iterate with `npm run check:fast`, finish with `npm run check`, and build the static output with `npm run build` when needed. Follow the actual scripts for an existing project. A standalone `npm run dev` preview helps iteration; the shipped webview is served by the Forge server. Dependency installation and project scripts execute trusted project code and are separate from Forge's dry-run guarantee.\n6. Use Playwright against the built view through the real portable CLI. Verify the primary interaction, empty/no-results state, keyboard focus, narrow layout and absence of unexpected browser errors. Preserve meaningful assertions while adapting the starter. Inspect desktop and mobile screenshots, then attach or link the saved image files so the user can see them; a screenshot path in a test log is not a delivered image. Generated browser tests use an isolated temporary workspace and stop the server they started.\n7. From the workspace root, preview `node bin/forge.js webview publish --project <id> --dry-run`, inspect the destination and revisions, then publish with the same explicit project. Use `webview publish --project <id> --check` to verify the packaged output. Before replacing a changed installed view, run `node bin/forge.js webview inspect --project <id> --json` and pass its `data.revision` as `--if-match <revision>` to both preview and publication; reread and reconcile a conflict instead of blindly approving a newer revision. Publication copies already-built assets; it does not install dependencies or run build scripts. Do not hand-edit published assets under `bin/webviews`.\n8. Inspect `server status`, then run `node bin/forge.js server start --webview <id> --json` when the user's request authorizes a local preview. Return `data.url`; the CLI does not open a browser. A running server keeps its mounted catalog, so a newly published view needs a stop/start before discovery. Coordinate a restart when the server is serving other work. Updating an existing mounted view's files needs a browser reload. Keep launch tokens out of commits, shared logs and screenshots. Stop the server when the session no longer needs it and shutdown is within the agreed task.\n9. Default to local sample data without API access. If the task explicitly benefits from real workspace inspection, use only the versioned read-only system API described in `bin/data/docs/reference/server.md`. Consume the launch token from the URL fragment, remove it from the address bar, send it as a bearer header to the same origin, and validate `ok`, `schemaVersion` and availability flags. Show missing/expired access, loading, unavailable data and stale snapshots clearly. Leave configuration changes, filesystem mutations and server shutdown to the CLI.\n10. Report the created project, preview location, checks run, visible screenshots and remaining prototype limitations. For repeat iterations, edit source and fixtures, test, rebuild, review guarded publication and reload. Keep the project self-contained and commit source, lockfile and intended distribution changes together. See `bin/data/docs/how-to/prototype-webviews.md` for the end-to-end workflow and `bin/data/docs/reference/webviews.md` for the publishing contract.\n\nFor on-demand captures and illustrated problem reports or walkthroughs, follow `forge-browser`. Its `browser screenshot` and explicit-plan `browser tutorial` commands complement the project's Playwright regression suite.\n";
+const content$4 = "---\nname: forge-webviews\ndescription: Create, customize, test and publish self-contained Vue 3 and Nuxt UI prototypes with Forge project scaffolds, Playwright and the CLI-managed localhost server. Use when a user requests a new webview, a fast interactive prototype, a local dashboard or an iteration on a Forge webview.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder. Building a prototype also needs npm; browser tests need Playwright Chromium.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\nA prototype is editable project code, not evidence of production readiness. Keep its fixtures clearly marked as sample data.\n\n## Plan\n- Settle the audience, main task, sample content and observable acceptance criteria. Choose sensible defaults; ask only when a missing decision blocks useful work.\n- Read AGENTS.md, then `schema project`, `schema webview` and `schema server` as needed. Check `project list` and `project current`.\n- Prefer `--project <id>` over changing the shared selection while other agents work.\n\n## Create\n- Preview `project create <kebab-name> --type webview --dry-run`, review the file plan, then create it. It is an independent Vue 3, Nuxt UI and Vite project with its own package, tests, scripts, Playwright setup and local fixtures.\n- Never assume a sibling project's dependencies or source, and do not add library scaffolds with `project component`.\n- Read the generated README, AGENTS.md and scripts. Customize the Vue source and sample model; keep a usable empty state, long labels and a meaningful primary interaction.\n- Use local assets and relative URLs: views are served at `/views/<id>/` with no SPA history fallback or external CDN.\n\n## Build and test\n- In the project: `npm install` once, commit the lockfile, then `npm ci`. `npm run browsers:install` installs browser support.\n- Iterate with `npm run check:fast`, finish with `npm run check`, and `npm run build` for the static output. Project scripts run trusted code outside Forge's dry-run guarantee.\n- Test the built view through the real CLI with Playwright: the primary interaction, the empty state, keyboard focus, a narrow layout and no unexpected browser errors.\n- Inspect desktop and mobile screenshots and attach or link them; a path in a test log is not a delivered image.\n\n## Publish and preview\n- From the workspace: `webview publish --project <id> --dry-run`, review the destination and revisions, then publish. `webview publish --project <id> --check` verifies the installed output (`WEBVIEW_DRIFT`, exit 5).\n- Replacing a changed installed view: pass `data.revision` from `webview inspect --project <id>` as `--if-match` to the preview and the publish. Never hand-edit `bin/webviews`.\n- Publishing copies built assets; it never installs dependencies or runs build scripts.\n- When the user agrees to a preview: `server status`, then `server start --webview <id>`, and return `data.url`. A running server needs a stop and start to discover a newly published view; changed files of a mounted view need a browser reload.\n- Keep launch tokens out of commits, logs and screenshots. Stop the server when the session no longer needs it.\n\n## Data\n- Default to local sample data. For real workspace data, use only the read-only system API in `bin/data/docs/reference/server.md`: take the token from the URL fragment, remove it from the address bar and send it as a bearer header to the same origin.\n- Show missing access, loading, unavailable and stale data clearly. Configuration changes, file writes and shutdown stay with the CLI.\n\n## Report\n- Name the project, preview location, checks run, screenshots and remaining limits. See `bin/data/docs/how-to/prototype-webviews.md` and `bin/data/docs/reference/webviews.md`.\n- Captures and illustrated walkthroughs: the `forge-browser` skill.\n";
 const webviewsSkill = { id: "forge-webviews", content: content$4 };
 const nullableRevision = { oneOf: [{ type: "string" }, { type: "null" }] };
 const report = {
@@ -55237,7 +55278,7 @@ const tutorialBlocks = (source2) => {
   });
   return blocks;
 };
-const content$1 = "---\nname: forge-browser\ndescription: Capture webpage evidence and create illustrated walkthroughs with Forge browser commands, then explain observations in guarded Markdown documents. Use when documenting a UI problem or situation, taking on-demand screenshots, or turning a reviewed flow into a screenshot tutorial from JSON, Markdown or Canvas.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer, the complete Forge bin distribution and Chromium. Run browser status to inspect browser availability; browser install downloads the managed browser.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Identify the question, situation or workflow the document should explain. Read workspace/project AGENTS.md and inspect `project current`; verify `context.root` before writing. Discover `schema browser --json` for exact installed contracts. Use the command's `--project <id>` option when an explicit target avoids changing shared selection. Capture tools are independent of the webview scaffold and work with HTTP(S) pages.\n2. Run `node bin/forge.js browser status`. Its `verification: \"executable-only\"` checks the selected file without launching it; even `available: true` does not establish Chromium compatibility or working operating-system dependencies. `version` is the packaged Playwright version. Inspect `reason` and `nextStep` when unavailable; an explicit path takes precedence over `FORGE_BROWSER_EXECUTABLE`, then managed Chromium. Use `browser status --browser-executable /path/to/chromium` to inspect a known system installation. Use `browser install --dry-run` then `browser install` when the managed Chromium download is needed, or an available browser through `--browser-executable`. Browser installation is separate from project npm dependencies. Inspect/capture tasks do not require an approval ritual: proceed within the user's request. Running a tutorial can operate the target website; confirm that its intended actions fall within the user's authorization before executing a reviewed plan. Do not infer permission to submit purchases, upload files or make unrelated account changes from a request to document a page.\n3. For one image, choose a useful viewport and an explicit PNG destination. Preview `node bin/forge.js browser screenshot <url> --out docs/assets/problem.png --project <id> --dry-run`, then capture with the same options. Add `--full-page` for the complete page and `--wait-for-selector <selector>` when a known visible element indicates readiness. Dry runs do not launch a browser or visit the URL. Each capture uses a fresh browser context; saved browser logins and cookies are not inherited. Do not embed credentials in URLs or author secrets into a tutorial plan. Local launch fragments can carry access information: keep them out of published documents and logs.\n4. Capture creates a new file by default. To replace an existing image, read it through Forge and pass its current revision as `--if-match` to both preview and capture. Reread and reconcile a conflict; never substitute a newer revision blindly. Inspect the returned requested/final URLs, capture time and image dimensions; record the viewport from the request. A successful write proves that an image was saved, not that the expected page finished loading or the UI works correctly.\n5. Open the actual saved image using the agent's image inspection capability. Check whether it shows the intended state rather than a login, error, consent or loading screen. State what is visibly observed and separate hypotheses about the cause. Unexpected access or navigation requires adjusting the plan or documenting the limitation; never invent what the page should have shown. Use Playwright regression tests for assertions about application behavior; screenshots are evidence for the document.\n6. For a multi-step tutorial, translate the user's prose, Markdown or Canvas into an explicit supported flow before execution. Preserve the original brief; a separate plan file is appropriate. JSON sources contain the plan directly. Markdown must have exactly one fenced `forge-tutorial` JSON block; Canvas must have exactly one such block in a text node. The CLI parses that block, not the meaning of arbitrary prose, arrows or node positions. Keep a title, starting URL, clear step titles, observable instructions, supported actions and explicit screenshots. Use semantic locators when supported and avoid fragile selectors that merely happen to match today's layout.\n7. Run `browser validate <source> --out docs/manual` to inspect the normalized plan and destination state. Review every navigation, input and click against the user's intended flow, especially actions that submit data or change site state. Keep credentials and sensitive sample content out of plans and screenshots. When an authorized flow needs a secret input, use a supported `fill` action with `valueFromEnv` naming a `FORGE_TUTORIAL_*` environment variable (other names are rejected) rather than a literal credential; the filled control is masked in screenshots, but inspect the resulting image because other page content is not hidden. Preview `browser tutorial <source> --out docs/manual --dry-run`; it does not visit the site. Execute the same reviewed command when within scope. An existing output folder requires validation's `data.revision` as `--if-match`; the guard covers the generated folder. Browser-side effects are separate from guarded file writes and cannot be rolled back by a document conflict.\n8. Review the generated `index.md`, `screenshots/` and `flow.json` as one document package. Inspect the actual screenshots, check image links and verify that captions explain the observed flow. Keep the input plan as the editable source; rerunning a tutorial replaces its generated output only with the inspected folder revision. Add authored analysis to a separate document or preserve it deliberately before regeneration.\n9. To explain a problem or situation, create or edit an ordinary Markdown note through `write`/`edit` with `--dry-run` and revisions. Use a descriptive relative embed such as `![Save action remains disabled](assets/problem.png)`, a clean source link, the capture's actual UTC timestamp and viewport, the observed result, the expected result when known, and the next useful verification. The returned `markdown` uses the image's scope-relative path; adjust it relative to the note's directory rather than copying it blindly into nested documents. Remove launch fragments from source citations and do not publish private URL parameters or secrets visible in the page.\n10. Read back and validate the document, check its relative links/embeds and resolve new broken links. Return accessible links or attachments for both the document and screenshots: a file path in a tool log is not a delivered picture. Report which states were captured and any unresolved limitations. See `bin/data/docs/how-to/capture-browser-evidence.md` and `bin/data/docs/reference/browser.md`; use `forge-webviews` for prototype implementation and `forge-vault` for guarded document editing.\n";
+const content$1 = "---\nname: forge-browser\ndescription: Capture webpage evidence and create illustrated walkthroughs with Forge browser commands, then explain observations in guarded Markdown documents. Use when documenting a UI problem or situation, taking on-demand screenshots, or turning a reviewed flow into a screenshot tutorial from JSON, Markdown or Canvas.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer, the complete Forge bin distribution and Chromium. Run browser status to inspect browser availability; browser install downloads the managed browser.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\nScreenshots are evidence for a document, not proof that a UI works. Guarded document edits follow the `forge-vault` skill.\n\n## Prepare\n- Identify the question, situation or flow the document should explain. Read AGENTS.md, check `project current` and `context.root`, and read `schema browser` for the exact options.\n- Pass `--project <id>` to `screenshot`, `validate` and `tutorial` instead of changing the shared selection.\n- `browser status` checks the selected executable without launching it, so `available: true` does not prove Chromium works. Read `reason` and `nextStep` when it is unavailable.\n- Selection order: `--browser-executable <path>`, then `FORGE_BROWSER_EXECUTABLE`, then the managed Chromium. `browser install --dry-run`, then `browser install`, downloads the managed one.\n- Every result reports `sandbox`: `enabled`, `disabled-root` (Linux as root) or `disabled-option`. Pass `--no-browser-sandbox` only on hosts that cannot sandbox, and only for trusted pages.\n\n## One screenshot\n- Preview `browser screenshot <url> --out docs/assets/problem.png --project <id> --dry-run`, then run it with the same options. A dry run never launches a browser or visits the URL.\n- Add `--full-page` for the whole page and `--wait-for-selector <selector>` when a known element signals readiness.\n- Each capture uses a fresh browser context without saved logins or cookies. Never put credentials in URLs.\n- Replacing an existing image needs its current revision from `read` as `--if-match`, in the preview and the capture.\n- Open the saved image and check it shows the intended state, not a login, error, consent or loading screen. State what is visible and keep hypotheses separate.\n\n## Tutorials\n- Turn the user's flow into an explicit plan and keep the original brief. Markdown needs exactly one fenced `forge-tutorial` JSON block; Canvas exactly one such block in a text node.\n- Use clear step titles, explicit screenshots and semantic locators.\n- `browser validate <source> --out docs/manual` returns the normalized plan and destination state. Review every navigation, input and click, especially those that submit data or change the site.\n- Secret input: a `fill` action with `valueFromEnv` naming a `FORGE_TUTORIAL_*` variable (other names are rejected). The filled control is masked; check the rest of the image.\n- Preview `browser tutorial <source> --out docs/manual --dry-run`, then run it. An existing output folder needs the validation's `data.revision` as `--if-match`.\n- Running a tutorial operates the real site, and those effects cannot be rolled back. Run it only within the user's authorization; never infer permission for purchases, uploads or account changes.\n- Review `index.md`, `screenshots/` and `flow.json` together. Rerunning replaces the generated output, so keep authored analysis in a separate note.\n\n## Document\n- Write or edit a Markdown note with `--dry-run` and revisions. Embed the image relative to the note (`![Save stays disabled](assets/problem.png)`); the returned `markdown` is scope-relative.\n- Cite the clean URL, the capture's UTC time and viewport, the observed and expected result, and the next useful check. Remove launch fragments and private parameters.\n- Read back, validate, and check links and embeds. Deliver the document and screenshots as links or attachments: a path in a tool log is not a delivered picture.\n- See `bin/data/docs/how-to/capture-browser-evidence.md` and `bin/data/docs/reference/browser.md`.\n";
 const browserSkill = { id: "forge-browser", content: content$1 };
 function reportedUrl(input2) {
   const url2 = new URL(input2);
@@ -55955,10 +55996,10 @@ function compareVersions(left, right) {
 }
 function distributionFiles(value2, policy) {
   requireUpdate(value2 !== null && typeof value2 === "object" && "schemaVersion" in value2 && value2.schemaVersion === policy.schemaVersion && "files" in value2 && Array.isArray(value2.files), "The distribution manifest is invalid.");
-  const files = value2.files;
+  const files2 = value2.files;
   const owned = new RegExp(policy.ownedAssetPattern);
-  requireUpdate(files.every((path2) => typeof path2 === "string" && owned.test(path2)), "The distribution manifest includes mutable or unowned files.");
-  const paths2 = files;
+  requireUpdate(files2.every((path2) => typeof path2 === "string" && owned.test(path2)), "The distribution manifest includes mutable or unowned files.");
+  const paths2 = files2;
   for (const path2 of paths2) vaultPath(path2);
   requireUpdate(new Set(paths2).size === paths2.length && policy.requiredAssets.every((path2) => paths2.includes(path2)), "The distribution manifest omits required assets or contains duplicates.");
   return [...paths2].sort();
@@ -56089,14 +56130,14 @@ function githubReleases(policy, run2 = runTool) {
         const { stdout } = await run2(process.execPath, [path$3.join(root, "forge.js"), "--version"], { timeout: 3e4 });
         requireUpdate(JSON.parse(stdout).data?.version === version2, "The downloaded app cannot execute on this Node version.");
         const paths2 = distributionFiles(JSON.parse(await promises.readFile(path$3.join(root, "data/distribution.json"), "utf8")), policy);
-        const files = [];
+        const files2 = [];
         for (const path2 of paths2) {
           const entry2 = await promises.lstat(path$3.join(root, path2));
           requireUpdate(entry2.isFile() && !entry2.isSymbolicLink(), "A release asset is not a regular file.");
           const bytes2 = await promises.readFile(path$3.join(root, path2));
-          files.push({ path: path2, bytes: bytes2, revision: node_crypto.createHash("sha256").update(bytes2).digest("hex") });
+          files2.push({ path: path2, bytes: bytes2, revision: node_crypto.createHash("sha256").update(bytes2).digest("hex") });
         }
-        return { version: version2, checksum, files };
+        return { version: version2, checksum, files: files2 };
       } catch (error2) {
         if (error2 instanceof AppError) throw error2;
         throw updateError("UPDATE_DOWNLOAD_FAILED", "Could not download or unpack the release. Check network access, curl, tar and available disk space; existing app files were preserved.");
@@ -56171,11 +56212,11 @@ function updateCommand(updater) {
   };
 }
 const updatesStrings = { de: {
-  manifest: { name: "App-Aktualisierungen", description: "Das portable Programm aus GitHub Releases mit Revisionsschutz aktualisieren und Arbeitsbereichsdaten erhalten." },
-  commands: { update: "GitHub Releases prüfen und das Programm dieses Arbeitsbereichs aktualisieren; lokale Einstellungen bleiben erhalten." },
+  manifest: { name: "App-Aktualisierungen", description: "Das portable Programm aus GitHub Releases mit Revisionsschutz aktualisieren und Workspace-Daten erhalten." },
+  commands: { update: "GitHub Releases prüfen und das Programm dieses Workspace aktualisieren; lokale Einstellungen bleiben erhalten." },
   actions: {
     "update check": "Installierte Revision und neueste stabile GitHub-Version ohne Änderungen am Programm prüfen.",
-    "update apply": "Eine feste Version herunterladen, prüfen und als geschützten Stapel anwenden; veränderbare Arbeitsbereichsdaten erhalten."
+    "update apply": "Eine feste Version herunterladen, prüfen und als geschützten Stapel anwenden; veränderbare Workspace-Daten erhalten."
   },
   descriptions: {
     "check (default) or apply.": "check (Standard) oder apply.",
@@ -56184,9 +56225,9 @@ const updatesStrings = { de: {
     "Installed bin folder revision returned by update check; required before upgrading.": "Installierte bin-Ordnerrevision aus update check; vor der Aktualisierung erforderlich."
   },
   errors: {
-    UPDATE_DOWNLOAD_FAILED: { summary: "Die GitHub-Version konnte nicht abgerufen werden.", hint: "Netzwerkzugriff, curl, tar und Speicherplatz prüfen; anschließend erneut versuchen." },
-    UPDATE_INVALID: { summary: "Die Version oder das Archiv ist ungültig.", hint: "Stabile Version, Prüfsumme und Verteilungsmanifest prüfen; das bestehende Programm bleibt erhalten." },
-    UPDATE_SCOPE_INVALID: { summary: "Der Zielarbeitsbereich hat keine installierte Forge-Verteilung.", hint: "Zuerst eine Version installieren oder --root auf den richtigen Arbeitsbereich setzen." }
+    UPDATE_DOWNLOAD_FAILED: { summary: "Die GitHub-Version konnte nicht abgerufen werden.", hint: "Prüfen Sie Netzwerkzugriff, curl, tar und Speicherplatz und versuchen Sie es dann erneut." },
+    UPDATE_INVALID: { summary: "Die Version oder das Archiv ist ungültig.", hint: "Prüfen Sie stabile Version, Prüfsumme und Verteilungsmanifest; das bestehende Programm bleibt erhalten." },
+    UPDATE_SCOPE_INVALID: { summary: "Der Ziel-Workspace hat keine installierte Forge-Verteilung.", hint: "Installieren Sie zuerst eine Version, oder wählen Sie mit --root den richtigen Workspace." }
   }
 } };
 function updatesPlugin(policy) {
@@ -56350,11 +56391,11 @@ async function readSetupArtifacts(bundleDir) {
     throw forgeError("INVALID_SETUP", "bin/data/distribution.json is not valid JSON. Copy the complete bin folder of a release, or rebuild it.", { path: "bin/data/distribution.json" });
   }
   ensure(typeof manifest === "object" && manifest !== null && "schemaVersion" in manifest && manifest.schemaVersion === distributionPolicy.schemaVersion && "files" in manifest && Array.isArray(manifest.files), "INVALID_SETUP", "The distribution manifest is invalid. Rebuild or download the complete bin folder.");
-  const files = manifest.files;
-  ensure(files.every((path2) => typeof path2 === "string") && new Set(files).size === files.length, "INVALID_SETUP", "The distribution manifest must contain unique paths.");
-  ensure(distributionPolicy.requiredAssets.every((path2) => files.includes(path2)), "INVALID_SETUP", "The distribution manifest is incomplete.");
+  const files2 = manifest.files;
+  ensure(files2.every((path2) => typeof path2 === "string") && new Set(files2).size === files2.length, "INVALID_SETUP", "The distribution manifest must contain unique paths.");
+  ensure(distributionPolicy.requiredAssets.every((path2) => files2.includes(path2)), "INVALID_SETUP", "The distribution manifest is incomplete.");
   const artifacts = [];
-  for (const path2 of files) artifacts.push({ path: path2, bytes: await readAsset2(path2) });
+  for (const path2 of files2) artifacts.push({ path: path2, bytes: await readAsset2(path2) });
   return artifacts;
 }
 const snapshotFormat = 2;
@@ -56547,15 +56588,15 @@ class ParseResults {
     this.changed = false;
   }
   next(key, outcomeOf, links2) {
-    const files = [], outcomes = /* @__PURE__ */ new Map();
+    const files2 = [], outcomes = /* @__PURE__ */ new Map();
     for (const [path2, record2] of this.records) {
       const outcome = outcomeOf(path2);
       if (outcome === void 0) continue;
-      files.push([path2, record2]);
+      files2.push([path2, record2]);
       const stored = outcomeKey(path2, record2.revision);
       if (!outcomes.has(stored)) outcomes.set(stored, encodeOutcome(outcome));
     }
-    return { format: snapshotFormat, key, checkedAtMs: this.checkedAtMs, files: Object.fromEntries(files), outcomes: Object.fromEntries(outcomes), links: links2 };
+    return { format: snapshotFormat, key, checkedAtMs: this.checkedAtMs, files: Object.fromEntries(files2), outcomes: Object.fromEntries(outcomes), links: links2 };
   }
   /** A stored outcome, decoded once per key: files with the same content share it. */
   outcome(previous2, key) {
@@ -56660,9 +56701,9 @@ class VaultMetadata {
   storedLinks() {
     const positions2 = new Map(this.paths.map((path2, position2) => [path2, position2]));
     const sources = this.sources().map((source2) => {
-      const references = this.outgoing.get(source2) ?? [];
+      const references2 = this.outgoing.get(source2) ?? [];
       let next = 0;
-      return [source2, orderedReferences(this.caches.get(source2)).map((item) => references[next]?.reference === item.reference ? encodeResolution(references[next++].resolution, (path2) => positions2.get(path2)) : null)];
+      return [source2, orderedReferences(this.caches.get(source2)).map((item) => references2[next]?.reference === item.reference ? encodeResolution(references2[next++].resolution, (path2) => positions2.get(path2)) : null)];
     });
     return { paths: [...this.paths], aliases: this.aliases, sources: Object.fromEntries(sources) };
   }
@@ -56677,7 +56718,7 @@ class VaultMetadata {
     fork.paths = [...this.paths];
     for (const [path2, cache] of this.caches) fork.caches.set(path2, cache);
     for (const [path2, issue2] of this.problems) fork.problems.set(path2, issue2);
-    for (const [path2, references] of this.outgoing) fork.outgoing.set(path2, references);
+    for (const [path2, references2] of this.outgoing) fork.outgoing.set(path2, references2);
     for (const [path2, sources] of this.incoming) fork.incoming.set(path2, new Set(sources));
     Object.assign(fork.resolvedLinks, this.resolvedLinks);
     Object.assign(fork.unresolvedLinks, this.unresolvedLinks);
@@ -56824,8 +56865,8 @@ class VaultMetadata {
     return JSON.stringify(this.caches.get(path2)?.aliases ?? []);
   }
   resolutionKey(source2) {
-    const references = this.outgoing.get(source2);
-    return references && JSON.stringify(references.map((item) => item.resolution));
+    const references2 = this.outgoing.get(source2);
+    return references2 && JSON.stringify(references2.map((item) => item.resolution));
   }
   sources() {
     return this.paths.filter((path2) => this.caches.has(path2));
@@ -56851,21 +56892,21 @@ class VaultMetadata {
   resolve(source2, stored) {
     this.unlink(source2);
     const ordered2 = orderedReferences(this.caches.get(source2)), known2 = stored?.length === ordered2.length ? stored : void 0;
-    const references = [];
+    const references2 = [];
     for (const [place, item] of ordered2.entries()) {
       const syntax2 = item.reference.syntax, relative = syntax2 !== "wikilink" && syntax2 !== "canvas";
       const resolution = (known2 && decodeResolution(known2[place], this.paths)) ?? resolveLinkpath(this.index, item.reference.link, source2, { relative, aliases: true });
-      if (resolution.status !== "external") references.push({ ...item, resolution });
+      if (resolution.status !== "external") references2.push({ ...item, resolution });
     }
     const resolved2 = counts(), unresolved = counts();
-    for (const { resolution } of references) {
+    for (const { resolution } of references2) {
       if (resolution.status === "resolved") {
         resolved2[resolution.path] = (resolved2[resolution.path] ?? 0) + 1;
         const sources = this.incoming.get(resolution.path) ?? /* @__PURE__ */ new Set();
         this.incoming.set(resolution.path, sources.add(source2));
       } else if (resolution.status === "unresolved") unresolved[resolution.linkpath] = (unresolved[resolution.linkpath] ?? 0) + 1;
     }
-    this.outgoing.set(source2, references);
+    this.outgoing.set(source2, references2);
     this.resolvedLinks[source2] = resolved2;
     this.unresolvedLinks[source2] = unresolved;
   }
@@ -64774,14 +64815,14 @@ function childText(value2, node2) {
   return children.length ? value2.slice(start$1(children[0]), end$1(children.at(-1))) : node2.alt ?? "";
 }
 function markdownReferences(value2, tree, inlineTags) {
-  const references = [], tags2 = [], definitions2 = [];
+  const references2 = [], tags2 = [], definitions2 = [];
   const targets2 = /* @__PURE__ */ new Map();
   let lines2;
   const add = (target2, embed, syntax2, found) => {
     if (isExternalLink(target2)) return;
     const link2 = syntax2 === "wikilink" ? target2 : decoded$1(target2);
     const subpath = parseLinktext(link2).subpath;
-    references.push({ syntax: syntax2, embed, link: link2, ...found, displayText: found.displayText ?? defaultDisplayText(link2), ...subpath ? { subpath } : {} });
+    references2.push({ syntax: syntax2, embed, link: link2, ...found, displayText: found.displayText ?? defaultDisplayText(link2), ...subpath ? { subpath } : {} });
   };
   const text2 = (slice, base2) => {
     const escaped2 = (index2) => {
@@ -64852,7 +64893,7 @@ function markdownReferences(value2, tree, inlineTags) {
   };
   collect(tree);
   walk2(tree);
-  return { references, tags: tags2, definitions: definitions2 };
+  return { references: references2, tags: tags2, definitions: definitions2 };
 }
 function stringReferences(value2) {
   if (!/[[<]/.test(value2)) return [];
@@ -65444,8 +65485,8 @@ function planLinkUpdates(cache, moves) {
   const rename2 = (path2) => moves.get(path2) ?? path2;
   const before = indexOf(cache.files(), cache, (path2) => path2);
   const after = indexOf(sorted(cache.files().map(rename2)), cache, rename2);
-  const files = [], unrewritten = [];
-  let references = 0;
+  const files2 = [], unrewritten = [];
+  let references2 = 0;
   for (const source2 of cache.files()) {
     const metadata2 = cache.getFileCache(source2);
     if (!metadata2) continue;
@@ -65462,11 +65503,11 @@ function planLinkUpdates(cache, moves) {
         continue;
       }
       candidate.apply(text2);
-      references++;
+      references2++;
     }
-    if (plan.edits.length + plan.frontmatter.length + plan.canvas.length > 0) files.push(plan);
+    if (plan.edits.length + plan.frontmatter.length + plan.canvas.length > 0) files2.push(plan);
   }
-  return { files, references, unrewritten };
+  return { files: files2, references: references2, unrewritten };
 }
 function resolvesTo(index2, candidate, source2, target2) {
   const current = resolveLinkpath(index2, candidate.link, source2, { relative: candidate.relative, aliases: true });
@@ -65524,9 +65565,9 @@ function rewriteText(plan, text2, metadata2, replaceInYaml) {
   return { text: result, unrewritten };
 }
 function rewriteCanvas(text2, nodes) {
-  const files = new Map(nodes.map((node2) => [node2.original, node2.file]));
+  const files2 = new Map(nodes.map((node2) => [node2.original, node2.file]));
   const replaced = text2.replace(/("file"\s*:\s*)"((?:[^"\\]|\\.)*)"/g, (match, key, value2) => {
-    const file = files.get(JSON.parse(`"${value2}"`));
+    const file = files2.get(JSON.parse(`"${value2}"`));
     return file === void 0 ? match : `${key}${JSON.stringify(file)}`;
   });
   const data = JSON.parse(replaced.replace(/^﻿/, ""));
@@ -65585,18 +65626,18 @@ class FileManager {
     if (entry2.kind === "file" && extension2 && !extensionOf(to)) this.workspace.warn(kernelMessage("EXTENSION_DROPPED", { from, to, extension: extension2 }));
     const moves = new Map(entry2.kind === "file" ? [[from, to]] : entry2.files.map((file) => [`${from}/${file}`, `${to}/${file}`]));
     const writes = [], previous2 = /* @__PURE__ */ new Map(), unrewritten = [];
-    let references = 0;
+    let references2 = 0;
     if (options2.updateLinks !== false) {
       const cache = await this.metadata.load();
       const plan = planLinkUpdates(cache, moves);
-      references = plan.references;
+      references2 = plan.references;
       unrewritten.push(...plan.unrewritten);
       for (const file of plan.files) {
         const snapshot = await this.workspace.files.read(file.source);
         const rewritten = rewriteText(file, decode$1(snapshot.bytes), cache.getFileCache(file.source), (yaml, replacements) => this.workspace.codec.replaceInYamlStrings(yaml, replacements));
         if (rewritten === void 0) throw forgeError("CONFLICT", `File changed while planning link updates; retry: ${file.source}`, revisionConflict(file.source, null, snapshot.revision));
         unrewritten.push(...rewritten.unrewritten);
-        references -= rewritten.unrewritten.length;
+        references2 -= rewritten.unrewritten.length;
         const path2 = moves.get(file.source) ?? file.source;
         writes.push({ path: path2, bytes: encoder$1.encode(rewritten.text), expectedRevision: snapshot.revision });
         previous2.set(path2, snapshot);
@@ -65604,7 +65645,7 @@ class FileManager {
     }
     writes.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
     const result = await this.workspace.commit({ renames: [{ from, to, expectedRevision: options2.ifMatch ?? entry2.revision }], writes }, { operation: "move", previous: previous2 });
-    return { dryRun: result.dryRun, from, to, kind: entry2.kind, revision: entry2.revision, renames: result.renames, changes: result.changes, links: { updated: references, files: writes.length, unrewritten } };
+    return { dryRun: result.dryRun, from, to, kind: entry2.kind, revision: entry2.revision, renames: result.renames, changes: result.changes, links: { updated: references2, files: writes.length, unrewritten } };
   }
   /**
    * Renames in place: `name` has no slash; a file keeps its extension when `name` omits it. A retry after the
@@ -65812,7 +65853,7 @@ function createApp({ workspace: workspace2, metadata: metadata2, events: events2
     const { path: path2, revision: changed, operation: operation2, bytes } = (await result).changes[0];
     return { path: path2, revision: changed, operation: operation2, bytes };
   };
-  const files = async () => (await metadata2.load()).files().slice();
+  const files2 = async () => (await metadata2.load()).files().slice();
   const vault2 = {
     read: async (path2) => decode(path2, (await workspace2.files.read(path2)).bytes),
     create: (path2, data) => single(workspace2.write([{ path: path2, bytes: encode(data) }])),
@@ -65828,8 +65869,8 @@ function createApp({ workspace: workspace2, metadata: metadata2, events: events2
     trash: (path2, options2 = {}) => fileManager.delete(path2, { ...options2, recursive: true, allowBrokenLinks: true }),
     delete: (path2, options2 = {}) => fileManager.delete(path2, { ...options2, permanent: true, allowBrokenLinks: true }),
     rename: (path2, newPath, options2 = {}) => fileManager.move(path2, newPath, { ...options2, updateLinks: false }),
-    getMarkdownFiles: async () => (await files()).filter((path2) => fileKind(path2) === "markdown"),
-    getFiles: files,
+    getMarkdownFiles: async () => (await files2()).filter((path2) => fileKind(path2) === "markdown"),
+    getFiles: files2,
     on: listen(events2, "vault")
   };
   const metadataCache = {
@@ -69778,11 +69819,11 @@ const germanErrors = {
   INVALID_LANGUAGE: { summary: "Die Sprache wird nicht unterstützt.", hint: "Verwenden Sie --lang en oder --lang de." },
   INVALID_NAME: { summary: "Der Name entspricht nicht der erforderlichen Namensregel.", hint: "Verwenden Sie das in der Meldung beschriebene Format, zum Beispiel PascalCase." },
   INVALID_KEY: { summary: "Der Eigenschaftsschlüssel ist reserviert oder unsicher.", hint: "Verwenden Sie einen anderen Eigenschaftsschlüssel." },
-  INVALID_RESULT: { summary: "Der Befehl lieferte Daten, die nicht als JSON serialisierbar sind.", hint: "Prüfen Sie bestätigte Tresor-Ereignisse und lesen Sie betroffene Dateien erneut, bevor Sie es wieder versuchen; melden Sie den fehlerhaften Plugin-Befehl." },
-  OPERATION_FAILED: { summary: "Ein unerwarteter Laufzeit- oder E/A-Fehler ist aufgetreten.", hint: "Lesen Sie die ursprüngliche Diagnose, prüfen Sie den Arbeitsbereich und lesen Sie betroffene Dateien vor einem erneuten Versuch." },
+  INVALID_RESULT: { summary: "Der Befehl lieferte Daten, die nicht als JSON serialisierbar sind.", hint: "Prüfen Sie bestätigte Vault-Ereignisse und lesen Sie betroffene Dateien erneut, bevor Sie es wieder versuchen; melden Sie den fehlerhaften Plugin-Befehl." },
+  OPERATION_FAILED: { summary: "Ein unerwarteter Laufzeit- oder E/A-Fehler ist aufgetreten.", hint: "Lesen Sie die ursprüngliche Diagnose, prüfen Sie den Zustand des Workspace und lesen Sie betroffene Dateien vor einem erneuten Versuch." },
   // Pfade, Dateien und geschützte Schreibvorgänge
-  INVALID_PATH: { summary: "Der Pfad ist kein gültiger relativer Pfad im Arbeitsbereich.", hint: "Verwenden Sie einen relativen Pfad im ausgewählten Arbeitsbereich oder Projekt mit Schrägstrichen und ohne ..-Segmente." },
-  UNSAFE_PATH: { summary: "Der Pfad verlässt den Arbeitsbereich oder durchquert eine symbolische Verknüpfung.", hint: "Verwenden Sie einen Pfad innerhalb des Arbeitsbereichs ohne symbolische Verknüpfungen." },
+  INVALID_PATH: { summary: "Der Pfad ist kein gültiger relativer Pfad im Workspace oder Projekt.", hint: "Verwenden Sie einen relativen Pfad im ausgewählten Workspace oder Projekt mit Schrägstrichen und ohne ..-Segmente." },
+  UNSAFE_PATH: { summary: "Der Pfad verlässt den Workspace oder durchquert eine symbolische Verknüpfung.", hint: "Verwenden Sie einen Pfad innerhalb des Workspace ohne symbolische Verknüpfungen." },
   NOT_FOUND: { summary: "Die Datei oder Ressource wurde nicht gefunden.", hint: "Prüfen Sie Pfad und ausgewähltes Projekt (project current); list zeigt vorhandene Dateien. error.details.alreadyDeleted true bedeutet, dass ein Löschvorgang die Datei bereits nach error.details.trashPath verschoben hat." },
   CONFLICT: { summary: "Die Datei existiert bereits oder ihre Revision hat sich seit dem Lesen geändert.", hint: "Die Meldung nennt den Fall. Eine vorhandene Datei (error.details.expectedRevision null): ersetzen Sie sie mit write --if-match oder ändern Sie sie mit edit. Eine fehlende Datei (error.details.currentRevision null): prüfen Sie den Pfad oder lassen Sie den Schutz weg, um sie anzulegen. Eine geänderte Datei: lesen Sie sie erneut, gleichen Sie Ihre Änderung mit dem aktuellen Inhalt ab und versuchen Sie es mit error.details.currentRevision über den Revisionsschutz des Befehls erneut (--if-match, ifMatch in einem Plan oder --revisions-from). error.details.alreadyApplied true bedeutet, dass die Datei die angeforderte Änderung bereits enthält; ein erneuter Versuch ist nicht nötig." },
   NO_MATCH: { summary: "Der --find-Text kommt in der Datei nicht vor.", hint: "Lesen Sie die Datei erneut und übernehmen Sie den exakten aktuellen Text einschließlich Leerraum und Zeilenenden in --find; error.details.lineEndings nennt die Zeilenenden der Datei und error.details.nearMatch eine Zeile, die ohne Beachtung von Leerraum und Groß- und Kleinschreibung passt." },
@@ -69813,7 +69854,7 @@ const germanErrors = {
   BASE_EVALUATION_ERROR: { summary: "Ein Bases-Ausdruck ist bei der Auswertung einer Datei fehlgeschlagen.", hint: "Prüfen Sie die in der Meldung genannte Ansicht, Datei und den Ausdruck." },
   BASE_TIMEOUT: { summary: "Eine Bases-Abfrage hat ihr Zeitbudget für die Auswertung von Ausdrücken überschritten.", hint: "Vereinfachen Sie die Ausdrücke der in der Meldung genannten .base-Datei (vermeiden Sie verschachtelte Quantoren in regulären Ausdrücken wie (a+)+) oder grenzen Sie ihre Filter ein." },
   BASE_VIEW_NOT_FOUND: { summary: "Die angeforderte Bases-Ansicht existiert nicht.", hint: "Führen Sie bases inspect <file.base> aus und übergeben Sie eine vorhandene --view." },
-  BASE_CONTEXT_NOT_FOUND: { summary: "Die Kontextdatei ist keine indexierte Tresordatei.", hint: "Übergeben Sie eine vorhandene Tresordatei an --context." },
+  BASE_CONTEXT_NOT_FOUND: { summary: "Die Kontextdatei ist keine indexierte Vault-Datei.", hint: "Übergeben Sie eine vorhandene Vault-Datei an --context." },
   INVALID_BASE_PROPERTY_TYPES: { summary: "Das Register der Obsidian-Eigenschaftstypen ist ungültig.", hint: "Korrigieren Sie .obsidian/types.json zu einem JSON-Objekt mit Eigenschaftstypen." },
   UNSUPPORTED_BASE_PROPERTY_TYPE: { summary: "Ein Obsidian-Eigenschaftstyp wird nicht unterstützt.", hint: "Verwenden Sie in .obsidian/types.json einen unterstützten Typ." },
   // Konfiguration, Installation und Projekte
@@ -69896,7 +69937,7 @@ const germanErrors = {
   INVALID_CLAUDE_EXECUTABLE: { summary: "Der Pfad zur Claude-Code-CLI ist ungültig.", hint: "Übergeben Sie einen ausführbaren Pfad an --claude-bin." },
   // Claude-Code-Prozess
   CLAUDE_NOT_INSTALLED: { summary: "Die Claude-Code-CLI wurde nicht gefunden.", hint: "Installieren Sie Claude Code und nehmen Sie claude in PATH auf oder verwenden Sie --claude-bin." },
-  CLAUDE_WORKING_DIRECTORY_UNAVAILABLE: { summary: "Das Arbeitsverzeichnis für Claude Code ist nicht verfügbar.", hint: "Prüfen Sie, dass das ausgewählte Projekt oder der Arbeitsbereich existiert und ein Verzeichnis ist." },
+  CLAUDE_WORKING_DIRECTORY_UNAVAILABLE: { summary: "Das Arbeitsverzeichnis für Claude Code ist nicht verfügbar.", hint: "Prüfen Sie, dass das ausgewählte Projekt oder der Workspace existiert und ein Verzeichnis ist." },
   CLAUDE_COMMAND_FAILED: { summary: "Claude Code konnte nicht gestartet werden oder wurde unerwartet beendet.", hint: "Lesen Sie error.details, prüfen Sie den externen Zustand und wiederholen Sie dann bewusst." },
   CLAUDE_COMMAND_TIMEOUT: { summary: "Der Claude-Befehl hat sein Zeitlimit überschritten.", hint: "Prüfen Sie den externen Zustand; wiederholen Sie mit größerem --timeout nur, wenn die Arbeit nicht abgeschlossen wurde." },
   CLAUDE_OUTPUT_LIMIT: { summary: "Die Claude-Ausgabe hat das Größenlimit überschritten.", hint: "Prüfen Sie den externen Zustand; wiederholen Sie nur bei Bedarf mit größerem Ausgabelimit." },
@@ -70857,7 +70898,7 @@ function readManyCommand() {
           throw atPath(error2, index2, input2);
         }
       }
-      const files = [];
+      const files2 = [];
       let bytes = 0, counted = 0;
       const budget = (size) => {
         bytes += size;
@@ -70866,12 +70907,12 @@ function readManyCommand() {
       };
       for (const [index2, path2] of [...paths2].entries()) {
         try {
-          files.push(await readFile(context, path2, limit, budget));
+          files2.push(await readFile(context, path2, limit, budget));
         } catch (error2) {
           throw atPath(error2, index2, path2);
         }
       }
-      return { files, bytes };
+      return { files: files2, bytes };
     }
   };
 }
@@ -71088,13 +71129,13 @@ class StagedFiles {
     path2 = vaultPath(path2);
     const file = await this.current(path2);
     if (file) return { path: path2, kind: "file", revision: file.revision, bytes: file.bytes.length };
-    const files = await this.filesUnder(path2), original = this.vacatedFolders.has(path2) ? void 0 : await this.baseFolder(path2);
-    if (!original && files.length === 0) throw forgeError("NOT_FOUND", `File or folder not found: ${path2}`, { path: path2 });
-    const touched = files.some((file2) => this.staged.has(`${path2}/${file2}`)) || original?.files.some((file2) => this.vacated.has(`${path2}/${file2}`));
+    const files2 = await this.filesUnder(path2), original = this.vacatedFolders.has(path2) ? void 0 : await this.baseFolder(path2);
+    if (!original && files2.length === 0) throw forgeError("NOT_FOUND", `File or folder not found: ${path2}`, { path: path2 });
+    const touched = files2.some((file2) => this.staged.has(`${path2}/${file2}`)) || original?.files.some((file2) => this.vacated.has(`${path2}/${file2}`));
     if (original && !touched) return original;
-    const revisions = await Promise.all(files.map(async (file2) => `${file2}\0${(await this.current(`${path2}/${file2}`)).revision}`));
-    const folders2 = [...new Set(files.flatMap((file2) => file2.split("/").slice(0, -1).map((_, index2, parts) => parts.slice(0, index2 + 1).join("/"))))].sort(byPath);
-    return { path: path2, kind: "folder", revision: `planned-folder:${revisions.join("\n")}`, files, folders: folders2 };
+    const revisions = await Promise.all(files2.map(async (file2) => `${file2}\0${(await this.current(`${path2}/${file2}`)).revision}`));
+    const folders2 = [...new Set(files2.flatMap((file2) => file2.split("/").slice(0, -1).map((_, index2, parts) => parts.slice(0, index2 + 1).join("/"))))].sort(byPath);
+    return { path: path2, kind: "folder", revision: `planned-folder:${revisions.join("\n")}`, files: files2, folders: folders2 };
   }
   async writeBatch(writes) {
     const { changes: changes2 } = await this.commit({ writes });
@@ -71278,7 +71319,7 @@ class PlanRunner {
     ensure(original === ifMatch2, "CONFLICT", `${path2} changed; read it again and use its current revision as ifMatch.`, revisionConflict(path2, ifMatch2, original));
   }
   async operation(item) {
-    const { workspace: workspace2, files } = this.planning;
+    const { workspace: workspace2, files: files2 } = this.planning;
     switch (item.op) {
       case "write": {
         const current = await this.staged.current(item.path);
@@ -71295,7 +71336,7 @@ class PlanRunner {
       case "frontmatter": {
         const { revision: revision2 } = await workspace2.files.read(item.path);
         await this.guard(item.path, item.ifMatch);
-        const result = await files.processFrontMatter(item.path, (properties2) => {
+        const result = await files2.processFrontMatter(item.path, (properties2) => {
           Object.assign(properties2, item.set ?? {});
           for (const key of item.unset ?? []) delete properties2[key];
         }, { ifMatch: revision2 });
@@ -71303,12 +71344,12 @@ class PlanRunner {
       }
       case "move": {
         await this.guard(item.from, item.ifMatch);
-        const result = await files.move(item.from, item.to, { updateLinks: item.updateLinks });
+        const result = await files2.move(item.from, item.to, { updateLinks: item.updateLinks });
         return { op: "move", path: item.from, to: result.to, kind: result.kind, links: result.links };
       }
       case "delete": {
         await this.guard(item.path, item.ifMatch);
-        const result = await files.delete(item.path, { recursive: item.recursive, allowBrokenLinks: item.allowBrokenLinks });
+        const result = await files2.delete(item.path, { recursive: item.recursive, allowBrokenLinks: item.allowBrokenLinks });
         this.trash.push(result.trashPath);
         return { op: "delete", path: item.path, kind: result.kind, trashPath: result.trashPath, brokenLinks: result.brokenLinks };
       }
@@ -71853,11 +71894,11 @@ async function run() {
       settings2 = Object.assign(config2.settings, configuredSettings(config2.settings, settings2, tokens, bootstrap.flags));
       let lockOwner = {}, lockWait = 0;
       const warn = (message2) => events2.warn(message2);
-      const files = await NodeFiles.at(loaded.root, warn, () => lockOwner, () => lockWait);
-      activeContext = { workspaceRoot: files.root, root: files.root, project: null };
+      const files2 = await NodeFiles.at(loaded.root, warn, () => lockOwner, () => lockWait);
+      activeContext = { workspaceRoot: files2.root, root: files2.root, project: null };
       registerHostEvents(events2);
-      const outside = await workingDirectoryOutside(files.root, process.cwd());
-      if (outside !== void 0) warn(kernelMessage("CWD_OUTSIDE_WORKSPACE", { cwd: outside, workspaceRoot: files.root }));
+      const outside = await workingDirectoryOutside(files2.root, process.cwd());
+      if (outside !== void 0) warn(kernelMessage("CWD_OUTSIDE_WORKSPACE", { cwd: outside, workspaceRoot: files2.root }));
       events2.on("command.started", ({ command: command22, operationId }) => {
         lockOwner = { command: command22, operationId };
       });
@@ -71867,10 +71908,10 @@ async function run() {
       const scaffolder = (action2) => registry2.requireService(projectScaffolderService, `project ${action2}`);
       const services2 = {
         loaded,
-        files,
-        server: new NodeServerController({ workspaceRoot: files.root, distributionPath: __dirname, version: metadata$2.version }),
+        files: files2,
+        server: new NodeServerController({ workspaceRoot: files2.root, distributionPath: __dirname, version: metadata$2.version }),
         get projects() {
-          return projects2 ??= new ProjectService(files, environment, config2.paths.projects, scaffolder, events2);
+          return projects2 ??= new ProjectService(files2, environment, config2.paths.projects, scaffolder, events2);
         },
         get workflows() {
           return new WorkflowSync(environment, this.projects, yamlWorkflowRenderer);
@@ -71881,7 +71922,7 @@ async function run() {
           return new SetupService(environment, config2, await readSetupArtifacts(__dirname), [...registry2.skills.values()], templates2?.setupTemplates() ?? null).run();
         },
         configSections: () => registry2.settings.sections(),
-        installedPlugins: () => installedPlugins("bin/plugins", config2.plugins.enabled, skipUserPlugins, files, metadata$2.version, (message2) => events2.warn(message2))
+        installedPlugins: () => installedPlugins("bin/plugins", config2.plugins.enabled, skipUserPlugins, files2, metadata$2.version, (message2) => events2.warn(message2))
       };
       for (const command22 of commands(registry2, services2)) registry2.add(registry2.commands, command22);
       registerCorePlugins(registry2, events2, corePlugins, {
@@ -71893,8 +71934,8 @@ async function run() {
         http: new FetchHttpClient(),
         environment: (name2) => process.env[name2]
       }, config2.plugins.disabled);
-      if (!skipUserPlugins) await loadEnabledPlugins("bin/plugins", config2.plugins.enabled, files, registry2, events2);
-      else await recordMissingPlugins("bin/plugins", config2.plugins.enabled, files, registry2, events2);
+      if (!skipUserPlugins) await loadEnabledPlugins("bin/plugins", config2.plugins.enabled, files2, registry2, events2);
+      else await recordMissingPlugins("bin/plugins", config2.plugins.enabled, files2, registry2, events2);
       config2.plugins.settings = await registry2.configure(config2.plugins.settings, async () => (await services2.installedPlugins()).map((entry2) => entry2.manifest.id), (message2) => events2.warn(message2));
       await registry2.publishRegistered(events2);
       const id2 = bootstrap.args[0] ?? "help";
@@ -71910,18 +71951,18 @@ async function run() {
       if (!parsed2.flags.help) lockWait = waitBudget(parsed2.flags);
       settings2.dryRun = flagSetting(parsed2.flags, "dry-run", settings2.dryRun);
       let metadataCommits;
-      environment = new Workspace(files, new ObsidianDocuments(), events2, settings2.dryRun, files.root, { committed: async (changes2) => {
+      environment = new Workspace(files2, new ObsidianDocuments(), events2, settings2.dryRun, files2.root, { committed: async (changes2) => {
         await metadataCommits?.committed(changes2);
       } });
       const policy = invocationPolicy(command2, parsed2.args.slice(1), parsed2.flags);
       const project2 = policy.scope === "workspace" ? null : policy.requestedProject !== void 0 ? await services2.projects.inspect(policy.requestedProject) : await services2.projects.current();
-      const scopedFiles = project2 ? new ScopedFiles(files, project2.directory) : files;
+      const scopedFiles = project2 ? new ScopedFiles(files2, project2.directory) : files2;
       const cacheFile = snapshotFile(project2?.directory ?? null);
       const vaultMetadata = new VaultMetadata(scopedFiles, new ObsidianMetadataParser(environment.codec), {
         workspaceRoot: project2 === null,
         revisionOf,
         snapshots: {
-          store: new NodeMetadataSnapshotStore(files.root, cacheFile, __filename, (stamped) => stampedFiles(files, project2?.directory, stamped)),
+          store: new NodeMetadataSnapshotStore(files2.root, cacheFile, __filename, (stamped) => stampedFiles(files2, project2?.directory, stamped)),
           key: `forge ${metadata$2.version}; parser ${metadataParserVersion}; scope ${project2?.directory ?? "."}`,
           save: !settings2.dryRun
         }
@@ -71929,8 +71970,8 @@ async function run() {
       persistMetadata = () => vaultMetadata.persist().catch((error2) => events2.warn(kernelMessage("METADATA_CACHE_UNSAVED", { file: cacheFile, diagnostic: errorMessage(error2) })));
       const metadataEvents = new MetadataCacheEvents(events2, vaultMetadata);
       metadataCommits = project2 ? scopedCommitObserver(metadataEvents, project2.directory) : metadataEvents;
-      const workspace2 = project2 ? environment.within(scopedFiles, path$3.resolve(files.root, project2.directory), metadataEvents) : environment;
-      activeContext = { workspaceRoot: files.root, root: project2 ? path$3.resolve(files.root, project2.directory) : files.root, project: project2 };
+      const workspace2 = project2 ? environment.within(scopedFiles, path$3.resolve(files2.root, project2.directory), metadataEvents) : environment;
+      activeContext = { workspaceRoot: files2.root, root: project2 ? path$3.resolve(files2.root, project2.directory) : files2.root, project: project2 };
       const app = createApp({ workspace: workspace2, metadata: vaultMetadata, events: events2, project: project2 });
       const context = { workspace: workspace2, environment, events: events2, metadata: vaultMetadata, app, ...activeContext, language: settings2.language, input: standardInput };
       const commandId = parsed2.flags.help ? "help" : id2;
