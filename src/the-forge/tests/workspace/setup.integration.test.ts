@@ -92,7 +92,8 @@ it('installs every file of a skill folder into both agent skill roots', async ()
   const withReference = [{ ...skills[0]!, files: { 'references/editing.md': '# Editing\n' } }];
   await new SetupService(workspace, config, artifacts, withReference, templates).run();
   for (const skills of ['.claude/skills', '.agents/skills']) {
-    expect(await readdir(join(root, skills, 'forge-workflow'))).toEqual(['SKILL.md', 'references']);
+    // Directory order is the file system's: Windows lists references before SKILL.md.
+    expect((await readdir(join(root, skills, 'forge-workflow'))).sort()).toEqual(['SKILL.md', 'references']);
     expect(await readFile(join(root, skills, 'forge-workflow/references/editing.md'), 'utf8')).toBe('# Editing\n');
   }
 });
