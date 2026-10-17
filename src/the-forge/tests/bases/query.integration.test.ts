@@ -187,4 +187,17 @@ describe('native Bases repository queries without Obsidian', () => {
     const path = await definition({ filters: 'file.ext == "md" && due.isEmpty() && this.deadline.isEmpty()' });
     expect((await bases.query(path, { context: 'Null.md' })).files).toEqual(['Missing.md', 'Null.md']);
   });
+
+  it('fails a catastrophically backtracking filter with BASE_TIMEOUT inside its budget and returns no partial rows', async () => {
+    await put(`${'a'.repeat(34)}b.md`, '# Slow');
+    await put('Fine.md', '# Fine');
+    const files = await NodeFiles.at(root);
+    const budgeted = new Bases(new NodeBasesQueryEngine(files, new ObsidianDocuments(), () => metadataIndex(files).load(), nodeFileDates(files.root), 300));
+    const path = await definition({ filters: 'file.ext == "md" && !/^(a+)+$/.matches(file.basename)' });
+    const started = performance.now();
+    await expect(budgeted.query(path)).rejects.toMatchObject({ code: 'BASE_TIMEOUT', exitCode: 2, details: { path, timeoutMs: 300 } });
+    expect(performance.now() - started).toBeLessThan(2_000);
+    await definition({ filters: 'file.ext == "md" && /^Fine$/.matches(file.basename)' });
+    expect((await budgeted.query(path)).files).toEqual(['Fine.md']);
+  });
 });

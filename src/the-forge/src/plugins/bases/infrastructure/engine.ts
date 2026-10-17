@@ -11,6 +11,7 @@ import { BaseRowContexts } from './contexts.ts';
 import { basePropertyTypes, sharedBaseIndex } from './index.ts';
 import { baseExpression, baseFilter, internalContext, internalFormula, internalTag, internalGuard } from './expressions.ts';
 import { diagnostics, ordering } from './definition.ts';
+import { defaultBaseTimeoutMs, vmEvaluationBudget } from './budget.ts';
 
 interface Row { path: string; sort: RuntimeValue[]; group?: RuntimeValue; groupIndex?: number }
 const strict = { throwOnError: true };
@@ -37,11 +38,13 @@ function positions(groupOrder: readonly unknown[]): Map<string, number> {
 export class NodeBasesQueryEngine implements BasesQueryEngine {
   /**
    * `files` is the command scope's repository, `metadata` supplies the invocation's kernel metadata cache built from
-   * the same root, and `dates` reads a file's size and filesystem dates in that root.
+   * the same root, and `dates` reads a file's size and filesystem dates in that root. `timeoutMs` bounds the
+   * evaluation time of one query over all its files; exceeding it fails with BASE_TIMEOUT.
    */
   constructor(
     private readonly files: FileRepository, private readonly codec: DocumentCodec,
     private readonly metadata: () => Promise<MetadataCache>, private readonly dates: (path: string) => Promise<FileDates>,
+    private readonly timeoutMs = defaultBaseTimeoutMs,
   ) {}
   capabilities(): Record<string, unknown> {
     return {
@@ -57,6 +60,7 @@ export class NodeBasesQueryEngine implements BasesQueryEngine {
         'A note that cannot be parsed is indexed without properties, links or tags and reported in warnings.',
         'Rows sort by typed values with host-locale natural string collation; equal keys use file path.',
         'The filesystem is indexed once per invocation and metadata state, without a transactional snapshot or live refresh.',
+        `Expression evaluation of one query is bounded to ${this.timeoutMs} ms over all files and fails with BASE_TIMEOUT beyond it.`,
       ],
     };
   }
@@ -87,41 +91,46 @@ export class NodeBasesQueryEngine implements BasesQueryEngine {
     const compiledFormulaByName = new Map(Object.entries(formulaAsts).map(([name, ast]) => [name, compileExpression(ast)]));
     const groupPositions = groupOrder && positions(groupOrder);
     const rows: Row[] = [];
+    const budget = vmEvaluationBudget(path, this.timeoutMs);
     for (const { file, context } of new BaseRowContexts(indexed, { thisFile, formulas: formulaAsts, propertyTypes, objects, now: new Date() }).rows()) {
-      try {
-        const evaluating = new Set<string>();
-        let evaluationError: string | undefined;
-        context.functions = { [internalFormula]: name => {
-          const key = stringifyValue(name);
-          if (evaluating.has(key)) return errorValue(`Circular formula reference: ${key}`);
-          const formula = compiledFormulaByName.get(key);
-          if (!formula) return nullValue();
-          evaluating.add(key);
-          try { return formula.evaluateValue(context, strict); }
-          finally { evaluating.delete(key); }
-        }, [internalTag]: (receiver, ...tags) => {
-          if (receiver.type !== 'File') return errorValue('hasTag requires a file.');
-          const normalized = receiver.value.tags.map(tag => tag.replace(/^#/, '').toLocaleLowerCase());
-          return boolValue(tags.some(tag => {
-            const needle = stringifyValue(tag).replace(/^#/, '').toLocaleLowerCase();
-            return normalized.some(value => value === needle || value.startsWith(needle + '/'));
-          }));
-        }, [internalGuard]: value => {
-          if (value.type === 'Error') evaluationError ??= value.value.message;
-          return value;
-        } };
-        const matches = globalFilter(context) && viewFilter(context);
-        ensure(evaluationError === undefined, 'BASE_EVALUATION_ERROR', evaluationError ?? 'Expression evaluation failed.');
-        if (!matches) continue;
-        const group = grouping?.expression.evaluateValue(context, strict);
-        const groupIndex = groupPositions && (groupPositions.size === 0 ? -1 : groupPositions.get(groupIdentity(group && toPlain(group))) ?? -1);
-        if (groupIndex === -1) continue;
-        const sort = sorts.map(item => item.expression.evaluateValue(context, strict));
-        ensure(evaluationError === undefined, 'BASE_EVALUATION_ERROR', evaluationError ?? 'Expression evaluation failed.');
-        rows.push({ path: file.path, sort, group, groupIndex });
-      } catch (error) {
-        throw forgeError('BASE_EVALUATION_ERROR', `${path}, view ${String(view.name)}, file ${file.path}: ${errorMessage(error)}`);
-      }
+      // The budget's watchdog interrupts a runaway expression (a backtracking regular expression) between or inside files.
+      const row = budget.run((): Row | undefined => {
+        try {
+          const evaluating = new Set<string>();
+          let evaluationError: string | undefined;
+          context.functions = { [internalFormula]: name => {
+            const key = stringifyValue(name);
+            if (evaluating.has(key)) return errorValue(`Circular formula reference: ${key}`);
+            const formula = compiledFormulaByName.get(key);
+            if (!formula) return nullValue();
+            evaluating.add(key);
+            try { return formula.evaluateValue(context, strict); }
+            finally { evaluating.delete(key); }
+          }, [internalTag]: (receiver, ...tags) => {
+            if (receiver.type !== 'File') return errorValue('hasTag requires a file.');
+            const normalized = receiver.value.tags.map(tag => tag.replace(/^#/, '').toLocaleLowerCase());
+            return boolValue(tags.some(tag => {
+              const needle = stringifyValue(tag).replace(/^#/, '').toLocaleLowerCase();
+              return normalized.some(value => value === needle || value.startsWith(needle + '/'));
+            }));
+          }, [internalGuard]: value => {
+            if (value.type === 'Error') evaluationError ??= value.value.message;
+            return value;
+          } };
+          const matches = globalFilter(context) && viewFilter(context);
+          ensure(evaluationError === undefined, 'BASE_EVALUATION_ERROR', evaluationError ?? 'Expression evaluation failed.');
+          if (!matches) return undefined;
+          const group = grouping?.expression.evaluateValue(context, strict);
+          const groupIndex = groupPositions && (groupPositions.size === 0 ? -1 : groupPositions.get(groupIdentity(group && toPlain(group))) ?? -1);
+          if (groupIndex === -1) return undefined;
+          const sort = sorts.map(item => item.expression.evaluateValue(context, strict));
+          ensure(evaluationError === undefined, 'BASE_EVALUATION_ERROR', evaluationError ?? 'Expression evaluation failed.');
+          return { path: file.path, sort, group, groupIndex };
+        } catch (error) {
+          throw forgeError('BASE_EVALUATION_ERROR', `${path}, view ${String(view.name)}, file ${file.path}: ${errorMessage(error)}`);
+        }
+      });
+      if (row) rows.push(row);
     }
     rows.sort((a, b) => {
       if (grouping && a.group && b.group) {

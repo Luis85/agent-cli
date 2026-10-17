@@ -77,7 +77,7 @@ One note never fails the whole query, as in Obsidian. `warnings` lists, in path 
 | `unparseable-note` | The note cannot be parsed, for example because of duplicate frontmatter keys or an unclosed flow sequence. It is indexed without properties, links or tags, so it still matches file-only filters such as `file.inFolder(...)`. |
 | `ambiguous-link` | A link path matches several files (`candidates`) and resolves to the closest, `resolvedPath`; `link` is the link path. |
 
-Invalid expressions use `INVALID_BASE_EXPRESSION`; expression evaluation failures identify the Base, view and affected file through `BASE_EVALUATION_ERROR`. Invalid property-type settings and missing contexts have named errors. Fix the reported source and query again; errors are not converted into a successful empty repository.
+Invalid expressions use `INVALID_BASE_EXPRESSION`; expression evaluation failures identify the Base, view and affected file through `BASE_EVALUATION_ERROR`. Expression evaluation of one query shares a 30-second budget over all files, enforced by a `node:vm` watchdog that also interrupts a catastrophically backtracking regular expression such as `/^(a+)+$/`; beyond it the query fails with `BASE_TIMEOUT` (exit 2, `details.path` and `details.timeoutMs`) and returns no partial rows. Invalid property-type settings and missing contexts have named errors. Fix the reported source and query again; errors are not converted into a successful empty repository.
 
 ## Generated Markdown
 
