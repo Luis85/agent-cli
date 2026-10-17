@@ -9,7 +9,7 @@ export function backlogError(code: BacklogErrorCode, message: string, details?: 
 export type RefusalReason =
   | 'resource' | 'field-not-held' | 'not-a-release' | 'not-a-resource' | 'not-an-iteration' | 'reversed-span' | 'outside-filter'
   | 'parent-cycle' | 'projection' | 'marker' | 'dependency-cycle' | 'reserved-type' | 'use-release-add' | 'already-released'
-  | 'unreadable' | 'foreign-release-notes' | 'unbound-property';
+  | 'unreadable' | 'foreign-release-notes' | 'unbound-property' | 'hidden-type';
 
 export function refused(reason: RefusalReason, message: string, details: Record<string, unknown> = {}): Error {
   return backlogError('BACKLOG_WRITE_REFUSED', message, { reason, ...details });

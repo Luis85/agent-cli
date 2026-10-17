@@ -126,6 +126,15 @@ describe('ranks and dependencies', () => {
     expect((await runBacklog(vault.root, ['move', 'A'], { top: true })).data.changes).toEqual([]);
   });
 
+  it('refuses to add a root of an unknown type that hierarchyOnly would hide, but adds it under a parent', async () => {
+    vault = await backlogVault({ 'docs/Backlog.base': base('docs'), 'docs/Epic.md': note({ type: 'Epic', order: 1 }) });
+    await expect(runBacklog(vault.root, ['add', 'story', 'First'])).rejects.toMatchObject({ code: 'BACKLOG_WRITE_REFUSED', details: { reason: 'hidden-type', type: 'story', types: expect.arrayContaining(['Epic', 'Task']) } });
+    await expect(vault.read('docs/First.md')).rejects.toMatchObject({ code: 'ENOENT' });
+    const added = await runBacklog(vault.root, ['add', 'story', 'First'], { parent: 'Epic' });
+    expect(added.data.item).toMatchObject({ type: 'story', parent: 'docs/Epic.md' });
+    expect((await runBacklog(vault.root, ['list'])).data).toMatchObject({ total: 2, ignored: [] });
+  });
+
   it('adds and removes dependsOn entries, deleting the key when the list empties', async () => {
     vault = await backlogVault({ 'd/Backlog.base': base('d'), 'd/A.md': note({ type: 'PBI', order: 1 }), 'd/B.md': note({ type: 'PBI', order: 2 }), 'd/M.md': note({ type: 'Milestone', order: 3 }) });
     await runBacklog(vault.root, ['depend', 'A'], { on: 'B' });

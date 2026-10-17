@@ -20,6 +20,8 @@ export const checkMessages = {
   rankTie: '{count} items share rank {rank}; ties follow result order.',
   unrankedOne: '1 item has no rank and sorts last; run backlog ranks seed.',
   unranked: '{count} items have no rank and sort last; run backlog ranks seed.',
+  ignoredOne: '1 note has no backlog type and no parent, so the backlog hides it (hierarchyOnly).',
+  ignored: '{count} notes have no backlog type and no parent, so the backlog hides them (hierarchyOnly).',
   sharedKey: 'The properties {roles} all use the key "{key}".',
   sharedReleaseKey: 'The release properties {roles} all use the key "{key}".',
   releasedDateIsTarget: 'The released date and the target date share the key "{key}".',

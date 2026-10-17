@@ -83,5 +83,7 @@ export function checkBacklog(input: CheckInput): CheckProblem[] {
   // Releases are created without a rank (`createRelease`), so only other unranked results are reported.
   const unranked = results.filter(item => item.order === null && !isReleaseType(item.typeName)).map(item => item.path);
   if (unranked.length > 0) problems.push(warning('unranked', fill(unranked.length === 1 ? checkMessages.unrankedOne : checkMessages.unranked, { count: unranked.length }), { paths: unranked }));
+  // hierarchyOnly hides roots without a backlog type; the notes exist but no view shows them.
+  if (model.ignored.length > 0) problems.push(warning('ignored', fill(model.ignored.length === 1 ? checkMessages.ignoredOne : checkMessages.ignored, { count: model.ignored.length }), { paths: [...model.ignored] }));
   return problems;
 }
