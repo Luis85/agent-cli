@@ -47,7 +47,10 @@ export function readView(result: ReadResult, selection: ReadSelection, warn: (me
     }
   }
   if (parts.has('properties')) shaped.properties = document.properties;
-  if (parts.has('body')) {
+  // A note whose frontmatter does not parse explains its null properties, whichever parts were selected.
+  if (document.issue !== undefined) shaped.issue = document.issue;
+  // Unclosed frontmatter leaves no body to tell apart from it.
+  if (parts.has('body') && document.body !== undefined) {
     const body = String(document.body), window = textWindow(body, selection.maxBytes);
     shaped.body = window.content;
     if (window.truncated) { extra.truncated = true; cut(window.bytes, Buffer.byteLength(body)); }
