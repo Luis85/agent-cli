@@ -1,5 +1,6 @@
 import { ensure } from '../../domain/shared/errors.ts';
-import { isKernelMessage, warningText } from '../../domain/shared/kernel-messages.ts';
+import { isKernelMessage } from '../../domain/shared/kernel-messages.ts';
+import { pluginWarning } from '../../domain/shared/warnings.ts';
 import type { EventBus, EventChannel } from './events.ts';
 import { hostEventNamespaces } from './host-events.ts';
 
@@ -23,9 +24,10 @@ export function pluginEvents(bus: EventBus, pluginId: string): EventChannel {
     once: (id, listener) => bus.once(id, listener),
     onAny: listener => bus.onAny(listener),
     replay: listener => bus.replay(listener),
-    // Plugins are plain JavaScript and may pass any value; it is reported as text. Only a message the host created
-    // with kernelMessage (which core plugins import from the kernel domain) renders from the host catalog.
-    warn: (message: unknown) => bus.warn(isKernelMessage(message) ? message : warningText(message)),
+    // Plugins are plain JavaScript and may pass any value; it is reported with the plugin's id, as its own coded warning
+    // or as PLUGIN_WARNING text. Only a message the host created with kernelMessage (which core plugins import from
+    // the kernel domain) renders from the host catalog.
+    warn: (message: unknown) => bus.warn(isKernelMessage(message) ? message : pluginWarning(message, pluginId)),
     onLayoutReady: callback => bus.onLayoutReady(callback),
     onQuit: task => bus.onQuit(task),
     async emit(id, payload) {

@@ -5,6 +5,7 @@ import type { Command, CommandContext } from '../../../application/plugins/regis
 import { arity } from '../../../application/plugins/command-input.ts';
 import type { TemplateArtifact } from '../../../application/workspace/setup.ts';
 import { TemplateInstaller, type DocumentTemplates } from '../application/templates.ts';
+import { ensureTemplate } from '../domain/errors.ts';
 
 /** `templates`: lists and inspects the shared templates in the workspace's bin/templates and installs the workflow pack. */
 export function templatesCommand(templates: (context: CommandContext) => DocumentTemplates, workflowPack: readonly TemplateArtifact[]): Command {
@@ -33,7 +34,7 @@ export function templatesCommand(templates: (context: CommandContext) => Documen
         return { directory: 'bin/templates', templates: (await environment.files.list()).filter(path => path.startsWith(prefix) && path.toLowerCase().endsWith('.md')).map(path => path.slice(prefix.length)) };
       }
       ensure(action === 'inspect', 'INVALID_ARGUMENT', 'Use templates list, templates inspect <template.md>, or templates install workflow.'); arity(args, 2);
-      ensure(args[1]!.toLowerCase().endsWith('.md'), 'INVALID_TEMPLATE', 'Use a Markdown template.');
+      ensureTemplate(args[1]!.toLowerCase().endsWith('.md'), 'INVALID_TEMPLATE', 'Use a Markdown template.');
       const path = `bin/templates/${vaultPath(args[1]!)}`;
       return { path, ...templates(context).inspect((await environment.files.read(path)).bytes) };
     },

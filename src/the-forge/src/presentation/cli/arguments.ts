@@ -113,7 +113,7 @@ function ensureValuesAreNotFlags(tokens: readonly string[], options: Readonly<Re
     if (!token.startsWith('--') || token.includes('=') || !known(key) || options[key] !== 'string') continue;
     const next = tokens[++index];
     if (next !== undefined && flag(next)) {
-      throw forgeError('MISSING_ARGUMENT', `--${key} needs a value, but ${next} follows it; write a literal value that starts with - as --${key}=<value>.`, { option: key });
+      throw forgeError('MISSING_ARGUMENT', `--${key} needs a value, but ${next} follows it; write a literal value that starts with - as --${key}=<value>.`, { option: key, next });
     }
   }
 }

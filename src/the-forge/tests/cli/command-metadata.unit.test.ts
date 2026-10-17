@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { anyActionOptions, commandAnnotations, commandInputSchema, commandMode, commandOptions, commandOutputSchema, ensureKnownAction, hasActionOptions, option, validateCommandMetadata, type CommandMetadata } from '../../src/application/plugins/command-metadata.ts';
-import { errorCodes } from '../../src/domain/shared/error-catalog.ts';
 import { jsonSchemaDialect, schemaIssues, validateJsonValue, type JsonSchema } from '../../src/domain/schema/json-schema.ts';
 import { builtinCommands } from '../support/builtin-commands.ts';
 import { testHost } from '../support/core-plugins.ts';
@@ -8,7 +7,7 @@ import { searchPlugin } from '../../src/plugins/search/plugin.ts';
 import { linksPlugin } from '../../src/plugins/links/plugin.ts';
 import { applyPlanSchema, literalEditsSchema } from '../../src/domain/documents/apply-plan.ts';
 
-const { commands } = builtinCommands();
+const { commands, codes } = builtinCommands();
 
 describe('built-in command metadata', () => {
   it('declares scope, discovery and mutating for every built-in command and describes every option and action', () => {
@@ -16,7 +15,7 @@ describe('built-in command metadata', () => {
     for (const command of commands.values()) {
       for (const key of ['scope', 'discovery', 'mutating'] as const) expect(command[key], `${command.id}.${key}`).toBeDefined();
       expect(() => validateCommandMetadata(command as unknown as Record<string, unknown>), command.id).not.toThrow();
-      for (const code of command.errors ?? []) expect(errorCodes, `${command.id} declares ${code}`).toContain(code);
+      for (const code of command.errors ?? []) expect(codes, `${command.id} declares ${code}`).toContain(code);
     }
   });
 

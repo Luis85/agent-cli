@@ -50,9 +50,9 @@ describe('the links core plugin through the portable CLI', () => {
       const failed = await cli(['links', 'orphans']);
       expect(failed.body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'links', plugin: 'links', reason: expect.stringContaining('plugins.settings.links is invalid'), issues: ['plugins.settings.links.roots[0]: has the reversed class range [z-a].'] } });
       expect(failed.body.warnings).toEqual([
-        expect.stringContaining('ignored serach'),
-        expect.stringContaining('Plugin links is unavailable in this invocation'),
-        expect.stringContaining('plugins.settings names no installed plugin: lnks'),
+        expect.objectContaining({ code: 'DISABLED_UNKNOWN_PLUGIN', message: expect.stringContaining('ignored serach') }),
+        expect.objectContaining({ code: 'PLUGIN_UNAVAILABLE', message: expect.stringContaining('Plugin links is unavailable in this invocation') }),
+        expect.objectContaining({ code: 'SETTINGS_UNKNOWN_PLUGIN', message: expect.stringContaining('plugins.settings names no installed plugin: lnks'), details: { plugins: 'lnks' } }),
       ]);
       for (const args of [['help'], ['schema'], ['config'], ['plugins'], ['list'], ['--no-plugins', 'search', 'Ideas']]) expect((await cli(args)).status, args.join(' ')).toBe(0);
       expect((await cli(['config'])).body.data.config.plugins.settings.links).toEqual({ roots: ['[z-a]'] });

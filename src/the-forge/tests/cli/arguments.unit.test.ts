@@ -70,7 +70,7 @@ describe('option values that are flags', () => {
     [['--root', '--no-plugins', 'list'], 'root', '--no-plugins'],
   ])('never take a known flag as the value: %j', (tokens, key, next) => {
     expect(() => parseArguments(tokens, options)).toThrowError(expect.objectContaining({
-      code: 'MISSING_ARGUMENT', details: { option: key },
+      code: 'MISSING_ARGUMENT', details: { option: key, next },
       message: `--${key} needs a value, but ${next} follows it; write a literal value that starts with - as --${key}=<value>.`,
     }));
   });

@@ -40,6 +40,8 @@ export function generationCommand(registry: Registry): Command {
       { name: 'name', description: 'The name or id the generator creates from.' },
     ],
     unknownAction: 'UNKNOWN_GENERATOR',
+    generatorActions: true,
+    localizedOutput: { generators: 'generators' },
     // make's own codes, then each registered generator's, so schema make covers every generator.
     get errors() {
       return [...new Set([...makeErrors, ...[...registry.generators.values()].flatMap(generator => generator.errors ?? [])])];
@@ -71,7 +73,7 @@ export function generationCommand(registry: Registry): Command {
       const writes = await generator.generate!(request);
       if (generator.review) {
         const { mode, manifestPath, revisions } = await generationControls(flags, context.workspace.files);
-        if (mode === 'check') return { generator: generator.id, check: true, ...await generation.check(writes, 'GENERATION_DRIFT') };
+        if (mode === 'check') return { generator: generator.id, check: true, ...await generation.check(writes) };
         if (mode === 'plan') return { generator: generator.id, plan: true, ...await generation.plan(writes, manifestPath) };
         return { generator: generator.id, ...await generation.commit(writes, revisions) };
       }

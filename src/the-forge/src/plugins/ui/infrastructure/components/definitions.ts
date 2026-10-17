@@ -1,11 +1,11 @@
 import { z } from 'zod';
 import { stringify } from 'yaml';
-import { forgeError, AppError, ensure } from '../../../../domain/shared/errors.ts';
 import { vaultPath } from '../../../../domain/documents/file.ts';
 import type { UiDefinition, UiJson, UiNode } from '../../domain/components/definition.ts';
 import { uiBindings, uiSafeUrl, uiUnsafeAttributes, uiUnsafeTags, uiUrlAttributes, uiVoidTags } from '../../domain/components/syntax.ts';
 import type { UiDefinitionCodec } from '../../application/components/library.ts';
 import type { DocumentCodec } from '../../../../application/workspace/ports.ts';
+import { ensureUi, isUiError, uiError } from '../../domain/errors.ts';
 
 const reserved = new Set('arguments await break case catch children class const constructor continue debugger default delete do else enum eval export extends false finally for function if implements import in instanceof interface let new null package private protected prototype public return static super switch this throw true try typeof var void while with yield undefined __proto__'.split(' '));
 const identifier = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).refine(value => !reserved.has(value), 'Reserved prop name');
@@ -55,16 +55,16 @@ export class MarkdownUiDefinitions implements UiDefinitionCodec {
     try {
       const document = this.documents.inspect('definition.md', bytes) as { properties: unknown; body: string };
       const result = schema.safeParse(document.properties);
-      ensure(result.success, 'INVALID_UI', `${path}: ${result.success ? '' : result.error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join('; ')}`);
+      ensureUi(result.success, 'INVALID_UI', `${path}: ${result.success ? '' : result.error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join('; ')}`);
       const extension = result.data.storybook?.extension;
       if (extension !== undefined) {
         vaultPath(extension);
-        ensure(/\.(?:[cm]?js|tsx?)$/.test(extension), 'INVALID_UI', `${path}: Storybook extension must be a JS or TS module.`);
+        ensureUi(/\.(?:[cm]?js|tsx?)$/.test(extension), 'INVALID_UI', `${path}: Storybook extension must be a JS or TS module.`);
       }
       return { ...result.data, description: document.body, sourcePath: path };
     } catch (error) {
-      if (error instanceof AppError && error.code === 'INVALID_UI') throw error;
-      throw forgeError('INVALID_UI', `${path}: ${error instanceof Error ? error.message : 'Invalid component definition.'}`);
+      if (isUiError(error, 'INVALID_UI')) throw error;
+      throw uiError('INVALID_UI', `${path}: ${error instanceof Error ? error.message : 'Invalid component definition.'}`);
     }
   }
   serialize(definition: UiDefinition): Uint8Array {

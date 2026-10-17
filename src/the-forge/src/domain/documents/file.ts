@@ -36,6 +36,17 @@ export function reservedPathSegment(segment: string): 'git' | 'internal' | undef
   return undefined;
 }
 
+/** Windows device names: a file named like one, with any extension, opens the device instead on Windows. */
+const deviceNames = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/;
+/**
+ * Whether `segment` is a Windows reserved device name in any letter case, alone or with an extension, and with
+ * trailing dots or spaces before or after the extension (`con`, `NUL.md`, `Com1 .txt`, `lpt9.tar.gz.`).
+ */
+export function isDeviceName(segment: string): boolean {
+  const base = segment.replace(ignorable, '').split('.')[0]!;
+  return deviceNames.test(base.toLowerCase().replace(/ +$/, ''));
+}
+
 export function vaultPath(input: string): string {
   // oxlint-disable-next-line no-control-regex -- Vault paths must reject ASCII control characters.
   ensure(typeof input === 'string' && input.length > 0 && !/[\x00-\x1f\x7f\\:]/.test(input), 'INVALID_PATH', 'Use a nonempty, relative POSIX path.');
@@ -43,6 +54,9 @@ export function vaultPath(input: string): string {
   // A segment of only dots, spaces and ignorable code points is empty, `.` or `..` on Windows or HFS+.
   ensure(parts.every(p => canonicalName(p) !== ''), 'INVALID_PATH', 'Absolute paths, empty segments and traversal are forbidden.');
   ensure(!parts.some(p => reservedPathSegment(p) !== undefined), 'INVALID_PATH', 'Reserved workspace path.');
+  // Rejected on every platform, so a vault stays usable when it is synced to or opened on Windows.
+  const device = parts.find(isDeviceName);
+  ensure(device === undefined, 'INVALID_PATH', `${device} is a Windows reserved device name (CON, PRN, AUX, NUL, COM1-COM9 or LPT1-LPT9, with any extension); rename the file or folder.`, { segment: device });
   return input;
 }
 

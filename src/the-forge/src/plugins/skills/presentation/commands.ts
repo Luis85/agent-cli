@@ -6,6 +6,7 @@ import { arity, value } from '../../../application/plugins/command-input.ts';
 import type { JsonSchema } from '../../../domain/schema/json-schema.ts';
 import { ensure } from '../../../domain/shared/errors.ts';
 import { skillFileNames, skillFiles, skillTargetChoices, targetRoots } from '../../../domain/skills/skill.ts';
+import { ensureSkill } from '../domain/errors.ts';
 
 const listOutput: JsonSchema = { type: 'object', required: ['skills'], properties: { skills: { type: 'array', items: { type: 'string' } } } };
 const showOutput: JsonSchema = {
@@ -49,7 +50,7 @@ export function skillsCommand(skills: SkillCatalog): Command {
       const action = args[0] ?? 'list';
       if (action === 'list') { arity(args, 0, 1); return { skills: skills.list().map(skill => skill.id) }; }
       if (action === 'show') {
-        arity(args, 2); const skill = skills.get(args[1]!); ensure(skill, 'UNKNOWN_SKILL', args[1]!);
+        arity(args, 2); const skill = skills.get(args[1]!); ensureSkill(skill, 'UNKNOWN_SKILL', args[1]!);
         const files = skillFileNames(skill), path = value(flags, 'file') ?? 'SKILL.md';
         ensure(files.includes(path), 'INVALID_OPTION_VALUE', `--file must be one of: ${files.join(', ')}.`, { option: 'file', value: path, allowed: files });
         return { id: skill.id, path, content: path === 'SKILL.md' ? skill.content : skill.files![path]!, files };

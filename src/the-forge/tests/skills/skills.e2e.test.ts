@@ -62,7 +62,7 @@ describe('the skills core plugin', () => {
       await config({ plugins: { disabled: ['quality'] } });
       const help = await cli(['help']);
       expect(help.status).toBe(0);
-      expect(help.body.warnings).toEqual([expect.stringContaining('ignored quality')]);
+      expect(help.body.warnings).toEqual([expect.objectContaining({ code: 'DISABLED_UNKNOWN_PLUGIN', message: expect.stringContaining('ignored quality') })]);
     } finally { await rm(join(fixture.project, 'bin/config.json')); }
     expect(Object.keys((await cli(['help'])).body.data.commands)).toContain('skills');
     expect((await cli(['--no-plugins', 'skills'])).body.data.skills).toEqual(['forge-workflow', 'forge-vault', 'forge-development', 'forge-agents', 'forge-backlog', 'forge-webviews', 'forge-browser']);

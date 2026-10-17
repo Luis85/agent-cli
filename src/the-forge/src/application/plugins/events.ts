@@ -1,5 +1,6 @@
 import { forgeError, ensure, isRecord, errorMessage } from '../../domain/shared/errors.ts';
-import { isKernelMessage, kernelMessage, renderWarning, warningText, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
+import { isKernelMessage, kernelMessage, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
+import { isPluginWarning, pluginWarning, responseWarning, type Warning } from '../../domain/shared/warnings.ts';
 
 export interface EventDefinition<T = unknown> { id: string; description?: string; validate: (payload: unknown) => payload is T }
 export interface EventRecord { id: string; payload: unknown }
@@ -22,7 +23,11 @@ export interface EventChannel {
   onAny(listener: (record: EventRecord) => void | Promise<void>): () => void;
   replay(listener: (record: EventRecord) => void | Promise<void>): Promise<void>;
   emit(id: string, payload: unknown): Promise<void>;
-  warn(message: string | KernelMessage): void;
+  /**
+   * Records a nonfatal warning for the response: text, or `{code, message, details?}` with the plugin's own
+   * UPPER_SNAKE_CASE code; text without a code reports as PLUGIN_WARNING. Host code passes kernel messages.
+   */
+  warn(message: string | KernelMessage | Warning): void;
   /** Like Obsidian's `workspace.onLayoutReady`: runs now when plugins are active, otherwise once they are. */
   onLayoutReady(callback: Callback): void;
   /** A best-effort task that runs after `workspace.quit`, before plugins unload. */
@@ -55,10 +60,10 @@ export class EventBus implements EventChannel {
   private readonly quitTasks: Callback[] = [];
   private readonly settling = new Set<Promise<void>>();
   readonly history: EventRecord[] = [];
-  /** Warnings in order: plugin text as written, host messages by code for rendering in the response language. */
-  readonly warningRecords: Array<string | KernelMessage> = [];
-  /** The warnings in English. */
-  get warnings(): string[] { return this.warningRecords.map(warning => renderWarning(warning)); }
+  /** Warnings in order: host messages by code for rendering in the response language, plugin warnings as captured. */
+  readonly warningRecords: Array<KernelMessage | Warning> = [];
+  /** The warning messages in English. */
+  get warnings(): string[] { return this.warningRecords.map(warning => responseWarning(warning).message); }
 
   constructor(private readonly delivery: EventDeliveryScope) {}
 
@@ -144,9 +149,12 @@ export class EventBus implements EventChannel {
       }
     });
   }
-  /** Records a warning: a host message by code, anything else as text (see warningText), so no value can break the response. */
-  warn(message: string | KernelMessage): void {
-    if (this.warningRecords.length < 1000) this.warningRecords.push(isKernelMessage(message) ? message : warningText(message));
+  /**
+   * Records a warning: a host message by code, a plugin warning as captured, and any other value as a plugin warning
+   * (see pluginWarning) without a plugin id, so no value can break the response.
+   */
+  warn(message: unknown): void {
+    if (this.warningRecords.length < 1000) this.warningRecords.push(isKernelMessage(message) || isPluginWarning(message) ? message : pluginWarning(message));
   }
   onLayoutReady(callback: Callback): void {
     this.ensureCallback(callback);

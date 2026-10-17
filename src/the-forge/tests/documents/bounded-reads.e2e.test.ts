@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
+import { warningMessages } from '../support/warnings.ts';
 
 const fixture = portableCli();
 const cli = fixture.cli;
@@ -27,9 +28,9 @@ describe('bounded, targeted reads for agents', () => {
     const missing = await cli(['list', '--path', 'vault/Notes']);
     expect(missing.status).toBe(0);
     expect(missing.body.data).toEqual({ files: [], total: 0 });
-    expect(missing.body.warnings).toEqual([expect.stringMatching(/^--path vault\/Notes matched no file in this scope\. .*run list/)]);
+    expect(missing.body.warnings).toEqual([{ code: 'PATH_MATCHED_NOTHING', message: expect.stringMatching(/^--path vault\/Notes matched no file in this scope\. .*run list/), details: { option: '--path', pattern: 'vault/Notes' } }]);
     const german = await cli(['--lang', 'de', 'list', '--path', 'vault/Notes']);
-    expect(german.body.warnings).toEqual([expect.stringMatching(/^--path vault\/Notes trifft in diesem Bereich keine Datei\./)]);
+    expect(warningMessages(german.body)).toEqual([expect.stringMatching(/^--path vault\/Notes trifft in diesem Bereich keine Datei\./)]);
     expect(paths((await cli(['list'])).body)).not.toContain('.trash/old.md');
     expect(paths((await cli(['list', '--include-trash'])).body)).toContain('.trash/old.md');
     expect(paths((await cli(['list', '--path', '.trash'])).body)).toEqual(['.trash/old.md']);
@@ -40,11 +41,11 @@ describe('bounded, targeted reads for agents', () => {
     expect((await cli(['list', '--property', '=x'])).body.error).toMatchObject({ code: 'INVALID_ARGUMENT', message: '--property must be key or key=value with a nonempty key.' });
     const searched = await cli(['search', 'plan', '--path', 'vault/specs']);
     expect(searched.body.data.hits.map((hit: { path: string }) => hit.path)).toEqual(['vault/specs/plan.md']);
-    expect((await cli(['search', 'plan', '--path', 'vault/spec'])).body.warnings).toEqual([expect.stringContaining('--path vault/spec matched no file')]);
+    expect((await cli(['search', 'plan', '--path', 'vault/spec'])).body.warnings).toEqual([expect.objectContaining({ code: 'PATH_MATCHED_NOTHING', message: expect.stringContaining('--path vault/spec matched no file') })]);
     expect((await cli(['search', 'status', '--count'])).body.data).toEqual({ total: 2, fileCount: 2 });
     expect((await cli(['search', 'status', '--files-only', '--limit', '1'])).body.data).toMatchObject({ files: [{ path: 'vault/notes/a.md', hits: 1 }], total: 2, fileCount: 2, nextCursor: expect.any(String) });
     expect((await cli(['search', 'status', '--count', '--files-only'])).body.error.code).toBe('INVALID_ARGUMENT');
-    expect((await cli(['links', 'deadends', '--path', 'vault/nothing'])).body.warnings).toEqual([expect.stringContaining('--path vault/nothing matched no file')]);
+    expect((await cli(['links', 'deadends', '--path', 'vault/nothing'])).body.warnings).toEqual([expect.objectContaining({ code: 'PATH_MATCHED_NOTHING', details: { option: '--path', pattern: 'vault/nothing' } })]);
     expect((await cli(['vault', 'tags', '--path', 'vault/notes'])).body.warnings).toEqual([]);
   }, workflowTimeout);
 
@@ -66,7 +67,9 @@ describe('bounded, targeted reads for agents', () => {
     expect(read.stdout.length).toBeLessThan(300_000);
     expect(read.body.data).toMatchObject({ truncated: true, bytes: Buffer.byteLength(`---\nstatus: big\n---\n${lines}`), lines: { start: 1, total: 40_003 }, document: { properties: { status: 'big' } } });
     const { end } = read.body.data.lines;
-    expect(read.body.warnings).toEqual([expect.stringMatching(new RegExp(`^big\\.md was truncated to lines 1-${end} of 40003 .*--lines ${end + 1}-`))]);
+    expect(read.body.warnings.map((warning: { code: string }) => warning.code)).toEqual(['READ_TRUNCATED']);
+    expect(read.body.warnings[0].details).toMatchObject({ path: 'big.md', start: 1, end, total: 40_003, next: end + 1 });
+    expect(warningMessages(read.body)).toEqual([expect.stringMatching(new RegExp(`^big\\.md was truncated to lines 1-${end} of 40003 .*--lines ${end + 1}-`))]);
     const range = await cli(['read', 'big.md', '--lines', '5-7']);
     expect(range.body.data).toMatchObject({ lines: { start: 5, end: 7, total: 40_003 }, document: { content: 'line 2\nline 3\nline 4\n' } });
     expect(range.body.data).not.toHaveProperty('truncated');

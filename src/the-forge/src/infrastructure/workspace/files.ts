@@ -4,7 +4,7 @@ import { lstatSync, readdirSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { forgeError, errorMessage, ensure } from '../../domain/shared/errors.ts';
 import { kernelMessage, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
-import { aliasesName, reservedPathSegment, temporaryPrefix, vaultPath, writerLockName, type WriteRequest, type FileChange, type FileStat } from '../../domain/documents/file.ts';
+import { aliasesName, isDeviceName, reservedPathSegment, temporaryPrefix, vaultPath, writerLockName, type WriteRequest, type FileChange, type FileStat } from '../../domain/documents/file.ts';
 import type { FileStamp } from '../../domain/metadata/snapshot.ts';
 import { revisionConflict, snapshotWriteRequests } from '../../domain/documents/write-plan.ts';
 import type { BatchResult, FileBatch, FileRepository, RecoveredLock, WriteBatchResult } from '../../application/workspace/ports.ts';
@@ -42,8 +42,11 @@ function queued<T>(lock: string, task: () => Promise<T>): Promise<T> {
  * state, not workspace content: listings leave it out, while direct reads still reach it.
  */
 export const cacheFolder = '.forge/cache';
-/** Entries `list()` never reports or enters: Git, dependencies, Forge's own lock and temporary files and the root cache folder. */
-const unlisted = (name: string, path: string) => reservedPathSegment(name) !== undefined || name.toLowerCase() === 'node_modules' || path.toLowerCase() === cacheFolder;
+/**
+ * Entries `list()` never reports or enters: Git, dependencies, Forge's own lock and temporary files, the root cache
+ * folder and Windows device names (`con.md`), which no Forge path can address.
+ */
+const unlisted = (name: string, path: string) => reservedPathSegment(name) !== undefined || isDeviceName(name) || name.toLowerCase() === 'node_modules' || path.toLowerCase() === cacheFolder;
 /** Concurrent staging lets the filesystem group fsyncs while bounding open handles. */
 const stagingConcurrency = 8;
 
@@ -170,7 +173,9 @@ export class NodeFiles implements FileRepository, BatchHost {
         if (reserved === 'git') { git = true; continue; }
         if (reserved === 'internal') { if (aliasesName(name, writerLockName)) locks.push(prefix + name); continue; }
         const relative = prefix + name, absolute = join(directory, name);
-        if (entry.isSymbolicLink()) special.push({ path: relative, kind: 'symlink', target: await readlink(absolute) });
+        // A Windows device name is no vault path: a moved folder carries it, but no permanent removal deletes it unseen.
+        if (isDeviceName(name)) special.push({ path: relative, kind: 'other' });
+        else if (entry.isSymbolicLink()) special.push({ path: relative, kind: 'symlink', target: await readlink(absolute) });
         else if (entry.isDirectory() && name.toLowerCase() === 'node_modules') special.push({ path: relative, kind: 'node_modules' });
         else if (entry.isDirectory()) { folders.push(relative); await walk(absolute, relative + '/'); }
         else if (entry.isFile()) {

@@ -26,6 +26,17 @@ describe('portable vault paths', () => {
     expect(() => vaultPath(path)).toThrowError(expect.objectContaining({ code: 'INVALID_PATH' }));
   });
 
+  it.each([
+    ['CON', 'CON'], ['con.md', 'con.md'], ['notes/Nul.md', 'Nul.md'], ['PRN.tar.gz', 'PRN.tar.gz'], ['aux/notes.md', 'aux'], ['Com1', 'Com1'],
+    ['lpt9.txt', 'lpt9.txt'], ['nul. ', 'nul. '], ['con .md', 'con .md'], ['COM3.md.', 'COM3.md.'], ['n\u200bul.md', 'n\u200bul.md'],
+  ])('rejects the Windows reserved device name in %s on every platform', (path, segment) => {
+    expect(() => vaultPath(path)).toThrowError(expect.objectContaining({ code: 'INVALID_PATH', message: expect.stringContaining('Windows reserved device name'), details: { segment } }));
+  });
+
+  it.each(['console.md', 'nul-checks.md', 'notes/com10.md', 'lpt0.txt', 'com.md', 'auxiliary/x.md', '.con', 'my con.md'])('keeps the ordinary name %s that only resembles a device name', path => {
+    expect(vaultPath(path)).toBe(path);
+  });
+
   it('classifies aliases by the name they reach and compares protected roots the same way', () => {
     expect(['GIT~1', '.G\u200dit', '.git. '].map(reservedPathSegment)).toEqual(['git', 'git', 'git']);
     expect(['AGENT-~2.LOC', '.agent-cli-tmp-x', '.Agent-Cli.Lock '].map(reservedPathSegment)).toEqual(['internal', 'internal', 'internal']);

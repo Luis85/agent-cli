@@ -2,6 +2,7 @@ import { beforeAll, expect, it } from 'vitest';
 import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
+import { warningMessages } from '../support/warnings.ts';
 
 const fixture = portableCli();
 const cli = fixture.cli;
@@ -28,9 +29,9 @@ it('loads runtime plugins, generators, skills and event subscriptions from a por
     const check = await cli([...args, 'quality.check', '--label', 'ready', '--events', 'all']);
     expect(check.status).toBe(0); expect(check.body.data.label).toBe('ready');
     expect(check.body.events.filter((event: { id: string }) => event.id === 'quality.checked')).toEqual([{ id: 'quality.checked', payload: 'ready' }]);
-    expect(check.body.warnings).toContain('cleaned up');
+    expect(warningMessages(check.body)).toContain('cleaned up');
     const generated = await cli([...args, 'make', 'quality.fixture', 'Example', '--out', 'fixtures']);
-    expect(generated.status).toBe(0); expect(generated.body.warnings.some((w: string) => w.includes('Observer failed'))).toBe(true);
+    expect(generated.status).toBe(0); expect(warningMessages(generated.body).some(message => message.includes('Observer failed'))).toBe(true);
     expect(await readFile(join(project, 'fixtures/Example.md'), 'utf8')).toBe('# Fixture');
     // Each generator parses only its own options: a boolean --framework here leaves make ui's string option intact.
     expect((await cli([...args, 'make', 'quality.flagged', 'Flag', '--framework', '--dry-run'])).body.data.preview).toEqual([{ path: 'src/domain/Flag.md', content: 'true' }]);

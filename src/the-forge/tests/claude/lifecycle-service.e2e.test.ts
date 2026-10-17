@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
+import { warningMessages } from '../support/warnings.ts';
 
 const fixture = portableCli();
 const commandHash = 'a'.repeat(64);
@@ -80,7 +81,7 @@ describe('the claude.lifecycle service for trusted plugins', () => {
     } });
     expect(result.body.data.plan.args.slice(0, 3)).toEqual([plugin.executableScript, 'success', '--config']);
     for (const secret of ['private-stdin', 'private-config', 'private-argument']) expect(result.stdout).not.toContain(secret);
-    expect(result.body.warnings).toContain('native-audit activated');
+    expect(warningMessages(result.body)).toContain('native-audit activated');
     expect(result.body.events.filter((event: { id: string }) => event.id === 'claude.executed')).toEqual([]);
     expect(result.body.events).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'claude.started', payload: expect.objectContaining({ dryRun: true }) }),

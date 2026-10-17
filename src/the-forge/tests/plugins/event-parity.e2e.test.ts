@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
 import { bundledCorePlugins } from '../support/core-plugins.ts';
+import { warningMessages } from '../support/warnings.ts';
 
 const fixture = portableCli();
 type Record = { id: string; payload: { [key: string]: unknown } };
@@ -85,7 +86,7 @@ describe('Obsidian event parity through the portable CLI', () => {
       ['vault.modify', 'notes/spec.md'], ['metadataCache.changed', 'notes/spec.md'], ['metadataCache.resolve', 'notes/spec.md'], ['metadataCache.resolved', undefined],
     ]);
     expect(records[1].payload.cache).toMatchObject({ links: [{ link: 'plan', original: '[[plan]]' }] });
-    expect(linked.body.warnings).toEqual(['resolved observed']);
+    expect(warningMessages(linked.body)).toEqual(['resolved observed']);
     const changes = await run(['parity.link', 'notes/spec.md', 'missing']);
     expect(ids(changes.body.events)).toEqual(['vault.modify']);
   });
@@ -107,7 +108,7 @@ describe('Obsidian event parity through the portable CLI', () => {
     `);
     const first = await run(['--events', 'all', 'parity.noop']);
     expect(first.status, first.stdout).toBe(0);
-    expect(first.body.warnings).toEqual(['enabled once', 'quit task ran']);
+    expect(warningMessages(first.body)).toEqual(['enabled once', 'quit task ran']);
     const order = ids(first.body.events);
     expect(order.indexOf('parity.ready')).toBeLessThan(order.indexOf('workspace.layout-ready'));
     expect(order.indexOf('workspace.layout-ready')).toBeLessThan(order.indexOf('command.succeeded'));
@@ -115,7 +116,7 @@ describe('Obsidian event parity through the portable CLI', () => {
     expect(first.body.events.filter((event: Record) => event.id.startsWith('vault.')).map((event: Record) => event.payload.path)).toEqual(['bin/data', 'bin/data/plugins-state.json']);
     expect(JSON.parse(await readFile(join(root, 'bin/data/plugins-state.json'), 'utf8'))).toEqual({ schemaVersion: 1, plugins: { parity: { settings: null } } });
     const second = await run(['parity.noop']);
-    expect(second.body.warnings).toEqual(['quit task ran']);
+    expect(warningMessages(second.body)).toEqual(['quit task ran']);
     expect(second.body.events).toEqual([]);
     const forged = await run(['parity.forge']);
     expect(forged.status).toBe(2);

@@ -5,13 +5,14 @@ import {
 import type { BasesQueryEngine, BasesQueryOptions, BasesQueryResult } from '../application/query.ts';
 import type { DocumentCodec, FileRepository } from '../../../application/workspace/ports.ts';
 import type { MetadataCache } from '../../../application/metadata/ports.ts';
-import { forgeError, errorMessage, ensure } from '../../../domain/shared/errors.ts';
+import { errorMessage } from '../../../domain/shared/errors.ts';
 import type { FileDates } from '../../../application/plugins/core-plugins.ts';
 import { BaseRowContexts } from './contexts.ts';
 import { basePropertyTypes, sharedBaseIndex } from './index.ts';
 import { baseExpression, baseFilter, internalContext, internalFormula, internalTag, internalGuard } from './expressions.ts';
 import { diagnostics, ordering } from './definition.ts';
 import { defaultBaseTimeoutMs, vmEvaluationBudget } from './budget.ts';
+import { basesError, ensureBases } from '../domain/errors.ts';
 
 interface Row { path: string; sort: RuntimeValue[]; group?: RuntimeValue; groupIndex?: number }
 const strict = { throwOnError: true };
@@ -67,24 +68,24 @@ export class NodeBasesQueryEngine implements BasesQueryEngine {
   async query(path: string, options: BasesQueryOptions): Promise<BasesQueryResult> {
     const base = (this.codec.inspect(path, (await this.files.read(path)).bytes) as { data: Record<string, unknown> }).data;
     const views = (base.views ?? []) as Record<string, unknown>[];
-    ensure(views.length > 0, 'BASE_VIEW_NOT_FOUND', `No views are defined in ${path}.`);
-    ensure(new Set(views.map(view => view.name)).size === views.length, 'INVALID_BASE_QUERY', 'Base view names must be unique.');
+    ensureBases(views.length > 0, 'BASE_VIEW_NOT_FOUND', `No views are defined in ${path}.`);
+    ensureBases(new Set(views.map(view => view.name)).size === views.length, 'INVALID_BASE_QUERY', 'Base view names must be unique.');
     const view = options.view === undefined ? views[0] : views.find(item => item.name === options.view);
-    ensure(view, 'BASE_VIEW_NOT_FOUND', `View ${options.view ?? ''} is not defined in ${path}.`);
+    ensureBases(view, 'BASE_VIEW_NOT_FOUND', `View ${options.view ?? ''} is not defined in ${path}.`);
     const formulas = (base.formulas ?? {}) as Record<string, string>;
     const formulaAsts = Object.fromEntries(Object.entries(formulas).map(([name, source]) => [name, baseExpression(source).ast!]));
     const compiledFormulas = compileFormulaSet(formulaAsts);
     diagnostics(compiledFormulas.diagnostics, 'Formulas');
     const globalFilter = baseFilter(base.filters), viewFilter = baseFilter(view.filters);
-    ensure(view.sort === undefined || Array.isArray(view.sort), 'INVALID_BASE_QUERY', 'View sort must be a list of property/direction entries.');
+    ensureBases(view.sort === undefined || Array.isArray(view.sort), 'INVALID_BASE_QUERY', 'View sort must be a list of property/direction entries.');
     const sorts = ((view.sort ?? []) as unknown[]).map(ordering);
     const grouping = view.groupBy === undefined ? undefined : ordering(view.groupBy);
-    ensure(view.groupOrder === undefined || (grouping !== undefined && Array.isArray(view.groupOrder)), 'INVALID_BASE_QUERY', 'groupOrder requires groupBy and a list of visible group values.');
+    ensureBases(view.groupOrder === undefined || (grouping !== undefined && Array.isArray(view.groupOrder)), 'INVALID_BASE_QUERY', 'groupOrder requires groupBy and a list of visible group values.');
     const groupOrder = view.groupOrder as unknown[] | undefined;
     const { files: indexed, warnings } = await sharedBaseIndex(await this.metadata(), this.dates);
     const contextPath = options.context ?? path;
     const thisFile = indexed.find(file => file.path === contextPath);
-    ensure(thisFile, 'BASE_CONTEXT_NOT_FOUND', `Base context is not an indexed vault file: ${contextPath}`);
+    ensureBases(thisFile, 'BASE_CONTEXT_NOT_FOUND', `Base context is not an indexed vault file: ${contextPath}`);
     const propertyTypes = await basePropertyTypes(this.files);
     const contextNote = Object.fromEntries(Object.entries(thisFile.properties ?? {}).map(([name, value]) => [name, value === null || value === '' ? fromJs(value) : fromJs(value, propertyTypes[name])]));
     const objects = { [internalContext]: { file: fileValue(thisFile), note: contextNote } };
@@ -118,16 +119,16 @@ export class NodeBasesQueryEngine implements BasesQueryEngine {
             return value;
           } };
           const matches = globalFilter(context) && viewFilter(context);
-          ensure(evaluationError === undefined, 'BASE_EVALUATION_ERROR', evaluationError ?? 'Expression evaluation failed.');
+          ensureBases(evaluationError === undefined, 'BASE_EVALUATION_ERROR', evaluationError ?? 'Expression evaluation failed.');
           if (!matches) return undefined;
           const group = grouping?.expression.evaluateValue(context, strict);
           const groupIndex = groupPositions && (groupPositions.size === 0 ? -1 : groupPositions.get(groupIdentity(group && toPlain(group))) ?? -1);
           if (groupIndex === -1) return undefined;
           const sort = sorts.map(item => item.expression.evaluateValue(context, strict));
-          ensure(evaluationError === undefined, 'BASE_EVALUATION_ERROR', evaluationError ?? 'Expression evaluation failed.');
+          ensureBases(evaluationError === undefined, 'BASE_EVALUATION_ERROR', evaluationError ?? 'Expression evaluation failed.');
           return { path: file.path, sort, group, groupIndex };
         } catch (error) {
-          throw forgeError('BASE_EVALUATION_ERROR', `${path}, view ${String(view.name)}, file ${file.path}: ${errorMessage(error)}`);
+          throw basesError('BASE_EVALUATION_ERROR', `${path}, view ${String(view.name)}, file ${file.path}: ${errorMessage(error)}`);
         }
       })();
       if (row) rows.push(row);

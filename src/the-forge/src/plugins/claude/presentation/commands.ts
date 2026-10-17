@@ -12,6 +12,7 @@ import { buildClaudeRuntimeArgs, claudeRuntimeNeedsInput, claudeRuntimeOutput } 
 import { claudeActions } from './actions.ts';
 import { claudeMessages } from '../domain/messages.ts';
 import { withLocalizedResults } from './messages.ts';
+import { ensureClaude } from '../domain/errors.ts';
 
 export function claudeCommand(adapters: ClaudeCommandServices): Command {
   return withLocalizedResults({
@@ -54,7 +55,7 @@ export function claudeCommand(adapters: ClaudeCommandServices): Command {
         const values = parseJson(await claudeInput(flags, context));
         ensure(isRecord(values) && Object.values(values).every(item => typeof item === 'string' && !/[\r\n]/.test(item)), 'INVALID_INPUT', 'Claude plugin configuration must map keys to single-line string values.');
         input = JSON.stringify(values) + '\n';
-        ensure(new TextEncoder().encode(input).length <= 1024 * 1024, 'INVALID_CLAUDE_INPUT', 'Claude configuration input must not exceed 1 MiB.');
+        ensureClaude(new TextEncoder().encode(input).length <= 1024 * 1024, 'INVALID_CLAUDE_INPUT', 'Claude configuration input must not exceed 1 MiB.');
       }
       return adapters.lifecycle.execute({ args: command, executable, timeoutMs, stdin: input, output: claudeRuntimeOutput(section, args.slice(1), flags) });
     },

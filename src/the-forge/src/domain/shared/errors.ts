@@ -41,3 +41,9 @@ export function ensure(condition: unknown, code: ErrorCode, message: string, det
 }
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
+/** The code of a coded failure: a host error, or a plugin `Error` with a string `code` before the host mapped it. */
+export function failureCode(error: unknown): string | undefined {
+  if (error instanceof AppError) return error.code;
+  const code = error instanceof Error ? (error as { code?: unknown }).code : undefined;
+  return typeof code === 'string' ? code : undefined;
+}

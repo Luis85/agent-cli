@@ -1,5 +1,6 @@
 import { compileExpression, isTruthy, type Expression, type CompiledExpression, type EvaluationContext } from 'obsidian-bases-expression';
-import { ensure, isRecord } from '../../../domain/shared/errors.ts';
+import { isRecord } from '../../../domain/shared/errors.ts';
+import { ensureBases } from '../domain/errors.ts';
 
 const internalContext = '__forge_base_context';
 const internalFormula = '__forge_base_formula';
@@ -27,7 +28,7 @@ function adapt(expression: Expression): Expression {
   if (expression.type === 'Member') {
     if (expression.computed && expression.object.type === 'Identifier' && expression.object.name === 'formula') {
       if (typeof expression.property !== 'string' && expression.property.type === 'Literal' && typeof expression.property.value === 'string') return { ...expression, computed: false, property: expression.property.value };
-      ensure(typeof expression.property !== 'string', 'INVALID_BASE_EXPRESSION', 'Computed formula access needs an expression.');
+      ensureBases(typeof expression.property !== 'string', 'INVALID_BASE_EXPRESSION', 'Computed formula access needs an expression.');
       return { type: 'Call', callee: { type: 'Identifier', name: internalFormula, span }, args: [adapt(expression.property)], span };
     }
     if (expression.object.type === 'Identifier' && expression.object.name === 'this') {
@@ -37,7 +38,7 @@ function adapt(expression: Expression): Expression {
     return { ...expression, object: adapt(expression.object), property: typeof expression.property === 'string' ? expression.property : adapt(expression.property) };
   }
   if (expression.type === 'Unary') {
-    ensure(expression.operator !== '+', 'INVALID_BASE_EXPRESSION', 'Unary plus is rejected by the observed Obsidian Bases parser.');
+    ensureBases(expression.operator !== '+', 'INVALID_BASE_EXPRESSION', 'Unary plus is rejected by the observed Obsidian Bases parser.');
     return { ...expression, argument: adapt(expression.argument) };
   }
   if (expression.type === 'Binary') return { ...expression, left: adapt(expression.left), right: adapt(expression.right) };
@@ -51,11 +52,11 @@ function adapt(expression: Expression): Expression {
 
 export function baseExpression(source: string): CompiledExpression {
   const parsed = compileExpression(source);
-  ensure(parsed.valid && parsed.ast, 'INVALID_BASE_EXPRESSION', parsed.diagnostics.map(item => item.message).join('; ') || 'Invalid Bases expression.');
+  ensureBases(parsed.valid && parsed.ast, 'INVALID_BASE_EXPRESSION', parsed.diagnostics.map(item => item.message).join('; ') || 'Invalid Bases expression.');
   const nativeNumericMember = (node: unknown) => {
     if (!isRecord(node)) return;
     if (node.type === 'Member' && isRecord(node.object) && node.object.type === 'Literal' && typeof node.object.value === 'number' && isRecord(node.object.span)) {
-      ensure(source.slice(Number(node.object.span.start), Number(node.object.span.end)).trimStart().startsWith('('), 'INVALID_BASE_EXPRESSION', 'Numeric method receivers need parentheses, as in (1).isTruthy().');
+      ensureBases(source.slice(Number(node.object.span.start), Number(node.object.span.end)).trimStart().startsWith('('), 'INVALID_BASE_EXPRESSION', 'Numeric method receivers need parentheses, as in (1).isTruthy().');
     }
     for (const value of Object.values(node)) {
       if (Array.isArray(value)) value.forEach(nativeNumericMember);
@@ -72,9 +73,9 @@ export function baseFilter(value: unknown): (context: EvaluationContext) => bool
     const compiled = baseExpression(value);
     return context => isTruthy(compiled.evaluateValue(context, { throwOnError: true }));
   }
-  ensure(isRecord(value) && Object.keys(value).length === 1, 'INVALID_BASE_EXPRESSION', 'Filters require an expression or a single and/or/not list.');
+  ensureBases(isRecord(value) && Object.keys(value).length === 1, 'INVALID_BASE_EXPRESSION', 'Filters require an expression or a single and/or/not list.');
   const [operator, children] = Object.entries(value)[0]!;
-  ensure(['and', 'or', 'not'].includes(operator) && Array.isArray(children), 'INVALID_BASE_EXPRESSION', 'Filters require an and/or/not list.');
+  ensureBases(['and', 'or', 'not'].includes(operator) && Array.isArray(children), 'INVALID_BASE_EXPRESSION', 'Filters require an and/or/not list.');
   const filters = children.map(baseFilter);
   return context => operator === 'and' ? filters.every(filter => filter(context)) : operator === 'or' ? filters.some(filter => filter(context)) : !filters.some(filter => filter(context));
 }

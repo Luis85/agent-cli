@@ -36,9 +36,9 @@ const projectListOutput: JsonSchema = {
 export function workspaceCommands(services: KernelServices): Command[] {
   const config = services.loaded.config;
   return [
-    { id: 'config', description: 'Inspect the validated effective configuration and its source path.', usage: 'config', ...discovery, mutating: false, errors: ['INVALID_CONFIG'], output: configOutput,
+    { id: 'config', description: 'Inspect the validated effective configuration and its source path.', usage: 'config', ...discovery, mutating: false, errors: ['INVALID_CONFIG'], output: configOutput, localizedOutput: { sections: 'settings' },
       run(args) { arity(args, 0); return { ...services.loaded, sections: services.configSections() }; } },
-    { id: 'setup', description: 'Install The Forge into this workspace and initialize missing configuration, skills, templates and project guidance.', usage: '[--root workspace] setup [--dry-run]', ...discovery, mutating: true, ...additive, errors: ['INVALID_SETUP'],
+    { id: 'setup', description: 'Install The Forge into this workspace and initialize missing configuration, skills, templates and project guidance.', usage: '[--root workspace] setup [--dry-run]', ...discovery, mutating: true, ...additive, errors: ['INVALID_SETUP'], localizedOutput: { nextSteps: 'text' },
       run(args) { arity(args, 0); return services.setup(); } },
     { id: 'project', description: 'Manage self-contained library and webview projects and add tested domain/application components.', usage: 'project list | create <id> [--type library|webview] | open <id> | current | close | inspect [id] | component [id] <Name> [--kind domain|application]',
       scope: 'workspace', discovery: false, mutating: true, defaultAction: 'list', unknownAction: 'INVALID_ARGUMENT',

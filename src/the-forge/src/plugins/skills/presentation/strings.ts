@@ -1,8 +1,10 @@
 import type { PluginStrings } from '../../../application/plugins/plugin-catalog.ts';
+import { germanSkillErrors } from './errors.ts';
 
 /** The skills plugin's German manifest and option and argument descriptions, available while it is disabled. */
 export const skillsStrings: PluginStrings = {
   de: {
+    errors: germanSkillErrors,
     manifest: { name: 'Agent-Skills', description: 'Mitgelieferte Agent-Skills und der Befehl skills, um sie aufzulisten, zu lesen und zu installieren.' },
     descriptions: {
       'skills install: the skill roots, .claude/skills (claude), .agents/skills (agents) or both (the default).': 'skills install: die Skill-Stammordner .claude/skills (claude), .agents/skills (agents) oder beide (Standard).',

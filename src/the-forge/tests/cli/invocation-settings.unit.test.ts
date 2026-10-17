@@ -45,10 +45,11 @@ describe('invocation settings', () => {
 describe('response document', () => {
   const invalid = () => ({ code: 'INVALID_RESULT', message: 'Not serializable.' });
   it('writes one compact or indented envelope with the context only once the scope is resolved', () => {
-    const response = { result: { ok: true, data: { a: 1 } } as const, events: [], warnings: ['w'] };
-    expect(responseDocument(response, true, invalid)).toEqual({ text: '{"ok":true,"data":{"a":1},"events":[],"warnings":["w"]}\n', serializable: true });
+    const warnings = [{ code: 'PLUGIN_WARNING', message: 'w' }];
+    const response = { result: { ok: true, data: { a: 1 } } as const, events: [], warnings };
+    expect(responseDocument(response, true, invalid)).toEqual({ text: '{"ok":true,"data":{"a":1},"events":[],"warnings":[{"code":"PLUGIN_WARNING","message":"w"}]}\n', serializable: true });
     const context = { workspaceRoot: '/w', root: '/w', project: null };
-    expect(responseDocument({ ...response, context }, false, invalid).text).toBe(`${JSON.stringify({ ok: true, data: { a: 1 }, context, events: [], warnings: ['w'] }, null, 2)}\n`);
+    expect(responseDocument({ ...response, context }, false, invalid).text).toBe(`${JSON.stringify({ ok: true, data: { a: 1 }, context, events: [], warnings }, null, 2)}\n`);
   });
   it('replaces a result that cannot be serialized with the compact failure, keeping events and warnings', () => {
     const events = [{ id: 'vault.create', payload: { path: 'a.md' } }];

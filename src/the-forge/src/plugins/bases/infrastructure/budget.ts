@@ -1,5 +1,5 @@
 import { Script, createContext } from 'node:vm';
-import { forgeError } from '../../../domain/shared/errors.ts';
+import { basesError } from '../domain/errors.ts';
 
 /** Milliseconds one query may spend evaluating filters, formulas, groups and sort keys over all its files. */
 export const defaultBaseTimeoutMs = 30_000;
@@ -15,7 +15,7 @@ export interface EvaluationBudget { run<T>(task: () => T): T }
 export function vmEvaluationBudget(path: string, milliseconds: number): EvaluationBudget {
   const context = createContext({ task: undefined }), script = new Script('task()');
   let spent = 0;
-  const timeout = () => forgeError('BASE_TIMEOUT', `${path}: the query exceeded its ${milliseconds} ms evaluation budget.`, { path, timeoutMs: milliseconds });
+  const timeout = () => basesError('BASE_TIMEOUT', `${path}: the query exceeded its ${milliseconds} ms evaluation budget.`, { path, timeoutMs: milliseconds });
   return {
     run<T>(task: () => T): T {
       if (spent >= milliseconds) throw timeout();

@@ -2,6 +2,7 @@ import type { CorePlugin } from '../../application/plugins/core-plugins.ts';
 import { bundledSkills } from './infrastructure/bundled-skills.ts';
 import { skillsCommand } from './presentation/commands.ts';
 import { skillsStrings } from './presentation/strings.ts';
+import { skillErrors } from './presentation/errors.ts';
 
 /**
  * The `skills` core plugin: the bundled agent skills and the `skills` command that lists, shows and installs every
@@ -16,6 +17,7 @@ export const skillsPlugin: CorePlugin = {
   create: host => ({
     skills: bundledSkills,
     commands: [skillsCommand(host.skills)],
+    errors: skillErrors,
     strings: {
       de: {
         commands: { skills: 'Mitgelieferte und von Plugins bereitgestellte Agent-Skills auflisten, lesen oder installieren.' },

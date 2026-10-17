@@ -1,18 +1,18 @@
-import { ensure } from '../../../../domain/shared/errors.ts';
 import type { UiDefinition, UiNode, UiValue } from './definition.ts';
 import type { InteractionDefinition } from '../interactions/definition.ts';
 import { validateUiInteractions } from './interactions.ts';
 import { uiBindings, uiWholeBinding, uiBindingSource, validateUiBindings } from './syntax.ts';
+import { ensureUi } from '../errors.ts';
 
 function checkValue(value: UiValue, type: string, label: string) {
-  ensure(typeof value === type, 'INVALID_UI', `${label} must be ${type}.`);
+  ensureUi(typeof value === type, 'INVALID_UI', `${label} must be ${type}.`);
 }
 
 /** Validate the complete graph before rendering or accepting imported definitions. */
 export function validateUiLibrary(definitions: readonly UiDefinition[], interactions: readonly InteractionDefinition[] = []): void {
   const byId = new Map<string, UiDefinition>();
   for (const definition of definitions) {
-    ensure(!byId.has(definition.id), 'DUPLICATE_UI_COMPONENT', `Duplicate component ${definition.id}.`);
+    ensureUi(!byId.has(definition.id), 'DUPLICATE_UI_COMPONENT', `Duplicate component ${definition.id}.`);
     byId.set(definition.id, definition);
   }
   const edges = new Map<string, Set<string>>();
@@ -23,7 +23,7 @@ export function validateUiLibrary(definitions: readonly UiDefinition[], interact
     const walk = (node: UiNode): void => {
       if ('slot' in node) {
         slots++;
-        ensure(slots <= 1, 'INVALID_UI', `${definition.id} may project its default child slot only once.`);
+        ensureUi(slots <= 1, 'INVALID_UI', `${definition.id} may project its default child slot only once.`);
         return;
       }
       if ('tag' in node) {
@@ -31,36 +31,36 @@ export function validateUiLibrary(definitions: readonly UiDefinition[], interact
         for (const value of Object.values(node.attrs ?? {})) checkBinding(value);
       } else {
         const target = byId.get(node.component);
-        ensure(target, 'UNKNOWN_UI_COMPONENT', `${definition.id} references missing component ${node.component}.`);
+        ensureUi(target, 'UNKNOWN_UI_COMPONENT', `${definition.id} references missing component ${node.component}.`);
         references.add(node.component);
         for (const [name, value] of Object.entries(node.props ?? {})) {
           const targetProp = target.props[name];
-          ensure(targetProp, 'INVALID_UI', `${definition.id} supplies unknown prop ${node.component}.${name}.`);
+          ensureUi(targetProp, 'INVALID_UI', `${definition.id} supplies unknown prop ${node.component}.${name}.`);
           checkBinding(value);
           const binding = uiWholeBinding(value);
           if (binding) {
             const source = uiBindingSource(definition, binding)!;
-            ensure(source.type === targetProp.type, 'INVALID_UI', `Prop binding type differs for ${node.component}.${name}.`);
-            ensure(!targetProp.required || targetProp.default !== undefined || ('required' in source && source.required) || source.default !== undefined, 'INVALID_UI', `Optional prop ${definition.id}.${binding} cannot satisfy required ${node.component}.${name}.`);
+            ensureUi(source.type === targetProp.type, 'INVALID_UI', `Prop binding type differs for ${node.component}.${name}.`);
+            ensureUi(!targetProp.required || targetProp.default !== undefined || ('required' in source && source.required) || source.default !== undefined, 'INVALID_UI', `Optional prop ${definition.id}.${binding} cannot satisfy required ${node.component}.${name}.`);
           }
           else if (!uiBindings(value).length) checkValue(value, targetProp.type, `${node.component}.${name}`);
-          else ensure(targetProp.type === 'string', 'INVALID_UI', `Interpolated ${node.component}.${name} must be a string.`);
+          else ensureUi(targetProp.type === 'string', 'INVALID_UI', `Interpolated ${node.component}.${name} must be a string.`);
         }
-        for (const [name, prop] of Object.entries(target.props)) ensure(!prop.required || prop.default !== undefined || Object.hasOwn(node.props ?? {}, name), 'INVALID_UI', `${definition.id} must supply required prop ${node.component}.${name}.`);
+        for (const [name, prop] of Object.entries(target.props)) ensureUi(!prop.required || prop.default !== undefined || Object.hasOwn(node.props ?? {}, name), 'INVALID_UI', `${definition.id} must supply required prop ${node.component}.${name}.`);
       }
       for (const child of node.children ?? []) walk(child);
     };
     walk(definition.root);
     for (const args of [definition.storybook?.args, ...(definition.storybook?.stories ?? []).map(story => story.args)]) {
       for (const [name, value] of Object.entries(args ?? {})) {
-        ensure(Object.hasOwn(definition.props, name), 'INVALID_UI', `${definition.id} story has unknown prop ${name}.`);
+        ensureUi(Object.hasOwn(definition.props, name), 'INVALID_UI', `${definition.id} story has unknown prop ${name}.`);
         checkValue(value, definition.props[name]!.type, `${definition.id} story prop ${name}`);
       }
     }
   }
   const visited = new Set<string>(), active = new Set<string>();
   const visit = (id: string) => {
-    ensure(!active.has(id), 'CYCLIC_UI_COMPONENT', `Cyclic component reference involving ${id}.`);
+    ensureUi(!active.has(id), 'CYCLIC_UI_COMPONENT', `Cyclic component reference involving ${id}.`);
     if (visited.has(id)) return;
     active.add(id);
     for (const child of edges.get(id) ?? []) visit(child);
@@ -88,7 +88,7 @@ export function selectUiComponents(definitions: readonly UiDefinition[], id: str
   const select = (component: string): void => {
     if (selected.has(component)) return;
     const definition = byId.get(component);
-    ensure(definition, 'UNKNOWN_UI_COMPONENT', `Missing component ${component}.`);
+    ensureUi(definition, 'UNKNOWN_UI_COMPONENT', `Missing component ${component}.`);
     selected.add(component);
     for (const dependency of componentDependencies(definition.root)) select(dependency);
   };

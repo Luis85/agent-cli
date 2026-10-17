@@ -6,6 +6,7 @@ import { parseJson, value } from '../../../application/plugins/command-input.ts'
 import { changesOutput } from '../../../application/plugins/output-schemas.ts';
 import type { DocumentTemplates } from '../application/templates.ts';
 import { decodeUtf8 } from '../../../domain/shared/utf8.ts';
+import { ensureTemplate } from '../domain/errors.ts';
 
 /**
  * `make document`: renders a shared template from the workspace's bin/templates into the command scope. Template
@@ -27,7 +28,7 @@ export function documentGenerator(templates: (context: CommandContext) => Docume
     async run({ name: title, flags, context }) {
       ensure(title.trim() === title && title.length > 0 && !/[/\\:]/.test(title), 'INVALID_NAME', 'Document title must be a nonempty filename without path separators.');
       const template = value(flags, 'template', true)!;
-      ensure(template.toLowerCase().endsWith('.md'), 'INVALID_TEMPLATE', 'Use a Markdown template.');
+      ensureTemplate(template.toLowerCase().endsWith('.md'), 'INVALID_TEMPLATE', 'Use a Markdown template.');
       const source = await context.environment.files.read(`bin/templates/${vaultPath(template)}`);
       const inline = value(flags, 'values'), from = value(flags, 'values-from');
       ensure(inline === undefined || from === undefined, 'INVALID_INPUT', 'Use either --values or --values-from.');

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
@@ -38,6 +38,30 @@ describe('path forms agents pass', () => {
       expect((await cli(['read', 'specs/../copy.md'])).body.error).toMatchObject({ code: 'INVALID_PATH', details: { argument: 'path', suggestion: 'copy.md' } });
       expect((await cli(['create', '.\\.git\\config', '--content', 'x'])).body.error).toMatchObject({ code: 'INVALID_PATH', details: { argument: 'path', value: '.\\.git\\config' } });
     } finally { await rm(outside, { recursive: true, force: true }); }
+  });
+
+  it('refuses Windows reserved device names on every platform, so the vault stays portable', async () => {
+    const created = await cli(['create', 'notes/con.md', '--content', '# Console\n']);
+    expect(created.status).toBe(2);
+    expect(created.body.error).toMatchObject({ code: 'INVALID_PATH', message: expect.stringContaining('con.md is a Windows reserved device name'), details: { argument: 'path', value: 'notes/con.md', segment: 'con.md' } });
+    await expect(readFile(join(fixture.project, 'notes/con.md'))).rejects.toMatchObject({ code: 'ENOENT' });
+    expect((await cli(['create', 'Aux/notes.md', '--content', 'x'])).body.error).toMatchObject({ code: 'INVALID_PATH', details: { segment: 'Aux' } });
+    const { revision } = (await cli(['stat', 'copy.md'])).body.data;
+    const moved = await cli(['move', 'copy.md', 'LPT1.txt', '--if-match', revision]);
+    expect(moved.body.error).toMatchObject({ code: 'INVALID_PATH', details: { argument: 'to', segment: 'LPT1.txt' } });
+    expect((await cli(['create', 'console.md', '--content', '# Console\n'])).status).toBe(0);
+  });
+
+  // On Windows, a file named like a device cannot be created at all.
+  it.skipIf(process.platform === 'win32')('leaves a device-named file another tool wrote out of listings and searches, and never reads it', async () => {
+    await mkdir(join(fixture.project, 'devices'), { recursive: true });
+    await writeFile(join(fixture.project, 'devices/nul.txt'), 'portable needle\n');
+    await writeFile(join(fixture.project, 'devices/null.txt'), 'portable needle\n');
+    expect((await cli(['list', '--path', 'devices'])).body.data.files.map((file: { path: string }) => file.path)).toEqual(['devices/null.txt']);
+    expect((await cli(['search', 'portable needle', '--files-only'])).body.data.files.map((file: { path: string }) => file.path)).toEqual(['devices/null.txt']);
+    expect((await cli(['read', 'devices/nul.txt'])).body.error).toMatchObject({ code: 'INVALID_PATH', details: { argument: 'path', segment: 'nul.txt' } });
+    const { revision } = (await cli(['stat', 'devices'])).body.data;
+    expect((await cli(['delete', 'devices', '--recursive', '--permanent', '--if-match', revision])).body.error).toMatchObject({ code: 'PROTECTED_PATH', details: { entries: [{ path: 'devices/nul.txt', kind: 'other' }] } });
   });
 
   // Creating symlinks needs extra privileges on Windows.

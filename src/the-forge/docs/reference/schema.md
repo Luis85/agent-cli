@@ -10,7 +10,7 @@ node bin/forge.js schema read --json     # one command, with only the error code
 node bin/forge.js schema --all --json    # the complete contract of every command
 ```
 
-Start with `help` (also `forge` without arguments, `--help` and `-h`) for a compact index of a few kilobytes: `commands` maps each command id to its description, `mutating` lists the commands that can change files or external state, `globalOptions` lists the global flags and `next` points to the details. `make` lists the generators and `skills` the agent skills. Use `help <command>` for that command's usage, examples, options, positional arguments, errors and action details, including JSON input document schemas where declared. Help omits response schemas and the envelope; use `schema <command>` when you need those contracts, or `schema --all` for the complete installed inventory. `schema` alone returns only `name`, `version`, `apiVersion`, `node`, `dialect`, `commands` (`{id, description}`), `generators`, `skills` and `more`, so it stays small; the fields below describe the document of `schema <command>` and `schema --all`. See [command metadata](plugins.md#command-metadata) for how a command declares them.
+Start with `help` (also `forge` without arguments, `--help` and `-h`) for a compact index under 4 KB: `commands` maps each command id to the first sentence of its description (at most 76 characters), `mutating` lists the commands that can change files or external state, `globalOptions` lists the global flags and `next` points to the details. `make` lists the generators and `skills` the agent skills. Use `help <command>` for that command's usage, examples, options, positional arguments, errors and action details, including JSON input document schemas where declared. Help omits response schemas and the envelope; use `schema <command>` when you need those contracts, or `schema --all` for the complete installed inventory. `schema` alone returns only `name`, `version`, `apiVersion`, `node`, `dialect`, `commands` (`{id, description}`), `generators`, `skills` and `more`, so it stays small; the fields below describe the document of `schema <command>` and `schema --all`. See [command metadata](plugins.md#command-metadata) for how a command declares them.
 
 ## Document
 
@@ -84,7 +84,7 @@ The hints describe the command's contract, not the outcome of one call: `delete 
 - success: `{ok: true, data, events, warnings, context?}`, where `data` follows the command's output schema;
 - failure: `{ok: false, error: {code, message, hint?, retryable?, details?}, events, warnings, context?}`.
 
-`context` is `{workspaceRoot, root, project}` with `project` the selected project or `null`; it is absent from `--version` output and from failures before the scope is resolved. `events` lists `{id, payload}` records selected by `--events`, and `warnings` lists strings. See [output and errors](cli.md#output-and-errors).
+`context` is `{workspaceRoot, root, project}` with `project` the selected project or `null`; it is absent from `--version` output and from failures before the scope is resolved. `events` lists `{id, payload}` records selected by `--events`, and `warnings` lists `{code, message, details?}` objects ([warnings](errors.md#warnings)). See [output and errors](cli.md#output-and-errors).
 
 ## Validating
 

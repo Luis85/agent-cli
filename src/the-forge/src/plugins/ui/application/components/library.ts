@@ -1,4 +1,4 @@
-import { forgeError, ensure } from '../../../../domain/shared/errors.ts';
+import { ensure } from '../../../../domain/shared/errors.ts';
 import { isNotFound } from '../../../../domain/shared/not-found.ts';
 import { vaultPath, ensureSeparateDirectories, type WriteRequest } from '../../../../domain/documents/file.ts';
 import { uiFrameworks, type UiDefinition, type UiFramework } from '../../domain/components/definition.ts';
@@ -8,6 +8,7 @@ import { uiVoidTags } from '../../domain/components/syntax.ts';
 import { selectUiComponents, validateUiLibrary } from '../../domain/components/library.ts';
 import type { Workspace } from '../../../../application/workspace/workspace.ts';
 import { GenerationService } from '../../../../application/generation/plans.ts';
+import { ensureUi, uiError } from '../../domain/errors.ts';
 
 export interface UiDefinitionCodec {
   parse(bytes: Uint8Array, path: string): UiDefinition;
@@ -32,7 +33,7 @@ export class UiLibrary {
     const sources = await this.sources(directory);
     await this.validateDefinitions(sources.map(source => source.definition), interactionDirectory);
     const source = sources.find(candidate => candidate.definition.id === id);
-    ensure(source, 'UNKNOWN_UI_COMPONENT', `No component ${id} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
+    ensureUi(source, 'UNKNOWN_UI_COMPONENT', `No component ${id} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
     return { ...source.definition, revision: source.revision, bytes: source.bytes.length };
   }
   async validate(directory: string, interactionDirectory?: string) {
@@ -59,7 +60,7 @@ export class UiLibrary {
     vaultPath(sourceDirectory); vaultPath(directory);
     ensureSeparateDirectories(sourceDirectory, directory);
     const sources = await this.sources(sourceDirectory), imported = sources.map(source => source.definition), existing = await this.discover(directory);
-    ensure(imported.length, 'EMPTY_UI_LIBRARY', `No component definitions in ${sourceDirectory}.`);
+    ensureUi(imported.length, 'EMPTY_UI_LIBRARY', `No component definitions in ${sourceDirectory}.`);
     await this.validateDefinitions([...existing, ...imported], interactionDirectory);
     const plan = sources.map(({ definition, bytes }) => ({ path: `${directory}/${definition.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
     return { components: imported.map(definition => definition.id), ...await this.commit(plan) };
@@ -84,28 +85,28 @@ export class UiLibrary {
   }
   async check(directory: string, options: UiGenerateOptions) {
     ensure(options.revisions === undefined, 'INVALID_GENERATION_PLAN', 'Checks do not accept regeneration revisions.');
-    return { framework: options.framework, ...await new GenerationService(this.workspace).check(await this.render(directory, options), 'UI_DRIFT') };
+    return { framework: options.framework, ...await new GenerationService(this.workspace).check(await this.render(directory, options), (message, details) => uiError('UI_DRIFT', message, details)) };
   }
 
   private async render(directory: string, options: UiGenerateOptions): Promise<readonly WriteRequest[]> {
-    ensure(this.renderer, 'UI_RENDERER_UNAVAILABLE', 'No UI renderer is configured.');
-    ensure(uiFrameworks.includes(options.framework), 'INVALID_UI_FRAMEWORK', `Unknown framework ${options.framework}.`);
+    ensureUi(this.renderer, 'UI_RENDERER_UNAVAILABLE', 'No UI renderer is configured.');
+    ensureUi(uiFrameworks.includes(options.framework), 'INVALID_UI_FRAMEWORK', `Unknown framework ${options.framework}.`);
     vaultPath(options.outputDirectory); if (options.storiesDirectory) vaultPath(options.storiesDirectory);
-    ensure(!(options.storybook || options.storiesOnly) || options.storiesDirectory, 'INVALID_UI', 'Storybook generation requires a stories directory.');
+    ensureUi(!(options.storybook || options.storiesOnly) || options.storiesDirectory, 'INVALID_UI', 'Storybook generation requires a stories directory.');
     const interactions = await this.interactions(options.interactionDirectory);
     let definitions = await this.discover(directory);
     validateUiLibrary(definitions, interactions);
-    ensure(definitions.length, 'EMPTY_UI_LIBRARY', `No component definitions in ${directory}. Run components init --library ${directory}, or add a Markdown component definition.`);
-    if (options.component) ensure(definitions.some(definition => definition.id === options.component), 'UNKNOWN_UI_COMPONENT', `No component ${options.component} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
+    ensureUi(definitions.length, 'EMPTY_UI_LIBRARY', `No component definitions in ${directory}. Run components init --library ${directory}, or add a Markdown component definition.`);
+    if (options.component) ensureUi(definitions.some(definition => definition.id === options.component), 'UNKNOWN_UI_COMPONENT', `No component ${options.component} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
     if (options.component) definitions = selectUiComponents(definitions, options.component);
     for (const definition of definitions) if ((options.storybook || options.storiesOnly) && definition.storybook?.extension) {
       try { await this.workspace.files.read(definition.storybook.extension); }
-      catch (error) { if (isNotFound(error)) throw forgeError('INVALID_UI', `Missing Storybook extension ${definition.storybook.extension}.`); throw error; }
+      catch (error) { if (isNotFound(error)) throw uiError('INVALID_UI', `Missing Storybook extension ${definition.storybook.extension}.`); throw error; }
     }
     const ids = new Set(definitions.flatMap(componentInteractionIds));
     const renderOptions: UiRenderOptions = { ...options, interactions: interactions.filter(interaction => ids.has(interaction.id)) };
     if (options.storiesOnly) {
-      ensure(this.renderer.componentPaths, 'UI_RENDERER_UNAVAILABLE', 'Standalone stories require a renderer with component artifact paths.');
+      ensureUi(this.renderer.componentPaths, 'UI_RENDERER_UNAVAILABLE', 'Standalone stories require a renderer with component artifact paths.');
       for (const path of this.renderer.componentPaths(definitions, renderOptions)) await this.workspace.files.read(path);
     }
     return this.renderer.generate(definitions, renderOptions);

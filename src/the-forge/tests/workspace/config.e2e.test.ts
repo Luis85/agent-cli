@@ -50,7 +50,7 @@ it('reports the effective plugin folder settings and contains every one of them'
 
     await writeFile(config, JSON.stringify({ plugins: { settings: { agents: { directory: '../outside' } } } }));
     const issue = 'plugins.settings.agents.directory: must be a contained workspace-relative path';
-    expect((await cli(['config'])).body.warnings).toEqual([expect.stringContaining(issue)]);
+    expect((await cli(['config'])).body.warnings).toEqual([expect.objectContaining({ code: 'PLUGIN_UNAVAILABLE', message: expect.stringContaining(issue), details: expect.objectContaining({ plugin: 'agents' }) })]);
     expect((await cli(['agents', 'list'])).body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { plugin: 'agents', issues: [issue] } });
   } finally { await rm(config, { force: true }); }
 });

@@ -69,7 +69,7 @@ function checked(input: string, origin: Origin, scope: PathScope): string {
     const named = 'option' in source ? `Option --${source.option}` : `Argument <${source.argument}>${source.index === undefined ? '' : ` at index ${source.index}`}`;
     const better = suggestion(input, path, origin, scope);
     const stdin = better === '--stdin' ? ' To use a file from outside the scope, pipe it with --stdin instead.' : '';
-    throw forgeError('INVALID_PATH', `${named} ${JSON.stringify(input)}: ${error.message}${absoluteReason(path, scope)}${stdin}`, { ...source, value: input, ...(better === undefined ? {} : { suggestion: better }) });
+    throw forgeError('INVALID_PATH', `${named} ${JSON.stringify(input)}: ${error.message}${absoluteReason(path, scope)}${stdin}`, { ...error.details, ...source, value: input, ...(better === undefined ? {} : { suggestion: better }) });
   }
 }
 

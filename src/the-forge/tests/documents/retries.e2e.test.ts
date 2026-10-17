@@ -91,20 +91,26 @@ describe('retried mutations through the portable CLI', () => {
     expect((await cli(['move', 'b.md', 'archive', '--if-match', await revision('b.md')])).body.data.to).toBe('archive/b.md');
     const dropped = await cli(['move', 'c.md', 'plain', '--if-match', await revision('c.md')]);
     expect(dropped.body.data.to).toBe('plain');
-    expect(dropped.body.warnings).toEqual([expect.stringMatching(/^EXTENSION_DROPPED: plain has no extension, so moving c\.md drops \.md\./)]);
+    expect(dropped.body.warnings).toEqual([{ code: 'EXTENSION_DROPPED', message: expect.stringMatching(/^plain has no extension, so moving c\.md drops \.md\./), details: { from: 'c.md', to: 'plain', extension: '.md' } }]);
     expect((await readdir(root)).filter(name => name !== '.forge').sort()).toEqual(['archive', 'new', 'plain']);
+    // A move inside an apply plan warns the same way, once the plan commits.
+    const plan = JSON.stringify({ version: 1, operations: [{ op: 'move', from: 'archive/old.md', to: 'archive/older', ifMatch: await revision('archive/old.md') }] });
+    const applied = await cli(['apply', '-'], plan);
+    expect(applied.body.ok).toBe(true);
+    expect(applied.body.warnings).toEqual([{ code: 'EXTENSION_DROPPED', message: expect.stringContaining('moving archive/old.md drops .md'), details: { from: 'archive/old.md', to: 'archive/older', extension: '.md' } }]);
+    expect((await readdir(join(root, 'archive'))).sort()).toEqual(['b.md', 'older']);
   });
 
   it('warns about a literal \\n escape and an empty --stdin', async () => {
     const { cli, revision, text } = await vault('warnings');
     const literal = await cli(['create', 'one.md', '--content', 'a\\nb']);
-    expect(literal.body.warnings).toEqual([expect.stringMatching(/^LITERAL_NEWLINE: --content contains the two characters \\n but no line break/)]);
+    expect(literal.body.warnings).toEqual([{ code: 'LITERAL_NEWLINE', message: expect.stringMatching(/^--content contains the two characters \\n but no line break/), details: { option: 'content' } }]);
     expect(await text('one.md')).toBe('a\\nb');
     expect((await cli(['create', 'two.md', '--content', 'a\nb'])).body.warnings).toEqual([]);
     expect((await cli(['edit', 'two.md', '--find', 'b', '--replace', 'c\\nd', '--if-match', await revision('two.md')])).body.warnings).toHaveLength(1);
     const empty = await cli(['write', 'three.md', '--stdin'], '');
-    expect(empty.body.warnings).toEqual([expect.stringMatching(/^EMPTY_STDIN: --stdin read no bytes, so three\.md is written empty\./)]);
-    expect((await cli(['--lang', 'de', 'create', 'four.md', '--content', 'x\\ny'])).body.warnings).toEqual([expect.stringMatching(/^LITERAL_NEWLINE: --content enthält/)]);
+    expect(empty.body.warnings).toEqual([{ code: 'EMPTY_STDIN', message: expect.stringMatching(/^--stdin read no bytes, so three\.md is written empty\./), details: { path: 'three.md' } }]);
+    expect((await cli(['--lang', 'de', 'create', 'four.md', '--content', 'x\\ny'])).body.warnings).toEqual([{ code: 'LITERAL_NEWLINE', message: expect.stringMatching(/^--content enthält/), details: { option: 'content' } }]);
   });
 
   it('reads notes whose frontmatter or encoding a strict parse refuses', async () => {
