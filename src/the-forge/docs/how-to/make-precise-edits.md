@@ -55,15 +55,15 @@ Pass `--edits @edits.json` to read the list from a file in the scope, or `--edit
 
 ## Change several files as one unit
 
-Write a plan with the operations in the order they should happen. Take each `ifMatch` from a `read` before the plan:
+Write a plan with the operations in the order they should happen. Take each `ifMatch` from a `read` before the plan: every operation on a path that existed before the plan needs it (a moved file keeps its original revision), and only paths the plan creates take none:
 
 ```json
 {"version":1,"operations":[
   {"op":"edit","path":"notes/plan.md","section":"Plan > Risks","append":"- Staffing","ifMatch":"REVISION"},
-  {"op":"frontmatter","path":"notes/plan.md","set":{"status":"active"}},
-  {"op":"move","from":"notes/plan.md","to":"specs/roadmap.md"},
+  {"op":"frontmatter","path":"notes/plan.md","set":{"status":"active"},"ifMatch":"REVISION"},
+  {"op":"move","from":"notes/plan.md","to":"specs/roadmap.md","ifMatch":"REVISION"},
   {"op":"write","path":"specs/README.md","content":"Start at [[roadmap]].\n"},
-  {"op":"delete","path":"notes/scratch.md"}
+  {"op":"delete","path":"notes/scratch.md","ifMatch":"SCRATCH_REVISION"}
 ]}
 ```
 
