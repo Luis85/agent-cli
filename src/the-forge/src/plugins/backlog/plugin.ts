@@ -10,7 +10,7 @@ import { editFrontmatter } from './infrastructure/frontmatter.ts';
 import { backlogSkill } from './infrastructure/skill.ts';
 import { watchSignals } from './infrastructure/signals.ts';
 import { backlogCommand } from './presentation/command.ts';
-import { backlogStrings } from './presentation/strings.ts';
+import { de, backlogStrings } from './presentation/strings.ts';
 
 const payload = (keys: readonly string[]) => (value: unknown): value is Record<string, unknown> => isRecord(value) && keys.every(key => typeof value[key] === 'string');
 const events: EventDefinition[] = [
@@ -22,51 +22,6 @@ const events: EventDefinition[] = [
 ];
 
 const today = () => { const now = new Date(); return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() }; };
-
-const de = {
-  commands: { backlog: 'Ein Product Backlog kompatibel mit der Obsidian-Ansicht Product Backlog (backlog-view) planen: Hierarchie, Ränge, Status, Iterationen, Releases und Abhängigkeiten.' },
-  actions: {
-    'backlog init': 'Das Product-Backlog.base-Gerüst des Plugins in einen Ordner schreiben (Standard docs).',
-    'backlog list': 'Jeden Eintrag nach globalem Rang als JSON.',
-    'backlog tree': 'Die Hierarchie in Geschwister-Rangfolge, einschließlich Kontext-Vorfahren.',
-    'backlog board': 'Board-Spalten nach Status mit WIP-Limits und der Spalte ohne Status.',
-    'backlog show': 'Einen Eintrag mit Vorfahren, Kindern, Voraussetzungen und abhängigen Einträgen.',
-    'backlog add': 'Eine Eintragsnotiz genau wie das Plugin anlegen: bereinigter Name, Typ-Ordner, pbl-id, Schlüsselreihenfolge und Rang am Ende der Geschwister.',
-    'backlog move': 'Einen Eintrag mit der Rang-Arithmetik des Plugins umhängen oder neu einreihen; schreibt nur parent und order.',
-    'backlog ranks': 'seed (Baum-Präordnung) oder respace (aktuelle Rangfolge) vergibt Ränge im Abstand von 1000.',
-    'backlog set': 'Status (mit started/finished-Stempeln), Horizont, Priorität, Risiko, Daten, Zuständige oder Typ setzen; ein leerer Wert löscht.',
-    'backlog depend': 'Einen dependsOn-Link hinzufügen, sofern er keine Abhängigkeitsschleife schließt.',
-    'backlog undepend': 'Einen dependsOn-Eintrag entfernen; der Schlüssel entfällt, wenn die Liste leer wird.',
-    'backlog iteration add': 'Eine Iteration mit den Namens- und Datumsvorgaben des Plugins anlegen.',
-    'backlog iteration assign': 'Einen Eintrag in einer Iteration einplanen.',
-    'backlog release add': 'Eine Release-Notiz anlegen.',
-    'backlog release join': 'Einen Eintrag in einem Release einplanen.',
-    'backlog release mark-released': 'Ein Release als veröffentlicht markieren.',
-    'backlog release readiness': 'Melden, wie bereit ein Release ist.',
-    'backlog release notes': 'Die generierten Release Notes eines Releases schreiben; eine unveränderte Wiederholung schreibt nichts.',
-    'backlog release list': 'Die Releases auflisten.',
-    'backlog check': 'Eltern- und Abhängigkeitszyklen, defekte Links, unaufgelöste Zugehörigkeiten, Konfigurations- und Feldprobleme sowie Rang-Gleichstände melden.',
-    'backlog sync': 'Jede an eine Verbindung gebundene Ansicht (Ansichtsoption connection: <id>) in beide Richtungen mit ausdrücklichen Konflikten abgleichen.',
-    'backlog sync status': 'Beide Seiten jeder gebundenen Ansicht lesen, ohne zu schreiben.',
-    'backlog sync resolve': 'Einen Abgleichskonflikt eines Eintrags mit dem lokalen oder dem entfernten Wert lösen.',
-  },
-  events: {
-    'backlog.item-created': 'Ein Backlog-Eintrag, eine Iteration oder ein Release wurde angelegt.',
-    'backlog.item-moved': 'Ein Eintrag wurde umgehängt oder neu eingereiht.',
-    'backlog.state-changed': 'Ein Eintrag hat seinen Workflow-Status geändert.',
-    'backlog.released': 'Ein Release wurde als veröffentlicht markiert.',
-    'backlog.synced': 'Eine an eine Verbindung gebundene Ansicht wurde abgeglichen.',
-  },
-  errors: {
-    BACKLOG_NOT_FOUND: { summary: 'Das Backlog oder der Eintrag wurde nicht gefunden.', hint: 'Legen Sie mit backlog init ein Backlog an, übergeben Sie --base und --view oder prüfen Sie den Eintrag mit backlog list.' },
-    BACKLOG_AMBIGUOUS: { summary: 'Die Angabe passt auf mehrere Backlogs oder Einträge.', hint: 'Wählen Sie einen der Kandidaten in error.details.candidates über --base und --view oder den vollständigen Pfad.' },
-    BACKLOG_CONFIG_PROBLEM: { summary: 'Die Backlog-Konfiguration in der .base-Datei verhindert diesen Vorgang.', hint: 'Beheben Sie das in der Meldung genannte Problem in den Ansichtsoptionen der .base-Datei und wiederholen Sie den Befehl.' },
-    BACKLOG_WRITE_REFUSED: { summary: 'Das Backlog-Plugin verweigert diesen Schreibvorgang.', hint: 'error.details.reason nennt die Regel; wählen Sie einen passenden Eintrag, Typ oder Wert oder binden Sie die fehlende Eigenschaft.' },
-    BACKLOG_NO_GAP: { summary: 'Zwischen den Nachbarn ist kein Rang mehr frei.', hint: 'Führen Sie backlog ranks respace (oder backlog ranks seed bei fehlenden Rängen) aus und wiederholen Sie die Verschiebung.' },
-    SYNC_CONFLICT: { summary: 'Das entfernte Work Item hat sich während des Abgleichs geändert.', hint: 'Prüfen Sie den Stand mit backlog sync status und wiederholen Sie den Abgleich oder die Konfliktlösung.' },
-    SYNC_INTERRUPTED: { summary: 'Der Abgleich wurde durch ein Signal an einer sicheren Stelle angehalten (Exit 130 bei SIGINT, 143 bei SIGTERM); seine Sperren sind freigegeben.', hint: 'Jedes bereits angelegte entfernte Work Item steht im Abgleichsstand; führen Sie backlog sync erneut aus, um den Abgleich abzuschließen.' },
-  },
-};
 
 /**
  * The `backlog` core plugin: a product backlog compatible with the Obsidian Product Backlog view (backlog-view

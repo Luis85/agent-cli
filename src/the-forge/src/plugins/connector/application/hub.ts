@@ -2,11 +2,12 @@ import type { BacklogConnector, BoundConnection, Connection, ConnectorEventPaylo
 import type { EventChannel } from '../../../application/plugins/events.ts';
 import { validateJsonValue } from '../../../domain/schema/json-schema.ts';
 import { isRecord } from '../../../domain/shared/errors.ts';
+import { PluginFailure } from '../../../domain/shared/plugin-failure.ts';
 import { CONNECTION_ID, profiles, type Profile } from '../domain/profiles.ts';
 
 type ConnectorErrorCode = 'CONNECTOR_NOT_FOUND' | 'CONNECTION_INVALID' | 'CONNECTOR_AUTH_FAILED' | 'CONNECTOR_REQUEST_FAILED';
-function connectorError(code: ConnectorErrorCode, message: string, details?: Record<string, unknown>): Error {
-  return Object.assign(new Error(message), { code, ...(details ? { details } : {}) });
+function connectorError(code: ConnectorErrorCode, message: string, details?: Record<string, unknown>): PluginFailure {
+  return new PluginFailure(code, message, details);
 }
 
 /** A profile's state for `connectors list`: whether its platform is available and its profile valid. */

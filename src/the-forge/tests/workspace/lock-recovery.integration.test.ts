@@ -4,7 +4,8 @@ import { mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/pro
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
-import { acquireLock, breakStale, hostIdentity, inspectLock, releaseLock } from '../../src/infrastructure/workspace/lock.ts';
+import { acquireLock, breakStale, releaseLock } from '../../src/infrastructure/workspace/lock.ts';
+import { hostIdentity, inspectLock } from '../../src/infrastructure/workspace/lock-holder.ts';
 import { encodeText } from '../../src/infrastructure/documents/codec.ts';
 import { englishWarning } from '../support/events.ts';
 

@@ -9,7 +9,6 @@ import { kernelMessage, type KernelMessage, type KernelMessageCode } from '../..
 import { errorCode, heldTokens, inspectLock, ownHolder, text, tokenOf, type LockInspection } from './lock-holder.ts';
 import { retryTransient } from './retry.ts';
 
-export { hostIdentity, inspectLock } from './lock-holder.ts';
 /** Invocation details supplied by composition code; the filesystem adapter cannot know them. */
 export interface LockOwner { command?: string; operationId?: number }
 export type LockRelease = 'released' | 'missing' | 'foreign';

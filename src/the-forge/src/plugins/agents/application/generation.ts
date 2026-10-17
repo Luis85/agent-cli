@@ -3,6 +3,7 @@ import type { EventChannel } from '../../../application/plugins/events.ts';
 import { GenerationService } from '../../../application/generation/plans.ts';
 import type { GenerationMode } from '../../../application/generation/controls.ts';
 import { AppError, forgeError } from '../../../domain/shared/errors.ts';
+import { isNotFound } from '../../../domain/shared/not-found.ts';
 import { vaultPath, type WriteRequest } from '../../../domain/documents/file.ts';
 import { diagnostic, hasErrors, isObject, pointer, record } from '../domain/config.ts';
 import { generateClaude, type ClaudeGenerationOptions, type DefinitionSource, type GenerationDiagnostic } from '../domain/claude-generation.ts';
@@ -12,6 +13,7 @@ import { agentError } from '../domain/errors.ts';
 import { say } from '../domain/messages.ts';
 import type { AgentDefinitions } from './definitions.ts';
 import type { AgentPorts } from './ports.ts';
+import { decodeUtf8 } from '../../../domain/shared/utf8.ts';
 
 export interface GenerateRequest extends Omit<ClaudeGenerationOptions, 'agents' | 'optionsHash' | 'foreign'> {
   file?: string; agent?: string;
@@ -29,7 +31,6 @@ const mcpPath = '.mcp.json', settingsPath = '.claude/settings.json';
 const conflictCodes = ['mcp-server-conflict', 'settings-agent-conflict'];
 /** The project's current Claude files that generation merges into, and the manifest of the entries Forge owns. */
 interface ProjectFiles { mcp?: string; settings?: string; manifestText?: string; manifest: ForgeManifest }
-const decoder = new TextDecoder('utf-8', { fatal: true });
 const encode = (text: string) => new TextEncoder().encode(text);
 
 /** A rule this generation removes from the settings, reported at the definition that granted it. */
@@ -189,9 +190,9 @@ export class AgentGeneration {
   }
 
   private async text(path: string): Promise<string | undefined> {
-    try { return decoder.decode((await this.workspace.files.read(path)).bytes); }
+    try { return decodeUtf8((await this.workspace.files.read(path)).bytes); }
     catch (error) {
-      if (error instanceof AppError && error.code === 'NOT_FOUND') return undefined;
+      if (isNotFound(error)) return undefined;
       if (error instanceof TypeError) throw forgeError('INVALID_ENCODING', `${path} is not valid UTF-8.`);
       throw error;
     }

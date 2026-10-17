@@ -4,6 +4,7 @@ import type { FileRepository } from '../workspace/ports.ts';
 import { value } from '../plugins/command-input.ts';
 import { option, type CommandFlags, type CommandOption } from '../plugins/command-metadata.ts';
 import type { hostGeneratorOptions } from '../plugins/registry.ts';
+import { decodeUtf8 } from '../../domain/shared/utf8.ts';
 
 /**
  * Review controls of every reviewed generator: plan, check drift, or regenerate with approved revisions. Kernel
@@ -26,7 +27,7 @@ export async function generationControls(flags: CommandFlags, files: Pick<FileRe
   ensure(!(revisionsPath !== undefined && (planning || flags.check)), 'INVALID_ARGUMENT', 'Planning and checks do not accept --revisions-from. Review a plan before authorizing regeneration.');
   let revisions: Record<string, string> | undefined;
   if (revisionsPath !== undefined) {
-    const text = new TextDecoder('utf-8', { fatal: true }).decode((await files.read(revisionsPath)).bytes);
+    const text = decodeUtf8((await files.read(revisionsPath)).bytes);
     let parsed: unknown;
     try { parsed = JSON.parse(text); }
     catch { throw forgeError('INVALID_JSON', 'Expected valid JSON input.'); }

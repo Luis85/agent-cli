@@ -79,8 +79,3 @@ export const germanMessages: Readonly<Record<string, string>> = {
   'skipped.off': 'In plugins.settings.vault-check.rules ausgeschaltet.',
   'skipped.unavailable': 'Benötigt den Dienst bases.validation des Core-Plugins bases, das deaktiviert oder nicht verfügbar ist.',
 };
-
-/** Fills `{name}` placeholders; unknown placeholders stay as written. */
-export function fill(template: string, params: Readonly<Record<string, string | number>>): string {
-  return template.replace(/\{(\w+)\}/g, (match, name: string) => Object.hasOwn(params, name) ? String(params[name]) : match);
-}

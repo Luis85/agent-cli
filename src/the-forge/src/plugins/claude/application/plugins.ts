@@ -1,4 +1,5 @@
-import { forgeError, errorMessage, AppError, ensure, isRecord } from '../../../domain/shared/errors.ts';
+import { forgeError, errorMessage, ensure, isRecord } from '../../../domain/shared/errors.ts';
+import { readOrMissing } from '../../../domain/shared/not-found.ts';
 import { vaultPath } from '../../../domain/documents/file.ts';
 import { claudePluginCapabilities, validateClaudePlugin } from '../domain/plugins.ts';
 import { validateClaudeHooks } from '../../../domain/claude/hooks.ts';
@@ -6,6 +7,7 @@ import type { ClaudeAgentCodec } from './agents.ts';
 import type { Workspace } from '../../../application/workspace/workspace.ts';
 import { fill } from '../../../domain/shared/messages.ts';
 import { claudeMessages } from '../domain/messages.ts';
+import { decodeUtf8 } from '../../../domain/shared/utf8.ts';
 
 const manifestPath = '.claude-plugin/plugin.json';
 type AssetKind = 'agent' | 'hooks' | 'mcp' | 'lsp' | 'settings' | 'other';
@@ -13,7 +15,7 @@ interface Reference { path: string; kind: AssetKind; file: boolean }
 interface Diagnostic { path: string; severity: 'error' | 'warning'; message: string }
 
 function decode(bytes: Uint8Array): string {
-  try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
+  try { return decodeUtf8(bytes, 'keep'); }
   catch { throw forgeError('INVALID_ENCODING', 'Claude plugin text assets must be valid UTF-8.'); }
 }
 function json(bytes: Uint8Array, path: string): Record<string, unknown> {
@@ -62,14 +64,10 @@ export class ClaudePluginService {
   async inspect(directory: string) {
     const root = vaultPath(directory), prefix = `${root}/`;
     const files = (await this.workspace.files.list()).filter(path => path.startsWith(prefix)).map(path => path.slice(prefix.length)).sort();
-    try {
-      const snapshot = await this.workspace.files.read(`${prefix}${manifestPath}`);
-      return { directory: root, manifest: json(snapshot.bytes, manifestPath), revision: snapshot.revision, files };
-    } catch (error) {
-      if (!(error instanceof AppError) || error.code !== 'NOT_FOUND') throw error;
-      ensure(files.length > 0, 'NOT_FOUND', `No regular plugin files found in ${root}.`);
-      return { directory: root, manifest: null, revision: null, inferredName: root.split('/').at(-1)!, files };
-    }
+    const snapshot = await readOrMissing(() => this.workspace.files.read(`${prefix}${manifestPath}`));
+    if (snapshot) return { directory: root, manifest: json(snapshot.bytes, manifestPath), revision: snapshot.revision, files };
+    ensure(files.length > 0, 'NOT_FOUND', `No regular plugin files found in ${root}.`);
+    return { directory: root, manifest: null, revision: null, inferredName: root.split('/').at(-1)!, files };
   }
 
   async update(directory: string, manifest: unknown, revision: string) {

@@ -1,11 +1,11 @@
 import { ensure } from '../../domain/shared/errors.ts';
 import type { Command } from '../../application/plugins/registry.ts';
-import type { WorkflowServices } from '../cli/services.ts';
+import type { KernelServices } from '../cli/services.ts';
 import { arity } from '../../application/plugins/command-input.ts';
 import { option } from '../../application/plugins/command-metadata.ts';
 
 /** Project-owned CI: authored per project, synchronized into the workspace's GitHub workflow directory. */
-export function workflowsCommands(services: WorkflowServices): Command[] {
+export function workflowsCommands(services: KernelServices): Command[] {
   return [{
     id: 'workflows', description: 'Discover project-owned CI workflows and synchronize their generated GitHub entrypoints; --check reports drift.',
     usage: 'workflows [list | sync [--check] [--dry-run]]',

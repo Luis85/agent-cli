@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { backlogVault } from '../support/backlog.ts';
 import { FakeAzureDevOps } from '../support/azure-devops.ts';
 import { TOKEN_ENV, azureConnection, boundBase, invocation, noteText, planningNotes } from '../support/connectors.ts';
-import { hostIdentity } from '../../src/infrastructure/workspace/lock.ts';
+import { hostIdentity } from '../../src/infrastructure/workspace/lock-holder.ts';
 
 /** The per-connection sync lock: recovery after a crash, one lock per connection across scopes, and interruption. */
 const PAT = 'pat-sync-lock-0123456789';

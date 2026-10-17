@@ -7,7 +7,7 @@ import { registerHostEvents } from '../../src/application/plugins/host-events.ts
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { commands } from '../../src/presentation/cli/commands.ts';
 import { Registry } from '../../src/application/plugins/registry.ts';
-import type { WorkflowServices } from '../../src/presentation/cli/services.ts';
+import type { KernelServices } from '../../src/presentation/cli/services.ts';
 import { registerCorePlugins, registrySkills, type CorePlugin } from '../../src/application/plugins/core-plugins.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 import { basesPlugin } from '../../src/plugins/bases/plugin.ts';
@@ -46,7 +46,7 @@ export async function fullRegistry(): Promise<Registry> {
   try {
     const loaded = await loadConfig({ defaultPath: join(root, 'bin/config.json'), cwd: root });
     const registry = new Registry(skillFrontmatter, forgeVersion);
-    const services: WorkflowServices = {
+    const services: KernelServices = {
       loaded,
       server: { async start() { throw new Error('Catalog must not start servers'); }, async status() { throw new Error('Catalog must not inspect servers'); }, async stop() { throw new Error('Catalog must not stop servers'); } },
       get files(): never { throw new Error('The catalog registry does not access files'); },

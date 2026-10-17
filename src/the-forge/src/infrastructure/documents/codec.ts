@@ -6,10 +6,12 @@ import { validateCanvas } from '../../domain/documents/canvas.ts';
 import type { DocumentCodec, MarkdownParts, YamlStringReplacement } from '../../application/workspace/ports.ts';
 import { replaceInYamlStrings } from './yaml-strings.ts';
 import { editTopLevelEntries, yamlOutput } from './frontmatter-edit.ts';
+import { decodeUtf8 } from '../../domain/shared/utf8.ts';
+import { jsonValueIssue, type JsonValueIssue } from '../../domain/shared/json-value.ts';
 
 const encode = (text: string) => new TextEncoder().encode(text);
 function textOf(bytes: Uint8Array): string {
-  try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
+  try { return decodeUtf8(bytes, 'keep'); }
   catch { throw forgeError('INVALID_ENCODING', 'Structured documents and text files must be valid UTF-8.'); }
 }
 function textFileOf(path: string, bytes: Uint8Array): string {
@@ -26,15 +28,13 @@ function yamlDocument(text: string): Document {
   });
   return document;
 }
-function jsonValue(value: unknown, code: ErrorCode, ancestors = new Set<object>(), depth = 0): void {
-  ensure(depth < 100, code, 'Document nesting is too deep.');
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return;
-  if (typeof value === 'number') { ensure(Number.isFinite(value), code, 'Document numbers must be finite.'); return; }
-  ensure(typeof value === 'object' && (Array.isArray(value) || Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null), code, 'Document values must be JSON-compatible.');
-  ensure(!ancestors.has(value), code, 'Cyclic YAML aliases are not supported.');
-  ancestors.add(value);
-  for (const child of Object.values(value)) jsonValue(child, code, ancestors, depth + 1);
-  ancestors.delete(value);
+const jsonIssues: Readonly<Record<JsonValueIssue, string>> = {
+  depth: 'Document nesting is too deep.', number: 'Document numbers must be finite.',
+  type: 'Document values must be JSON-compatible.', cycle: 'Cyclic YAML aliases are not supported.',
+};
+function jsonValue(value: unknown, code: ErrorCode): void {
+  const issue = jsonValueIssue(value);
+  if (issue) throw forgeError(code, jsonIssues[issue]);
 }
 function yamlValue(document: Document): unknown {
   let value: unknown;

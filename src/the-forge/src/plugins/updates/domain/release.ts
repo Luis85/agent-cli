@@ -1,14 +1,15 @@
-import { codedError } from '../../../domain/shared/errors.ts';
+import { PluginFailure } from '../../../domain/shared/plugin-failure.ts';
 import { vaultPath } from '../../../domain/documents/file.ts';
+import { decodeUtf8 } from '../../../domain/shared/utf8.ts';
 export interface DistributionPolicy { schemaVersion: number; requiredAssets: string[]; ownedAssetPattern: string }
 
 export type UpdateCode = 'UPDATE_DOWNLOAD_FAILED' | 'UPDATE_INVALID' | 'UPDATE_SCOPE_INVALID';
-export function updateError(code: UpdateCode, message: string) { return codedError(code, message, code === 'UPDATE_DOWNLOAD_FAILED' ? 1 : 2); }
+export function updateError(code: UpdateCode, message: string): PluginFailure { return new PluginFailure(code, message); }
 export function requireUpdate(condition: unknown, message: string): asserts condition {
   if (!condition) throw updateError('UPDATE_INVALID', message);
 }
 export function releaseJson(bytes: Uint8Array): unknown {
-  try { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }
+  try { return JSON.parse(decodeUtf8(bytes)); }
   catch { throw updateError('UPDATE_INVALID', 'A release package or distribution manifest is not valid UTF-8 JSON.'); }
 }
 export function releaseVersion(value: string): string {

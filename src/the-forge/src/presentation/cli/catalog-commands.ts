@@ -11,7 +11,7 @@ import { ensure } from '../../domain/shared/errors.ts';
 import type { Command, Registry } from '../../application/plugins/registry.ts';
 import { globalOptionMetadata } from './arguments.ts';
 import { declaredErrors } from './invocation-policy.ts';
-import type { WorkflowServices } from './services.ts';
+import type { KernelServices } from './services.ts';
 import { generatorCatalog } from '../generation/commands.ts';
 import { pluginCatalog } from './plugin-catalog.ts';
 import { Localizer } from '../localization/localization.ts';
@@ -106,7 +106,7 @@ export function catalogCommands(registry: Registry): Command[] {
 const hostNamespaces = [...hostEventNamespaces];
 const eventDelivery = 'Ordered, awaited, per-listener snapshots; failures become warnings. Obsidian-style vault.* records follow each committed write (new folders first, parent before child, then files in batch order); dry runs emit workspace.quick-preview instead. Once the metadata cache is loaded in the invocation, the vault.* records of each batch are followed by metadataCache.changed, metadataCache.deleted, metadataCache.resolve and one metadataCache.resolved. operation.*, command.* and plugin.* records are host lifecycle phases, and the claude core plugin\'s claude.* records are the phases of each Claude invocation; workspace.* records are Obsidian workspace analogues (file-open, quick-preview, layout-ready, quit, project-change). Host namespaces are host-owned: plugins observe them but emit only their own events. onAny observes all events; replay reads bounded invocation history. No persistent replay. Responses include only vault.* records by default; --events none|changes|all or settings.events selects the output without changing delivery or replay.';
 
-export function extensionCommands(registry: Registry, services: Pick<WorkflowServices, 'installedPlugins'>): Command[] {
+export function extensionCommands(registry: Registry, services: Pick<KernelServices, 'installedPlugins'>): Command[] {
   return [
     { id: 'events', description: 'List invocation event contracts.', usage: 'events', ...discovery, run(args, _, { events }) {
       arity(args, 0);

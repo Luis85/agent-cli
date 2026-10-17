@@ -1,4 +1,5 @@
-import { AppError, ensure } from '../../domain/shared/errors.ts';
+import { ensure } from '../../domain/shared/errors.ts';
+import { readOrMissing } from '../../domain/shared/not-found.ts';
 import { vaultPath, type WriteRequest } from '../../domain/documents/file.ts';
 import type { AppConfig } from './config.ts';
 import type { Skill } from '../plugins/registry.ts';
@@ -66,11 +67,8 @@ export class SetupService {
     }
     const writes: WriteRequest[] = [], skipped: string[] = [];
     for (const candidate of candidates) {
-      try { await this.workspace.files.read(candidate.path); skipped.push(candidate.path); }
-      catch (error) {
-        if (!(error instanceof AppError) || error.code !== 'NOT_FOUND') throw error;
-        writes.push(candidate);
-      }
+      if (await readOrMissing(() => this.workspace.files.read(candidate.path))) skipped.push(candidate.path);
+      else writes.push(candidate);
     }
     // An empty plan is a successful no-op, not an invalid workspace write.
     const result = writes.length ? await this.workspace.write(writes) : { dryRun: this.workspace.dryRun, changes: [] };

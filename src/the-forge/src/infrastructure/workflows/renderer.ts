@@ -4,6 +4,7 @@ import {
   generatedHeader, projectPathVariable, projectRelative, scopedTriggerPaths, type WorkflowSource,
 } from '../../domain/workflows/workflow.ts';
 import type { WorkflowRenderer } from '../../application/workflows/workflows.ts';
+import { decodeUtf8 } from '../../domain/shared/utf8.ts';
 
 const scopedEvents = ['push', 'pull_request'];
 
@@ -97,7 +98,7 @@ class ScopedWorkflow {
 export const yamlWorkflowRenderer: WorkflowRenderer = {
   render(bytes, source) {
     let text: string;
-    try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
+    try { text = decodeUtf8(bytes); }
     catch { ensure(false, 'INVALID_WORKFLOW', `${source.source}: the file is not valid UTF-8.`); }
     const document = parseDocument(text, { uniqueKeys: true, prettyErrors: false });
     ensure(!document.errors.length, 'INVALID_WORKFLOW', `${source.source}: ${document.errors.map(error => error.message).join('; ')}`);

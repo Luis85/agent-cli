@@ -5,7 +5,7 @@ import { basesCommand } from '../../src/plugins/bases/presentation/commands.ts';
 import { skillsCommand } from '../../src/plugins/skills/presentation/commands.ts';
 import { uiPlugin } from '../../src/plugins/ui/plugin.ts';
 import { dataSourcesPlugin } from '../../src/plugins/data-sources/plugin.ts';
-import type { WorkflowServices } from '../../src/presentation/cli/services.ts';
+import type { KernelServices } from '../../src/presentation/cli/services.ts';
 import type { CorePlugin } from '../../src/application/plugins/core-plugins.ts';
 import { templatesPlugin } from '../../src/plugins/templates/plugin.ts';
 import { scaffoldsPlugin } from '../../src/plugins/scaffolds/plugin.ts';
@@ -21,7 +21,7 @@ export function builtinCommands(): { registry: Registry; commands: Map<string, C
   const unavailable = (): never => { throw new Error('Metadata tests must not run commands'); };
   const services = new Proxy({ loaded: { config: { paths: {} } } }, {
     get: (target, key) => key in target ? target[key as keyof typeof target] : unavailable,
-  }) as unknown as WorkflowServices;
+  }) as unknown as KernelServices;
   const registry = new Registry(skillFrontmatter, forgeVersion);
   const contributions = (plugin: CorePlugin) => plugin.create(testHost());
   const plugins = [templatesPlugin, scaffoldsPlugin, uiPlugin, dataSourcesPlugin, claudePlugin].map(contributions);

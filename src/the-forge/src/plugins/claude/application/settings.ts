@@ -1,8 +1,10 @@
-import { forgeError, AppError, ensure, isRecord } from '../../../domain/shared/errors.ts';
+import { forgeError, ensure, isRecord } from '../../../domain/shared/errors.ts';
+import { readOrMissing } from '../../../domain/shared/not-found.ts';
 import { validateClaudeHooks } from '../../../domain/claude/hooks.ts';
 import { revisionConflict } from '../../../domain/documents/write-plan.ts';
 import type { Workspace } from '../../../application/workspace/workspace.ts';
 import { claudeMessages } from '../domain/messages.ts';
+import { decodeUtf8 } from '../../../domain/shared/utf8.ts';
 
 const policyBooleans = ['disableAllHooks', 'allowManagedHooksOnly'];
 const policyLists = ['allowedHttpHookUrls', 'httpHookAllowedEnvVars'];
@@ -21,17 +23,13 @@ export class ClaudeSettings {
   constructor(private readonly workspace: Workspace, private readonly path: string, private readonly plugin = false) {}
 
   async inspect() {
-    try {
-      const file = await this.workspace.files.read(this.path);
-      let settings: unknown;
-      try { settings = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(file.bytes)); }
-      catch { throw forgeError('INVALID_CLAUDE_SETTINGS', `Expected UTF-8 JSON settings at ${this.path}.`); }
-      ensure(isRecord(settings), 'INVALID_CLAUDE_SETTINGS', 'Claude settings must be a JSON object.');
-      return { path: this.path, revision: file.revision, settings, hooks: Object.hasOwn(settings, 'hooks') ? settings.hooks : {} };
-    } catch (error) {
-      if (error instanceof AppError && error.code === 'NOT_FOUND') return { path: this.path, revision: null, settings: {} as Record<string, unknown>, hooks: {} };
-      throw error;
-    }
+    const file = await readOrMissing(() => this.workspace.files.read(this.path));
+    if (!file) return { path: this.path, revision: null, settings: {} as Record<string, unknown>, hooks: {} };
+    let settings: unknown;
+    try { settings = JSON.parse(decodeUtf8(file.bytes)); }
+    catch { throw forgeError('INVALID_CLAUDE_SETTINGS', `Expected UTF-8 JSON settings at ${this.path}.`); }
+    ensure(isRecord(settings), 'INVALID_CLAUDE_SETTINGS', 'Claude settings must be a JSON object.');
+    return { path: this.path, revision: file.revision, settings, hooks: Object.hasOwn(settings, 'hooks') ? settings.hooks : {} };
   }
 
   async validate() {

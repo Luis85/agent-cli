@@ -1,4 +1,5 @@
-import { AppError, ensure, forgeError } from '../../domain/shared/errors.ts';
+import { ensure, forgeError } from '../../domain/shared/errors.ts';
+import { readOrMissing } from '../../domain/shared/not-found.ts';
 import type { WriteRequest } from '../../domain/documents/file.ts';
 import {
   ensureDistinctTargets, generatedWorkflowDirectory, isGeneratedWorkflow, workflowSource, type WorkflowSource,
@@ -92,11 +93,7 @@ export class WorkflowSync {
     return [...planned, ...stale.flat()].sort(byTarget);
   }
 
-  private async current(path: string) {
-    try { return await this.workspace.files.read(path); }
-    catch (error) {
-      if (error instanceof AppError && error.code === 'NOT_FOUND') return undefined;
-      throw error;
-    }
+  private current(path: string) {
+    return readOrMissing(() => this.workspace.files.read(path));
   }
 }

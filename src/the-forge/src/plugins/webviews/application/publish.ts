@@ -1,7 +1,10 @@
 import type { CommandContext } from '../../../application/plugins/registry.ts';
 import type { FileSnapshot, FileStat, WriteRequest, RemoveRequest } from '../../../domain/documents/file.ts';
-import { AppError, ensure } from '../../../domain/shared/errors.ts';
+import { ensure } from '../../../domain/shared/errors.ts';
+import { readOrMissing } from '../../../domain/shared/not-found.ts';
+import { isWebviewManifest } from '../../../domain/server/webview-manifest.ts';
 import { ensureWebview, webviewError } from '../domain/errors.ts';
+import { decodeUtf8 } from '../../../domain/shared/utf8.ts';
 
 /** Files are relative to the compiled dist directory; the adapter refuses links and special files. */
 export type ReadWebviewAssets = (root: string, directory: string) => Promise<FileSnapshot[] | null>;
@@ -15,8 +18,7 @@ export interface PublicationReport {
 }
 
 async function optionalStat(context: CommandContext['workspace'], path: string): Promise<FileStat | null> {
-  try { return await context.files.stat(path); }
-  catch (error) { if (error instanceof AppError && error.code === 'NOT_FOUND') return null; throw error; }
+  return (await readOrMissing(() => context.files.stat(path))) ?? null;
 }
 
 export class WebviewPublication {
@@ -36,11 +38,9 @@ export class WebviewPublication {
       const manifest = source.find(file => file.path === 'manifest.json');
       ensureWebview(manifest && source.some(file => file.path === 'index.html'), 'WEBVIEW_INVALID', 'dist must contain manifest.json and index.html.');
       let value: unknown;
-      try { value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(manifest.bytes)); }
+      try { value = JSON.parse(decodeUtf8(manifest.bytes)); }
       catch { throw webviewError('WEBVIEW_INVALID', 'dist/manifest.json must contain valid UTF-8 JSON.'); }
-      ensureWebview(value !== null && typeof value === 'object' && 'id' in value && value.id === id &&
-        'name' in value && typeof value.name === 'string' && value.name.trim().length > 0 &&
-        'entry' in value && value.entry === 'index.html', 'WEBVIEW_INVALID', 'The build manifest must match the project id and declare a nonempty name and entry index.html.');
+      ensureWebview(isWebviewManifest(value, id), 'WEBVIEW_INVALID', 'The build manifest must match the project id and declare a nonempty name and entry index.html.');
       ensure((await workspace.files.stat('dist')).revision === sourceStat!.revision, 'CONFLICT', 'The build changed while being inspected. Run the command again.');
     }
     const installed = await optionalStat(environment, destination);

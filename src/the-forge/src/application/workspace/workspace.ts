@@ -7,6 +7,7 @@ import type { FileRepository, DocumentCodec, CommitObserver, CommittedChange, Fi
 import type { EventBus } from '../plugins/events.ts';
 import { publishHostEvent, type HostEventMap } from '../plugins/host-events.ts';
 import { kernelMessage, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
+import { decodeUtf8 } from '../../domain/shared/utf8.ts';
 
 type Operation = HostEventMap['operation.started']['operation'];
 const vaultEvents = { created: 'vault.create', updated: 'vault.modify', deleted: 'vault.delete' } as const;
@@ -33,7 +34,7 @@ const into = (path: string, folder: string) => path === folder || path.startsWit
 /** The text a dry run diffs, or undefined for content that reads as binary. */
 const utf8 = (path: string, bytes: Uint8Array): string | undefined => {
   let text: string;
-  try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
+  try { text = decodeUtf8(bytes, 'keep'); }
   catch { return undefined; }
   return isTextContent(path, text) ? text : undefined;
 };

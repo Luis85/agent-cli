@@ -8,7 +8,7 @@ import type { Browser, Locator, Page } from 'playwright-core';
 import type { BrowserFlowRequest, BrowserImage, BrowserOptions, BrowserRuntime, BrowserSandbox, BrowserStatus } from '../application/runtime.ts';
 import type { TutorialLocator } from '../domain/tutorial.ts';
 import { browserError, ensureBrowser } from '../domain/errors.ts';
-import { AppError } from '../../../domain/shared/errors.ts';
+import { isCodedFailure, PluginFailure } from '../../../domain/shared/plugin-failure.ts';
 
 const execute = promisify(execFile);
 type Playwright = typeof import('playwright-core');
@@ -115,7 +115,7 @@ export function createBrowserRuntime(distributionPath: string): BrowserRuntime {
       return { browser, page, sandbox };
     } catch (error) {
       await browser?.close().catch(() => {});
-      if (error instanceof AppError) throw error;
+      if (isCodedFailure(error)) throw error;
       // A sandboxed start also fails where the OS forbids its user namespaces, as AppArmor does on Ubuntu 24.04.
       if (sandbox === 'enabled') throw browserError('BROWSER_UNAVAILABLE', 'Chromium could not start with its sandbox. Check the executable and its operating-system dependencies; on Linux the sandbox also needs unprivileged user namespaces (Ubuntu 24.04 restricts them through AppArmor). Allow them, or pass --no-browser-sandbox only for pages you trust.', { sandbox });
       throw browserError('BROWSER_UNAVAILABLE', 'Chromium could not start. Check the executable and its operating-system dependencies.', { sandbox });
@@ -148,7 +148,7 @@ export function createBrowserRuntime(distributionPath: string): BrowserRuntime {
         ensureBrowser(installed.available, 'BROWSER_INSTALL_FAILED', 'Chromium installation completed without a usable executable. Check the browser cache and try again.');
         return installed;
       } catch (error) {
-        if (error instanceof AppError) throw error;
+        if (isCodedFailure(error)) throw error;
         throw browserError('BROWSER_INSTALL_FAILED', 'Chromium installation failed. Check network access to the Playwright download hosts, available disk space and cache permissions; then retry.');
       }
     },
@@ -165,7 +165,7 @@ export function createBrowserRuntime(distributionPath: string): BrowserRuntime {
         };
         return { ...await Promise.race([operation(), total.expired]), sandbox };
       } catch (error) {
-        if (error instanceof AppError) throw error;
+        if (isCodedFailure(error)) throw error;
         throw browserError('BROWSER_CAPTURE_FAILED', 'The page could not be captured. Check its address, readiness selector and timeout, then retry.');
       } finally { total.clear(); await browser.close().catch(() => {}); }
     },
@@ -215,7 +215,7 @@ export function createBrowserRuntime(distributionPath: string): BrowserRuntime {
       };
       try { return await Promise.race([operation(), total.expired]); }
       catch (error) {
-        if (error instanceof AppError && error.code === 'BROWSER_FLOW_FAILED') throw error;
+        if (error instanceof PluginFailure && error.code === 'BROWSER_FLOW_FAILED') throw error;
         throw browserError('BROWSER_FLOW_FAILED', 'The tutorial could not complete. Inspect the failing step, locator and timeout before retrying.', stepId ? { stepId } : {});
       } finally { total.clear(); await browser.close().catch(() => {}); }
     },

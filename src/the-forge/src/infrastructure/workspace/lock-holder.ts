@@ -4,6 +4,7 @@ import { hostname, uptime } from 'node:os';
 import type { LockHolder, StaleReason } from '../../application/workspace/ports.ts';
 import { isRecord } from '../../domain/shared/errors.ts';
 import { retryTransient } from './retry.ts';
+import { processAlive } from './process-probe.ts';
 
 /** Where a pid is meaningful: Linux pid namespace and boot, when the host exposes them. */
 interface HostIdentity { pidNamespace?: string; bootId?: string }
@@ -90,14 +91,6 @@ async function readLock(path: string): Promise<{ content: string | null; young: 
 export function tokenOf(content: string | null): unknown {
   try { return content === null ? undefined : (JSON.parse(content) as { token?: unknown } | null)?.token; }
   catch { return undefined; }
-}
-
-function processAlive(pid: number): boolean | undefined {
-  try { process.kill(pid, 0); return true; }
-  catch (error) {
-    // EPERM: the process exists but belongs to another user.
-    return errorCode(error) === 'ESRCH' ? false : errorCode(error) === 'EPERM' ? true : undefined;
-  }
 }
 
 /** When this host last booted, in milliseconds since the epoch. */

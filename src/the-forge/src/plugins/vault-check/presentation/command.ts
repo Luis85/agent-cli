@@ -4,6 +4,7 @@ import { arity, value } from '../../../application/plugins/command-input.ts';
 import { pathFilter, pathGlob, recordingFilter } from '../../../domain/documents/path-glob.ts';
 import { kernelMessage } from '../../../domain/shared/kernel-messages.ts';
 import { ensure } from '../../../domain/shared/errors.ts';
+import { PluginFailure } from '../../../domain/shared/plugin-failure.ts';
 import { checkVault, type CheckReport } from '../application/check.ts';
 import { vaultProperties, vaultTags, type InventoryScope } from '../application/inventory.ts';
 import type { VaultSources } from '../application/sources.ts';
@@ -11,7 +12,7 @@ import { tagSorts, type TagSort } from '../domain/inventory.ts';
 import {
   compareFindings, effectiveSeverities, isRuleId, ruleIds, severities, type Detection, type Finding, type RuleId, type RuleSetting, type Severity,
 } from '../domain/rules.ts';
-import { fill } from './messages.ts';
+import { fill } from '../../../domain/shared/messages.ts';
 import { vaultOutput } from './output.ts';
 
 const actions = ['check', 'tags', 'properties'] as const;
@@ -58,10 +59,8 @@ function checkResult(report: CheckReport, service: VaultService, settings: Recor
   if (strict && summary.error > 0) {
     const errors = findings.filter(finding => finding.severity === 'error');
     const byRule = rules.filter(rule => rule.severity === 'error' && rule.findings > 0).map(rule => `${rule.findings} ${rule.id}`).join(', ');
-    throw Object.assign(new Error(`vault check --strict found ${summary.error} error finding${summary.error === 1 ? '' : 's'} (${byRule}).`), {
-      code: 'VAULT_CHECK_FAILED',
-      details: { summary, rules, findings: errors.slice(0, failureFindings), truncated: errors.length > failureFindings },
-    });
+    throw new PluginFailure('VAULT_CHECK_FAILED', `vault check --strict found ${summary.error} error finding${summary.error === 1 ? '' : 's'} (${byRule}).`,
+      { summary, rules, findings: errors.slice(0, failureFindings), truncated: errors.length > failureFindings });
   }
   return { findings, summary, rules, skipped, strict };
 }

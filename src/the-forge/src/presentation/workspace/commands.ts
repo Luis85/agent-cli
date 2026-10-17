@@ -1,7 +1,7 @@
 import { ensure } from '../../domain/shared/errors.ts';
 import type { Command } from '../../application/plugins/registry.ts';
 import { arity, value } from '../../application/plugins/command-input.ts';
-import type { WorkflowServices } from '../cli/services.ts';
+import type { KernelServices } from '../cli/services.ts';
 import { option } from '../../application/plugins/command-metadata.ts';
 import type { JsonSchema } from '../../domain/schema/json-schema.ts';
 import { projectInfoSchema, selectedProjectSchema } from '../cli/envelope.ts';
@@ -33,7 +33,7 @@ const projectListOutput: JsonSchema = {
   },
 };
 
-export function workflowCommands(services: WorkflowServices): Command[] {
+export function workspaceCommands(services: KernelServices): Command[] {
   const config = services.loaded.config;
   return [
     { id: 'config', description: 'Inspect the validated effective configuration and its source path.', usage: 'config', ...discovery, mutating: false, errors: ['INVALID_CONFIG'], output: configOutput,

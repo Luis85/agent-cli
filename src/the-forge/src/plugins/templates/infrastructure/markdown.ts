@@ -6,6 +6,8 @@ import { isMap, isScalar, parseDocument, visit } from 'yaml';
 import type { DocumentTemplates, TemplateInspection, TemplateOptions } from '../application/templates.ts';
 import type { MarkdownParts } from '../../../application/workspace/ports.ts';
 import { forgeError, ensure, isRecord } from '../../../domain/shared/errors.ts';
+import { decodeUtf8 } from '../../../domain/shared/utf8.ts';
+import { jsonValueIssue, type JsonValueIssue } from '../../../domain/shared/json-value.ts';
 
 dayjs.extend(utc);
 dayjs.extend(advancedFormat);
@@ -14,7 +16,7 @@ dayjs.extend(localizedFormat);
 interface Placeholder { expression: string; key: string; format?: string; start: number; end: number }
 
 function textOf(bytes: Uint8Array): string {
-  try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
+  try { return decodeUtf8(bytes, 'keep'); }
   catch { throw forgeError('INVALID_ENCODING', 'Templates must be valid UTF-8.'); }
 }
 
@@ -45,15 +47,13 @@ function replaceTokens(text: string, tokens: Placeholder[], value: (token: Place
   return output + text.slice(cursor);
 }
 
-function jsonValue(value: unknown, ancestors = new Set<object>(), depth = 0): void {
-  ensure(depth < 100, 'INVALID_TEMPLATE_VALUES', 'Template values are nested too deeply.');
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return;
-  if (typeof value === 'number') { ensure(Number.isFinite(value), 'INVALID_TEMPLATE_VALUES', 'Template numbers must be finite.'); return; }
-  ensure(typeof value === 'object' && (Array.isArray(value) || Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null), 'INVALID_TEMPLATE_VALUES', 'Template values must be JSON-compatible.');
-  ensure(!ancestors.has(value), 'INVALID_TEMPLATE_VALUES', 'Template values cannot contain cycles.');
-  ancestors.add(value);
-  for (const child of Object.values(value)) jsonValue(child, ancestors, depth + 1);
-  ancestors.delete(value);
+const jsonIssues: Readonly<Record<JsonValueIssue, string>> = {
+  depth: 'Template values are nested too deeply.', number: 'Template numbers must be finite.',
+  type: 'Template values must be JSON-compatible.', cycle: 'Template values cannot contain cycles.',
+};
+function jsonValue(value: unknown): void {
+  const issue = jsonValueIssue(value);
+  if (issue) throw forgeError('INVALID_TEMPLATE_VALUES', jsonIssues[issue]);
 }
 
 function asText(value: unknown): string { return typeof value === 'string' ? value : JSON.stringify(value); }

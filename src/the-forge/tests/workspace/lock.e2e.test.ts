@@ -4,7 +4,7 @@ import { readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
-import { hostIdentity } from '../../src/infrastructure/workspace/lock.ts';
+import { hostIdentity } from '../../src/infrastructure/workspace/lock-holder.ts';
 
 const fixture = portableCli();
 const cli = fixture.cli;

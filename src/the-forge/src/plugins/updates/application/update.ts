@@ -1,6 +1,7 @@
 import type { CommandContext } from '../../../application/plugins/registry.ts';
 import type { FileSnapshot, WriteRequest, RemoveRequest } from '../../../domain/documents/file.ts';
-import { AppError, ensure } from '../../../domain/shared/errors.ts';
+import { ensure } from '../../../domain/shared/errors.ts';
+import { readOrMissing } from '../../../domain/shared/not-found.ts';
 import { compareVersions, distributionFiles, releaseVersion, releaseJson, requireUpdate, updateError, type DistributionPolicy } from '../domain/release.ts';
 
 export interface ReleaseAssets { version: string; checksum: string; files: FileSnapshot[] }
@@ -47,9 +48,7 @@ export class AppUpdate {
     const previous = new Map<string, FileSnapshot>();
     for (const path of [...new Set([...paths, ...installed.owned])].sort()) {
       const destination = `bin/${path}`;
-      let current: FileSnapshot | undefined;
-      try { current = await context.environment.files.read(destination); }
-      catch (error) { if (!(error instanceof AppError && error.code === 'NOT_FOUND')) throw error; }
+      const current = await readOrMissing(() => context.environment.files.read(destination));
       if (current) previous.set(destination, current);
       const next = desired.get(path);
       if (!next && current) removes.push({ path: destination, expectedRevision: current.revision });

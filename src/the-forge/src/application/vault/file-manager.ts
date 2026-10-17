@@ -1,10 +1,12 @@
 import { AppError, ensure, forgeError, isRecord } from '../../domain/shared/errors.ts';
+import { isNotFound } from '../../domain/shared/not-found.ts';
 import { aliasesName, fileKind, isInTrash, trashFolder, vaultPath, type FileSnapshot, type FileStat, type WriteRequest } from '../../domain/documents/file.ts';
 import { revisionConflict } from '../../domain/documents/write-plan.ts';
 import { kernelMessage } from '../../domain/shared/kernel-messages.ts';
 import type { Workspace } from '../workspace/workspace.ts';
 import type { Backlink, MetadataIndex } from '../metadata/ports.ts';
 import { planLinkUpdates, rewriteText, type UnrewrittenLink } from './link-plan.ts';
+import { decodeUtf8 } from '../../domain/shared/utf8.ts';
 
 /** `ifMatch` guards the source: a file revision or a folder revision from `stat`. Without it the current revision is used. */
 export interface MoveOptions { ifMatch?: string; updateLinks?: boolean }
@@ -17,8 +19,6 @@ interface DeletedEntry { path: string; kind: 'file' | 'folder'; revision?: strin
 export interface FileManagerScope { workspace: boolean }
 
 const encoder = new TextEncoder();
-const decode = (bytes: Uint8Array) => new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
-const notFound = (error: unknown) => error instanceof AppError && error.code === 'NOT_FOUND';
 const json = (value: unknown) => JSON.stringify(value);
 /** `name`, or its numbered copy ` 1`, ` 2`… before a file's extension. */
 function copyName(name: string, kind: FileStat['kind'], copy: number): string {
@@ -71,7 +71,7 @@ export class FileManager {
       unrewritten.push(...plan.unrewritten);
       for (const file of plan.files) {
         const snapshot = await this.workspace.files.read(file.source);
-        const rewritten = rewriteText(file, decode(snapshot.bytes), cache.getFileCache(file.source)!, (yaml, replacements) => this.workspace.codec.replaceInYamlStrings(yaml, replacements));
+        const rewritten = rewriteText(file, decodeUtf8(snapshot.bytes, 'keep'), cache.getFileCache(file.source)!, (yaml, replacements) => this.workspace.codec.replaceInYamlStrings(yaml, replacements));
         // The cache was read moments ago in this invocation; a file edited since then is a conflict, not a guess.
         if (rewritten === undefined) throw forgeError('CONFLICT', `File changed while planning link updates; retry: ${file.source}`, revisionConflict(file.source, null, snapshot.revision));
         unrewritten.push(...rewritten.unrewritten);
@@ -97,7 +97,7 @@ export class FileManager {
     path = vaultPath(path);
     ensure(typeof name === 'string' && name.length > 0 && !name.includes('/'), 'INVALID_MOVE', 'rename takes a new name without slashes; use move to change folders.');
     const entry = await this.workspace.files.stat(path).catch((error: unknown) => {
-      if (notFound(error) && options.ifMatch !== undefined) return undefined;
+      if (isNotFound(error) && options.ifMatch !== undefined) return undefined;
       throw error;
     });
     const extension = (entry?.kind ?? 'file') === 'file' ? extensionOf(path) : '';
@@ -113,7 +113,7 @@ export class FileManager {
   async delete(path: string, options: DeleteOptions = {}) {
     path = vaultPath(path);
     this.ensureMovable(path);
-    const entry = await this.workspace.files.stat(path).catch(async (error: unknown) => { throw notFound(error) ? await this.missing(path, options) : error; });
+    const entry = await this.workspace.files.stat(path).catch(async (error: unknown) => { throw isNotFound(error) ? await this.missing(path, options) : error; });
     ensure(entry.kind === 'file' || options.recursive === true, 'INVALID_ARGUMENT', `${path} is a folder; pass --recursive to delete it with its files.`);
     ensure(options.permanent === true || !isInTrash(path), 'INVALID_ARGUMENT', `${path} is already in ${trashFolder}; pass --permanent to remove it.`);
     const brokenLinks = await this.brokenLinks(path, entry);
@@ -199,7 +199,7 @@ export class FileManager {
     for (let copy = 0; ; copy++) {
       const candidate = `${folder}/${copyName(name, kind, copy)}`;
       try { await this.workspace.files.stat(candidate); }
-      catch (error) { if (notFound(error)) return candidate; throw error; }
+      catch (error) { if (isNotFound(error)) return candidate; throw error; }
     }
   }
 
@@ -208,22 +208,22 @@ export class FileManager {
     for (let copy = 0; ; copy++) {
       const candidate = copyName(name, 'folder', copy);
       try { await this.workspace.files.read(`${folder}/${candidate}`); }
-      catch (error) { if (notFound(error) || (error instanceof AppError && error.code === 'INVALID_PATH')) return candidate; throw error; }
+      catch (error) { if (isNotFound(error) || (error instanceof AppError && error.code === 'INVALID_PATH')) return candidate; throw error; }
     }
   }
 
 
   private async isFolder(path: string): Promise<boolean> {
     try { return (await this.workspace.files.stat(path)).kind === 'folder'; }
-    catch (error) { if (notFound(error)) return false; throw error; }
+    catch (error) { if (isNotFound(error)) return false; throw error; }
   }
 
   /** The move's source, or the result of a move that already happened: the source is gone and `to` has `ifMatch`. */
   private async source(from: string, to: string, ifMatch: string | undefined) {
     try { return await this.workspace.files.stat(from); }
     catch (error) {
-      if (!notFound(error) || ifMatch === undefined) throw error;
-      const moved = await this.workspace.files.stat(to).catch((failure: unknown) => { if (notFound(failure)) return undefined; throw failure; });
+      if (!isNotFound(error) || ifMatch === undefined) throw error;
+      const moved = await this.workspace.files.stat(to).catch((failure: unknown) => { if (isNotFound(failure)) return undefined; throw failure; });
       if (moved?.revision !== ifMatch) throw error;
       return { dryRun: this.workspace.dryRun, from, to, kind: moved.kind, revision: moved.revision, renames: [], changes: [], links: { updated: 0, files: 0, unrewritten: [] as UnrewrittenLink[] }, alreadyApplied: true as const };
     }
@@ -240,7 +240,7 @@ export class FileManager {
     for (const kind of extensionOf(path) ? ['file', 'folder'] as const : ['file'] as const) {
       for (let copy = 0; ; copy++) {
         const candidate = this.trashCandidate(path, kind, copy);
-        const stat = await this.workspace.files.stat(candidate).catch((error: unknown) => { if (notFound(error)) return undefined; throw error; });
+        const stat = await this.workspace.files.stat(candidate).catch((error: unknown) => { if (isNotFound(error)) return undefined; throw error; });
         if (stat === undefined) break;
         if (stat.revision === options.ifMatch) return forgeError('NOT_FOUND', `${message}; it is already in the trash at ${candidate}.`, { path, alreadyDeleted: true, trashPath: candidate });
       }
@@ -253,7 +253,7 @@ export class FileManager {
       await this.workspace.files.stat(to);
       // A case-only rename finds its own source on case-insensitive filesystems; the batch checks identity.
       ensure(from.toLowerCase() === to.toLowerCase(), 'DESTINATION_EXISTS', `Destination already exists: ${to}`, { path: to, from });
-    } catch (error) { if (!notFound(error)) throw error; }
+    } catch (error) { if (!isNotFound(error)) throw error; }
   }
 
   /** Protect every alias of the reserved roots: letter case, Windows trailing dots, spaces and short names, HFS+ ignorable code points. */

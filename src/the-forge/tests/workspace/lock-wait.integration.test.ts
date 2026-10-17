@@ -4,7 +4,8 @@ import { mkdir, mkdtemp, readFile, readdir, realpath, rm, unlink, writeFile } fr
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
-import { acquireLock, hostIdentity, releaseLock, retryAfterMs } from '../../src/infrastructure/workspace/lock.ts';
+import { acquireLock, releaseLock, retryAfterMs } from '../../src/infrastructure/workspace/lock.ts';
+import { hostIdentity } from '../../src/infrastructure/workspace/lock-holder.ts';
 import { encodeText } from '../../src/infrastructure/documents/codec.ts';
 
 let root: string, lock: string, identity: Awaited<ReturnType<typeof hostIdentity>>;

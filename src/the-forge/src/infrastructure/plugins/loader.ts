@@ -2,15 +2,17 @@ import { pathToFileURL } from 'node:url';
 import { dirname } from 'node:path';
 import { createRequire } from 'node:module';
 import { compileFunction } from 'node:vm';
-import { forgeError, AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
+import { forgeError, ensure, isRecord } from '../../domain/shared/errors.ts';
+import { isNotFound, readOrMissing } from '../../domain/shared/not-found.ts';
 import type { NodeFiles } from '../workspace/files.ts';
 import { validatePluginManifest, type Registry, type Plugin, type PluginManifest } from '../../application/plugins/registry.ts';
 import type { EventBus } from '../../application/plugins/events.ts';
 import type { InstalledPlugin } from '../../application/plugins/core-plugins.ts';
 import { kernelMessage, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
+import { decodeUtf8 } from '../../domain/shared/utf8.ts';
 
 async function readManifest(path: string, files: NodeFiles, appVersion: string): Promise<PluginManifest> {
-  const text = new TextDecoder('utf-8', { fatal: true }).decode((await files.read(path)).bytes);
+  const text = decodeUtf8((await files.read(path)).bytes);
   let value: unknown;
   try { value = JSON.parse(text); }
   catch { throw forgeError('INVALID_PLUGIN', `Invalid JSON in plugin manifest: ${path}`); }
@@ -23,9 +25,9 @@ async function loadModule(directory: string, files: NodeFiles): Promise<unknown>
   try {
     await files.read(esm);
   } catch (error) {
-    if (!(error instanceof AppError) || error.code !== 'NOT_FOUND') throw error;
+    if (!isNotFound(error)) throw error;
     const commonjs = `${directory}/main.js`;
-    const source = new TextDecoder('utf-8', { fatal: true }).decode((await files.read(commonjs)).bytes);
+    const source = decodeUtf8((await files.read(commonjs)).bytes);
     const filename = await files.resolvePath(commonjs);
     // Obsidian-style main.js is CommonJS even inside a type:module project.
     // This is execution of trusted code, not a sandbox or dependency installer.
@@ -43,10 +45,8 @@ async function loadModule(directory: string, files: NodeFiles): Promise<unknown>
  * plugins that `--no-plugins` left unloaded; an unreadable or invalid manifest is reported through `warn`.
  */
 export async function installedPlugins(directory: string, enabled: readonly string[], skipped: boolean, files: NodeFiles, appVersion: string, warn: (message: KernelMessage) => void): Promise<InstalledPlugin[]> {
-  let folder;
-  try { folder = await files.stat(directory); }
-  catch (error) { if (error instanceof AppError && error.code === 'NOT_FOUND') return []; throw error; }
-  if (folder.kind !== 'folder') return [];
+  const folder = await readOrMissing(() => files.stat(directory));
+  if (folder?.kind !== 'folder') return [];
   const ids = folder.files.map(path => /^([^/]+)\/manifest\.json$/.exec(path)?.[1]).filter((id): id is string => id !== undefined);
   const installed: InstalledPlugin[] = [];
   for (const id of ids) {
@@ -72,7 +72,7 @@ export async function loadEnabledPlugins(directory: string, ids: readonly string
     let manifest: PluginManifest;
     try { manifest = await readManifest(path, files, registry.appVersion); }
     catch (error) {
-      if (!(error instanceof AppError) || error.code !== 'NOT_FOUND') throw error;
+      if (!isNotFound(error)) throw error;
       registry.recordMissing(id, path, events);
       continue;
     }
@@ -95,6 +95,6 @@ export async function recordMissingPlugins(directory: string, ids: readonly stri
   for (const id of ids.filter(entry => /^[a-z][a-z0-9-]*$/.test(entry))) {
     const path = `${directory}/${id}/manifest.json`;
     try { await files.stat(path); }
-    catch (error) { if (error instanceof AppError && error.code === 'NOT_FOUND') registry.recordMissing(id, path, events); }
+    catch (error) { if (isNotFound(error)) registry.recordMissing(id, path, events); }
   }
 }
