@@ -14,6 +14,8 @@ import { Registry, validatePluginManifest } from '../../src/application/plugins/
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { Workspace } from '../../src/application/workspace/workspace.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
+import { forgeVersion } from '../support/workspace.ts';
+import { commandAnnotations } from '../../src/application/plugins/command-metadata.ts';
 
 it('standalone entity, value-object, use-case and event scaffolds compile without runtime dependencies', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'agent-generators-'));
@@ -68,16 +70,21 @@ it('generates an installable plugin with a validated manifest and runnable lifec
       '.agent-cli/plugins/http-tools/manifest.json', '.agent-cli/plugins/http-tools/main.mjs',
     ]);
     const manifest = JSON.parse(new TextDecoder().decode(plan[0]!.bytes));
-    expect(() => validatePluginManifest(manifest)).not.toThrow();
+    expect(() => validatePluginManifest(manifest, forgeVersion)).not.toThrow();
     expect(manifest).toMatchObject({ id: 'http-tools', name: 'HTTPTools', version: '0.1.0', minAppVersion: '0.1.0' });
     await files.writeBatch(plan, false);
-    const registry = new Registry(skillFrontmatter);
+    const registry = new Registry(skillFrontmatter, forgeVersion);
     const events = new EventBus(new NodeEventScope());
     const workspace = new Workspace(files, new ObsidianDocuments(), events, false);
     const context = { workspace, events, root, workspaceRoot: root, project: null, ...scopeServices(workspace, events), input: async () => new Uint8Array() };
     await loadEnabledPlugins('.agent-cli/plugins', ['http-tools'], files, registry, events);
     const command = registry.commands.get('http-tools.hello')!;
     expect(command).toBeDefined();
+    // The read-only command declares its metadata, so help and schema publish it as safe to run.
+    // The host adds PLUGIN_UNAVAILABLE, which every plugin command can raise, to the declared (empty) errors.
+    expect(command).toMatchObject({ scope: 'workspace', mutating: false, options: {}, errors: ['PLUGIN_UNAVAILABLE'] });
+    expect(commandAnnotations(command)).toMatchObject({ readOnlyHint: true, destructiveHint: false, idempotentHint: true });
+    expect(registry.catalog.text('de', 'commands', 'http-tools.hello')).toBe('Dieses Plugin beschreiben');
     expect(await command.run([], {}, context)).toEqual({ plugin: 'http-tools', ready: false });
     await registry.activate(events, context);
     expect(await command.run([], {}, context)).toEqual({ plugin: 'http-tools', ready: true });

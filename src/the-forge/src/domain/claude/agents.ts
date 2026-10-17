@@ -1,5 +1,6 @@
 import { ensure, forgeError, isRecord } from '../shared/errors.ts';
 import { validateClaudeHooks } from './hooks.ts';
+import { jsonValueIssue, type JsonValueIssue } from '../shared/json-value.ts';
 
 /** Native Claude Code frontmatter stays extensible; omitted capabilities stay omitted. */
 export interface ClaudeAgentDocument { metadata: Record<string, unknown>; prompt: string }
@@ -10,15 +11,13 @@ function valid(condition: unknown, message: string): asserts condition {
 function nonempty(value: unknown): value is string { return typeof value === 'string' && value.trim().length > 0; }
 function strings(value: unknown): value is string[] { return Array.isArray(value) && value.every(nonempty); }
 
-function nativeValue(value: unknown, ancestors = new Set<object>(), depth = 0): void {
-  valid(depth < 100, 'Agent metadata is nested too deeply.');
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return;
-  if (typeof value === 'number') { valid(Number.isFinite(value), 'Agent metadata numbers must be finite.'); return; }
-  valid(typeof value === 'object' && (Array.isArray(value) || Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null), 'Agent metadata must contain JSON-compatible values.');
-  valid(!ancestors.has(value), 'Agent metadata must not contain cyclic references.');
-  ancestors.add(value);
-  for (const child of Object.values(value)) nativeValue(child, ancestors, depth + 1);
-  ancestors.delete(value);
+const jsonIssues: Readonly<Record<JsonValueIssue, string>> = {
+  depth: 'Agent metadata is nested too deeply.', number: 'Agent metadata numbers must be finite.',
+  type: 'Agent metadata must contain JSON-compatible values.', cycle: 'Agent metadata must not contain cyclic references.',
+};
+function nativeValue(value: unknown): void {
+  const issue = jsonValueIssue(value);
+  if (issue) valid(false, jsonIssues[issue]);
 }
 
 function stringMap(value: unknown, field: string): void {

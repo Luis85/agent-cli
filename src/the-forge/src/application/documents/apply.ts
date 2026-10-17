@@ -1,7 +1,10 @@
 import { AppError, ensure, forgeError, locatedError } from '../../domain/shared/errors.ts';
 import { revisionConflict } from '../../domain/documents/write-plan.ts';
 import { editRequest, type ApplyPlan, type PlanOperation } from '../../domain/documents/apply-plan.ts';
+import { base64Bytes } from '../../domain/documents/base64.ts';
 import { EventBus } from '../plugins/events.ts';
+import { registerHostEvents } from '../plugins/host-events.ts';
+import { isKernelMessage } from '../../domain/shared/kernel-messages.ts';
 import type { MetadataIndex } from '../metadata/ports.ts';
 import { metadataChanges } from '../metadata/cache-events.ts';
 import { FileManager } from '../vault/file-manager.ts';
@@ -17,15 +20,19 @@ export interface ApplyScope { workspace: Workspace; metadata: MetadataIndex; wor
 type Summary = { op: PlanOperation['op']; path: string } & Record<string, unknown>;
 type OperationSummary = Summary & { index: number };
 
-const base64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
-/** Planning publishes nothing: its records would describe changes that are not committed yet. */
-const silentEvents = () => new EventBus({ depth: () => 0, run: callback => callback() });
+/**
+ * Planning publishes no events: its records would describe changes that are not committed yet, so they stay on a bus
+ * of their own that knows the host events and has no listeners. Its warnings describe the plan and are kept.
+ */
+function silentEvents(): EventBus {
+  const bus = new EventBus({ depth: () => 0, run: callback => callback() });
+  registerHostEvents(bus);
+  return bus;
+}
 
 function contentBytes(content: string, encoding: 'utf8' | 'base64'): Uint8Array {
   if (encoding === 'utf8') return new TextEncoder().encode(content);
-  const text = content.trim();
-  ensure(base64.test(text), 'INVALID_ENCODING', 'Invalid base64 content.');
-  return Uint8Array.from(atob(text), character => character.charCodeAt(0));
+  return base64Bytes(content, 'Invalid base64 content.');
 }
 
 /** Prefixes a failure with the operation that caused it and records its index in `details.operation`. */
@@ -56,7 +63,8 @@ export class PlanRunner {
     const index = await metadata.fork(this.staged);
     let failure: unknown;
     const observer: CommitObserver = { async committed(batch) { try { await index.update(metadataChanges(batch)); } catch (error) { failure ??= error; } } };
-    const planned = new Workspace(this.staged, workspace.codec, silentEvents(), false, workspace.root, observer);
+    const planningEvents = silentEvents();
+    const planned = new Workspace(this.staged, workspace.codec, planningEvents, false, workspace.root, observer);
     this.planning = { workspace: planned, files: new FileManager(planned, index, { workspace: this.scope.workspaceScope }) };
     const operations: OperationSummary[] = [];
     for (const [position, item] of plan.operations.entries()) {
@@ -66,6 +74,8 @@ export class PlanRunner {
         if (failure !== undefined) throw failure;
       } catch (error) { throw located(error, position, item.op); }
     }
+    // Warnings of the planned operations (a move that drops an extension) describe the plan the batch commits.
+    for (const warning of planningEvents.warningRecords) if (isKernelMessage(warning)) workspace.warn(warning);
     const { batch, previous, trash, operations: owners } = await plannedBatch(this.staged, this.trash);
     // A delete whose files the plan created itself trashes nothing, so its trash path never exists.
     for (const summary of operations) if (summary.op === 'delete' && !trash.includes(String(summary.trashPath))) summary.trashPath = null;
@@ -85,10 +95,17 @@ export class PlanRunner {
     }
   }
 
-  /** `ifMatch` names the revision before the plan; the planned operation then runs against the planned revision. */
+  /**
+   * `ifMatch` names the revision before the plan; the planned operation then runs against the planned revision.
+   * Like the standalone commands' --if-match, it is required for every path that existed before the plan; only a
+   * path the plan itself creates (or one it moved away earlier) needs none.
+   */
   private async guard(path: string, ifMatch: string | undefined): Promise<void> {
-    if (ifMatch === undefined) return;
     const original = await this.staged.originalRevision(path);
+    if (ifMatch === undefined) {
+      ensure(original === null, 'CONFLICT', `${path} existed before the plan; pass ifMatch with the revision a read returned (error.details.currentRevision).`, revisionConflict(path, null, original));
+      return;
+    }
     ensure(original === ifMatch, 'CONFLICT', `${path} changed; read it again and use its current revision as ifMatch.`, revisionConflict(path, ifMatch, original));
   }
 
@@ -98,7 +115,6 @@ export class PlanRunner {
       case 'write': {
         const current = await this.staged.current(item.path);
         await this.guard(item.path, item.ifMatch);
-        if (current?.origin && item.ifMatch === undefined) throw forgeError('CONFLICT', `Replacing ${item.path} requires ifMatch with the revision it had before the plan.`, revisionConflict(item.path, null, current.origin.revision));
         await workspace.write([{ path: item.path, bytes: contentBytes(item.content, item.encoding), expectedRevision: current?.revision }]);
         return { op: 'write', path: item.path, operation: current ? 'updated' : 'created' };
       }

@@ -18,6 +18,15 @@ describe('backlog check messages', () => {
     expect(problems({ 'a.md': { type: 'Task' }, 'b.md': { type: 'Task' } }).map(problem => problem.message)).toEqual(['2 items have no rank and sort last; run backlog ranks seed.']);
   });
 
+  it('warns about notes hierarchyOnly hides, in the singular, the plural and German', () => {
+    const one = problems({ 'a.md': { type: 'Task', order: 1 }, 'First.md': { type: 'story', order: 2 } });
+    expect(one).toEqual([{ code: 'ignored', severity: 'warning', message: '1 note has no backlog type and no parent, so the backlog hides it (hierarchyOnly).', paths: ['First.md'] }]);
+    const two = problems({ 'First.md': { type: 'story', order: 1 }, 'Second.md': { type: 'story', order: 2 } });
+    expect(two.map(problem => [problem.code, problem.message, problem.paths])).toEqual([['ignored', '2 notes have no backlog type and no parent, so the backlog hides them (hierarchyOnly).', ['First.md', 'Second.md']]]);
+    expect(localizedCheck({ problems: two }, 'de').problems[0]!.message).toBe('2 Notizen haben keinen Backlog-Typ und keinen übergeordneten Eintrag, daher blendet das Backlog sie aus (hierarchyOnly).');
+    expect(problems({ 'First.md': { type: 'story', order: 1 } }, resolveSettings({ stateProperty: 'note.status', hierarchyOnly: false }))).toEqual([]);
+  });
+
   it('reports problems in German with titles and values as written, keeping codes and fields', () => {
     const english = { ok: false, problems: [
       ...problems({ 'a.md': { type: 'Task', order: 1 }, 'b.md': { type: 'Task', order: 1 } }),

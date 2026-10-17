@@ -40,8 +40,8 @@ it('preserves revisions and rejects collisions before committing a batch', async
 it('dry runs leave the complete root untouched and predict relative results', async () => {
   const preview = await project.writeBatch([write('new/deep.md')], true);
   expect(await readdir(root)).toEqual([]);
-  expect(preview).toMatchObject({ changes: [{ path: 'new/deep.md', operation: 'created' }], folders: [] });
-  expect(await project.writeBatch([write('new/deep.md')], false)).toEqual({ ...preview, folders: ['new'] });
+  expect(preview).toMatchObject({ changes: [{ path: 'new/deep.md', operation: 'created' }], folders: ['new'] });
+  expect(await project.writeBatch([write('new/deep.md')], false)).toEqual(preview);
 });
 
 it.each(['../beta/hidden.md', '/outside.md', 'a/../../outside.md', 'a\\b.md', '.git/config', '.agent-cli.lock'])('rejects unsafe project-relative path %s before prefixing', async path => {

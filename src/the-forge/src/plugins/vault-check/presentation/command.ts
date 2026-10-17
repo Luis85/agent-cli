@@ -1,16 +1,18 @@
-import type { Command, CommandContext } from '../../../application/plugins/registry.ts';
-import { option } from '../../../application/plugins/command-metadata.ts';
+import type { Command, PluginContext } from '../../../application/plugins/registry.ts';
+import { option, type CommandFlags } from '../../../application/plugins/command-metadata.ts';
 import { arity, value } from '../../../application/plugins/command-input.ts';
-import { pathGlob } from '../../../domain/documents/path-glob.ts';
+import { pathFilter, pathGlob, recordingFilter } from '../../../domain/documents/path-glob.ts';
+import { kernelMessage } from '../../../domain/shared/kernel-messages.ts';
 import { ensure } from '../../../domain/shared/errors.ts';
+import { PluginFailure } from '../../../domain/shared/plugin-failure.ts';
 import { checkVault, type CheckReport } from '../application/check.ts';
-import { vaultProperties, vaultTags } from '../application/inventory.ts';
+import { vaultProperties, vaultTags, type InventoryScope } from '../application/inventory.ts';
 import type { VaultSources } from '../application/sources.ts';
 import { tagSorts, type TagSort } from '../domain/inventory.ts';
 import {
   compareFindings, effectiveSeverities, isRuleId, ruleIds, severities, type Detection, type Finding, type RuleId, type RuleSetting, type Severity,
 } from '../domain/rules.ts';
-import { fill } from './messages.ts';
+import { fill } from '../../../domain/shared/messages.ts';
 import { vaultOutput } from './output.ts';
 
 const actions = ['check', 'tags', 'properties'] as const;
@@ -57,10 +59,8 @@ function checkResult(report: CheckReport, service: VaultService, settings: Recor
   if (strict && summary.error > 0) {
     const errors = findings.filter(finding => finding.severity === 'error');
     const byRule = rules.filter(rule => rule.severity === 'error' && rule.findings > 0).map(rule => `${rule.findings} ${rule.id}`).join(', ');
-    throw Object.assign(new Error(`vault check --strict found ${summary.error} error finding${summary.error === 1 ? '' : 's'} (${byRule}).`), {
-      code: 'VAULT_CHECK_FAILED',
-      details: { summary, rules, findings: errors.slice(0, failureFindings), truncated: errors.length > failureFindings },
-    });
+    throw new PluginFailure('VAULT_CHECK_FAILED', `vault check --strict found ${summary.error} error finding${summary.error === 1 ? '' : 's'} (${byRule}).`,
+      { summary, rules, findings: errors.slice(0, failureFindings), truncated: errors.length > failureFindings });
   }
   return { findings, summary, rules, skipped, strict };
 }
@@ -69,11 +69,11 @@ function checkResult(report: CheckReport, service: VaultService, settings: Recor
  * The `vault` command: `check` (the default) reports broken links and embeds, invalid notes, Canvas and Bases files
  * and inconsistent structure; `tags` and `properties` inventory the vault. Read-only; `service` binds one context.
  */
-export function vaultCommand(service: (context: CommandContext) => VaultService): Command {
+export function vaultCommand(service: (context: PluginContext) => VaultService): Command<PluginContext> {
   return {
     id: 'vault', description: 'Check the vault for broken links, invalid files and inconsistent properties, and inventory its tags and properties.',
-    usage: 'vault [check] [--path glob] [--rule id[,id…]] [--strict] | tags [--path glob] [--sort name|count] | properties [--path glob] [--name property]',
-    scope: 'project', discovery: false, mutating: false, defaultAction: 'check', unknownAction: 'INVALID_ARGUMENT',
+    usage: 'vault [check] [--path glob] [--rule id[,id…]] [--strict] | tags [--path glob] [--sort name|count] | properties [--path glob] [--name property] [--project id]',
+    scope: 'project', projectOption: 'project', discovery: false, mutating: false, defaultAction: 'check', unknownAction: 'INVALID_ARGUMENT',
     actions: {
       check: {
         output: vaultOutput.check,
@@ -98,28 +98,38 @@ export function vaultCommand(service: (context: CommandContext) => VaultService)
       },
     },
     args: [{ name: 'action', description: 'check (default), tags or properties.', enum: actions }],
-    options: { path: option.string('Only files whose root-relative path matches this glob.') },
+    options: {
+      path: option.string('Only files whose root-relative path matches this glob, or that are this file or below this folder.'),
+      project: option.string('Use this project instead of the selected project.'),
+    },
     errors: ['VAULT_CHECK_FAILED'],
     async run(args, flags, context) {
       arity(args, 0, 1);
       const action = args[0] ?? 'check';
       ensure((actions as readonly string[]).includes(action), 'INVALID_ARGUMENT', `Use vault ${actions.join(', vault ')}.`);
       const vault = service(context);
-      const glob = value(flags, 'path'), include = glob === undefined ? () => true : pathGlob(glob);
+      const glob = value(flags, 'path'), filter = recordingFilter(glob === undefined ? () => true : pathFilter(glob));
       const ignores = vault.ignore.map(pattern => pathGlob(pattern, 'plugins.settings.vault-check.ignore'));
-      const scope = { include, ignored: (path: string) => ignores.some(ignored => ignored(path)) };
-      if (action === 'tags') {
-        const sort = value(flags, 'sort') ?? 'name';
-        return vaultTags(vault.sources, scope, sort as TagSort);
-      }
-      if (action === 'properties') {
-        const name = value(flags, 'name');
-        ensure(name === undefined || name.trim().length > 0, 'INVALID_ARGUMENT', '--name must name a property.');
-        return vaultProperties(vault.sources, scope, name);
-      }
-      const settings = effectiveSeverities(vault.rules);
-      const report = await checkVault(vault.sources, { ...scope, severities: settings, selected: selectedRules(value(flags, 'rule')) });
-      return checkResult(report, vault, settings, flags.strict === true);
+      const scope = { include: filter.matches, ignored: (path: string) => ignores.some(ignored => ignored(path)) };
+      const result = await inventory(vault, scope, action, flags);
+      if (glob !== undefined && !filter.matched()) context.events.warn(kernelMessage('PATH_MATCHED_NOTHING', { option: '--path', pattern: glob }));
+      return result;
     },
   };
+}
+
+/** The result of one `vault` action over the filtered scope. */
+async function inventory(vault: VaultService, scope: InventoryScope, action: string, flags: CommandFlags): Promise<unknown> {
+  if (action === 'tags') {
+    const sort = value(flags, 'sort') ?? 'name';
+    return vaultTags(vault.sources, scope, sort as TagSort);
+  }
+  if (action === 'properties') {
+    const name = value(flags, 'name');
+    ensure(name === undefined || name.trim().length > 0, 'INVALID_ARGUMENT', '--name must name a property.');
+    return vaultProperties(vault.sources, scope, name);
+  }
+  const settings = effectiveSeverities(vault.rules);
+  const report = await checkVault(vault.sources, { ...scope, severities: settings, selected: selectedRules(value(flags, 'rule')) });
+  return checkResult(report, vault, settings, flags.strict === true);
 }

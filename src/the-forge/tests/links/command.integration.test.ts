@@ -14,6 +14,7 @@ import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { linksPlugin } from '../../src/plugins/links/plugin.ts';
 import { scopeServices } from '../support/metadata.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
+import { forgeVersion } from '../support/workspace.ts';
 
 let root: string;
 const put = async (path: string, content: string) => {
@@ -22,7 +23,7 @@ const put = async (path: string, content: string) => {
 };
 /** Registers the links core plugin like the composition root, with `settings` as plugins.settings. */
 async function links(settings: Record<string, unknown> = {}) {
-  const registry = new Registry(skillFrontmatter), events = new EventBus(new NodeEventScope());
+  const registry = new Registry(skillFrontmatter, forgeVersion), events = new EventBus(new NodeEventScope());
   registerHostEvents(events);
   registerCorePlugins(registry, events, [linksPlugin], testHost({ skills: registrySkills(registry), fileDates: () => { throw new Error('links reads no file dates'); } }), []);
   await registry.configure(settings, async () => [], message => events.warn(message));
@@ -65,7 +66,7 @@ describe('the links command', () => {
 
   it('validates actions, arguments and options', async () => {
     const run = await links();
-    for (const [args, flags] of [[[], {}], [['sideways'], {}], [['out'], {}], [['out', 'a.md', 'b.md'], {}], [['back', 'notes/a.md'], { path: '**' }], [['orphans', 'x'], {}], [['unresolved'], { path: '{' }], [['orphans'], { path: '[z-a]' }]] as const) {
+    for (const [args, flags] of [[[], {}], [['sideways'], {}], [['out'], {}], [['out', 'a.md', 'b.md'], {}], [['orphans', 'x'], {}], [['unresolved'], { path: '{' }], [['orphans'], { path: '[z-a]' }]] as const) {
       await expect(run([...args], { ...flags }), JSON.stringify(args)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
     }
     await expect(run(['out', 'notes/missing.md'])).rejects.toMatchObject({ code: 'NOT_FOUND' });

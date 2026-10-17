@@ -1,14 +1,18 @@
 import { forgeError, AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
+import { isNotFound, readOrMissing } from '../../domain/shared/not-found.ts';
 import { vaultPath, type FileSnapshot, type WriteRequest } from '../../domain/documents/file.ts';
 import type { FileRepository } from '../workspace/ports.ts';
 import type { Workspace } from '../workspace/workspace.ts';
 import type { EventBus } from '../plugins/events.ts';
 import { publishHostEvent } from '../plugins/host-events.ts';
+import { decodeUtf8 } from '../../domain/shared/utf8.ts';
 
 export type ComponentKind = 'domain' | 'application';
 export type ProjectType = 'library' | 'webview';
 export interface ProjectMetadata { schemaVersion: 1; name: string; type: ProjectType }
 export interface ProjectInfo extends ProjectMetadata { directory: string }
+/** A directory with a project marker that does not describe a valid project, with the failure it reports. */
+export interface InvalidProject { directory: string; code: string; reason: string }
 interface ProjectSelection { name: string; directory: string }
 /**
  * The files of a new project and of a project component. The `scaffolds` core plugin provides it as the service
@@ -34,12 +38,33 @@ export class ProjectService {
     vaultPath(projectsDirectory);
   }
 
+  /** Every valid project, and every directory whose project marker is invalid, so one bad project hides no other. */
+  async discover(): Promise<{ projects: ProjectInfo[]; invalid: InvalidProject[] }> {
+    const entries = await this.inspectAll();
+    return { projects: entries.flatMap(entry => entry.project ?? []), invalid: entries.flatMap(entry => entry.invalid ?? []) };
+  }
+
+  /** Every project; an invalid one fails, so callers that act on all projects never act on a partial set. */
   async list(): Promise<ProjectInfo[]> {
+    const entries = await this.inspectAll();
+    const failed = entries.find(entry => entry.error !== undefined);
+    if (failed) throw failed.error;
+    return entries.flatMap(entry => entry.project ?? []);
+  }
+
+  /** Each marked project directory in name order: its project, or the INVALID_PROJECT(_NAME) failure it reports. */
+  private async inspectAll(): Promise<Array<{ project?: ProjectInfo; invalid?: InvalidProject; error?: AppError }>> {
     const prefix = `${this.projectsDirectory}/`;
     const names = (await this.files.list()).filter(path => path.startsWith(prefix))
       .map(path => path.slice(prefix.length)).filter(path => /^[^/]+\/\.forge\/project\.json$/.test(path))
       .map(path => path.split('/')[0]!).sort();
-    return Promise.all(names.map(name => this.inspect(name)));
+    return Promise.all(names.map(async name => {
+      try { return { project: await this.inspect(name) }; }
+      catch (error) {
+        if (!(error instanceof AppError) || !['INVALID_PROJECT', 'INVALID_PROJECT_NAME'].includes(error.code)) throw error;
+        return { error, invalid: { directory: `${prefix}${name}`, code: error.code, reason: error.message } };
+      }
+    }));
   }
 
   async inspect(name: string): Promise<ProjectInfo> {
@@ -47,13 +72,16 @@ export class ProjectService {
     let marker;
     try { marker = await this.files.read(`${directory}/.forge/project.json`); }
     catch (error) {
-      if (error instanceof AppError && error.code === 'NOT_FOUND') throw forgeError('PROJECT_NOT_FOUND', `No Forge project named ${name} in ${this.projectsDirectory}.`);
+      if (isNotFound(error)) throw forgeError('PROJECT_NOT_FOUND', `No Forge project named ${name} in ${this.projectsDirectory}.`);
       throw error;
     }
     let metadata: unknown;
-    try { metadata = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(marker.bytes)); }
-    catch { throw forgeError('INVALID_PROJECT', `Invalid project metadata: ${directory}/.forge/project.json`); }
-    ensure(isRecord(metadata) && metadata.schemaVersion === 1 && metadata.name === name && (metadata.type === 'library' || metadata.type === 'webview'), 'INVALID_PROJECT', `Expected schemaVersion 1, matching name and library or webview type in ${directory}/.forge/project.json.`);
+    try { metadata = JSON.parse(decodeUtf8(marker.bytes)); }
+    catch { throw forgeError('INVALID_PROJECT', `Invalid project metadata: ${directory}/.forge/project.json`, { directory }); }
+    const path = `${directory}/.forge/project.json`;
+    ensure(isRecord(metadata) && metadata.schemaVersion === 1, 'INVALID_PROJECT', `Expected schemaVersion 1 in ${path}.`, { directory });
+    ensure(metadata.name === name, 'INVALID_PROJECT', `${path} names the project ${JSON.stringify(metadata.name)}, but its directory is ${name}; set name to ${name} or rename the directory to match.`, { directory, expected: name, found: metadata.name ?? null });
+    ensure(metadata.type === 'library' || metadata.type === 'webview', 'INVALID_PROJECT', `Expected type library or webview in ${path}.`, { directory });
     return { schemaVersion: 1, name, type: metadata.type, directory };
   }
 
@@ -63,12 +91,12 @@ export class ProjectService {
     if (selection === null) return null;
     const { name, directory } = selection;
     if (directory !== `${this.projectsDirectory}/${name}`) {
-      throw forgeError('STALE_PROJECT_CONTEXT', `Selected project ${directory} differs from the configured projects directory. Run project open <name> to explicitly select a project, or project close to clear the selection.`);
+      throw forgeError('STALE_PROJECT_CONTEXT', `Selected project ${directory} differs from the configured projects directory. Run project open <name> to explicitly select a project, or project close to clear the selection.`, { project: name, directory, projectsDirectory: this.projectsDirectory });
     }
     try { return await this.inspect(name); }
     catch (error) {
       if (error instanceof AppError && ['PROJECT_NOT_FOUND', 'INVALID_PROJECT'].includes(error.code)) {
-        throw forgeError('STALE_PROJECT_CONTEXT', `Selected project ${name} is missing or invalid. Run project open <name> to select a valid project, or project close to clear the selection.`);
+        throw forgeError('STALE_PROJECT_CONTEXT', `Selected project ${name} is missing or invalid. Run project open <name> to select a valid project, or project close to clear the selection.`, { project: name, directory, cause: error.code, reason: error.message });
       }
       throw error;
     }
@@ -115,16 +143,12 @@ export class ProjectService {
   }
 
   private async contextSnapshot(): Promise<FileSnapshot | null> {
-    try { return await this.files.read('bin/data/context.json'); }
-    catch (error) {
-      if (error instanceof AppError && error.code === 'NOT_FOUND') return null;
-      throw error;
-    }
+    return (await readOrMissing(() => this.files.read('bin/data/context.json'))) ?? null;
   }
 
   private contextProject(snapshot: FileSnapshot): ProjectSelection | null {
     try {
-      const context: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(snapshot.bytes));
+      const context: unknown = JSON.parse(decodeUtf8(snapshot.bytes));
       ensure(isRecord(context) && context.schemaVersion === 1 && (context.project === null || typeof context.project === 'string'), 'INVALID_PROJECT_CONTEXT', 'Invalid project context.');
       if (context.project === null) return null;
       const name = projectName(context.project);

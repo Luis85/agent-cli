@@ -17,7 +17,9 @@ describe('guarded filesystem', () => {
   it('creates, reads and updates with optimistic revisions', async () => {
     await files.writeBatch([write('notes/a.md')], false);
     const before = await files.read('notes/a.md');
-    await expect(files.writeBatch([write('notes/a.md')], false)).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(files.writeBatch([write('notes/a.md', 'Other')], false)).rejects.toMatchObject({ code: 'CONFLICT', message: 'File already exists: notes/a.md. Replace it with write --if-match and its currentRevision, or change it with edit.' });
+    // A retried create of the same bytes finds its own result.
+    expect(await files.writeBatch([write('notes/a.md')], false)).toEqual({ changes: [{ path: 'notes/a.md', revision: before.revision, operation: 'unchanged', bytes: 5, alreadyApplied: true }], folders: [] });
     await files.writeBatch([{ ...write('notes/a.md', 'Changed'), expectedRevision: before.revision }], false);
     await expect(files.writeBatch([{ ...write('notes/a.md'), expectedRevision: before.revision }], false)).rejects.toMatchObject({ code: 'CONFLICT' });
     expect(await readFile(join(root, 'notes/a.md'), 'utf8')).toBe('Changed');
@@ -39,8 +41,10 @@ describe('guarded filesystem', () => {
     expect((await readdir(root)).sort()).toEqual(['a.md', 'b.md']);
   });
   it('dry runs leave no files, directories or lock', async () => {
-    expect(await files.writeBatch([write('new/deep/note.md')], true)).toMatchObject({ changes: [{ operation: 'created' }], folders: [] });
+    const preview = await files.writeBatch([write('new/deep/note.md')], true);
+    expect(preview).toMatchObject({ changes: [{ operation: 'created' }], folders: ['new', 'new/deep'] });
     expect(await readdir(root)).toEqual([]);
+    expect(await files.writeBatch([write('new/deep/note.md')], false)).toEqual(preview);
   });
   it('preflights all collisions before writing a batch', async () => {
     await writeFile(join(root, 'existing.md'), 'Old');
@@ -165,7 +169,8 @@ describe('guarded filesystem', () => {
     const workspace = new Workspace(files, new ObsidianDocuments(), events, false);
     await expect(workspace.write([write('bad.canvas', '{"nodes":42}')])).rejects.toThrow();
     await workspace.write([write('note.md')]);
-    await expect(workspace.write([write('note.md')])).rejects.toThrow();
+    await expect(workspace.write([write('note.md', 'Other')])).rejects.toThrow();
+    expect(await workspace.write([write('note.md')])).toMatchObject({ changes: [{ operation: 'unchanged', alreadyApplied: true }] });
     expect(listener).toHaveBeenCalledTimes(1);
   });
 });

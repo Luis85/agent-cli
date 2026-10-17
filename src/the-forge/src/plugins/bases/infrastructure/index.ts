@@ -4,10 +4,12 @@ import type { FileDates } from '../../../application/plugins/core-plugins.ts';
 import type { FileRepository } from '../../../application/workspace/ports.ts';
 import { allTags } from '../../../domain/metadata/cache.ts';
 import { closestDestination } from '../../../domain/metadata/link-resolution.ts';
-import { forgeError, AppError, ensure, isRecord } from '../../../domain/shared/errors.ts';
+import { isRecord } from '../../../domain/shared/errors.ts';
+import { readOrMissing } from '../../../domain/shared/not-found.ts';
 import type { BaseIndexWarning } from '../application/query.ts';
 import { fill } from '../../../domain/shared/messages.ts';
 import { indexMessages } from '../application/messages.ts';
+import { basesError, ensureBases } from '../domain/errors.ts';
 
 const pendingFileReads = 16;
 const isMarkdown = (path: string) => path.toLowerCase().endsWith('.md');
@@ -115,18 +117,19 @@ export function sharedBaseIndex(cache: MetadataCache, dates: (path: string) => P
 }
 
 export async function basePropertyTypes(files: FileRepository): Promise<Record<string, PropertyValueType>> {
+  const file = await readOrMissing(() => files.read('.obsidian/types.json'));
+  if (!file) return {};
   let data: unknown;
-  try { data = JSON.parse(new TextDecoder().decode((await files.read('.obsidian/types.json')).bytes)); }
+  try { data = JSON.parse(new TextDecoder().decode(file.bytes)); }
   catch (error) {
-    if (error instanceof AppError && error.code === 'NOT_FOUND') return {};
-    if (error instanceof SyntaxError) throw forgeError('INVALID_BASE_PROPERTY_TYPES', '.obsidian/types.json must contain valid JSON.');
+    if (error instanceof SyntaxError) throw basesError('INVALID_BASE_PROPERTY_TYPES', '.obsidian/types.json must contain valid JSON.');
     throw error;
   }
-  ensure(isRecord(data) && isRecord(data.types), 'INVALID_BASE_PROPERTY_TYPES', '.obsidian/types.json must contain a types mapping.');
+  ensureBases(isRecord(data) && isRecord(data.types), 'INVALID_BASE_PROPERTY_TYPES', '.obsidian/types.json must contain a types mapping.');
   const names: Record<string, PropertyValueType> = { text: 'string', multitext: 'list', tags: 'list', aliases: 'list', number: 'number', checkbox: 'boolean', date: 'date', datetime: 'date' };
   const result: Record<string, PropertyValueType> = {};
   for (const [property, type] of Object.entries(data.types)) {
-    ensure(typeof type === 'string' && Object.hasOwn(names, type), 'UNSUPPORTED_BASE_PROPERTY_TYPE', `Unsupported Obsidian property type for ${property}: ${String(type)}`);
+    ensureBases(typeof type === 'string' && Object.hasOwn(names, type), 'UNSUPPORTED_BASE_PROPERTY_TYPE', `Unsupported Obsidian property type for ${property}: ${String(type)}`);
     result[property] = names[type]!;
   }
   return result;

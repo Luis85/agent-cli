@@ -7,10 +7,11 @@ import type { JsonSchema } from '../../src/domain/schema/json-schema.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 import { englishWarning } from '../support/events.ts';
 import { renderKernelMessage } from '../../src/domain/shared/kernel-messages.ts';
+import { forgeVersion } from '../support/workspace.ts';
 
 const manifest = (id: string): PluginManifest => ({ id, name: id, version: '1.0.0', minAppVersion: '0.1.0', description: 'Availability test', author: 'Test' });
 const setup = () => {
-  const registry = new Registry(skillFrontmatter), events = new EventBus(new NodeEventScope());
+  const registry = new Registry(skillFrontmatter, forgeVersion), events = new EventBus(new NodeEventScope());
   registerHostEvents(events);
   return { registry, events };
 };

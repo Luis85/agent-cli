@@ -3,13 +3,12 @@ import { link, open, readFile, rm, unlink } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import metadata from '../../../package.json';
 import type { RecoveredLock, StaleReason } from '../../application/workspace/ports.ts';
-import { forgeError, type AppError } from '../../domain/shared/errors.ts';
+import { AppError, forgeError, locatedError } from '../../domain/shared/errors.ts';
+import { temporaryPrefix, writerLockName } from '../../domain/documents/file.ts';
 import { kernelMessage, type KernelMessage, type KernelMessageCode } from '../../domain/shared/kernel-messages.ts';
 import { errorCode, heldTokens, inspectLock, ownHolder, text, tokenOf, type LockInspection } from './lock-holder.ts';
 import { retryTransient } from './retry.ts';
 
-export { hostIdentity, inspectLock } from './lock-holder.ts';
-export const lockName = '.agent-cli.lock';
 /** Invocation details supplied by composition code; the filesystem adapter cannot know them. */
 export interface LockOwner { command?: string; operationId?: number }
 export type LockRelease = 'released' | 'missing' | 'foreign';
@@ -30,7 +29,7 @@ const deniedCodes = new Set(['EPERM', 'EACCES']);
 /** Creation attempts of one acquisition: the first, and retries after the lock disappeared or a stale one was broken. */
 const acquireAttempts = 3;
 /** Temporary names next to the lock: skipped by folder listings and revisions like the lock itself. */
-const temporaryName = (path: string, kind: string) => join(dirname(path), `.agent-cli-tmp-${kind}-${randomUUID()}`);
+const temporaryName = (path: string, kind: string) => join(dirname(path), `${temporaryPrefix}${kind}-${randomUUID()}`);
 
 function ownerDetails(owner: () => LockOwner): LockOwner {
   try {
@@ -47,7 +46,7 @@ function ownerDetails(owner: () => LockOwner): LockOwner {
  * contender holds the break guard, the lock is being recovered and the failure asks for a retry. Any other existing
  * lock fails with WORKSPACE_BUSY.
  */
-export async function acquireLock(path: string, owner: () => LockOwner, display = lockName, recovered: (lock: RecoveredLock) => void = () => {}): Promise<string> {
+export async function acquireLock(path: string, owner: () => LockOwner, display = writerLockName, recovered: (lock: RecoveredLock) => void = () => {}): Promise<string> {
   const token = randomUUID();
   const record = { ...(await ownHolder()), ...ownerDetails(owner), forgeVersion: metadata.version, token };
   const content = JSON.stringify(record) + '\n';
@@ -66,6 +65,28 @@ export async function acquireLock(path: string, owner: () => LockOwner, display 
     if (outcome.broken) recovered({ path: display, holder: found.lock!, reason: found.reason! });
     if (outcome.guard?.stale === 'unknown') throw busy(guardDisplay(display), outcome.guard);
     breaker = outcome.guard;
+  }
+}
+
+/** The delay a retryable WORKSPACE_BUSY suggests in `details.retryAfterMs`, and the longest pause between waiting attempts. */
+export const retryAfterMs = 250;
+
+/**
+ * `acquireLock`, repeated while it fails with a retryable WORKSPACE_BUSY (a running holder, or a stale lock another
+ * writer is removing) until `waitMs` milliseconds have passed. Pauses grow from 25 ms to `retryAfterMs`. A lock that
+ * needs a person (holder unverifiable, or a stale lock that could not be removed) fails at once. After waiting, the
+ * failure reports the time waited in `details.waitedMs`.
+ */
+export async function acquireLockWithin(waitMs: number, ...lock: Parameters<typeof acquireLock>): Promise<string> {
+  const started = Date.now();
+  for (let pause = 25; ; pause = Math.min(pause * 2, retryAfterMs)) {
+    try { return await acquireLock(...lock); }
+    catch (error) {
+      if (!(error instanceof AppError) || error.code !== 'WORKSPACE_BUSY' || error.retryable !== true || waitMs <= 0) throw error;
+      const waited = Date.now() - started, remaining = waitMs - waited;
+      if (remaining <= 0) throw locatedError(error, '', { waitedMs: waited });
+      await new Promise(resolve => setTimeout(resolve, Math.min(pause, remaining)));
+    }
   }
 }
 
@@ -99,7 +120,7 @@ async function create(path: string, content: string): Promise<boolean> {
 }
 
 /** The guard a contender holds while it breaks the stale lock at `path`; skipped by listings like the lock itself. */
-const guardName = (path: string) => `.agent-cli-tmp-break-${basename(path)}`;
+const guardName = (path: string) => `${temporaryPrefix}break-${basename(path)}`;
 const guardPath = (path: string) => join(dirname(path), guardName(path));
 /** The guard of a displayed lock path, displayed the same way (relative to the root, `/`-separated). */
 const guardDisplay = (display: string) => `${display.slice(0, display.lastIndexOf('/') + 1)}${guardName(display)}`;
@@ -179,6 +200,18 @@ export async function releaseLock(path: string, token: string): Promise<LockRele
   } finally { heldTokens.delete(token); }
 }
 
+/**
+ * Fails with WORKSPACE_BUSY when a lock exists at `path` whose holder may still run; `display` names it in the error.
+ * Nothing here waits (`--wait` covers only the locks a writer takes), so a running holder is reported with
+ * `details.nestedWriter: "running"`, whose hint says to retry once that writer finished.
+ */
+export async function ensureNotHeld(path: string, display: string): Promise<void> {
+  const found = await inspectLock(path);
+  if (found.missing === true || found.stale === 'stale') return;
+  const failure = busy(display, found);
+  throw found.stale === 'active' ? locatedError(failure, '', { nestedWriter: 'running' }) : failure;
+}
+
 const describeHolder = (lock: LockInspection['lock']) => (lock ? ` (pid ${lock.pid} on ${lock.hostname} since ${lock.startedAt}${lock.command ? `, command ${lock.command}` : ''})` : '');
 
 /**
@@ -189,7 +222,7 @@ const describeHolder = (lock: LockInspection['lock']) => (lock ? ` (pid ${lock.p
 function busy(display: string, inspection: LockInspection, failure?: string): AppError {
   const { lock, stale, reason } = inspection;
   const holder = describeHolder(lock);
-  const details = { lock, stale, path: display, ...(reason ? { reason } : {}) };
+  const details = { lock, stale, path: display, ...(reason ? { reason } : {}), ...(stale === 'active' ? { retryAfterMs } : {}) };
   const message = stale === 'active'
     ? `Lock ${display} is held${holder} by a running Forge process or one still writing it. Wait for it to finish and retry.`
     : stale === 'stale'
@@ -204,6 +237,6 @@ function busy(display: string, inspection: LockInspection, failure?: string): Ap
  */
 function recovering(display: string, inspection: LockInspection, breaker?: LockInspection): AppError {
   const { lock, reason } = inspection;
-  const details = { lock, stale: 'active', path: display, ...(reason ? { reason } : {}), ...(breaker?.lock ? { breaker: breaker.lock } : {}) };
+  const details = { lock, stale: 'active', path: display, ...(reason ? { reason } : {}), ...(breaker?.lock ? { breaker: breaker.lock } : {}), retryAfterMs };
   return forgeError('WORKSPACE_BUSY', `Lock ${display}${describeHolder(lock)} is stale (${reason}), and another Forge process${describeHolder(breaker?.lock ?? null)} is removing it. Retry in a moment.`, details, undefined, true);
 }

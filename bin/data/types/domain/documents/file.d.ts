@@ -1,5 +1,19 @@
-/** Reserved names also cover case-insensitive filesystems and Windows trailing-dot/space aliases. */
+/** The workspace writer lock's file name at a workspace (or nested) root. */
+export declare const writerLockName = ".agent-cli.lock";
+/** The prefix of Forge's temporary files: staged writes, parked removals, lock records and break guards. */
+export declare const temporaryPrefix = ".agent-cli-tmp-";
+/**
+ * Whether `segment` names `name` (lower case) on some filesystem: in another letter case, with trailing dots or
+ * spaces (Windows), with ignorable code points (HFS+), or as a Windows 8.3 short name.
+ */
+export declare function aliasesName(segment: string, name: string): boolean;
+/** Reserved names also cover case-insensitive filesystems, Windows trailing-dot/space and short-name aliases and HFS+ ignorable code points. */
 export declare function reservedPathSegment(segment: string): 'git' | 'internal' | undefined;
+/**
+ * Whether `segment` is a Windows reserved device name in any letter case, alone or with an extension, and with
+ * trailing dots or spaces before or after the extension (`con`, `NUL.md`, `Com1 .txt`, `lpt9.tar.gz.`).
+ */
+export declare function isDeviceName(segment: string): boolean;
 export declare function vaultPath(input: string): string;
 /** Obsidian's vault trash: `delete` moves files here unless `--permanent` is passed. It is hidden from the metadata cache. */
 export declare const trashFolder = ".trash";
@@ -48,11 +62,17 @@ export interface WriteRequest {
     bytes: Uint8Array;
     expectedRevision?: string;
 }
+/**
+ * One file change in batch order. `unchanged` is a write whose bytes equal the stored file: nothing is written or
+ * published. `alreadyApplied` marks such a write whose revision guard did not match (an existing file for a create,
+ * or a stale revision): the file already holds exactly the requested bytes, as after a retried request.
+ */
 export interface FileChange {
     path: string;
     revision: string;
-    operation: 'created' | 'updated' | 'deleted';
+    operation: 'created' | 'updated' | 'deleted' | 'unchanged';
     bytes: number;
+    alreadyApplied?: true;
 }
 /** A guarded move of a file or folder. A folder's `expectedRevision` is its folder revision (see `FileStat`). */
 export interface RenameRequest {

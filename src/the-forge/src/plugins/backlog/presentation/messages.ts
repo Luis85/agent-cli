@@ -25,6 +25,8 @@ export const germanCheckMessages: Record<CheckMessage, string> = {
   rankTie: '{count} Einträge teilen sich den Rang {rank}; Gleichstände folgen der Ergebnisreihenfolge.',
   unrankedOne: '1 Eintrag hat keinen Rang und steht am Ende; führen Sie backlog ranks seed aus.',
   unranked: '{count} Einträge haben keinen Rang und stehen am Ende; führen Sie backlog ranks seed aus.',
+  ignoredOne: '1 Notiz hat keinen Backlog-Typ und keinen übergeordneten Eintrag, daher blendet das Backlog sie aus (hierarchyOnly).',
+  ignored: '{count} Notizen haben keinen Backlog-Typ und keinen übergeordneten Eintrag, daher blendet das Backlog sie aus (hierarchyOnly).',
   sharedKey: 'Die Eigenschaften {roles} verwenden alle den Schlüssel "{key}".',
   sharedReleaseKey: 'Die Release-Eigenschaften {roles} verwenden alle den Schlüssel "{key}".',
   releasedDateIsTarget: 'Das Veröffentlichungsdatum und das Zieldatum verwenden denselben Schlüssel "{key}".',

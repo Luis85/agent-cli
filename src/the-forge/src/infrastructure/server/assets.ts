@@ -1,5 +1,6 @@
 import { lstat, readFile, readdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
+import { isWebviewManifest } from '../../domain/server/webview-manifest.ts';
 
 export interface WebviewAsset { id: string; name: string; directory: string }
 
@@ -25,9 +26,7 @@ export async function discoverWebviews(distributionPath: string): Promise<Webvie
         // optional views cannot fail discovery or hold startup open indefinitely.
         if (!(await lstat(manifestPath)).isFile()) continue;
         const manifest: unknown = JSON.parse(await readFile(manifestPath, 'utf8'));
-        if (!manifest || typeof manifest !== 'object' || !('id' in manifest) || manifest.id !== entry.name ||
-          !('name' in manifest) || typeof manifest.name !== 'string' || !manifest.name.trim() ||
-          !('entry' in manifest) || manifest.entry !== 'index.html') continue;
+        if (!isWebviewManifest(manifest, entry.name)) continue;
         const asset = { id: entry.name, name: manifest.name, directory };
         if (await readAsset([asset], `/views/${entry.name}/`)) assets.push(asset);
       } catch (error) {

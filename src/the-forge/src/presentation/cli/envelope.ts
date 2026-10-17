@@ -42,7 +42,17 @@ const common: Record<string, JsonSchema> = {
     type: 'array', description: 'Event records selected by --events: committed vault.* records by default.',
     items: { type: 'object', required: ['id', 'payload'], properties: { id: text, payload: {} } },
   },
-  warnings: { type: 'array', items: text, description: 'Nonfatal problems, such as failed event listeners after a committed write.' },
+  warnings: {
+    type: 'array', description: 'Nonfatal problems, such as failed event listeners after a committed write; match on code, not message.',
+    items: {
+      type: 'object', additionalProperties: false, required: ['code', 'message'],
+      properties: {
+        code: { type: 'string', pattern: '^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$', description: 'Stable warning code; PLUGIN_WARNING for plugin text without a code of its own.' },
+        message: { type: 'string', description: 'The warning in the response language.' },
+        details: { type: 'object', description: 'The values the message names, such as path or option; details.plugin names the plugin that warned.' },
+      },
+    },
+  },
 };
 
 /**

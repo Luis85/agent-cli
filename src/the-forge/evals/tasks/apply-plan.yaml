@@ -8,7 +8,7 @@ prompt: |
   Either every part of this happens or none of it does.
 fixture: vault
 reference:
-  - [create, plan.json, --content, '{"version":1,"operations":[{"op":"frontmatter","path":"Projects/Beta.md","set":{"status":"archived"},"ifMatch":"{{revision:Projects/Beta.md}}"},{"op":"move","from":"Projects/Beta.md","to":"Archive/Beta.md"},{"op":"edit","path":"Archive/Beta.md","edits":[{"find":"[[Idea List]]","replace":"[[Ideas]]"}]},{"op":"delete","path":"Scratch.md","ifMatch":"{{revision:Scratch.md}}"}]}']
+  - [create, plan.json, --content, '{"version":1,"operations":[{"op":"frontmatter","path":"Projects/Beta.md","set":{"status":"archived"},"ifMatch":"{{revision:Projects/Beta.md}}"},{"op":"move","from":"Projects/Beta.md","to":"Archive/Beta.md","ifMatch":"{{revision:Projects/Beta.md}}"},{"op":"edit","path":"Archive/Beta.md","edits":[{"find":"[[Idea List]]","replace":"[[Ideas]]"}],"ifMatch":"{{revision:Projects/Beta.md}}"},{"op":"delete","path":"Scratch.md","ifMatch":"{{revision:Scratch.md}}"}]}']
   - [apply, plan.json, --dry-run]
   - [apply, plan.json]
 checks:

@@ -2,6 +2,7 @@ import type { CorePlugin } from '../../application/plugins/core-plugins.ts';
 import { bundledSkills } from './infrastructure/bundled-skills.ts';
 import { skillsCommand } from './presentation/commands.ts';
 import { skillsStrings } from './presentation/strings.ts';
+import { skillErrors } from './presentation/errors.ts';
 
 /**
  * The `skills` core plugin: the bundled agent skills and the `skills` command that lists, shows and installs every
@@ -16,13 +17,14 @@ export const skillsPlugin: CorePlugin = {
   create: host => ({
     skills: bundledSkills,
     commands: [skillsCommand(host.skills)],
+    errors: skillErrors,
     strings: {
       de: {
         commands: { skills: 'Mitgelieferte und von Plugins bereitgestellte Agent-Skills auflisten, lesen oder installieren.' },
         actions: {
           'skills list': 'Die IDs aller registrierten Skills auflisten.',
-          'skills show': 'Einen Skill mit seinem SKILL.md-Inhalt zurückgeben.',
-          'skills install': 'Jeden Skill im ausgewählten Projekt nach .claude/skills/<id>/SKILL.md und .agents/skills/<id>/SKILL.md schreiben, oder in ein --target bzw. ein --out-Verzeichnis; vorhandene Dateien werden abgelehnt.',
+          'skills show': 'Einen Skill mit seinem SKILL.md-Inhalt und der Liste seiner Dateien zurückgeben, oder mit --file eine seiner Referenzdateien.',
+          'skills install': 'Jeden Skill-Ordner (SKILL.md und seine Referenzdateien) im ausgewählten Projekt nach .claude/skills/<id>/ und .agents/skills/<id>/ schreiben, oder in ein --target bzw. ein --out-Verzeichnis; vorhandene Dateien werden abgelehnt.',
         },
       },
     },

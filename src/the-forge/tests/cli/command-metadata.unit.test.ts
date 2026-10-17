@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { commandAnnotations, commandInputSchema, commandMode, commandOutputSchema, ensureKnownAction, hasActionOptions, validateCommandMetadata, type CommandMetadata } from '../../src/application/plugins/command-metadata.ts';
-import { errorCodes } from '../../src/domain/shared/error-catalog.ts';
+import { anyActionOptions, commandAnnotations, commandInputSchema, commandMode, commandOptions, commandOutputSchema, ensureKnownAction, hasActionOptions, option, validateCommandMetadata, type CommandMetadata } from '../../src/application/plugins/command-metadata.ts';
 import { jsonSchemaDialect, schemaIssues, validateJsonValue, type JsonSchema } from '../../src/domain/schema/json-schema.ts';
 import { builtinCommands } from '../support/builtin-commands.ts';
 import { testHost } from '../support/core-plugins.ts';
@@ -8,7 +7,7 @@ import { searchPlugin } from '../../src/plugins/search/plugin.ts';
 import { linksPlugin } from '../../src/plugins/links/plugin.ts';
 import { applyPlanSchema, literalEditsSchema } from '../../src/domain/documents/apply-plan.ts';
 
-const { commands } = builtinCommands();
+const { commands, codes } = builtinCommands();
 
 describe('built-in command metadata', () => {
   it('declares scope, discovery and mutating for every built-in command and describes every option and action', () => {
@@ -16,7 +15,7 @@ describe('built-in command metadata', () => {
     for (const command of commands.values()) {
       for (const key of ['scope', 'discovery', 'mutating'] as const) expect(command[key], `${command.id}.${key}`).toBeDefined();
       expect(() => validateCommandMetadata(command as unknown as Record<string, unknown>), command.id).not.toThrow();
-      for (const code of command.errors ?? []) expect(errorCodes, `${command.id} declares ${code}`).toContain(code);
+      for (const code of command.errors ?? []) expect(codes, `${command.id} declares ${code}`).toContain(code);
     }
   });
 
@@ -123,10 +122,55 @@ describe('command modes', () => {
     const closed: CommandMetadata = { id: 'reports', description: 'Reports', usage: 'reports', actions: command.actions!, unknownAction: 'UNKNOWN_GENERATOR' };
     expect(hasActionOptions(closed)).toBe(true);
     expect(hasActionOptions(command)).toBe(false);
-    expect(() => ensureKnownAction(closed, ['missing', 'Name'])).toThrow(expect.objectContaining({ code: 'UNKNOWN_GENERATOR', message: 'missing' }));
+    expect(() => ensureKnownAction(closed, ['missing', 'Name'])).toThrow(expect.objectContaining({
+      code: 'UNKNOWN_GENERATOR', message: 'Unknown generator missing. Generators: list, publish.', details: { generator: 'missing', allowed: ['list', 'publish'], suggestions: [] },
+    }));
+    // An action command names the action it does not know, the declared actions and the closest of them.
+    expect(() => ensureKnownAction({ ...closed, unknownAction: 'INVALID_ARGUMENT' }, ['publsh'])).toThrow(expect.objectContaining({
+      code: 'INVALID_ARGUMENT', message: 'Unknown reports action publsh. Actions: list, publish.', details: { action: 'publsh', allowed: ['list', 'publish'], suggestions: ['publish'] },
+    }));
     for (const args of [[], ['publish'], ['--template', 'x.md']]) expect(() => ensureKnownAction(closed, args)).not.toThrow();
     expect(() => ensureKnownAction(command, ['missing'])).not.toThrow();
     expect(commands.get('make')!.unknownAction).toBe('UNKNOWN_GENERATOR');
+  });
+
+  it('selects the longest action id of several words that the leading arguments spell, with exactly its options', () => {
+    const grouped: CommandMetadata = {
+      id: 'plan', description: 'Plan', usage: 'plan', unknownAction: 'INVALID_ARGUMENT',
+      options: { base: option.string('Base.') },
+      actions: {
+        sync: { description: 'Sync', options: { direction: option.string('Direction.') } },
+        'sync resolve': { description: 'Resolve', idempotent: true, options: { take: option.string('Take.', { required: true }) } },
+        'iteration add': { description: 'Add', options: { goal: option.string('Goal.') } },
+        'iteration assign': { description: 'Assign', mutating: false, options: { goal: option.boolean('Not a goal.') } },
+      },
+      args: [{ name: 'action', description: 'Action.' }, { name: 'operands', description: 'Operands.', variadic: true }],
+    };
+    expect(() => validateCommandMetadata(grouped as unknown as Record<string, unknown>)).not.toThrow();
+    expect(commandMode(grouped, ['sync', 'resolve', 'Item'])).toMatchObject({ action: 'sync resolve' });
+    expect(commandMode(grouped, ['sync', 'Item'])).toMatchObject({ action: 'sync' });
+    expect(commandMode(grouped, ['iteration', 'assign', 'Item'])).toMatchObject({ action: 'iteration assign', mutating: false });
+    expect(commandMode(grouped, ['iteration'])).toEqual({ scope: 'project', discovery: false, mutating: true });
+    expect(Object.keys(commandOptions(grouped, ['sync', 'resolve']))).toEqual(['base', 'take']);
+    expect(Object.keys(commandOptions(grouped, ['sync']))).toEqual(['base', 'direction']);
+    // The first parsing pass knows every option whose type the actions agree on, so it can find the action words.
+    expect(anyActionOptions(grouped)).toEqual({ base: 'string', direction: 'string', take: 'string' });
+    expect(() => ensureKnownAction(grouped, ['iteration', 'remove'])).toThrow(expect.objectContaining({
+      code: 'INVALID_ARGUMENT', message: 'Unknown plan action iteration remove. Actions: sync, sync resolve, iteration add, iteration assign.',
+      details: expect.objectContaining({ action: 'iteration remove', allowed: ['sync', 'sync resolve', 'iteration add', 'iteration assign'] }),
+    }));
+    expect(() => ensureKnownAction(grouped, ['iteration'])).toThrow(expect.objectContaining({ details: expect.objectContaining({ action: 'iteration' }) }));
+    for (const args of [['sync'], ['sync', 'status'], ['iteration', 'add'], ['--goal', 'x']]) expect(() => ensureKnownAction(grouped, args), args.join(' ')).not.toThrow();
+    expect(commandAnnotations(grouped).actions).toMatchObject({ 'sync resolve': { idempotentHint: true }, 'iteration assign': { readOnlyHint: true } });
+    const schema = commandInputSchema(grouped);
+    const valid = (args: string[], options: Record<string, unknown> = {}) => validateJsonValue(schema, { args, options }, 'input').issues.length === 0;
+    expect(valid(['sync'], { direction: 'pull' })).toBe(true);
+    expect(valid(['sync', 'resolve', 'Item'], { take: 'local' })).toBe(true);
+    // The bare sync branch never matches the words of a longer id, so each invocation matches exactly one branch.
+    expect(valid(['sync', 'resolve', 'Item'], { direction: 'pull' })).toBe(false);
+    expect(valid(['iteration', 'add'], { goal: 'x' })).toBe(true);
+    expect(valid(['iteration', 'assign', 'Item'], { goal: 'x' })).toBe(false);
+    expect(valid(['iteration'])).toBe(false);
   });
 
   it.each([

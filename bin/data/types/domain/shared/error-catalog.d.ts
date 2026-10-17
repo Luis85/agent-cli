@@ -1,7 +1,8 @@
 /**
- * Single source of truth for built-in failure codes. The category fixes the process exit status;
- * `hint` names the next step an agent or user should take and `retryable` says whether repeating the
- * unchanged invocation later can succeed. Plugin-defined codes are outside this catalog.
+ * Single source of truth for built-in failure codes: the kernel's own, and the document and Claude Code file codecs
+ * that several core plugins share. The category fixes the process exit status; `hint` names the next step an agent
+ * or user should take and `retryable` says whether repeating the unchanged invocation later can succeed. A code only
+ * one plugin raises belongs to that plugin's `errors` instead.
  */
 export type ErrorCategory = 'input' | 'conflict' | 'not-found' | 'busy' | 'drift' | 'runtime' | 'external' | 'interrupted';
 export interface ErrorDefinition {
@@ -10,6 +11,12 @@ export interface ErrorDefinition {
     readonly summary: string;
     readonly hint: string;
     readonly retryable: boolean;
+    /** Hints for one occurrence, chosen by the first of `details[...details]` whose value names one; others use `hint`. */
+    readonly variants?: HintVariants;
+}
+export interface HintVariants {
+    readonly details: readonly string[];
+    readonly hints: Readonly<Record<string, string>>;
 }
 /** SIGTERM interruptions report 143 instead of the category's SIGINT status 130. */
 export declare const categoryExitCodes: {
@@ -45,14 +52,41 @@ export declare const errorCatalog: {
     readonly INVALID_PATH: ErrorDefinition;
     readonly UNSAFE_PATH: ErrorDefinition;
     readonly NOT_FOUND: ErrorDefinition;
-    readonly CONFLICT: ErrorDefinition;
+    readonly CONFLICT: {
+        readonly variants: {
+            readonly details: readonly ["reason"];
+            readonly hints: {
+                readonly 'changed-while-planning': "A note linking to the moved path (error.details.path) changed while Forge planned the link updates, and nothing was written: rerun the same move; read that note first if you are editing it too.";
+            };
+        };
+        readonly exitCode: number;
+        readonly category: ErrorCategory;
+        readonly summary: string;
+        readonly hint: string;
+        readonly retryable: boolean;
+    };
     readonly NO_MATCH: ErrorDefinition;
     readonly AMBIGUOUS_EDIT: ErrorDefinition;
     readonly UNSUPPORTED_EDIT: ErrorDefinition;
     readonly SECTION_NOT_FOUND: ErrorDefinition;
     readonly AMBIGUOUS_SECTION: ErrorDefinition;
     readonly INVALID_PLAN: ErrorDefinition;
-    readonly WORKSPACE_BUSY: ErrorDefinition;
+    readonly WORKSPACE_BUSY: {
+        readonly variants: {
+            readonly details: readonly ["nestedWriter", "stale"];
+            readonly hints: {
+                readonly running: "A running writer of a nested root holds its lock (error.details.path) inside the folder this move or deletion would take along; --wait does not wait for it. Let that writer finish, then retry after error.details.retryAfterMs milliseconds or later.";
+                readonly active: "The holder runs, or another running writer is removing a stale lock: retry after error.details.retryAfterMs milliseconds, or rerun with --wait <ms> to wait for the lock.";
+                readonly unknown: "Forge cannot verify the holder (another host, pid namespace or boot, or an unreadable lock) and never removes its lock, so waiting does not help: confirm in error.details.lock that it no longer runs, inspect its unfinished changes, then delete the file named in error.details.path (relative to the workspace root) and retry.";
+                readonly stale: "The holder provably no longer runs, but removing its lock failed: confirm no Forge process uses it, then delete the file named in error.details.path (relative to the workspace root) and retry.";
+            };
+        };
+        readonly exitCode: number;
+        readonly category: ErrorCategory;
+        readonly summary: string;
+        readonly hint: string;
+        readonly retryable: boolean;
+    };
     readonly DESTINATION_EXISTS: ErrorDefinition;
     readonly PROTECTED_PATH: ErrorDefinition;
     readonly INVALID_MOVE: ErrorDefinition;
@@ -63,13 +97,7 @@ export declare const errorCatalog: {
     readonly INVALID_CANVAS: ErrorDefinition;
     readonly INVALID_BASE: ErrorDefinition;
     readonly INVALID_POINTER: ErrorDefinition;
-    readonly INVALID_BASE_QUERY: ErrorDefinition;
-    readonly INVALID_BASE_EXPRESSION: ErrorDefinition;
-    readonly BASE_EVALUATION_ERROR: ErrorDefinition;
-    readonly BASE_VIEW_NOT_FOUND: ErrorDefinition;
-    readonly BASE_CONTEXT_NOT_FOUND: ErrorDefinition;
-    readonly INVALID_BASE_PROPERTY_TYPES: ErrorDefinition;
-    readonly UNSUPPORTED_BASE_PROPERTY_TYPE: ErrorDefinition;
+    readonly INVALID_ROOT: ErrorDefinition;
     readonly INVALID_CONFIG: ErrorDefinition;
     readonly INVALID_SETUP: ErrorDefinition;
     readonly INVALID_PROJECT: ErrorDefinition;
@@ -80,36 +108,12 @@ export declare const errorCatalog: {
     readonly PROJECT_NOT_FOUND: ErrorDefinition;
     readonly PROJECT_REQUIRED: ErrorDefinition;
     readonly STALE_PROJECT_CONTEXT: ErrorDefinition;
-    readonly INVALID_TEMPLATE: ErrorDefinition;
-    readonly INVALID_TEMPLATE_DATE: ErrorDefinition;
-    readonly INVALID_TEMPLATE_PACK: ErrorDefinition;
-    readonly INVALID_TEMPLATE_VALUES: ErrorDefinition;
-    readonly UNKNOWN_TEMPLATE_VARIABLE: ErrorDefinition;
     readonly UNKNOWN_GENERATOR: ErrorDefinition;
     readonly INVALID_GENERATION_PLAN: ErrorDefinition;
     readonly INVALID_GENERATION_REVISIONS: ErrorDefinition;
-    readonly UI_DRIFT: ErrorDefinition;
-    readonly DATA_SOURCE_DRIFT: ErrorDefinition;
     readonly GENERATION_DRIFT: ErrorDefinition;
     readonly INVALID_WORKFLOW: ErrorDefinition;
     readonly WORKFLOW_DRIFT: ErrorDefinition;
-    readonly INVALID_UI: ErrorDefinition;
-    readonly INVALID_UI_LIBRARY: ErrorDefinition;
-    readonly INVALID_UI_FRAMEWORK: ErrorDefinition;
-    readonly EMPTY_UI_LIBRARY: ErrorDefinition;
-    readonly DUPLICATE_UI_COMPONENT: ErrorDefinition;
-    readonly UNKNOWN_UI_COMPONENT: ErrorDefinition;
-    readonly CYCLIC_UI_COMPONENT: ErrorDefinition;
-    readonly UI_RENDERER_UNAVAILABLE: ErrorDefinition;
-    readonly INVALID_INTERACTION: ErrorDefinition;
-    readonly DUPLICATE_INTERACTION: ErrorDefinition;
-    readonly EMPTY_INTERACTION_LIBRARY: ErrorDefinition;
-    readonly UNKNOWN_INTERACTION: ErrorDefinition;
-    readonly INVALID_DATA_SOURCE: ErrorDefinition;
-    readonly DUPLICATE_DATA_SOURCE: ErrorDefinition;
-    readonly EMPTY_DATA_SOURCE_LIBRARY: ErrorDefinition;
-    readonly UNKNOWN_DATA_SOURCE: ErrorDefinition;
-    readonly DATA_SOURCE_RENDERER_UNAVAILABLE: ErrorDefinition;
     readonly INVALID_PLUGIN: ErrorDefinition;
     readonly INVALID_PLUGIN_CONFIG: ErrorDefinition;
     readonly INCOMPATIBLE_PLUGIN: ErrorDefinition;
@@ -120,7 +124,6 @@ export declare const errorCatalog: {
     readonly PLUGIN_SERVICE_CYCLE: ErrorDefinition;
     readonly PLUGIN_LIFECYCLE: ErrorDefinition;
     readonly DUPLICATE_OR_INVALID_ID: ErrorDefinition;
-    readonly UNKNOWN_SKILL: ErrorDefinition;
     readonly INVALID_EVENT: ErrorDefinition;
     readonly INVALID_EVENT_LISTENER: ErrorDefinition;
     readonly INVALID_EVENT_PAYLOAD: ErrorDefinition;
@@ -130,25 +133,7 @@ export declare const errorCatalog: {
     readonly EVENT_OWNERSHIP: ErrorDefinition;
     readonly INVALID_CLAUDE_AGENT: ErrorDefinition;
     readonly INVALID_CLAUDE_HOOKS: ErrorDefinition;
-    readonly INVALID_CLAUDE_PLUGIN: ErrorDefinition;
     readonly INVALID_CLAUDE_SETTINGS: ErrorDefinition;
-    readonly INVALID_CLAUDE_COMMAND: ErrorDefinition;
-    readonly INVALID_CLAUDE_ARGUMENT: ErrorDefinition;
-    readonly INVALID_CLAUDE_OPTION: ErrorDefinition;
-    readonly INVALID_CLAUDE_SCOPE: ErrorDefinition;
-    readonly INVALID_CLAUDE_INPUT: ErrorDefinition;
-    readonly INVALID_CLAUDE_OUTPUT: ErrorDefinition;
-    readonly INVALID_CLAUDE_OUTPUT_LIMIT: ErrorDefinition;
-    readonly INVALID_CLAUDE_TIMEOUT: ErrorDefinition;
-    readonly INVALID_CLAUDE_EXECUTABLE: ErrorDefinition;
-    readonly CLAUDE_NOT_INSTALLED: ErrorDefinition;
-    readonly CLAUDE_WORKING_DIRECTORY_UNAVAILABLE: ErrorDefinition;
-    readonly CLAUDE_COMMAND_FAILED: ErrorDefinition;
-    readonly CLAUDE_COMMAND_TIMEOUT: ErrorDefinition;
-    readonly CLAUDE_OUTPUT_LIMIT: ErrorDefinition;
-    readonly CLAUDE_COMMAND_INTERRUPTED: ErrorDefinition;
-    readonly CLAUDE_RUNTIME_FAILED: ErrorDefinition;
-    readonly CLAUDE_INVALID_OUTPUT: ErrorDefinition;
 };
 export type ErrorCode = keyof typeof errorCatalog;
 export declare const errorCodes: ErrorCode[];

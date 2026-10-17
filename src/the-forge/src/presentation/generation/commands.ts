@@ -5,6 +5,8 @@ import { option } from '../../application/plugins/command-metadata.ts';
 import { GenerationService } from '../../application/generation/plans.ts';
 import { ensure } from '../../domain/shared/errors.ts';
 import { generationControls, reviewOptions } from '../../application/generation/controls.ts';
+import { changesOutput } from '../../application/plugins/output-schemas.ts';
+import type { JsonSchema } from '../../domain/schema/json-schema.ts';
 
 export const generatorCatalog = (registry: Registry) => [...registry.generators.values()].map(({ id, description }) => ({ id, description }));
 const makeErrors = ['UNKNOWN_GENERATOR', 'INVALID_NAME', 'CONFLICT', 'GENERATION_DRIFT', 'INVALID_GENERATION_PLAN', 'INVALID_GENERATION_REVISIONS', 'PROJECT_REQUIRED'];
@@ -13,6 +15,12 @@ const out = { out: option.string('Output directory; each generator documents its
 /** The flags a generator accepts besides the global options: host-owned --out and review controls plus its own. */
 function generatorOptions(generator: Generator): Record<string, CommandOption> {
   return { ...(generator.fixedDirectory ? {} : out), ...generator.options, ...(generator.review ? reviewOptions : {}) };
+}
+
+/** A generator's result: its declared `output`, else, for a `generate` generator without review modes, the written batch. */
+function generatorOutput(generator: Generator): JsonSchema | undefined {
+  if (generator.output) return generator.output;
+  return generator.generate && !generator.review ? changesOutput({ generator: { type: 'string', const: generator.id } }, ['generator']) : undefined;
 }
 
 
@@ -32,6 +40,8 @@ export function generationCommand(registry: Registry): Command {
       { name: 'name', description: 'The name or id the generator creates from.' },
     ],
     unknownAction: 'UNKNOWN_GENERATOR',
+    generatorActions: true,
+    localizedOutput: { generators: 'generators' },
     // make's own codes, then each registered generator's, so schema make covers every generator.
     get errors() {
       return [...new Set([...makeErrors, ...[...registry.generators.values()].flatMap(generator => generator.errors ?? [])])];
@@ -43,6 +53,7 @@ export function generationCommand(registry: Registry): Command {
         ...(generator.destructive === undefined ? {} : { destructive: generator.destructive }), idempotent: generator.idempotent ?? false,
         ...(generator.projectOption ? { projectOption: generator.projectOption } : {}),
         options: generatorOptions(generator),
+        ...(generatorOutput(generator) ? { output: generatorOutput(generator) } : {}),
       }]));
     },
     async run(args, flags, context) {
@@ -62,7 +73,7 @@ export function generationCommand(registry: Registry): Command {
       const writes = await generator.generate!(request);
       if (generator.review) {
         const { mode, manifestPath, revisions } = await generationControls(flags, context.workspace.files);
-        if (mode === 'check') return { generator: generator.id, check: true, ...await generation.check(writes, 'GENERATION_DRIFT') };
+        if (mode === 'check') return { generator: generator.id, check: true, ...await generation.check(writes) };
         if (mode === 'plan') return { generator: generator.id, plan: true, ...await generation.plan(writes, manifestPath) };
         return { generator: generator.id, ...await generation.commit(writes, revisions) };
       }

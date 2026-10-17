@@ -1,0 +1,12 @@
+export interface __FORGE_COMPONENT__Repository {
+  exists(id: string): globalThis.Promise<boolean>;
+}
+
+export class __FORGE_COMPONENT__ {
+  constructor(private readonly repository: __FORGE_COMPONENT__Repository) {}
+
+  async execute(id: string): globalThis.Promise<{ exists: boolean }> {
+    if (!id.trim()) throw new globalThis.Error('Identity is required');
+    return { exists: await this.repository.exists(id) };
+  }
+}

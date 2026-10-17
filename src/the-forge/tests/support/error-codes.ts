@@ -10,13 +10,14 @@ import ts from 'typescript';
  * - a string literal is a code;
  * - `a ? b : c` and parentheses resolve each branch;
  * - an identifier resolves through its same-file `const` initializer, or, for a function parameter, through
- *   its literal union type annotation (inline or a same-file type alias), its default value and every same-file
+ *   its literal union (or single literal) type annotation (inline or a same-file type alias), its default value and every same-file
  *   call of that function.
  * Anything else is reported as unresolved, so a new indirection must stay explainable by these rules.
  * Direct `new AppError(...)` outside the error module is reported because it bypasses the catalog's exit codes.
  *
- * `coded` lists the plugin-style failures, `Object.assign(new Error(message), { code })`, whose `code` resolves by
- * the same rules; a plugin's error helper typed with its code union therefore counts every code of that union.
+ * `coded` lists the plugin-style failures, `new PluginFailure(code, message)` or a user plugin's
+ * `Object.assign(new Error(message), { code })`, whose `code` resolves by the same rules; a plugin's error helper
+ * typed with its code union therefore counts every code of that union.
  * `forwarded` lists the calls, in any file, that pass a literal code to a function whose code parameter (typed as
  * a literal union) reaches one of these sites, such as `generation.check(writes, 'UI_DRIFT')` or
  * `backlogError('SYNC_INTERRUPTED', ...)`: the caller's file raises that code.
@@ -78,19 +79,21 @@ function declaration(identifier: ts.Identifier): ts.ParameterDeclaration | ts.Va
   return undefined;
 }
 
-/** The members of a string literal union, written inline or as a same-file type alias. */
+/** The members of a string literal union (or a single string literal type), written inline or as a same-file type alias. */
 function literalUnion(type: ts.TypeNode | undefined, source: ts.SourceFile): string[] | undefined {
   if (type && ts.isTypeReferenceNode(type) && ts.isIdentifier(type.typeName)) {
     const name = type.typeName.text;
     const alias = source.statements.find((statement): statement is ts.TypeAliasDeclaration => ts.isTypeAliasDeclaration(statement) && statement.name.text === name);
     return alias ? literalUnion(alias.type, source) : undefined;
   }
+  if (type && ts.isLiteralTypeNode(type) && ts.isStringLiteral(type.literal)) return [type.literal.text];
   if (!type || !ts.isUnionTypeNode(type) || !type.types.every(item => ts.isLiteralTypeNode(item) && ts.isStringLiteral(item.literal))) return undefined;
   return type.types.map(item => ((item as ts.LiteralTypeNode).literal as ts.StringLiteral).text);
 }
 
-/** The `code` property of `Object.assign(new Error(...), { code, ... })`, a plugin's coded failure. */
+/** The code of `new PluginFailure(code, ...)` or the `code` property of `Object.assign(new Error(...), { code, ... })`, a plugin's coded failure. */
 function codedErrorCode(node: ts.Node, source: ts.SourceFile): ts.Expression | undefined {
+  if (ts.isNewExpression(node) && node.expression.getText(source) === 'PluginFailure') return node.arguments?.[0];
   if (!ts.isCallExpression(node) || node.expression.getText(source) !== 'Object.assign' || node.arguments.length < 2) return undefined;
   const [target, properties] = node.arguments;
   if (!ts.isNewExpression(target!) || target.expression.getText(source) !== 'Error' || !ts.isObjectLiteralExpression(properties!)) return undefined;

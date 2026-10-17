@@ -80,7 +80,7 @@ For developers integrating the CLI, agents checking an option, and authors writi
 | [Bases queries](reference/bases.md) | Standalone native `.base` views as file repositories |
 | [Workflows](reference/workflows.md) | Project-owned CI workflows, generated GitHub entrypoints and drift checks |
 
-Run `node bin/forge.js schema --json` for the installed executable's command contract (see the [schema contract](reference/schema.md)), and `node bin/forge.js config --json` for its effective settings. The installed version is the authority for available commands.
+Run `node bin/forge.js help` for the installed command index and `node bin/forge.js schema <command> --json` for one command's contract (see the [schema contract](reference/schema.md)), and `node bin/forge.js config --json` for its effective settings. The installed version is the authority for available commands.
 
 ## Explanation — understand the design
 

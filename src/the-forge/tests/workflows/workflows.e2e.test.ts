@@ -75,12 +75,12 @@ describe('workflows command family', () => {
   });
 
   it.each([
-    [['workflows', 'list', '--check']],
-    [['workflows', 'sync', 'extra']],
-    [['workflows', 'remove']],
-  ])('rejects invalid usage %j', async args => {
+    [['workflows', 'list', '--check'], 'UNKNOWN_OPTION'],
+    [['workflows', 'sync', 'extra'], 'INVALID_ARGUMENT'],
+    [['workflows', 'remove'], 'INVALID_ARGUMENT'],
+  ])('rejects invalid usage %j with %s', async (args, code) => {
     const result = await cli(args);
     expect(result.status).toBe(2);
-    expect(result.body.error.code).toBe('INVALID_ARGUMENT');
+    expect(result.body.error.code).toBe(code);
   });
 });

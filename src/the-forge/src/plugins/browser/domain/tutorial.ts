@@ -11,6 +11,8 @@ export type TutorialAction =
   | { type: 'check'; locator: TutorialLocator; checked: boolean }
   | { type: 'press'; locator: TutorialLocator; key: string }
   | { type: 'wait'; locator: TutorialLocator; state: 'visible' | 'hidden' | 'attached' | 'detached' };
+/** The only environment variables a tutorial `fill` action may read. */
+const tutorialEnvPrefix = 'FORGE_TUTORIAL_';
 export interface TutorialStep { id: string; title: string; text?: string; actions: TutorialAction[]; screenshot: boolean; fullPage: boolean }
 export interface TutorialPlan { version: 1; title: string; description?: string; startUrl: string; viewport: { width: number; height: number }; steps: TutorialStep[] }
 
@@ -54,7 +56,8 @@ function action(value: unknown): TutorialAction {
       valid((value.value === undefined) !== (value.valueFromEnv === undefined), 'fill requires exactly one of value or valueFromEnv.');
       if (value.valueFromEnv !== undefined) {
         const variable = text(value.valueFromEnv, 'Environment variable');
-        valid(/^[A-Za-z_][A-Za-z0-9_]*$/.test(variable), 'valueFromEnv must name an environment variable.');
+        // Only variables exported for tutorials can be typed into a page: a plan never reaches unrelated secrets.
+        valid(new RegExp(`^${tutorialEnvPrefix}[A-Za-z0-9_]+$`).test(variable), `valueFromEnv must name an environment variable starting with ${tutorialEnvPrefix}.`);
         return { type, locator: target, valueFromEnv: variable };
       }
       return { type, locator: target, value: text(value.value, 'Fill value', true) };

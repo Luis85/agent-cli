@@ -4,7 +4,7 @@ import { ClaudeSettings } from '../application/settings.ts';
 import type { CommandContext } from '../../../application/plugins/registry.ts';
 import type { ClaudeServices } from './services.ts';
 import { arity, parseJson, value } from '../../../application/plugins/command-input.ts';
-import { claudeInput, claudeInputOptions, claudeOptions, claudeScopeOptions } from './input.ts';
+import { claudeInput, claudeInputOptions } from './input.ts';
 import { claudeMessages } from '../domain/messages.ts';
 
 type Flags = Record<string, string | boolean>;
@@ -33,9 +33,6 @@ async function exportAgent(agent: AgentInspection, flags: Flags, context: Comman
 
 export async function agentCommands(args: string[], flags: Flags, context: CommandContext, services: ClaudeServices) {
   const action = args[0] ?? 'list';
-  const mutating = ['update', 'remove', 'enable', 'disable'].includes(action);
-  const inputs = ['create', 'update'].includes(action) ? [...claudeInputOptions, 'metadata', 'prompt'] : [];
-  claudeOptions(flags, [...claudeScopeOptions, ...inputs, ...(mutating ? ['if-match'] : []), ...(action === 'export' ? ['out', 'if-match'] : [])]);
   const target = await services.target(context, flags);
   const agents = new ClaudeAgents(target.workspace, services.agentCodec, target.agentsDirectory);
   const settings = new ClaudeSettings(target.workspace, target.settingsPath, target.scope === 'plugin');

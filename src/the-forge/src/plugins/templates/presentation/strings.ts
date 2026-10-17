@@ -1,8 +1,10 @@
 import type { PluginStrings } from '../../../application/plugins/plugin-catalog.ts';
+import { germanTemplateErrors } from './errors.ts';
 
 /** The templates plugin's German manifest and option, argument and settings descriptions. */
 export const templatesStrings: PluginStrings = {
   de: {
+    errors: germanTemplateErrors,
     manifest: { name: 'Vorlagen', description: 'Obsidian-Markdown-Vorlagen zu Dokumenten rendern und das Planungs-Workflow-Paket installieren.' },
     descriptions: {
       'list (default), inspect or install.': 'list (Standard), inspect oder install.',

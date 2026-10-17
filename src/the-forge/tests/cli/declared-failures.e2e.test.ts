@@ -26,7 +26,7 @@ const probes: ReadonlyArray<readonly [code: string, args: readonly string[]]> = 
   ['PROJECT_NOT_FOUND', ['apply', 'plan.json', '--project', 'missing']],
   ['PROJECT_NOT_FOUND', ['webview', 'inspect', '--project', 'missing']],
   ['INVALID_TEMPLATE_DATE', ['make', 'document', 'T', '--template', 'entity.md', '--date', '2026-13-45', '--dry-run']],
-  ['INVALID_CLAUDE_OPTION', ['claude', 'plugins', 'create', 'x', '--scope', 'user']],
+  ['INVALID_CLAUDE_OPTION', ['claude', 'plugins', 'init', 'x', '--with', 'bogus', '--dry-run']],
 ];
 
 beforeAll(async () => {

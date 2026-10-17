@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { chmod, cp, mkdir, mkdtemp, readFile, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -26,15 +27,18 @@ async function checkout() {
 /** package.json config.distribution places the bundle in the workspace bin directory. */
 const bin = (root: string, path: string) => join(root, '../../bin', path);
 
-function release(root: string) {
-  return execFileSync(process.execPath, ['scripts/release.mjs'], { cwd: root, encoding: 'utf8', stdio: 'pipe' }).trim();
+/** Child processes run without blocking the test worker, whose RPC with Vitest a busy event loop delays. */
+const execute = promisify(execFile);
+const maxBuffer = 32 * 1024 * 1024;
+async function release(root: string) {
+  return (await execute(process.execPath, ['scripts/release.mjs'], { cwd: root, encoding: 'utf8', maxBuffer })).stdout.trim();
 }
 
 // Run tar from the checkout with relative paths: GNU tar reads `C:\...` archive names as remote hosts.
-function tar(root: string, args: string[]) {
-  return execFileSync('tar', args, { cwd: root, encoding: 'utf8' });
+async function tar(root: string, args: string[]) {
+  return (await execute('tar', args, { cwd: root, encoding: 'utf8', maxBuffer })).stdout;
 }
-const entries = (root: string, archive: string) => tar(root, ['-tzf', archive]).trim().split(/\r?\n/);
+const entries = async (root: string, archive: string) => (await tar(root, ['-tzf', archive])).trim().split(/\r?\n/);
 
 describe('release distribution', () => {
   it('repackages owned assets without replacing configuration, context, plugins or templates', async () => {
@@ -53,7 +57,7 @@ describe('release distribution', () => {
     await writeFile(bin(root, 'skills/obsolete.md'), '# Stale packaged skill');
     await mkdir(join(root, 'docs/research'), { recursive: true });
     await writeFile(join(root, 'docs/research/notes.md'), '# Maintainer research');
-    execFileSync(process.execPath, ['scripts/package.mjs'], { cwd: root, stdio: 'pipe' });
+    await execute(process.execPath, ['scripts/package.mjs'], { cwd: root, maxBuffer });
     for (const path of privateFiles) expect(await readFile(bin(root, path), 'utf8')).toBe(`preserve ${path}\n`);
     expect(await readFile(bin(root, 'webviews/private/manifest.json'), 'utf8')).toBe(customManifest);
     await expect(readFile(bin(root, 'data/docs/obsolete.md'))).rejects.toThrow();
@@ -68,11 +72,15 @@ describe('release distribution', () => {
     expect(manifest.files.filter((path: string) => path === 'webviews/admin/index.html')).toHaveLength(1);
     expect(manifest.files).toContain('data/types/sdk.d.ts');
     expect(manifest.files.some((path: string) => /context|private|obsolete/.test(path))).toBe(false);
+    // playwright-core publishes its notice with CRLF line endings; packaged notices use LF like the checkout.
+    expect(await readFile(resolve('node_modules/playwright-core/LICENSE'), 'utf8')).toContain('\r\n');
+    expect(await readFile(bin(root, 'data/licenses/node_modules__playwright-core-LICENSE'), 'utf8'))
+      .toBe((await readFile(resolve('node_modules/playwright-core/LICENSE'), 'utf8')).replaceAll('\r\n', '\n'));
   }, 60_000);
 
   it('extracts a complete, checksummed standalone app and reproduces the archive across checkout metadata changes', async () => {
     const root = await checkout();
-    const archive = release(root);
+    const archive = await release(root);
     const first = await readFile(join(root, archive));
     // The gzip header carries no packaging time, file name or platform: flags 0, MTIME 0, OS Unix.
     expect([...first.subarray(0, 10)]).toEqual([0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 2, 3]);
@@ -83,18 +91,19 @@ describe('release distribution', () => {
     await utimes(bin(root, 'data/README.md'), 3_000_000, 4_000_000);
     await chmod(bin(root, 'data/README.md'), 0o775);
     await chmod(bin(root, 'forge-runtime.js'), 0o755);
-    expect(release(root)).toBe(archive);
-    expect(await readFile(join(root, archive))).toEqual(first);
+    expect(await release(root)).toBe(archive);
+    // Compare digests: a deep equality over the archive's bytes takes a minute on a loaded machine.
+    expect(createHash('sha256').update(await readFile(join(root, archive))).digest('hex')).toBe(createHash('sha256').update(first).digest('hex'));
 
     const project = join(root, 'project');
     await mkdir(project);
     await writeFile(join(project, 'package.json'), '{"type":"module"}');
-    tar(root, ['-xzf', archive, '-C', 'project']);
-    const invoke = (args: string[]) => JSON.parse(execFileSync(process.execPath, ['bin/forge.js', ...args], { cwd: project, encoding: 'utf8', env: { ...process.env, NODE_PATH: '' } }));
+    await tar(root, ['-xzf', archive, '-C', 'project']);
+    const invoke = async (args: string[]) => JSON.parse((await execute(process.execPath, ['bin/forge.js', ...args], { cwd: project, encoding: 'utf8', env: { ...process.env, NODE_PATH: '' } })).stdout);
     const source = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
-    expect(invoke(['--version']).data.version).toBe(source.version);
-    expect(invoke(['setup']).ok).toBe(true);
-    expect(invoke(['make', 'entity', 'ReleaseTask', '--out', 'src/domain']).ok).toBe(true);
+    expect((await invoke(['--version'])).data.version).toBe(source.version);
+    expect((await invoke(['setup'])).ok).toBe(true);
+    expect((await invoke(['make', 'entity', 'ReleaseTask', '--out', 'src/domain'])).ok).toBe(true);
     expect(await readFile(join(project, 'src/domain/release-task.ts'), 'utf8')).toContain('class ReleaseTask');
     for (const path of ['docs/reference/cli.md', 'types/sdk.d.ts', 'licenses/node_modules__yaml-LICENSE', 'licenses/node_modules__ajv-LICENSE', 'licenses/docker-agent-LICENSE', 'docs/examples/plugins/quality/main.mjs']) {
       expect((await readFile(join(project, 'bin/data', path))).length).toBeGreaterThan(0);
@@ -105,14 +114,14 @@ describe('release distribution', () => {
     const sdk = await readFile(join(project, 'bin/data/types/sdk.d.ts'), 'utf8');
     // Trusted plugins type the claude.lifecycle service without importing the claude plugin.
     for (const name of ['PlannedChange', 'ReadOptions', 'WriteOptions', 'WriteRequest', 'FileChange', 'ClaudeLifecycleClient', 'ClaudeLifecycleRequest', 'ClaudeLifecycleResult', 'ClaudeLifecyclePlan', 'ClaudeOutput']) expect(sdk).toMatch(new RegExp(`\\b${name}\\b`));
-    const listed = entries(root, archive);
+    const listed = await entries(root, archive);
     expect(listed.every(path => path.startsWith('bin/'))).toBe(true);
     expect(listed).toContain('bin/browser-runtime/playwright-core/index.js');
     expect(listed).toContain('bin/browser-runtime/playwright-core/lib/coreBundle.js');
     expect(listed).toContain('bin/browser-runtime/playwright-core/lib/webp_codec.wasm');
     expect(listed).toContain('bin/browser-runtime/playwright-core/LICENSE');
     expect(listed).toContain('bin/browser-runtime/playwright-core/NOTICE');
-    const browserRuntime = execFileSync(process.execPath, ['-e', "console.log(typeof require('./bin/browser-runtime/playwright-core').chromium.launch)"], { cwd: project, encoding: 'utf8', env: { ...process.env, NODE_PATH: '' } });
+    const { stdout: browserRuntime } = await execute(process.execPath, ['-e', "console.log(typeof require('./bin/browser-runtime/playwright-core').chromium.launch)"], { cwd: project, encoding: 'utf8', env: { ...process.env, NODE_PATH: '' } });
     expect(browserRuntime.trim()).toBe('function');
     expect(listed).toContain('bin/forge.js');
     expect(listed).toContain('bin/forge-server.cjs');
@@ -134,11 +143,11 @@ describe('release distribution', () => {
     const root = await checkout();
     const source = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
     await writeFile(join(root, 'package.json'), JSON.stringify({ ...source, version: '99.0.0' }));
-    expect(() => release(root)).toThrow('Bundle version differs');
+    await expect(release(root)).rejects.toThrow('Bundle version differs');
     const bundlePath = bin(root, 'package.json');
     const bundle = JSON.parse(await readFile(bundlePath, 'utf8'));
     await writeFile(bundlePath, JSON.stringify({ ...bundle, version: '99.0.0' }));
-    expect(() => release(root)).toThrow('Executable version differs');
+    await expect(release(root)).rejects.toThrow('Executable version differs');
   });
 
   it('ships defaults and distribution assets without local settings, context or extensions', async () => {
@@ -152,9 +161,9 @@ describe('release distribution', () => {
     const prototype = '<h1>Private prototype</h1>';
     await writeFile(bin(root, 'webviews/private/index.html'), prototype);
     await writeFile(bin(root, 'webviews/private/manifest.json'), JSON.stringify({ id: 'private', name: 'Private prototype', entry: 'index.html' }));
-    const archive = release(root);
-    expect(entries(root, archive).some(path => /context|private/.test(path))).toBe(false);
-    const config = tar(root, ['-xOzf', archive, 'bin/config.json']);
+    const archive = await release(root);
+    expect((await entries(root, archive)).some(path => /context|private/.test(path))).toBe(false);
+    const config = await tar(root, ['-xOzf', archive, 'bin/config.json']);
     expect(config).toBe(await readFile(bin(root, 'config/default.json'), 'utf8'));
     expect(await readFile(bin(root, 'data/context.json'), 'utf8')).toContain('private-project');
     expect(await readFile(bin(root, 'webviews/private/index.html'), 'utf8')).toBe(prototype);
@@ -168,7 +177,7 @@ describe('release distribution', () => {
     const manifest = JSON.parse(await readFile(path, 'utf8'));
     manifest.files.push('webviews/prototype/index.html');
     await writeFile(path, JSON.stringify(manifest));
-    expect(() => release(root)).toThrow('Invalid distribution asset: webviews/prototype/index.html');
+    await expect(release(root)).rejects.toThrow('Invalid distribution asset: webviews/prototype/index.html');
   });
 
   it('rejects a manifest that attempts to publish mutable workspace data', async () => {
@@ -178,7 +187,7 @@ describe('release distribution', () => {
     const manifest = JSON.parse(await readFile(path, 'utf8'));
     manifest.files.push('data/context.json');
     await writeFile(path, JSON.stringify(manifest));
-    expect(() => release(root)).toThrow('Invalid distribution asset: data/context.json');
+    await expect(release(root)).rejects.toThrow('Invalid distribution asset: data/context.json');
   });
   it.each(['missing-defaults', 'missing-server', 'missing-webview', 'missing-browser', 'duplicate-assets'])('rejects an invalid distribution manifest: %s', async invalid => {
     const root = await checkout();
@@ -190,6 +199,6 @@ describe('release distribution', () => {
     else if (invalid === 'missing-browser') manifest.files = manifest.files.filter(file => file !== 'browser-runtime/playwright-core/index.js');
     else manifest.files.push('forge.js');
     await writeFile(path, JSON.stringify(manifest));
-    expect(() => release(root)).toThrow('Missing or invalid distribution manifest');
+    await expect(release(root)).rejects.toThrow('Missing or invalid distribution manifest');
   });
 });

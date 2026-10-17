@@ -5,7 +5,8 @@ import { hostname, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import metadata from '../../package.json';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
-import { acquireLock, hostIdentity, inspectLock, releaseLock } from '../../src/infrastructure/workspace/lock.ts';
+import { acquireLock, releaseLock } from '../../src/infrastructure/workspace/lock.ts';
+import { hostIdentity, inspectLock } from '../../src/infrastructure/workspace/lock-holder.ts';
 import { processStart } from '../../src/infrastructure/workspace/lock-holder.ts';
 import { encodeText } from '../../src/infrastructure/documents/codec.ts';
 

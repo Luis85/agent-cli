@@ -1,11 +1,14 @@
 import type { CachedMetadata } from '../../../domain/metadata/cache.ts';
 import type { FileRepository } from '../../../application/workspace/ports.ts';
 import { fileKind, isTextContent, type FileSnapshot } from '../../../domain/documents/file.ts';
-import { pathGlob } from '../../../domain/documents/path-glob.ts';
-import { AppError } from '../../../domain/shared/errors.ts';
+import { pathFilter, recordingFilter } from '../../../domain/documents/path-glob.ts';
+import { kernelMessage, type KernelMessage } from '../../../domain/shared/kernel-messages.ts';
+import { metadataMatches } from '../../../domain/metadata/note-filters.ts';
+import { readOrMissing } from '../../../domain/shared/not-found.ts';
 import { Pager, type PageRequest } from '../../../domain/shared/paging.ts';
-import { clipAround, clipLine, matchLines, searchExpression, searchedLines, splitLines } from '../domain/matching.ts';
-import { metadataMatches, searchKinds, type SearchKind, type SearchQuery } from '../domain/query.ts';
+import { clipAround, clipLine, matchLines, searchExpression, searchedLines, splitLines, type LineHit } from '../domain/matching.ts';
+import { searchKinds, type SearchKind, type SearchQuery } from '../domain/query.ts';
+import { decodeUtf8 } from '../../../domain/shared/utf8.ts';
 
 /** One match: 1-based line and UTF-16 column, the matched text, a clipped snippet and the file's revision. */
 export interface SearchHit {
@@ -28,25 +31,23 @@ export interface SearchSources {
    */
   parse(file: { path: string; bytes: Uint8Array }): Promise<CachedMetadata | null>;
   budget: SearchBudget;
+  /** The command's warning sink, for a `--path` that matches nothing. */
+  warn(message: KernelMessage): void;
 }
 /** A hit before its snippet and context lines are built, which happens only for hits on the returned page. */
 interface PendingHit { path: string; line: number; column: number; match: string; revision: string; lines: readonly string[] }
 
 /** Files read concurrently, then matched together within the budget. */
 const batchSize = 32;
-const decoder = new TextDecoder('utf-8', { fatal: true });
 
 /** The searchable text of a file: undefined for invalid UTF-8 and for text files with NUL characters, which read as attachments. */
 function decode({ path, bytes }: FileSnapshot): string | undefined {
   let text: string;
-  try { text = decoder.decode(bytes); }
+  try { text = decodeUtf8(bytes); }
   catch { return undefined; }
   return isTextContent(path, text) ? text : undefined;
 }
-async function readExisting(files: FileRepository, path: string): Promise<FileSnapshot | undefined> {
-  try { return await files.read(path); }
-  catch (error) { if (error instanceof AppError && error.code === 'NOT_FOUND') return undefined; throw error; }
-}
+const readExisting = (files: FileRepository, path: string): Promise<FileSnapshot | undefined> => readOrMissing(() => files.read(path));
 function codeLines(metadata: CachedMetadata | null): Set<number> {
   const lines = new Set<number>();
   for (const section of metadata?.sections ?? []) {
@@ -69,23 +70,28 @@ function completed({ lines, revision, ...hit }: PendingHit, context: number): Se
   };
 }
 
+/** One file with hits for `search --files-only`: its revision and how many hits it has. */
+export interface SearchFile { path: string; revision: string; hits: number }
+/** `total` counts every hit and `fileCount` every file with hits; `nextCursor` continues a truncated page of files. */
+export interface SearchFilesResult { files: SearchFile[]; total: number; fileCount: number; nextCursor?: string }
+type Visit = (file: FileSnapshot, lines: readonly string[], hits: readonly LineHit[]) => void;
+
 /**
- * Searches the scope's vault text files (Markdown, Canvas, Bases and UTF-8 text) in path order and returns one page
- * of hits ordered by path, line and column. Attachments, paths outside the vault rule, files that are not valid
- * UTF-8 and text files containing NUL characters (which read as attachments) are skipped. Each candidate file is read once and matched first; tag, property and code filters then parse
- * only files with hits, never the whole vault, and snippets are built only for the returned page. Read-only: it
- * uses repository reads only, which publish no events.
+ * Visits the scope's vault text files with hits (Markdown, Canvas, Bases and UTF-8 text) in path order, with their hits
+ * in line and column order. Attachments, paths outside the vault rule, files that are not valid UTF-8 and text files
+ * containing NUL characters (which read as attachments) are skipped. Each candidate file is read once and matched
+ * first; tag, property and code filters then parse only files with hits, never the whole vault. A `--path` that
+ * matches no vault path warns PATH_MATCHED_NOTHING. Read-only: it uses repository reads only, which publish no events.
  */
-export async function searchFiles(sources: SearchSources, query: SearchQuery, page: PageRequest): Promise<SearchResult> {
+async function scanFiles(sources: SearchSources, query: SearchQuery, visit: Visit): Promise<void> {
   const expression = searchExpression(query);
-  const { context: _context, ...ordering } = query;
-  const pager = new Pager<PendingHit>(page, { command: 'search', ...ordering }, hit => [hit.path, hit.line, hit.column]);
-  const inPath = query.path === undefined ? () => true : pathGlob(query.path);
-  const excluded = query.exclude === undefined ? () => false : pathGlob(query.exclude, '--exclude');
+  const inPath = recordingFilter(query.path === undefined ? () => true : pathFilter(query.path));
+  const excluded = query.exclude === undefined ? () => false : pathFilter(query.exclude, '--exclude');
   const kinds: readonly string[] = query.kind ? [query.kind] : searchKinds;
   const listed = await sources.paths();
   // Path filtering spends the same budget as matching, so no part of a search runs unbounded.
-  const candidates = sources.budget.run(() => listed.filter(path => kinds.includes(fileKind(path)) && inPath(path) && !excluded(path)));
+  const candidates = sources.budget.run(() => listed.filter(path => inPath.matches(path) && kinds.includes(fileKind(path)) && !excluded(path)));
+  if (query.path !== undefined && !inPath.matched()) sources.warn(kernelMessage('PATH_MATCHED_NOTHING', { option: '--path', pattern: query.path }));
   const filtered = query.tag !== undefined || query.property !== undefined;
   for (let start = 0; start < candidates.length; start += batchSize) {
     const batch = await Promise.all(candidates.slice(start, start + batchSize).map(path => readExisting(sources.files, path)));
@@ -101,12 +107,32 @@ export async function searchFiles(sources: SearchSources, query: SearchQuery, pa
       const metadata = filtered || query.skipCode ? await sources.parse(file) : null;
       if (filtered && !metadataMatches(metadata, query)) continue;
       const code = query.skipCode ? codeLines(metadata) : undefined;
-      for (const hit of hits) {
-        if (code?.has(hit.line)) continue;
-        pager.offer({ path: file.path, line: hit.line + 1, column: hit.column + 1, match: hit.match, revision: file.revision, lines });
-      }
+      const kept = code === undefined ? hits : hits.filter(hit => !code.has(hit.line));
+      if (kept.length > 0) visit(file, lines, kept);
     }
   }
+}
+
+/** One page of hits ordered by path, line and column; snippets are built only for the returned page. */
+export async function searchFiles(sources: SearchSources, query: SearchQuery, page: PageRequest): Promise<SearchResult> {
+  const { context: _context, ...ordering } = query;
+  const pager = new Pager<PendingHit>(page, { command: 'search', ...ordering }, hit => [hit.path, hit.line, hit.column]);
+  await scanFiles(sources, query, (file, lines, hits) => {
+    for (const hit of hits) pager.offer({ path: file.path, line: hit.line + 1, column: hit.column + 1, match: hit.match, revision: file.revision, lines });
+  });
   const nextCursor = pager.nextCursor();
   return { hits: pager.items.map(hit => completed(hit, query.context)), total: pager.total, ...(nextCursor === undefined ? {} : { nextCursor }) };
+}
+
+/** One page of the files with hits in path order, each with its hit count, for `--files-only` and `--count`. */
+export async function searchMatchingFiles(sources: SearchSources, query: SearchQuery, page: PageRequest): Promise<SearchFilesResult> {
+  const { context: _context, ...ordering } = query;
+  const pager = new Pager<SearchFile>(page, { command: 'search', output: 'files', ...ordering }, file => [file.path]);
+  let total = 0;
+  await scanFiles(sources, query, (file, _lines, hits) => {
+    total += hits.length;
+    pager.offer({ path: file.path, revision: file.revision, hits: hits.length });
+  });
+  const nextCursor = pager.nextCursor();
+  return { files: pager.items, total, fileCount: pager.total, ...(nextCursor === undefined ? {} : { nextCursor }) };
 }

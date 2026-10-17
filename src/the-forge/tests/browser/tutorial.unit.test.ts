@@ -94,9 +94,14 @@ describe('tutorial plan validation and extraction', () => {
   ])('rejects malformed or executable action %#', action => {
     expect(() => tutorialPlan({ ...base(), steps: [{ id: 'step', title: 'Step', actions: [action] }] })).toThrow();
   });
+  it.each(['HOME', 'GITHUB_TOKEN', 'AZURE_DEVOPS_EXT_PAT', 'FORGE_TUTORIAL_', 'forge_tutorial_name'])('rejects valueFromEnv %s outside the FORGE_TUTORIAL_ prefix', variable => {
+    const fill = { type: 'fill', locator: { css: '#q' }, valueFromEnv: variable };
+    expect(() => tutorialPlan({ ...base(), steps: [{ id: 'step', title: 'Step', actions: [fill] }] }))
+      .toThrow(expect.objectContaining({ code: 'BROWSER_FLOW_INVALID', message: expect.stringContaining('FORGE_TUTORIAL_') }));
+  });
   it('accepts explicit actions and environment references without resolving them', () => {
     const actions = [
-      { type: 'goto', url: 'https://example.org/#/settings' }, { type: 'fill', locator: { label: 'Password' }, valueFromEnv: 'PASSWORD' },
+      { type: 'goto', url: 'https://example.org/#/settings' }, { type: 'fill', locator: { label: 'Password' }, valueFromEnv: 'FORGE_TUTORIAL_PASSWORD' },
       { type: 'select', locator: { css: 'select' }, value: 'first' }, { type: 'check', locator: { testId: 'accept' }, checked: false },
       { type: 'press', locator: { label: 'Name' }, key: 'Enter' }, { type: 'wait', locator: { css: '.ready' } },
     ];

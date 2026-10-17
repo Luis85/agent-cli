@@ -70,7 +70,7 @@ describe('the vault-check core plugin through the portable CLI', () => {
       description: expect.stringContaining('defekte Links'), errors: expect.arrayContaining(['VAULT_CHECK_FAILED']),
       annotations: { scope: 'project', readOnlyHint: true, defaultAction: 'check', actions: { check: { mutating: false, options: { strict: expect.any(Object) } } } },
     });
-    expect((await cli(['schema'])).body.data.errors).toContainEqual(expect.objectContaining({ code: 'VAULT_CHECK_FAILED', plugin: 'vault-check', exitCode: 2, category: 'input' }));
+    expect((await cli(['schema', '--all'])).body.data.errors).toContainEqual(expect.objectContaining({ code: 'VAULT_CHECK_FAILED', plugin: 'vault-check', exitCode: 2, category: 'input' }));
     expect((await cli(['plugins'])).body.data.plugins.find((plugin: { id: string }) => plugin.id === 'vault-check')).toMatchObject({
       core: true, state: 'enabled', contributions: { commands: ['vault'], events: [], services: { provides: [], requires: [], optional: ['bases.validation'] }, settings: 'plugins.settings.vault-check' },
     });

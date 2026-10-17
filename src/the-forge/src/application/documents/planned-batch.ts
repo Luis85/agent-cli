@@ -1,5 +1,6 @@
 import { forgeError } from '../../domain/shared/errors.ts';
 import type { FileSnapshot, RenameRequest, WriteRequest } from '../../domain/documents/file.ts';
+import { sameBytes } from '../../domain/documents/write-plan.ts';
 import type { FileBatch } from '../workspace/ports.ts';
 import type { StagedFile, StagedFiles } from './staged-files.ts';
 
@@ -13,7 +14,6 @@ export interface PlannedBatch { batch: Required<Pick<FileBatch, 'renames' | 'wri
 type Moved = [string, StagedFile & { origin: FileSnapshot }];
 const within = (path: string, folder: string) => path === folder || path.startsWith(`${folder}/`);
 const depth = (path: string) => path.split('/').length;
-const sameBytes = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((byte, index) => byte === b[index]);
 
 /** Where the plan's folder moves took `folder`: each move of it, or of a folder containing it, in order. */
 function destination(staged: StagedFiles, folder: string): string {

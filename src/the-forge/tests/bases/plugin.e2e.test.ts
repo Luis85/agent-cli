@@ -18,7 +18,7 @@ describe('the bases core plugin', () => {
     await configure({ plugins: { disabled: ['bases'] } });
     try {
       expect(ids((await fixture.cli(['schema'])).body.data.commands)).not.toContain('bases');
-      expect(ids((await fixture.cli(['help'])).body.data.commands)).not.toContain('bases');
+      expect(Object.keys((await fixture.cli(['help'])).body.data.commands)).not.toContain('bases');
       expect((await fixture.cli(['help', 'bases'])).body.error.code).toBe('UNKNOWN_COMMAND');
       const dispatched = await fixture.cli(['bases', 'list']);
       expect(dispatched.status).toBe(2);

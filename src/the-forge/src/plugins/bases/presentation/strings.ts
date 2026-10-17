@@ -1,8 +1,10 @@
 import type { PluginStrings } from '../../../application/plugins/plugin-catalog.ts';
+import { germanBasesErrors } from './errors.ts';
 
 /** The bases plugin's German manifest and option and argument descriptions, available while it is disabled. */
 export const basesStrings: PluginStrings = {
   de: {
+    errors: germanBasesErrors,
     manifest: { name: 'Bases-Abfragen', description: 'Native Obsidian-Bases-Ansichten als Dateirepositorys abfragen, ohne Obsidian auszuführen.' },
     descriptions: {
       'View name for query; the first view when omitted.': 'Ansichtsname für query; ohne Angabe die erste Ansicht.',

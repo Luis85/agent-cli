@@ -1,27 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import type { NoteSource } from '../../src/plugins/backlog/domain/items.ts';
 import { buildModel } from '../../src/plugins/backlog/domain/model.ts';
 import { checkBacklog, type CheckInput } from '../../src/plugins/backlog/domain/check.ts';
 import { resolveSettings, type ViewOptions } from '../../src/plugins/backlog/domain/settings-resolve.ts';
+import { noteSource } from '../support/backlog.ts';
 
 type Notes = Record<string, Record<string, unknown>>;
 /** Wikilinks are frontmatter links and resolve by basename; `types` gives the live type of a link target. */
-function vault(notes: Notes): NoteSource {
-  const resolve = (linkpath: string) => Object.keys(notes).find(path => path.slice(path.lastIndexOf('/') + 1, -3) === linkpath) ?? null;
-  return {
-    frontmatter: path => notes[path],
-    frontmatterLinks: path => Object.entries(notes[path] ?? {}).flatMap(([key, value]) => (Array.isArray(value) ? value.map((item, index) => [`${key}.${index}`, item] as const) : [[key, value] as const]))
-      .flatMap(([key, value]) => (typeof value === 'string' && /^\[\[.+\]\]$/.test(value) ? [{ key, link: value.slice(2, -2) }] : [])),
-    resolve,
-  };
-}
 const bound = (): ViewOptions => ({
   stateProperty: 'note.status', dependsOnProperty: 'note.dependsOn', releaseProperty: 'note.release', horizonProperty: 'note.horizon', startProperty: 'note.start',
   targetProperty: 'note.due', iterationProperty: 'note.iteration', assigneeProperty: 'note.assignee', iterationGoalProperty: 'note.goal',
 });
 function check(notes: Notes, options: { results?: string[]; view?: ViewOptions; input?: Partial<CheckInput> } = {}) {
   const settings = resolveSettings({ ...bound(), ...options.view });
-  const model = buildModel(vault(notes), options.results ?? Object.keys(notes), settings, path => path in notes);
+  const model = buildModel(noteSource(notes), options.results ?? Object.keys(notes), settings, path => path in notes);
   const typeOf = (path: string) => { const type = notes[path]?.type; return typeof type === 'string' ? type : null; };
   return checkBacklog({ model, settings, releaseProblems: [], unresolvedMemberships: [], typeOf, ...options.input });
 }

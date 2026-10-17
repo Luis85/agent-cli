@@ -1,9 +1,9 @@
 import type { ErrorCode } from '../../domain/shared/error-catalog.ts';
 
-interface GermanError { summary: string; hint: string }
+/** `variants` translate the catalog's hint variants by the same detail values. */
+interface GermanError { summary: string; hint: string; variants?: Readonly<Record<string, string>> }
 const claudeDefinitionHint = 'Korrigieren Sie das in der Meldung genannte Feld und führen Sie den Befehl erneut aus.';
 const argumentsHint = 'Korrigieren Sie die in der Meldung genannten Argumente; die Verwendung zeigt help <command>.';
-const regenerateHint = 'Führen Sie denselben Befehl mit --plan aus, prüfen Sie die Änderungen und generieren Sie dann neu.';
 
 /** German summaries and next steps for every built-in code; original diagnostics remain in error.details.localization. */
 export const germanErrors = {
@@ -25,20 +25,27 @@ export const germanErrors = {
   INVALID_LANGUAGE: { summary: 'Die Sprache wird nicht unterstützt.', hint: 'Verwenden Sie --lang en oder --lang de.' },
   INVALID_NAME: { summary: 'Der Name entspricht nicht der erforderlichen Namensregel.', hint: 'Verwenden Sie das in der Meldung beschriebene Format, zum Beispiel PascalCase.' },
   INVALID_KEY: { summary: 'Der Eigenschaftsschlüssel ist reserviert oder unsicher.', hint: 'Verwenden Sie einen anderen Eigenschaftsschlüssel.' },
-  INVALID_RESULT: { summary: 'Der Befehl lieferte Daten, die nicht als JSON serialisierbar sind.', hint: 'Prüfen Sie bestätigte Tresor-Ereignisse und lesen Sie betroffene Dateien erneut, bevor Sie es wieder versuchen; melden Sie den fehlerhaften Plugin-Befehl.' },
-  OPERATION_FAILED: { summary: 'Ein unerwarteter Laufzeit- oder E/A-Fehler ist aufgetreten.', hint: 'Lesen Sie die ursprüngliche Diagnose, prüfen Sie den Arbeitsbereich und lesen Sie betroffene Dateien vor einem erneuten Versuch.' },
+  INVALID_RESULT: { summary: 'Der Befehl lieferte Daten, die nicht als JSON serialisierbar sind.', hint: 'Prüfen Sie bestätigte Vault-Ereignisse und lesen Sie betroffene Dateien erneut, bevor Sie es wieder versuchen; melden Sie den fehlerhaften Plugin-Befehl.' },
+  OPERATION_FAILED: { summary: 'Ein unerwarteter Laufzeit- oder E/A-Fehler ist aufgetreten.', hint: 'Lesen Sie die ursprüngliche Diagnose, prüfen Sie den Zustand des Workspace und lesen Sie betroffene Dateien vor einem erneuten Versuch.' },
   // Pfade, Dateien und geschützte Schreibvorgänge
-  INVALID_PATH: { summary: 'Der Pfad ist kein gültiger relativer Pfad im Arbeitsbereich.', hint: 'Verwenden Sie einen relativen Pfad im ausgewählten Arbeitsbereich oder Projekt mit Schrägstrichen und ohne ..-Segmente.' },
-  UNSAFE_PATH: { summary: 'Der Pfad verlässt den Arbeitsbereich oder durchquert eine symbolische Verknüpfung.', hint: 'Verwenden Sie einen Pfad innerhalb des Arbeitsbereichs ohne symbolische Verknüpfungen.' },
-  NOT_FOUND: { summary: 'Die Datei oder Ressource wurde nicht gefunden.', hint: 'Prüfen Sie Pfad und ausgewähltes Projekt (project current); list zeigt vorhandene Dateien.' },
-  CONFLICT: { summary: 'Die Datei existiert bereits oder ihre Revision hat sich seit dem Lesen geändert.', hint: 'Lesen Sie die Datei erneut, gleichen Sie Ihre Änderung mit dem aktuellen Inhalt ab (error.details.currentRevision) und versuchen Sie es dann mit dem Revisionsschutz des Befehls erneut (--if-match oder --revisions-from); create legt nur neue Pfade an.' },
-  NO_MATCH: { summary: 'Der --find-Text kommt in der Datei nicht vor.', hint: 'Lesen Sie die Datei erneut und übernehmen Sie den exakten aktuellen Text einschließlich Leerraum und Zeilenenden in --find.' },
-  AMBIGUOUS_EDIT: { summary: 'Der --find-Text kommt mehrfach vor; überlappende Treffer zählen mit.', hint: 'Erweitern Sie --find um umgebenden Text, bis er genau einmal passt; error.details.lines nennt die Trefferzeilen.' },
+  INVALID_PATH: { summary: 'Der Pfad ist kein gültiger relativer Pfad im Workspace oder Projekt.', hint: 'Verwenden Sie einen relativen Pfad im ausgewählten Workspace oder Projekt mit Schrägstrichen und ohne ..-Segmente.' },
+  UNSAFE_PATH: { summary: 'Der Pfad verlässt den Workspace oder durchquert eine symbolische Verknüpfung.', hint: 'Verwenden Sie einen Pfad innerhalb des Workspace ohne symbolische Verknüpfungen.' },
+  NOT_FOUND: { summary: 'Die Datei oder Ressource wurde nicht gefunden.', hint: 'Prüfen Sie Pfad und ausgewähltes Projekt (project current); list zeigt vorhandene Dateien. error.details.alreadyDeleted true bedeutet, dass ein Löschvorgang die Datei bereits nach error.details.trashPath verschoben hat.' },
+  CONFLICT: { summary: 'Die Datei existiert bereits oder ihre Revision hat sich seit dem Lesen geändert.', hint: 'Die Meldung nennt den Fall. Eine vorhandene Datei (error.details.expectedRevision null): ersetzen Sie sie mit write --if-match oder ändern Sie sie mit edit. Eine fehlende Datei (error.details.currentRevision null): prüfen Sie den Pfad oder lassen Sie den Schutz weg, um sie anzulegen. Eine geänderte Datei: lesen Sie sie erneut, gleichen Sie Ihre Änderung mit dem aktuellen Inhalt ab und versuchen Sie es mit error.details.currentRevision über den Revisionsschutz des Befehls erneut (--if-match, ifMatch in einem Plan oder --revisions-from). error.details.alreadyApplied true bedeutet, dass die Datei die angeforderte Änderung bereits enthält; ein erneuter Versuch ist nicht nötig.', variants: {
+    'changed-while-planning': 'Eine Notiz, die auf den verschobenen Pfad verlinkt (error.details.path), wurde geändert, während Forge die Linkaktualisierungen plante, und nichts wurde geschrieben: Wiederholen Sie dasselbe Verschieben; lesen Sie diese Notiz vorher, wenn Sie sie ebenfalls bearbeiten.',
+  } },
+  NO_MATCH: { summary: 'Der --find-Text kommt in der Datei nicht vor.', hint: 'Lesen Sie die Datei erneut und übernehmen Sie den exakten aktuellen Text einschließlich Leerraum und Zeilenenden in --find; error.details.lineEndings nennt die Zeilenenden der Datei und error.details.nearMatch eine Zeile, die ohne Beachtung von Leerraum und Groß- und Kleinschreibung passt.' },
+  AMBIGUOUS_EDIT: { summary: 'Der --find-Text kommt mehrfach vor; überlappende Treffer zählen mit.', hint: 'Erweitern Sie --find um umgebenden Text, bis er genau einmal passt; error.details.lines nennt die Trefferzeilen und error.details.snippets ihren Text.' },
   UNSUPPORTED_EDIT: { summary: 'Diese Bearbeitung wird für den Dateityp nicht unterstützt.', hint: 'Verwenden Sie edit für Markdown und Text, properties für Frontmatter, patch für Canvas und Bases und write für Anhänge.' },
   SECTION_NOT_FOUND: { summary: 'Keine Überschrift passt zum --section-Pfad, oder kein Block hat die --block-ID.', hint: 'Lesen Sie die Notiz und übernehmen Sie einen Überschriftenpfad aus error.details.headings (Abschnitte mit " > " verbunden) oder eine Block-ID aus error.details.blocks.' },
   AMBIGUOUS_SECTION: { summary: 'Der --section-Pfad passt zu mehreren Überschriften, oder die --block-ID kommt mehrfach vor.', hint: 'Ergänzen Sie übergeordnete Überschriften im Pfad (Eltern > Überschrift), bis nur einer der Kandidaten in error.details.candidates bleibt, oder übergeben Sie die Zeile eines Kandidaten als --section-line (sectionLine in einem apply-Plan); geben Sie jedem Block eine eindeutige ID.' },
   INVALID_PLAN: { summary: 'Der apply-Plan oder Schreibstapel ist ungültig: Er entspricht nicht dem Planschema, oder seine Schritte enthalten doppelte oder überlappende Pfade.', hint: 'Korrigieren Sie den in error.details.operation genannten Vorgang (siehe error.details.issues und das Planschema in help apply); schreiben Sie jeden Pfad nur einmal und verwenden Sie keinen Pfad erneut, den derselbe Plan verschiebt oder löscht.' },
-  WORKSPACE_BUSY: { summary: 'Ein anderer Forge-Schreibvorgang hält die Sperre .agent-cli.lock oder eine Abgleichsperre .forge/sync/<Verbindung>.lock.', hint: 'error.details.stale nennt den Grund (eine Sperre, deren Halter nachweislich nicht mehr läuft, entfernt Forge automatisch mit einer Warnung). "active": Der Halter läuft, oder ein anderer laufender Schreibvorgang entfernt die verwaiste Sperre gerade; warten Sie und versuchen Sie es erneut. "unknown": Forge kann den Halter nicht prüfen (anderer Rechner, PID-Namensraum oder Systemstart, oder eine unlesbare Sperre), daher ist error.retryable false; stellen Sie anhand von error.details.lock sicher, dass er nicht mehr läuft, prüfen Sie seine unvollendeten Änderungen, löschen Sie dann die in error.details.path genannte Datei (relativ zum Workspace-Stamm) und wiederholen Sie den Befehl. "stale": Der Halter läuft nachweislich nicht mehr, aber die Sperre ließ sich nicht entfernen, daher ist error.retryable false; stellen Sie sicher, dass kein Forge-Prozess sie verwendet, löschen Sie dann diese Datei und wiederholen Sie den Befehl.' },
+  WORKSPACE_BUSY: { summary: 'Ein anderer Forge-Schreibvorgang hält die Sperre .agent-cli.lock oder eine Abgleichsperre .forge/sync/<Verbindung>.lock.', hint: 'error.details.stale nennt den Grund (eine Sperre, deren Halter nachweislich nicht mehr läuft, entfernt Forge automatisch mit einer Warnung). "active": Der Halter läuft, oder ein anderer laufender Schreibvorgang entfernt die verwaiste Sperre gerade; warten Sie und versuchen Sie es erneut. "unknown": Forge kann den Halter nicht prüfen (anderer Rechner, PID-Namensraum oder Systemstart, oder eine unlesbare Sperre), daher ist error.retryable false; stellen Sie anhand von error.details.lock sicher, dass er nicht mehr läuft, prüfen Sie seine unvollendeten Änderungen, löschen Sie dann die in error.details.path genannte Datei (relativ zum Workspace-Stamm) und wiederholen Sie den Befehl. "stale": Der Halter läuft nachweislich nicht mehr, aber die Sperre ließ sich nicht entfernen, daher ist error.retryable false; stellen Sie sicher, dass kein Forge-Prozess sie verwendet, löschen Sie dann diese Datei und wiederholen Sie den Befehl.' , variants: {
+    running: 'Ein laufender Schreibvorgang eines verschachtelten Stamms hält seine Sperre (error.details.path) in dem Ordner, den dieses Verschieben oder Löschen mitnehmen würde; --wait wartet nicht darauf. Lassen Sie diesen Schreibvorgang abschließen und versuchen Sie es frühestens nach error.details.retryAfterMs Millisekunden erneut.',
+    active: 'Der Halter läuft, oder ein anderer laufender Schreibvorgang entfernt gerade eine verwaiste Sperre: Versuchen Sie es nach error.details.retryAfterMs Millisekunden erneut, oder wiederholen Sie den Befehl mit --wait <ms>, um auf die Sperre zu warten.',
+    unknown: 'Forge kann den Halter nicht prüfen (anderer Rechner, PID-Namensraum oder Systemstart, oder eine unlesbare Sperre) und entfernt seine Sperre nie, daher hilft Warten nicht: Stellen Sie anhand von error.details.lock sicher, dass er nicht mehr läuft, prüfen Sie seine unvollendeten Änderungen, löschen Sie dann die in error.details.path genannte Datei (relativ zum Workspace-Stamm) und wiederholen Sie den Befehl.',
+    stale: 'Der Halter läuft nachweislich nicht mehr, aber seine Sperre ließ sich nicht entfernen: Stellen Sie sicher, dass kein Forge-Prozess sie verwendet, löschen Sie dann die in error.details.path genannte Datei (relativ zum Workspace-Stamm) und wiederholen Sie den Befehl.',
+  } },
   DESTINATION_EXISTS: { summary: 'Das Ziel des Verschiebens oder Umbenennens existiert bereits.', hint: 'Wählen Sie ein Ziel, das nicht existiert (error.details.path), oder verschieben bzw. löschen Sie die vorhandene Datei zuerst; Forge überschreibt nie ein Ziel.' },
   PROTECTED_PATH: { summary: 'Der Pfad ist vor Verschieben und Löschen geschützt.', hint: 'Forge verschiebt oder löscht niemals .obsidian, .forge oder im Workspace-Bereich bin (in beliebiger Groß- und Kleinschreibung) und keinen Ordner mit einem .git-Repository; endgültig löscht es nur Ordner ohne symbolische Links, node_modules oder Spezialdateien, verschieben Sie einen solchen Ordner daher in den Papierkorb. Die Bereichswurzel und .git-Pfade werden als INVALID_PATH abgelehnt.' },
   INVALID_MOVE: { summary: 'Das Verschieben oder Umbenennen ist nicht möglich.', hint: 'Verwenden Sie ein Ziel, das sich von der Quelle unterscheidet und nicht in ihr liegt; rename erwartet einen neuen Namen ohne Schrägstriche.' },
@@ -50,15 +57,8 @@ export const germanErrors = {
   INVALID_CANVAS: { summary: 'Die Canvas-Struktur ist ungültig.', hint: 'Korrigieren Sie die genannten Knoten, Kanten oder IDs; prüfen Sie mit validate <file.canvas>.' },
   INVALID_BASE: { summary: 'Die Base-Struktur ist ungültig.', hint: 'Korrigieren Sie die genannte Base-Definition; prüfen Sie mit validate <file.base>.' },
   INVALID_POINTER: { summary: 'Der JSON Pointer ist ungültig oder verweist auf keine gültige Position.', hint: 'Lesen Sie das Dokument und verwenden Sie einen vorhandenen Pointer-Pfad; /- hängt nur an ein vorhandenes Array an.' },
-  // Bases-Abfragen
-  INVALID_BASE_QUERY: { summary: 'Die Bases-Abfrage ist ungültig.', hint: 'Prüfen Sie die in der Meldung genannte Ansicht, den Kontext und die Ausdrücke.' },
-  INVALID_BASE_EXPRESSION: { summary: 'Ein Bases-Ausdruck kann nicht geparst werden.', hint: 'Korrigieren Sie den in der Meldung genannten Ausdruck.' },
-  BASE_EVALUATION_ERROR: { summary: 'Ein Bases-Ausdruck ist bei der Auswertung einer Datei fehlgeschlagen.', hint: 'Prüfen Sie die in der Meldung genannte Ansicht, Datei und den Ausdruck.' },
-  BASE_VIEW_NOT_FOUND: { summary: 'Die angeforderte Bases-Ansicht existiert nicht.', hint: 'Führen Sie bases inspect <file.base> aus und übergeben Sie eine vorhandene --view.' },
-  BASE_CONTEXT_NOT_FOUND: { summary: 'Die Kontextdatei ist keine indexierte Tresordatei.', hint: 'Übergeben Sie eine vorhandene Tresordatei an --context.' },
-  INVALID_BASE_PROPERTY_TYPES: { summary: 'Das Register der Obsidian-Eigenschaftstypen ist ungültig.', hint: 'Korrigieren Sie .obsidian/types.json zu einem JSON-Objekt mit Eigenschaftstypen.' },
-  UNSUPPORTED_BASE_PROPERTY_TYPE: { summary: 'Ein Obsidian-Eigenschaftstyp wird nicht unterstützt.', hint: 'Verwenden Sie in .obsidian/types.json einen unterstützten Typ.' },
   // Konfiguration, Installation und Projekte
+  INVALID_ROOT: { summary: 'Das Workspace-Stammverzeichnis existiert nicht oder ist kein Verzeichnis.', hint: 'Übergeben Sie mit --root (oder FORGE_ROOT) das vorhandene Workspace-Verzeichnis, das bin/ enthält; --root hat Vorrang vor FORGE_ROOT.' },
   INVALID_CONFIG: { summary: 'Die Konfiguration ist ungültig oder nicht lesbar.', hint: 'Korrigieren Sie bin/config.json an der in der Meldung genannten Stelle und prüfen Sie mit config.' },
   INVALID_SETUP: { summary: 'Die Installation kann mit den aktuellen Distributionsdateien nicht abgeschlossen werden.', hint: 'Reparieren Sie den in der Meldung genannten bin-Pfad und führen Sie setup erneut aus.' },
   INVALID_PROJECT: { summary: 'Die Projektmetadaten sind ungültig.', hint: 'Korrigieren Sie .forge/project.json im Projektverzeichnis.' },
@@ -69,39 +69,14 @@ export const germanErrors = {
   PROJECT_NOT_FOUND: { summary: 'Das Projekt existiert nicht.', hint: 'Führen Sie project list aus und öffnen Sie ein vorhandenes Projekt.' },
   PROJECT_REQUIRED: { summary: 'Dieser Befehl benötigt ein ausgewähltes Projekt.', hint: 'Öffnen Sie zuerst mit project open <name> ein Projekt.' },
   STALE_PROJECT_CONTEXT: { summary: 'Das ausgewählte Projekt fehlt oder stimmt nicht mehr mit der Konfiguration überein.', hint: 'Wählen Sie mit project open <name> ein gültiges Projekt oder verwenden Sie project close.' },
-  // Vorlagen und Generierung
-  INVALID_TEMPLATE: { summary: 'Die Markdown-Vorlage ist ungültig.', hint: 'Korrigieren Sie das in der Meldung genannte Frontmatter oder die Platzhalter.' },
-  INVALID_TEMPLATE_DATE: { summary: 'Ein Datum oder Datumsformat der Vorlage ist ungültig.', hint: 'Verwenden Sie ein ISO-Datum und ein unterstütztes Datumsformat.' },
-  INVALID_TEMPLATE_PACK: { summary: 'Das Vorlagenpaket ist ungültig.', hint: 'Verwenden Sie eindeutige Vorlagen-IDs und Zielpfade.' },
-  INVALID_TEMPLATE_VALUES: { summary: 'Vorlagenwerte fehlen oder haben den falschen Typ.', hint: 'Führen Sie templates inspect <template.md> aus und geben Sie die Pflichtwerte an.' },
-  UNKNOWN_TEMPLATE_VARIABLE: { summary: 'Die Vorlage verwendet eine nicht deklarierte Variable.', hint: 'Deklarieren Sie die Variable oder entfernen Sie den Platzhalter; prüfen Sie mit templates inspect <template.md>.' },
+  // Generierung
   UNKNOWN_GENERATOR: { summary: 'Der Generator ist nicht registriert.', hint: 'Verfügbare Generatoren zeigt make.' },
   INVALID_GENERATION_PLAN: { summary: 'Der Generierungsplan hat überlappende Ausgaben oder ungültige Optionen.', hint: 'Verwenden Sie getrennte Ausgabe- und Manifestpfade und kombinieren Sie die Planung nicht mit --revisions-from.' },
   INVALID_GENERATION_REVISIONS: { summary: 'Die Revisionsfreigabe passt nicht zum geprüften Plan.', hint: 'Erstellen Sie mit --plan-out einen neuen Plan und übergeben Sie diese Datei an --revisions-from.' },
-  UI_DRIFT: { summary: 'Generierte UI-Dateien fehlen oder weichen von den Definitionen ab.', hint: regenerateHint },
-  DATA_SOURCE_DRIFT: { summary: 'Generierte Datenquellendateien fehlen oder weichen von den Definitionen ab.', hint: regenerateHint },
   GENERATION_DRIFT: { summary: 'Generierte Dateien fehlen oder weichen von der Ausgabe des Generators ab.', hint: 'Führen Sie denselben make-Befehl mit --plan aus, prüfen Sie die Änderungen und generieren Sie dann neu.' },
   // Projekt-Workflows
   INVALID_WORKFLOW: { summary: 'Ein Projekt-Workflow ist ungültig, oder zwei Workflows erzeugen dieselbe Datei.', hint: 'Korrigieren oder benennen Sie den in der Meldung genannten Workflow unter src/infrastructure/workflows/<concern>/ um und führen Sie dann workflows sync aus.' },
   WORKFLOW_DRIFT: { summary: 'Generierte GitHub-Workflows fehlen, weichen ab oder sind veraltet.', hint: 'Führen Sie workflows sync aus, prüfen Sie die Änderungen in .github/workflows und committen Sie sie zusammen mit ihren Quellen.' },
-  // UI, Interaktionen und Datenquellen
-  INVALID_UI: { summary: 'Eine Komponentendefinition ist ungültig.', hint: 'Korrigieren Sie die genannte Definition; prüfen Sie mit components validate.' },
-  INVALID_UI_LIBRARY: { summary: 'Die Komponentenbibliothek ist ungültig.', hint: 'Führen Sie components validate aus und korrigieren Sie die gemeldeten Definitionen.' },
-  INVALID_UI_FRAMEWORK: { summary: 'Das UI-Ziel wird nicht unterstützt.', hint: 'Verwenden Sie html, htmx, vanilla, vue, svelte, react oder angular.' },
-  EMPTY_UI_LIBRARY: { summary: 'Die Komponentenbibliothek enthält keine Definitionen.', hint: 'Führen Sie components init aus oder fügen Sie eine Markdown-Definition hinzu.' },
-  DUPLICATE_UI_COMPONENT: { summary: 'Zwei Komponentendefinitionen haben dieselbe ID.', hint: 'Vergeben Sie für jede Komponente eine eindeutige ID.' },
-  UNKNOWN_UI_COMPONENT: { summary: 'Die Komponente ist nicht definiert.', hint: 'Führen Sie components list aus und verwenden Sie eine vorhandene ID.' },
-  CYCLIC_UI_COMPONENT: { summary: 'Die Komponentenreferenzen bilden einen Zyklus.', hint: 'Entfernen Sie die in der Meldung genannte zyklische Referenz.' },
-  UI_RENDERER_UNAVAILABLE: { summary: 'Für dieses UI-Ziel ist kein Generator verfügbar.', hint: 'Wählen Sie ein unterstütztes --framework.' },
-  INVALID_INTERACTION: { summary: 'Eine Interaktionsdefinition ist ungültig.', hint: 'Korrigieren Sie das genannte Ereignis, die Aktionen oder Bindungen; prüfen Sie mit interactions validate.' },
-  DUPLICATE_INTERACTION: { summary: 'Zwei Interaktionsdefinitionen haben dieselbe ID.', hint: 'Vergeben Sie für jede Interaktion eine eindeutige ID.' },
-  EMPTY_INTERACTION_LIBRARY: { summary: 'Die Interaktionsbibliothek enthält keine Definitionen.', hint: 'Führen Sie interactions init aus oder fügen Sie eine Markdown-Definition hinzu.' },
-  UNKNOWN_INTERACTION: { summary: 'Die Interaktion ist nicht definiert.', hint: 'Führen Sie interactions list aus und prüfen Sie die Interaktionsreferenzen der Komponente.' },
-  INVALID_DATA_SOURCE: { summary: 'Eine Datenquellendefinition ist ungültig.', hint: 'Korrigieren Sie die genannten Felder; prüfen Sie mit data-sources validate.' },
-  DUPLICATE_DATA_SOURCE: { summary: 'Zwei Datenquellendefinitionen haben dieselbe ID.', hint: 'Vergeben Sie für jede Datenquelle eine eindeutige ID.' },
-  EMPTY_DATA_SOURCE_LIBRARY: { summary: 'Die Datenquellenbibliothek enthält keine Definitionen.', hint: 'Führen Sie data-sources init aus oder fügen Sie eine Markdown-Definition hinzu.' },
-  UNKNOWN_DATA_SOURCE: { summary: 'Die Datenquelle ist nicht definiert.', hint: 'Führen Sie data-sources list aus und verwenden Sie eine vorhandene ID.' },
-  DATA_SOURCE_RENDERER_UNAVAILABLE: { summary: 'Für diese Datenquelle ist kein Generator verfügbar.', hint: 'Verwenden Sie eine unterstützte Datenquellenart; Hinweise zur Generierung zeigt help make.' },
   // Plugins, Skills und Ereignisse
   INVALID_PLUGIN: { summary: 'Ein Plugin-Manifest oder eine Plugin-Implementierung ist ungültig.', hint: 'Korrigieren Sie das genannte Plugin oder deaktivieren Sie Plugins mit --no-plugins.' },
   INVALID_PLUGIN_CONFIG: { summary: 'Die Plugin-Konfiguration ist ungültig.', hint: 'Tragen Sie in bin/config.json unter plugins.enabled eindeutige Kebab-Case-IDs installierter Benutzer-Plugins ein; plugins listet sie auf.' },
@@ -113,7 +88,6 @@ export const germanErrors = {
   PLUGIN_SERVICE_CYCLE: { summary: 'Die Dienstabhängigkeiten der Plugins bilden einen Zyklus.', hint: 'Lösen Sie den in error.details.plugins genannten Zyklus auf, sodass ein Plugin keinen Dienst des anderen mehr benötigt.' },
   PLUGIN_LIFECYCLE: { summary: 'Ein Plugin hat den Host außerhalb seines Lebenszyklus verwendet.', hint: 'Registrieren Sie Beiträge vor der Aktivierung und verwenden Sie den Host nach der Freigabe nicht mehr.' },
   DUPLICATE_OR_INVALID_ID: { summary: 'Eine Beitrags-ID ist ungültig oder bereits registriert.', hint: 'Verwenden Sie eine eindeutige, kleingeschriebene ID mit Punkten.' },
-  UNKNOWN_SKILL: { summary: 'Der Skill ist nicht registriert.', hint: 'Verfügbare Skills zeigt skills list.' },
   INVALID_EVENT: { summary: 'Eine Ereignisdefinition oder der Ereigniszustand ist ungültig.', hint: 'Definieren Sie Ereignisse vor der Freigabe mit einer ID mit Punkten und einem Validator.' },
   INVALID_EVENT_LISTENER: { summary: 'Ein Ereignisbehandler ist keine Funktion.', hint: 'Übergeben Sie eine Funktion als Behandler.' },
   INVALID_EVENT_PAYLOAD: { summary: 'Die Ereignisdaten entsprechen nicht dem Ereignisvertrag.', hint: 'Prüfen Sie den Vertrag mit events und senden Sie passende Daten.' },
@@ -124,24 +98,11 @@ export const germanErrors = {
   // Claude-Code-Definitionen
   INVALID_CLAUDE_AGENT: { summary: 'Die Claude-Agentendefinition ist ungültig.', hint: claudeDefinitionHint },
   INVALID_CLAUDE_HOOKS: { summary: 'Die Claude-Hook-Konfiguration ist ungültig.', hint: claudeDefinitionHint },
-  INVALID_CLAUDE_PLUGIN: { summary: 'Das Claude-Plugin-Manifest oder eine Plugin-Datei ist ungültig.', hint: claudeDefinitionHint },
   INVALID_CLAUDE_SETTINGS: { summary: 'Die Claude-Einstellungsdatei ist ungültig.', hint: 'Korrigieren Sie die JSON-Struktur der in der Meldung genannten Einstellungsdatei. Nennt sie das Generierungsmanifest .claude/forge-generated.json, stammt es von einer älteren Forge-Version: Löschen Sie .claude/forge-generated.json und führen Sie agents generate erneut aus; die darin aufgeführten Regeln bleiben in .claude/settings.json, bis Sie sie entfernen.' },
-  INVALID_CLAUDE_COMMAND: { summary: 'Dieser Claude-Befehl wird nicht unterstützt.', hint: 'Unterstützte Befehle zeigt claude capabilities.' },
-  INVALID_CLAUDE_ARGUMENT: { summary: 'Ein Argument des Claude-Befehls ist ungültig.', hint: argumentsHint },
-  INVALID_CLAUDE_OPTION: { summary: 'Diese Option ist für den Claude-Befehl nicht zulässig.', hint: 'Prüfen Sie help claude und entfernen Sie die Option.' },
-  INVALID_CLAUDE_SCOPE: { summary: 'Der Claude-Geltungsbereich ist ungültig.', hint: 'Prüfen Sie help claude und übergeben Sie einen für diese Aktion unterstützten --scope.' },
-  INVALID_CLAUDE_INPUT: { summary: 'Die Claude-Eingabe ist ungültig oder zu groß.', hint: 'Übergeben Sie gültige Eingaben innerhalb des Größenlimits.' },
-  INVALID_CLAUDE_OUTPUT: { summary: 'Das Claude-Ausgabeformat ist ungültig.', hint: 'Verwenden Sie text, json oder json-last-line.' },
-  INVALID_CLAUDE_OUTPUT_LIMIT: { summary: 'Das Claude-Ausgabelimit ist ungültig.', hint: 'Verwenden Sie eine positive ganze Zahl von Bytes.' },
-  INVALID_CLAUDE_TIMEOUT: { summary: 'Das Claude-Zeitlimit ist ungültig.', hint: 'Geben Sie das Zeitlimit in Millisekunden innerhalb des in der Meldung genannten Bereichs an.' },
-  INVALID_CLAUDE_EXECUTABLE: { summary: 'Der Pfad zur Claude-Code-CLI ist ungültig.', hint: 'Übergeben Sie einen ausführbaren Pfad an --claude-bin.' },
-  // Claude-Code-Prozess
-  CLAUDE_NOT_INSTALLED: { summary: 'Die Claude-Code-CLI wurde nicht gefunden.', hint: 'Installieren Sie Claude Code und nehmen Sie claude in PATH auf oder verwenden Sie --claude-bin.' },
-  CLAUDE_WORKING_DIRECTORY_UNAVAILABLE: { summary: 'Das Arbeitsverzeichnis für Claude Code ist nicht verfügbar.', hint: 'Prüfen Sie, dass das ausgewählte Projekt oder der Arbeitsbereich existiert und ein Verzeichnis ist.' },
-  CLAUDE_COMMAND_FAILED: { summary: 'Claude Code konnte nicht gestartet werden oder wurde unerwartet beendet.', hint: 'Lesen Sie error.details, prüfen Sie den externen Zustand und wiederholen Sie dann bewusst.' },
-  CLAUDE_COMMAND_TIMEOUT: { summary: 'Der Claude-Befehl hat sein Zeitlimit überschritten.', hint: 'Prüfen Sie den externen Zustand; wiederholen Sie mit größerem --timeout nur, wenn die Arbeit nicht abgeschlossen wurde.' },
-  CLAUDE_OUTPUT_LIMIT: { summary: 'Die Claude-Ausgabe hat das Größenlimit überschritten.', hint: 'Prüfen Sie den externen Zustand; wiederholen Sie nur bei Bedarf mit größerem Ausgabelimit.' },
-  CLAUDE_COMMAND_INTERRUPTED: { summary: 'Der Claude-Befehl wurde durch ein Signal unterbrochen (Exit 130 bei SIGINT, 143 bei SIGTERM).', hint: 'Prüfen Sie den externen Zustand, bevor Sie den Befehl erneut ausführen.' },
-  CLAUDE_RUNTIME_FAILED: { summary: 'Claude Code wurde mit einem Status ungleich null beendet.', hint: 'Prüfen Sie error.details (nativer Status, Ausgabe und geparstes Ergebnis) und den externen Zustand vor einer Wiederholung.' },
-  CLAUDE_INVALID_OUTPUT: { summary: 'Claude Code war erfolgreich, lieferte aber nicht das angeforderte JSON.', hint: 'Prüfen Sie stdout und den externen Zustand vor einer Wiederholung.' },
 } satisfies Record<ErrorCode, GermanError>;
+
+/** The German hint variant of a built-in code for one value of its variant detail, if translated. */
+export function germanHintVariant(code: ErrorCode, value: string): string | undefined {
+  const { variants }: GermanError = germanErrors[code];
+  return variants !== undefined && Object.hasOwn(variants, value) ? variants[value] : undefined;
+}

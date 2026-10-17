@@ -1,23 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import type { NoteSource } from '../../src/plugins/backlog/domain/items.ts';
 import { buildModel, displayType, inPlan, type BacklogItem, type BacklogModel } from '../../src/plugins/backlog/domain/model.ts';
 import { requirementsBoard, observedStates } from '../../src/plugins/backlog/domain/board.ts';
 import { checkBacklog } from '../../src/plugins/backlog/domain/check.ts';
 import { dependentsClosure } from '../../src/plugins/backlog/domain/dependencies.ts';
 import { resolveSettings } from '../../src/plugins/backlog/domain/settings-resolve.ts';
+import { noteSource } from '../support/backlog.ts';
 
 /** Frontmatter by path; `[[x]]` links are frontmatter links; links resolve by basename or path without `.md`. */
-function vault(notes: Record<string, Record<string, unknown>>): NoteSource {
-  const resolve = (linkpath: string) => Object.keys(notes).find(path => path === `${linkpath}.md` || path.slice(path.lastIndexOf('/') + 1, -3) === linkpath) ?? null;
-  return {
-    frontmatter: path => notes[path],
-    frontmatterLinks: path => Object.entries(notes[path] ?? {}).flatMap(([key, value]) => (Array.isArray(value) ? value.map((item, index) => [`${key}.${index}`, item] as const) : [[key, value] as const]))
-      .flatMap(([key, value]) => (typeof value === 'string' && /^\[\[.+\]\]$/.test(value) ? [{ key, link: value.slice(2, -2).split('|')[0]! }] : [])),
-    resolve,
-  };
-}
 const build = (notes: Record<string, Record<string, unknown>>, results: string[], options: Record<string, unknown> = {}) =>
-  buildModel(vault(notes), results, resolveSettings({ stateProperty: 'note.status', dependsOnProperty: 'note.dependsOn', ...options }), path => path in notes);
+  buildModel(noteSource(notes), results, resolveSettings({ stateProperty: 'note.status', dependsOnProperty: 'note.dependsOn', ...options }), path => path in notes);
 
 describe('the hierarchy', () => {
   const notes = {

@@ -36,11 +36,18 @@ describe('Forge configuration', () => {
   });
   it('uses defaults for an explicitly selected environment without importing the source config', async () => {
     await writeFile(configPath(), JSON.stringify({ paths: { projects: 'source-projects' }, settings: { dryRun: true } }));
+    await mkdir(join(root, 'fresh-environment'));
     const result = await load({ root: 'fresh-environment' });
     expect(result.root).toBe(join(root, 'fresh-environment'));
     expect(result.path).toBeNull();
     expect(result.config.paths).toEqual({ projects: 'projects' });
     expect(result.config.settings.dryRun).toBe(false);
+  });
+  it('rejects a selected root that does not exist or is not a directory with INVALID_ROOT', async () => {
+    await writeFile(join(root, 'note.md'), 'text');
+    for (const selected of ['missing-environment', 'note.md']) {
+      await expect(load({ root: selected })).rejects.toMatchObject({ code: 'INVALID_ROOT', exitCode: 3, details: { root: join(root, selected) } });
+    }
   });
   it('does not fall back to source defaults when the selected environment config is invalid', async () => {
     const target = join(root, 'invalid-environment');

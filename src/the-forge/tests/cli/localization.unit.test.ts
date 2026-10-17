@@ -4,6 +4,12 @@ import { AppError } from '../../src/domain/shared/errors.ts';
 import { language, Localizer } from '../../src/presentation/localization/localization.ts';
 import { PluginCatalog } from '../../src/application/plugins/plugin-catalog.ts';
 import { scaffoldsPlugin } from '../../src/plugins/scaffolds/plugin.ts';
+import type { CommandContext } from '../../src/application/plugins/registry.ts';
+import { builtinCommands } from '../support/builtin-commands.ts';
+
+const { commands } = builtinCommands();
+/** The registered metadata of a kernel command, whose `localizedOutput` decides what a result translates. */
+const metadata = (id: string) => commands.get(id)!;
 
 describe('presentation localization', () => {
   it('selects explicit supported languages and rejects unsupported values', () => {
@@ -16,15 +22,16 @@ describe('presentation localization', () => {
     const command = { id: 'read', description: 'Read document', usage: 'read <path>' };
     const result = { path: 'hello.md', content: 'The text is German: Hallo' };
     expect(localizer.command(command)).toBe(command);
-    expect(localizer.result('read', result)).toBe(result);
+    expect(localizer.result(metadata('read'), result)).toBe(result);
+    expect(localizer.result(metadata('formats'), result)).toBe(result);
     expect(localizer.error(new AppError('CONFLICT', 'Original conflict', 2, { revision: '123' }))).toEqual({ code: 'CONFLICT', message: 'Original conflict', hint: expect.stringContaining('--if-match'), retryable: false, details: { revision: '123' } });
   });
   it('preserves diagnostics and existing error details without mutating them', () => {
     const localizer = new Localizer('de');
     const details = { outputs: [{ path: 'src/ui.ts', status: 'changed' }], diagnostic: 'custom', localization: { custom: true } };
-    const output = localizer.error(new AppError('UI_DRIFT', 'Review src/ui.ts with --plan.', 5, details));
-    expect(output.code).toBe('UI_DRIFT');
-    expect(output.message).toContain('Generierte UI-Dateien');
+    const output = localizer.error(new AppError('GENERATION_DRIFT', 'Review src/ui.ts with --plan.', 5, details));
+    expect(output.code).toBe('GENERATION_DRIFT');
+    expect(output.message).toContain('Generierte Dateien');
     expect(output.details).toEqual({ ...details, localization: { originalMessage: 'Review src/ui.ts with --plan.', originalDetails: { custom: true } } });
     expect(details.localization).toEqual({ custom: true });
   });
@@ -34,26 +41,30 @@ describe('presentation localization', () => {
     expect(localizer.command(plugin)).toBe(plugin);
     expect(localizer.error(new AppError('PLUGIN_CUSTOM', 'Plugin-owned diagnostic'))).toEqual({ code: 'PLUGIN_CUSTOM', message: 'Plugin-owned diagnostic' });
     const data = { description: 'Author content', generators: [{ id: 'example.custom', description: 'Owned by plugin' }], content: 'hello', path: 'original.md' };
-    expect(localizer.result('example.read', data)).toBe(data);
-    expect(localizer.result('read', data)).toBe(data);
-    expect(localizer.result('make', { preview: [{ path: 'src/read.ts', content: 'const message = "Read";' }] })).toEqual({ preview: [{ path: 'src/read.ts', content: 'const message = "Read";' }] });
-    expect(localizer.result('make', data)).toEqual(data);
+    expect(localizer.result({}, data)).toBe(data);
+    expect(localizer.result(undefined, data)).toBe(data);
+    expect(localizer.result(metadata('read'), data)).toBe(data);
+    expect(localizer.result(metadata('make'), { preview: [{ path: 'src/read.ts', content: 'const message = "Read";' }] })).toEqual({ preview: [{ path: 'src/read.ts', content: 'const message = "Read";' }] });
+    expect(localizer.result(metadata('make'), data)).toEqual(data);
   });
-  it('localizes guidance by known command and preserves authored library descriptions', () => {
+  it('localizes the result fields a command declares, guidance by its English text, and preserves authored text', async () => {
     const localizer = new Localizer('de');
-    const nextSteps = [{ command: 'node bin/forge.js project list', purpose: 'Find a project' }, { command: 'custom', purpose: 'Preserve me' }];
-    expect(localizer.result('setup', { nextSteps })).toEqual({ nextSteps: [{ command: nextSteps[0]!.command, purpose: expect.stringContaining('Ein Projekt suchen') }, nextSteps[1]] });
+    const nextSteps = [{ command: 'node bin/forge.js project list', purpose: 'Find a project, then explicitly open it before generating project files.' }, { command: 'custom', purpose: 'Preserve me' }];
+    expect(localizer.result(metadata('setup'), { nextSteps })).toEqual({ nextSteps: [{ command: nextSteps[0]!.command, purpose: expect.stringContaining('Ein Projekt suchen') }, nextSteps[1]] });
     const data = { status: 'empty', directory: 'my sources', nextStep: 'Initialize', description: 'Author-owned text' };
     // Library guidance belongs to the core plugins that own those commands (localizedLibraryResult); the kernel leaves it alone.
-    expect(localizer.result('data-sources', data)).toBe(data);
-    const formats = localizer.result('formats', { text: ['ts'], textFiles: 'UTF-8 read', attachments: 'Bytes', otherFiles: 'Opaque' });
-    expect(formats).toMatchObject({ text: ['ts'], textFiles: expect.stringContaining('UTF-8 lesen'), attachments: expect.stringContaining('verlustfrei') });
-    expect(localizer.result('events', { delivery: 'English' })).toEqual({ delivery: expect.stringContaining('--events none|changes|all') });
+    expect(localizer.result(metadata('data-sources'), data)).toBe(data);
+    const english = await metadata('formats').run([], {}, {} as CommandContext) as Record<string, unknown>;
+    expect(localizer.result(metadata('formats'), english)).toMatchObject({ text: english.text, textFiles: expect.stringContaining('UTF-8 lesen'), attachments: expect.stringContaining('verlustfrei') });
+    // Text that is no catalogued guidance stays as it is, even in a field the command declares.
+    expect(localizer.result(metadata('formats'), { textFiles: 'UTF-8 read' })).toEqual({ textFiles: 'UTF-8 read' });
     const contracts = [{ id: 'vault.create', description: 'English' }, { id: 'quality.checked', description: 'Plugin text' }, { id: 'quality.bare' }];
-    expect(localizer.result('events', { contracts, delivery: 'English' })).toEqual({ delivery: expect.stringContaining('vault.*'), contracts: [
+    const events = await metadata('events').run([], {}, { events: { ids: () => [], catalog: () => contracts } } as unknown as CommandContext) as Record<string, unknown>;
+    expect(localizer.result(metadata('events'), events)).toEqual({ ...events, delivery: expect.stringContaining('--events none|changes|all'), contracts: [
       { id: 'vault.create', description: expect.stringContaining('Ordner') }, contracts[1], contracts[2],
     ] });
-    expect(localizer.result('schema', { errors: [], generators: [], eventOutput: { option: '--events', changes: 'English' } })).toMatchObject({ eventOutput: { option: '--events', changes: expect.stringContaining('vault.rename') } });
+    const changes = 'Only committed vault.* records: vault.create, vault.modify, vault.delete and vault.rename, for files and folders.';
+    expect(localizer.result(metadata('schema'), { errors: [], generators: [], eventOutput: { option: '--events', changes } })).toMatchObject({ eventOutput: { option: '--events', changes: expect.stringContaining('vault.rename') } });
   });
   it('translates known metadata without changing machine identifiers or usage', () => {
     // Generator descriptions come from the plugin that contributes the generator (here scaffolds' entity).
@@ -61,7 +72,7 @@ describe('presentation localization', () => {
     catalog.add('scaffolds', scaffoldsPlugin.create(testHost({ skills: { list: () => [], get: () => undefined }, fileDates: () => () => Promise.reject(new Error('unused')) })).strings, undefined);
     const localizer = new Localizer('de', catalog);
     expect(localizer.command({ id: 'read', description: 'Read', usage: 'read <path>' })).toEqual({ id: 'read', description: expect.stringContaining('lesen'), usage: 'read <path>' });
-    expect(localizer.result('make', { generators: [{ id: 'entity', description: 'Entity' }] })).toEqual({ generators: [{ id: 'entity', description: expect.stringContaining('Domain-Entität') }] });
+    expect(localizer.result(metadata('make'), { generators: [{ id: 'entity', description: 'Entity' }] })).toEqual({ generators: [{ id: 'entity', description: expect.stringContaining('Domain-Entität') }] });
     expect(localizer.command({ id: 'constructor', description: 'Original' }).description).toBe('Original');
   });
 });

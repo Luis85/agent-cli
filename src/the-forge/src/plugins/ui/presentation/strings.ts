@@ -1,4 +1,5 @@
 import type { PluginStrings, PluginStringTable } from '../../../application/plugins/plugin-catalog.ts';
+import { germanUiErrors } from './errors.ts';
 
 /** The library actions of `components` and `interactions`, for one German noun (genitive plural). */
 function libraryActions(command: string, noun: string): Record<string, string> {
@@ -30,6 +31,7 @@ export const de: PluginStringTable = {
 /** The ui plugin's German manifest and option, argument and settings descriptions, available while it is disabled. */
 export const uiStrings: PluginStrings = {
   de: {
+    errors: germanUiErrors,
     manifest: { name: 'UI-Bibliotheken', description: 'Markdown-Bibliotheken für Komponenten und Interaktionen mit deterministischer UI- und Storybook-Generierung für sieben Ziele.' },
     descriptions: {
       'Root element tag for create.': 'Tag des Wurzelelements für create.',

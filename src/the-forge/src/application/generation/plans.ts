@@ -2,6 +2,10 @@ import { forgeError, AppError, ensure } from '../../domain/shared/errors.ts';
 import { vaultPath, type WriteRequest } from '../../domain/documents/file.ts';
 import type { Workspace } from '../workspace/workspace.ts';
 
+/** Builds the failure that reports drifted generated outputs. */
+export type DriftFailure = (message: string, details: { outputs: Array<{ path: string; status: string }> }) => Error;
+const generationDrift: DriftFailure = (message, details) => forgeError('GENERATION_DRIFT', message, details);
+
 /** Shared deterministic-generation review and explicit overwrite policy. */
 export class GenerationService {
   constructor(private readonly workspace: Workspace) {}
@@ -47,9 +51,13 @@ export class GenerationService {
     return { matches: outputs.every(output => output.status === 'unchanged'), revisions: orderedRevisions, outputs, ...(manifest ? { manifest } : {}) };
   }
 
-  async check(writes: readonly WriteRequest[], errorCode: 'UI_DRIFT' | 'DATA_SOURCE_DRIFT' | 'GENERATION_DRIFT') {
+  /**
+   * The plan when every output matches; otherwise the drift failure `drift` builds from the message and details
+   * (`details.outputs`): GENERATION_DRIFT for `make`, or the code of the plugin that generates the files.
+   */
+  async check(writes: readonly WriteRequest[], drift: DriftFailure = generationDrift) {
     const plan = await this.plan(writes);
-    if (!plan.matches) throw forgeError(errorCode, 'Generated outputs are missing or differ from their definitions. Run the same command with --plan to review changes.', { outputs: plan.outputs.map(({ path, status }) => ({ path, status })) });
+    if (!plan.matches) throw drift('Generated outputs are missing or differ from their definitions. Run the same command with --plan to review changes.', { outputs: plan.outputs.map(({ path, status }) => ({ path, status })) });
     return plan;
   }
 

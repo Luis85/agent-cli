@@ -4,8 +4,9 @@ import { lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { racyWindowMs, snapshotFormat } from '../../src/domain/metadata/snapshot.ts';
 import { portableCli } from '../support/portable-cli.ts';
+import { warningMessages } from '../support/warnings.ts';
 
-const fixture = portableCli();
+const fixture = portableCli({ privateBundle: true });
 const cli = fixture.cli;
 const cacheFile = () => join(fixture.project, `.forge/cache/metadata.v${snapshotFormat}.workspace.json`);
 const tags = (body: { data: { tags: Array<{ tag: string; files: string[] }> } }) => Object.fromEntries(body.data.tags.map(item => [item.tag, item.files]));
@@ -87,9 +88,10 @@ describe('the persisted metadata cache through the portable CLI', () => {
     try {
       const english = await cli(['vault', 'tags']);
       expect(english.status).toBe(0);
-      expect(english.body.warnings).toEqual([expect.stringMatching(new RegExp(`^The metadata cache could not be saved to \\.forge/cache/metadata\\.v${snapshotFormat}\\.workspace\\.json`))]);
+      expect(warningMessages(english.body)).toEqual([expect.stringMatching(new RegExp(`^The metadata cache could not be saved to \\.forge/cache/metadata\\.v${snapshotFormat}\\.workspace\\.json`))]);
       const german = await cli(['vault', 'tags', '--lang', 'de']);
-      expect(german.body.warnings).toEqual([expect.stringMatching(new RegExp(`^Der Metadaten-Cache konnte nicht unter \\.forge/cache/metadata\\.v${snapshotFormat}\\.workspace\\.json gespeichert werden`))]);
+      expect(german.body.warnings.map((warning: { code: string }) => warning.code)).toEqual(['METADATA_CACHE_UNSAVED']);
+      expect(warningMessages(german.body)).toEqual([expect.stringMatching(new RegExp(`^Der Metadaten-Cache konnte nicht unter \\.forge/cache/metadata\\.v${snapshotFormat}\\.workspace\\.json gespeichert werden`))]);
     } finally { await rm(join(fixture.project, '.forge'), { force: true }); }
   });
 });

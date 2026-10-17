@@ -5,14 +5,23 @@ import type { CommandContext } from './registry.ts';
 /** The parser types of the global options, which every command accepts in addition to its own. */
 export const globalOptions = {
   root: 'string', lang: 'string', events: 'string', json: 'boolean', 'no-json': 'boolean',
-  'dry-run': 'boolean', 'no-dry-run': 'boolean', 'no-plugins': 'boolean',
+  'dry-run': 'boolean', 'no-dry-run': 'boolean', 'no-plugins': 'boolean', wait: 'string',
   help: 'boolean', version: 'boolean',
 } as const;
+/** The longest global `--wait` budget, in milliseconds (ten minutes). */
+export const maximumWaitMs = 600_000;
+
+/** The MISSING_ARGUMENT message of an absent required option; a missing revision guard says where revisions come from. */
+export function requiredOptionMessage(key: string): string {
+  return key === 'if-match'
+    ? '--if-match is required: pass the current revision, data.revision from read or stat (a move, rename or delete dry run reports it too).'
+    : `--${key} is required.`;
+}
 
 /** A string option's value; `required` reports MISSING_ARGUMENT when it is absent. */
 export function value(flags: CommandFlags, key: string, required = false): string | undefined {
   const result = flags[key];
-  ensure(!required || typeof result === 'string', 'MISSING_ARGUMENT', `--${key} is required.`);
+  if (required && typeof result !== 'string') throw forgeError('MISSING_ARGUMENT', requiredOptionMessage(key), { option: key });
   return typeof result === 'string' ? result : undefined;
 }
 
@@ -24,9 +33,20 @@ export function integer(flags: CommandFlags, key: string, minimum = 0): number |
   return Number(text);
 }
 
-/** Positional argument count check shared by every command. */
+/** The global `--wait` budget: the milliseconds a write may wait for another Forge writer's lock, 0 when absent. */
+export function waitBudget(flags: CommandFlags): number {
+  const wait = integer(flags, 'wait') ?? 0;
+  ensure(wait <= maximumWaitMs, 'INVALID_ARGUMENT', `--wait must be at most ${maximumWaitMs} milliseconds.`);
+  return wait;
+}
+
+/**
+ * Positional argument count check shared by every command; `details` `{minimum, maximum, received}` let the host
+ * name the missing arguments and the usage from the command's metadata.
+ */
 export function arity(args: readonly string[], min: number, max = min): void {
-  ensure(args.length >= min && args.length <= max, 'INVALID_ARGUMENT', `Expected ${min === max ? min : `${min}–${max}`} positional arguments.`);
+  const expected = `${min === max ? min : `${min}–${max}`} positional argument${max === 1 ? '' : 's'}`;
+  ensure(args.length >= min && args.length <= max, 'INVALID_ARGUMENT', `Expected ${expected}, got ${args.length}.`, { minimum: min, maximum: max, received: args.length });
 }
 
 /** Selects raw input from exactly one of --from (read in the command's scope), --content or --stdin; callers own decoding. */
@@ -36,8 +56,8 @@ export async function readInputBytes(flags: CommandFlags, context: Pick<CommandC
   return from !== undefined ? (await context.workspace.files.read(from)).bytes : flags.stdin ? await context.input() : new TextEncoder().encode(content!);
 }
 
-/** Parses JSON input; malformed input is INVALID_JSON. */
+/** Parses JSON input, ignoring a leading UTF-8 byte order mark (Windows PowerShell writes one); malformed input is INVALID_JSON. */
 export function parseJson(text: string): unknown {
-  try { return JSON.parse(text) as unknown; }
+  try { return JSON.parse(text.startsWith('\ufeff') ? text.slice(1) : text) as unknown; }
   catch { throw forgeError('INVALID_JSON', 'Expected valid JSON input.'); }
 }

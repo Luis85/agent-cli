@@ -6,15 +6,16 @@ const flag: JsonSchema = { type: 'boolean' };
 /** A JSON Schema document; its own validity is checked against the 2020-12 meta-schema, not here. */
 const schemaDocument: JsonSchema = { type: 'object', description: 'A JSON Schema 2020-12 document.' };
 const scope: JsonSchema = { type: 'string', enum: ['workspace', 'project'] };
+const pathFlag: JsonSchema = { type: 'boolean', description: 'Names a file or folder in the command scope; \\ separators, a leading ./ and absolute paths inside the scope root are accepted and passed on as the relative POSIX path.' };
 
 const optionSchema: JsonSchema = {
   type: 'object', required: ['type', 'description'],
-  properties: { type: { type: 'string', enum: ['string', 'boolean'] }, description: text, enum: texts, list: flag, default: {}, required: flag },
+  properties: { type: { type: 'string', enum: ['string', 'boolean'] }, description: text, enum: texts, list: flag, default: {}, required: flag, path: pathFlag },
 };
 const options: JsonSchema = { type: 'object', additionalProperties: optionSchema };
 const argumentSchema: JsonSchema = {
   type: 'object', required: ['name', 'description'],
-  properties: { name: text, description: text, required: flag, enum: texts, variadic: flag },
+  properties: { name: text, description: text, required: flag, enum: texts, variadic: flag, path: pathFlag },
 };
 const hints: Record<string, JsonSchema> = {
   scope, discovery: flag, mutating: flag, readOnlyHint: flag, destructiveHint: flag, idempotentHint: flag,
@@ -35,7 +36,7 @@ const annotations: JsonSchema = {
 const commandEntry: JsonSchema = {
   type: 'object', required: ['id', 'description', 'usage', 'options', 'args', 'annotations', 'errors', 'inputSchema'],
   properties: {
-    id: text, description: text, usage: text, options, args: { type: 'array', items: argumentSchema }, annotations,
+    id: text, description: text, usage: text, examples: { ...texts, description: 'Invocations after forge that start with the command id.' }, options, args: { type: 'array', items: argumentSchema }, annotations,
     errors: { ...texts, description: 'Codes the command reports itself, besides commonErrors; a command with a project option also lists the codes of naming a project.' },
     inputSchema: schemaDocument, outputSchema: schemaDocument,
   },
@@ -45,9 +46,9 @@ const errorEntry: JsonSchema = {
   properties: { code: text, exitCode: { type: 'integer', minimum: 0 }, category: text, retryable: flag, summary: text, plugin: text },
 };
 
-/** The `schema` document: the full catalog, or one command's contract with only the error codes it can report. */
-export const schemaOutput: JsonSchema = {
-  type: 'object', required: ['name', 'version', 'apiVersion', 'dialect', 'globalOptions', 'envelope', 'commands', 'commonErrors', 'errors'],
+/** The complete `schema` document: every command's contract with --all, or one command's with only the error codes it can report. */
+const schemaDocumentOutput: JsonSchema = {
+  title: 'contract', type: 'object', required: ['name', 'version', 'apiVersion', 'dialect', 'globalOptions', 'envelope', 'commands', 'commonErrors', 'errors'],
   properties: {
     name: text, version: text, apiVersion: { type: 'integer', minimum: 1 }, node: text,
     dialect: { type: 'string', const: 'https://json-schema.org/draft/2020-12/schema' },
@@ -59,3 +60,18 @@ export const schemaOutput: JsonSchema = {
     errors: { type: 'array', items: errorEntry },
   },
 };
+/** `schema` without a command or --all: the command and generator ids with descriptions and the skill ids, without schemas. */
+const schemaIndex: JsonSchema = {
+  title: 'index', type: 'object', required: ['name', 'version', 'apiVersion', 'dialect', 'commands', 'generators', 'skills', 'more'], additionalProperties: false,
+  properties: {
+    name: text, version: text, apiVersion: { type: 'integer', minimum: 1 }, node: text,
+    dialect: { type: 'string', const: 'https://json-schema.org/draft/2020-12/schema' },
+    commands: { type: 'array', items: { type: 'object', required: ['id', 'description'], additionalProperties: false, properties: { id: text, description: text } } },
+    generators: { type: 'array', items: { type: 'object', required: ['id', 'description'], properties: { id: text, description: text } } },
+    skills: texts,
+    more: { ...text, description: 'How to request the contracts.' },
+  },
+};
+
+/** The `schema` output: the index, or the contract document of one command or, with --all, of every command. */
+export const schemaOutput: JsonSchema = { type: 'object', oneOf: [schemaIndex, schemaDocumentOutput] };

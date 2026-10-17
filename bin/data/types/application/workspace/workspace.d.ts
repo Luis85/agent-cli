@@ -1,6 +1,7 @@
 import { type WriteRequest, type FileChange, type FileSnapshot, type PlannedChange } from '../../domain/documents/file.ts';
 import type { FileRepository, DocumentCodec, CommitObserver, FileBatch, BatchResult } from './ports.ts';
 import type { EventBus } from '../plugins/events.ts';
+import { type KernelMessage } from '../../domain/shared/kernel-messages.ts';
 /** `beforeParse` receives a file's raw byte count before the file is parsed; it refuses the file by throwing. */
 export interface ReadOptions {
     beforeParse?: (bytes: number) => void;
@@ -62,7 +63,7 @@ export declare class Workspace {
         dryRun: boolean;
     }>;
     /**
-     * Dry runs emit one `workspace.quick-preview` per planned file change. Commits emit `vault.create` for each new
+     * Unchanged writes publish nothing. Dry runs emit one `workspace.quick-preview` per planned file change. Commits emit `vault.create` for each new
      * folder (parent before child), one `vault.rename` per moved folder or file, one `vault.*` record per file change
      * in batch order, then `vault.delete` per removed folder (child before parent), and finally run the commit
      * observer. Renames into a `trash` destination are reported after the other renames: each moved file, then each
@@ -70,7 +71,8 @@ export declare class Workspace {
      */
     private committed;
     private notify;
-    private warn;
+    /** Records a nonfatal diagnostic of this invocation; a failing sink never changes the outcome. */
+    warn(message: KernelMessage): void;
     edit(path: string, revision: string, transform: (bytes: Uint8Array) => Uint8Array): Promise<{
         dryRun: boolean;
         changes: Array<FileChange | PlannedChange>;

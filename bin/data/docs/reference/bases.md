@@ -18,7 +18,7 @@ node bin/forge.js bases capabilities
 | --- | --- |
 | `bases list` | Visible `.base` paths in the current scope. |
 | `bases inspect <path.base>` | Native definition, views and content revision. Does not evaluate expressions. |
-| `bases query <path.base>` | `files`, `total`, `warnings`, selected `path`/`view`/`context`, `repository`, scope and compatibility profile. |
+| `bases query <path.base>` | `files`, `total`, `warnings`, selected `path`/`view`/`context`, `repository` and scope; the compatibility profile is `bases capabilities`. |
 | `bases capabilities` | Pinned evaluator, upstream oracle evidence, supported operations and explicit limitations. |
 
 `--view` selects an exact, case-sensitive view name. Omitting it selects the first view in the file. Missing views and duplicate view names fail. `--context` selects an existing visible vault file for `this`; by default this is the `.base` file. This lets callers reproduce an embedding note's context explicitly. There is no implicit active-editor context. `--limit` is a nonnegative safe integer; zero returns an empty list. The command limit and the view's native limit both apply, using the smaller value. `total` counts matches after filters and group visibility, before either limit.
@@ -77,7 +77,7 @@ One note never fails the whole query, as in Obsidian. `warnings` lists, in path 
 | `unparseable-note` | The note cannot be parsed, for example because of duplicate frontmatter keys or an unclosed flow sequence. It is indexed without properties, links or tags, so it still matches file-only filters such as `file.inFolder(...)`. |
 | `ambiguous-link` | A link path matches several files (`candidates`) and resolves to the closest, `resolvedPath`; `link` is the link path. |
 
-Invalid expressions use `INVALID_BASE_EXPRESSION`; expression evaluation failures identify the Base, view and affected file through `BASE_EVALUATION_ERROR`. Invalid property-type settings and missing contexts have named errors. Fix the reported source and query again; errors are not converted into a successful empty repository.
+Invalid expressions use `INVALID_BASE_EXPRESSION`; expression evaluation failures identify the Base, view and affected file through `BASE_EVALUATION_ERROR`. Expression evaluation of one query shares a 30-second budget over all files, enforced by a `node:vm` watchdog that also interrupts a catastrophically backtracking regular expression such as `/^(a+)+$/`; beyond it the query fails with `BASE_TIMEOUT` (exit 2, `details.path` and `details.timeoutMs`) and returns no partial rows. Invalid property-type settings and missing contexts have named errors. Fix the reported source and query again; errors are not converted into a successful empty repository.
 
 ## Generated Markdown
 

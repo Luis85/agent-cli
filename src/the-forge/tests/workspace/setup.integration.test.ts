@@ -62,6 +62,9 @@ it('installs fixed environment directories and configured projects through works
   for (const skills of ['.claude/skills', '.agents/skills']) expect(await readFile(join(root, skills, 'forge-workflow/SKILL.md'), 'utf8')).toContain('name: forge-workflow');
   const guidance = await readFile(join(root, 'AGENTS.md'), 'utf8');
   for (const command of ['--if-match', 'node bin/forge.js', 'project open', 'project current', 'project close']) expect(guidance).toContain(command);
+  // The guidance points agents to the installed skill and per-command help, not to the full reference docs.
+  for (const pointer of ['forge-workflow skill', 'help <command>']) expect(guidance).toContain(pointer);
+  expect(guidance).not.toContain('cli.md');
   expect(await readdir(join(root, 'bin'))).toEqual(['browser-runtime', 'config', 'config.json', 'data', 'forge-runtime.js', 'forge-server.cjs', 'forge.js', 'package.json', 'plugins', 'templates', 'webviews']);
   expect(await readFile(join(root, 'work/projects/.gitkeep'))).toHaveLength(0);
   expect(events.history.filter(record => (record.payload as { kind: string }).kind === 'file')).toHaveLength(21);
@@ -83,6 +86,16 @@ it('previews every new destination without creating directories or publishing ev
   const result = await setup.run();
   expect(result.dryRun).toBe(true); expect(result.changes).toHaveLength(21);
   expect(await readdir(root)).toEqual([]); expect(events.history).toEqual([]);
+});
+it('installs every file of a skill folder into both agent skill roots', async () => {
+  const { root, workspace, config, artifacts, skills, templates } = await fixture();
+  const withReference = [{ ...skills[0]!, files: { 'references/editing.md': '# Editing\n' } }];
+  await new SetupService(workspace, config, artifacts, withReference, templates).run();
+  for (const skills of ['.claude/skills', '.agents/skills']) {
+    // Directory order is the file system's: Windows lists references before SKILL.md.
+    expect((await readdir(join(root, skills, 'forge-workflow'))).sort()).toEqual(['SKILL.md', 'references']);
+    expect(await readFile(join(root, skills, 'forge-workflow/references/editing.md'), 'utf8')).toBe('# Editing\n');
+  }
 });
 it('fills missing setup files while retaining an existing AGENTS.md', async () => {
   const { root, setup } = await fixture();

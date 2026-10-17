@@ -238,7 +238,6 @@ describe('generating Claude agents in a workspace', () => {
     ] }] } });
     expect(await failure(generate({ file: 'team.yaml', agent: 'nobody' }))).toMatchObject({ code: 'AGENT_NOT_FOUND' });
     expect(await failure(scope.run(['generate'], { target: 'claude', file: 'team.yaml', plan: true, check: true }))).toMatchObject({ code: 'INVALID_ARGUMENT' });
-    expect(await failure(scope.run(['list'], { model: 'x' }))).toMatchObject({ code: 'INVALID_ARGUMENT' });
   });
 
   it('refuses broad allow rules unless --allow-broad-permissions is passed, and lists every written rule', async () => {

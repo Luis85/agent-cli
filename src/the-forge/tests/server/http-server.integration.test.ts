@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SystemSnapshot } from '../../src/application/server/contracts.ts';
 import { discoverWebviews } from '../../src/infrastructure/server/assets.ts';
 import { startHttpServer, type RunningHttpServer } from '../../src/infrastructure/server/http-server.ts';
+import { viewToken } from '../../src/infrastructure/server/tokens.ts';
 
 describe('localhost webview transport', () => {
   let directory: string;
@@ -192,6 +193,19 @@ describe('localhost webview transport', () => {
     expect(shutdown).not.toHaveBeenCalled();
     expect((await get('/api/shutdown', { method: 'POST', headers: auth() })).status).toBe(200);
     expect(shutdown).toHaveBeenCalledOnce();
+  });
+
+  it('lets a mounted view token read the inspection API but never stop the server', async () => {
+    const view = { Authorization: `Bearer ${viewToken(token, 'inspector')}` };
+    expect((await get('/api/system', { headers: view })).status).toBe(200);
+    expect((await get('/api/health', { headers: view })).status).toBe(200);
+    const refused = await get('/api/shutdown', { method: 'POST', headers: view });
+    expect(refused.status).toBe(403);
+    expect(JSON.parse(refused.body)).toMatchObject({ ok: false, error: { code: 'SERVER_FORBIDDEN' } });
+    expect(shutdown).not.toHaveBeenCalled();
+    // A token issued for a view this server does not mount grants nothing.
+    expect((await get('/api/system', { headers: { Authorization: `Bearer ${viewToken(token, 'other')}` } })).status).toBe(401);
+    expect((await get('/api/system', { headers: { Authorization: `Bearer ${viewToken('another-server', 'inspector')}` } })).status).toBe(401);
   });
 
   it('rejects mutation, preflight, and unknown API endpoints', async () => {

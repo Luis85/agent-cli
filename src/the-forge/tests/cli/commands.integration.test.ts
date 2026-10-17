@@ -16,6 +16,7 @@ import { commands } from '../../src/presentation/cli/commands.ts';
 import { claudeBytes, claudeInput } from '../../src/plugins/claude/presentation/input.ts';
 import { ScopedFiles } from '../../src/application/workspace/scoped-files.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
+import { forgeVersion } from '../support/workspace.ts';
 
 let root: string, registry: Registry, context: CommandContext, events: EventBus;
 beforeEach(async () => {
@@ -26,7 +27,7 @@ beforeEach(async () => {
   events.define({ id: 'vault.create', validate: (value): value is object => typeof value === 'object' });
   const workspace = new Workspace(files, new ObsidianDocuments(), events, false);
   context = { workspace, events, root, workspaceRoot: root, project: null, ...scopeServices(workspace, events), input: async () => new Uint8Array() };
-  registry = new Registry(skillFrontmatter);
+  registry = new Registry(skillFrontmatter, forgeVersion);
   const loaded = await loadConfig({ defaultPath: join(root, 'bin/config.json'), cwd: root });
   for (const command of commands(registry, {
     loaded, files,
@@ -45,7 +46,9 @@ describe('extracted command boundaries', () => {
       'help', 'schema', 'formats', 'list', 'read', 'validate', 'create', 'write', 'edit', 'properties', 'patch', 'apply', 'read-many', 'stat', 'delete', 'move', 'rename', 'make', 'events', 'plugins']);
     registry.add(registry.generators, { id: 'custom.fixture', description: 'Late generator', generate: () => [] });
     registry.add(registry.commands, { id: 'custom.run', description: 'Late command', usage: 'custom.run', run: () => null });
-    const schema = await registry.commands.get('schema')!.run([], {}, context);
+    // The index names the late command; --all carries its contract.
+    expect(await registry.commands.get('schema')!.run([], {}, context)).toMatchObject({ commands: expect.arrayContaining([{ id: 'custom.run', description: 'Late command' }]) });
+    const schema = await registry.commands.get('schema')!.run([], { all: true }, context);
     expect(schema).toMatchObject({ commands: expect.arrayContaining([expect.objectContaining({ id: 'custom.run', description: 'Late command', usage: 'custom.run', options: {}, args: [], errors: [],
       annotations: { scope: 'project', discovery: false, mutating: true, readOnlyHint: false, destructiveHint: true, idempotentHint: false } })]),
       generators: expect.arrayContaining([{ id: 'custom.fixture', description: 'Late generator' }]) });
@@ -61,12 +64,17 @@ describe('extracted command boundaries', () => {
       actions: { show: { description: 'Show the result.', output: { type: 'string' } } }, run: () => null,
     });
     const help = registry.commands.get('help')!;
-    const catalog = await help.run([], {}, context) as { commands: Array<Record<string, unknown>> };
-    expect(catalog).not.toHaveProperty('envelope');
-    expect(catalog.commands.find(command => command.id === 'custom.inspect')).toEqual({
-      id: 'custom.inspect', description: 'Inspect a result', usage: 'custom.inspect [show]',
-      annotations: { scope: 'project', discovery: false, mutating: false, readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-    });
+    // The entry index lists each command's id and description, the mutating ids, global flags and where to go next.
+    const catalog = await help.run([], {}, context) as { commands: Record<string, string>; mutating: string[]; globalOptions: string[]; next: string };
+    expect(Object.keys(catalog)).toEqual(['name', 'version', 'apiVersion', 'commands', 'mutating', 'globalOptions', 'next']);
+    expect(catalog.commands['custom.inspect']).toBe('Inspect a result');
+    expect(Object.keys(catalog.commands)).toEqual([...registry.commands.keys()]);
+    expect(catalog.mutating).toContain('write');
+    expect(catalog.mutating).not.toContain('custom.inspect');
+    expect(catalog.mutating).not.toContain('read');
+    expect(catalog.globalOptions).toContain('--dry-run');
+    expect(catalog.next).toContain('help <command>');
+    expect(JSON.stringify(catalog).length).toBeLessThan(6000);
     const targeted = await help.run(['custom.inspect'], {}, context);
     expect(targeted).toMatchObject({
       args: [{ name: 'action' }], options: { input: { schema: { type: 'object' } } }, errors: [],

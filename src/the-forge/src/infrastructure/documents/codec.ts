@@ -1,14 +1,17 @@
 import { parseDocument, isMap, isScalar, isAlias, visit, type Document } from 'yaml';
-import { forgeError, ensure, isRecord } from '../../domain/shared/errors.ts';
+import { AppError, forgeError, ensure, isRecord } from '../../domain/shared/errors.ts';
 import type { ErrorCode } from '../../domain/shared/error-catalog.ts';
 import { fileKind, isTextContent } from '../../domain/documents/file.ts';
 import { validateCanvas } from '../../domain/documents/canvas.ts';
 import type { DocumentCodec, MarkdownParts, YamlStringReplacement } from '../../application/workspace/ports.ts';
 import { replaceInYamlStrings } from './yaml-strings.ts';
+import { editTopLevelEntries, yamlOutput } from './frontmatter-edit.ts';
+import { decodeUtf8 } from '../../domain/shared/utf8.ts';
+import { jsonValueIssue, type JsonValueIssue } from '../../domain/shared/json-value.ts';
 
 const encode = (text: string) => new TextEncoder().encode(text);
 function textOf(bytes: Uint8Array): string {
-  try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
+  try { return decodeUtf8(bytes, 'keep'); }
   catch { throw forgeError('INVALID_ENCODING', 'Structured documents and text files must be valid UTF-8.'); }
 }
 function textFileOf(path: string, bytes: Uint8Array): string {
@@ -25,15 +28,13 @@ function yamlDocument(text: string): Document {
   });
   return document;
 }
-function jsonValue(value: unknown, code: ErrorCode, ancestors = new Set<object>(), depth = 0): void {
-  ensure(depth < 100, code, 'Document nesting is too deep.');
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return;
-  if (typeof value === 'number') { ensure(Number.isFinite(value), code, 'Document numbers must be finite.'); return; }
-  ensure(typeof value === 'object' && (Array.isArray(value) || Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null), code, 'Document values must be JSON-compatible.');
-  ensure(!ancestors.has(value), code, 'Cyclic YAML aliases are not supported.');
-  ancestors.add(value);
-  for (const child of Object.values(value)) jsonValue(child, code, ancestors, depth + 1);
-  ancestors.delete(value);
+const jsonIssues: Readonly<Record<JsonValueIssue, string>> = {
+  depth: 'Document nesting is too deep.', number: 'Document numbers must be finite.',
+  type: 'Document values must be JSON-compatible.', cycle: 'Cyclic YAML aliases are not supported.',
+};
+function jsonValue(value: unknown, code: ErrorCode): void {
+  const issue = jsonValueIssue(value);
+  if (issue) throw forgeError(code, jsonIssues[issue]);
 }
 function yamlValue(document: Document): unknown {
   let value: unknown;
@@ -104,14 +105,16 @@ function validateBase(value: unknown) {
 }
 export class ObsidianDocuments implements DocumentCodec {
   markdownParts(text: string): MarkdownParts { return parseMarkdownParts(text); }
-  inspect(path: string, bytes: Uint8Array): unknown {
+  inspect(path: string, bytes: Uint8Array, options: { tolerant?: boolean } = {}): unknown {
     const kind = fileKind(path);
+    const attachment = () => ({ kind: 'attachment', encoding: 'base64', content: Buffer.from(bytes).toString('base64') });
     if (kind === 'text') {
       // Text extensions are a hint, not a guarantee; undecodable or NUL-bearing bytes keep the lossless attachment form.
       try { return { kind, content: textFileOf(path, bytes) }; }
-      catch { return { kind: 'attachment', encoding: 'base64', content: Buffer.from(bytes).toString('base64') }; }
+      catch { return attachment(); }
     }
     if (!['markdown', 'canvas', 'base'].includes(kind)) return { kind, encoding: 'base64', content: Buffer.from(bytes).toString('base64') };
+    if (options.tolerant === true) return this.tolerantInspect(path, bytes, attachment);
     const text = textOf(bytes);
     if (kind === 'markdown') {
       const parts = parseMarkdownParts(text), properties = yamlValue(yamlDocument(parts.yaml));
@@ -127,12 +130,35 @@ export class ObsidianDocuments implements DocumentCodec {
     if (kind === 'canvas') validateCanvas(data); else validateBase(data);
     return { kind, data };
   }
+  /**
+   * A read that never hides bytes: Markdown, Canvas or Base content that is not UTF-8 keeps the attachment form, and
+   * a note whose frontmatter does not parse returns its content with `properties: null` and the `issue` that a
+   * strict inspection reports. Canvas and Base structure failures stay errors.
+   */
+  private tolerantInspect(path: string, bytes: Uint8Array, attachment: () => unknown): unknown {
+    let text: string;
+    try { text = textOf(bytes); }
+    catch { return attachment(); }
+    if (fileKind(path) !== 'markdown') return this.inspect(path, bytes);
+    try { return this.inspect(path, bytes); }
+    catch (error) {
+      if (!(error instanceof AppError) || !['INVALID_YAML', 'INVALID_FRONTMATTER'].includes(error.code)) throw error;
+      let body: string | undefined;
+      try { body = parseMarkdownParts(text).body; }
+      catch { /* Unclosed frontmatter: the body cannot be told from the frontmatter. */ }
+      return { kind: 'markdown', content: text, properties: null, ...(body === undefined ? {} : { body }), issue: { code: error.code, message: error.message } };
+    }
+  }
   validate(path: string, bytes: Uint8Array): void {
     if (fileKind(path) === 'text') textFileOf(path, bytes); else this.inspect(path, bytes);
   }
+  /**
+   * Rewrites only the touched top-level entries of block-style frontmatter (see `editTopLevelEntries`); other YAML,
+   * or a minimal edit whose result would not parse to the expected properties, is serialized as a whole in block style.
+   */
   properties(bytes: Uint8Array, changes: Record<string, unknown>, remove: readonly string[] = []): Uint8Array {
     const parts = parseMarkdownParts(textOf(bytes));
-    const doc = yamlDocument(parts.yaml || '{}');
+    const doc = yamlDocument(parts.yaml);
     yamlValue(doc);
     jsonValue(changes, 'INVALID_FRONTMATTER');
     if (doc.contents === null) doc.contents = doc.createNode({});
@@ -142,10 +168,17 @@ export class ObsidianDocuments implements DocumentCodec {
       doc.set(key, value);
     }
     for (const key of remove) doc.delete(key);
-    const yaml = doc.toString({ lineWidth: 0 }).replace(/\r?\n/g, parts.newline);
+    const expected = JSON.stringify(yamlValue(doc));
+    const minimal = editTopLevelEntries(parts.yaml, changes, remove, parts.newline);
+    const yaml = minimal !== undefined && JSON.stringify(this.parsedYaml(minimal)) === expected ? minimal : doc.toString(yamlOutput).replace(/\r?\n/g, parts.newline);
     const result = encode(`${parts.prefix}---${parts.newline}${yaml}---${parts.newline}${parts.body}`);
     this.validate('note.md', result);
     return result;
+  }
+  /** The value of a YAML text, or undefined when it does not parse. */
+  private parsedYaml(yaml: string): unknown {
+    try { return yamlValue(yamlDocument(yaml)) ?? {}; }
+    catch { return undefined; }
   }
   patch(path: string, bytes: Uint8Array, pointer: string, value: unknown): Uint8Array {
     const kind = fileKind(path);

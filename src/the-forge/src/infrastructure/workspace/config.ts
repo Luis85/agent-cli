@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { z } from 'zod';
 import { forgeError, errorMessage } from '../../domain/shared/errors.ts';
@@ -25,10 +25,14 @@ const configSchema = z.strictObject({
 
 export async function loadConfig(options: { defaultPath: string; cwd: string; root?: string }): Promise<LoadedConfig> {
   const root = options.root !== undefined ? resolve(options.cwd, options.root) : resolve(dirname(options.defaultPath), '..');
+  // A mistyped --root or FORGE_ROOT must not read as an empty workspace with default settings.
+  const directory = await stat(root).then(info => info.isDirectory(), () => false);
+  if (!directory) throw forgeError('INVALID_ROOT', `Workspace root ${root} does not exist or is not a directory.`, { root });
   const path = resolve(root, 'bin/config.json');
   let content: unknown;
   let exists = true;
-  try { content = JSON.parse(await readFile(path, 'utf8')) as unknown; }
+  // A leading byte order mark, as Windows PowerShell 5.1 writes it, is not part of the JSON text.
+  try { content = JSON.parse((await readFile(path, 'utf8')).replace(/^\ufeff/, '')) as unknown; }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') { content = {}; exists = false; }
     else throw forgeError('INVALID_CONFIG', `Cannot read configuration ${path}: ${errorMessage(error)}`);

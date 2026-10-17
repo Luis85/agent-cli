@@ -1,6 +1,8 @@
-import { AppError, ensure, forgeError, isRecord } from '../../../domain/shared/errors.ts';
+import { AppError, isRecord } from '../../../domain/shared/errors.ts';
 import { validateClaudeHooks } from '../../../domain/claude/hooks.ts';
 import { claudeMessages } from './messages.ts';
+import { jsonValueIssue, type JsonValueIssue } from '../../../domain/shared/json-value.ts';
+import { claudeError, ensureClaude } from './errors.ts';
 
 /** Discovery metadata describes Claude's loading behavior, not features executed by Forge. */
 export const claudePluginCapabilities = {
@@ -38,20 +40,18 @@ export const claudePluginCapabilities = {
 } as const;
 
 function check(condition: unknown, path: string, requirement: string): asserts condition {
-  ensure(condition, 'INVALID_CLAUDE_PLUGIN', `${path}: ${requirement}`);
+  ensureClaude(condition, 'INVALID_CLAUDE_PLUGIN', `${path}: ${requirement}`);
 }
 function object(value: unknown, path: string): asserts value is Record<string, unknown> {
   check(isRecord(value), path, 'must be an object.');
 }
-function jsonValue(value: unknown, ancestors = new Set<object>(), depth = 0): void {
-  check(depth < 100, 'plugin', 'JSON nesting is too deep.');
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return;
-  if (typeof value === 'number') { check(Number.isFinite(value), 'plugin', 'numbers must be finite.'); return; }
-  check(typeof value === 'object' && (Array.isArray(value) || Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null), 'plugin', 'must contain JSON-compatible data.');
-  check(!ancestors.has(value), 'plugin', 'must not contain circular references.');
-  ancestors.add(value);
-  for (const child of Object.values(value)) jsonValue(child, ancestors, depth + 1);
-  ancestors.delete(value);
+const jsonIssues: Readonly<Record<JsonValueIssue, string>> = {
+  depth: 'JSON nesting is too deep.', number: 'numbers must be finite.',
+  type: 'must contain JSON-compatible data.', cycle: 'must not contain circular references.',
+};
+function jsonValue(value: unknown): void {
+  const issue = jsonValueIssue(value);
+  if (issue) check(false, 'plugin', jsonIssues[issue]);
 }
 function text(value: unknown, path: string, nonempty = false): asserts value is string {
   check(typeof value === 'string' && (!nonempty || value.trim().length > 0), path, `must be ${nonempty ? 'a nonempty' : 'a'} string.`);
@@ -206,7 +206,7 @@ function settings(value: unknown, path: string): void {
 function hooks(value: unknown, path: string): void {
   try { validateClaudeHooks(value); }
   catch (error) {
-    if (error instanceof AppError) throw forgeError('INVALID_CLAUDE_PLUGIN', `${path}: ${error.message}`);
+    if (error instanceof AppError) throw claudeError('INVALID_CLAUDE_PLUGIN', `${path}: ${error.message}`);
     throw error;
   }
 }

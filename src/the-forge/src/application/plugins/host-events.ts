@@ -62,6 +62,9 @@ const workspace = (value: Record<string, unknown>) => operation(value) && ['read
 const plugin = (value: Record<string, unknown>) => text(value.pluginId);
 const changeOperations = ['created', 'updated', 'deleted'];
 const change = (value: unknown): value is FileChange => isRecord(value) && text(value.path) && text(value.revision) && count(value.bytes) && changeOperations.includes(String(value.operation));
+/** An operation summary also reports writes that found their bytes already in place, which publish no vault event. */
+const summarizedChange = (value: unknown) => isRecord(value) && (change(value) || (text(value.path) && text(value.revision) && count(value.bytes) && value.operation === 'unchanged'))
+  && (value.alreadyApplied === undefined || value.alreadyApplied === true);
 const moved = (value: unknown) => isRecord(value) && text(value.from) && text(value.to) && ['file', 'folder'].includes(String(value.kind));
 const project = (value: unknown) => value === null || text(value);
 /** Files carry revision and bytes; folders carry neither. */
@@ -79,7 +82,7 @@ const hostEventDefinitions: readonly EventDefinition[] = [
   definition('command.succeeded', 'A routed command returned successfully.', command),
   definition('command.failed', 'A routed command failed; error codes contain no command input.', value => command(value) && error(value.error)),
   definition('operation.started', 'A guarded workspace operation started, including previews.', workspace),
-  definition('operation.succeeded', 'A guarded workspace operation completed, including previews.', value => workspace(value) && (value.bytes === undefined || count(value.bytes)) && (value.changes === undefined || (Array.isArray(value.changes) && value.changes.every(change)))
+  definition('operation.succeeded', 'A guarded workspace operation completed, including previews.', value => workspace(value) && (value.bytes === undefined || count(value.bytes)) && (value.changes === undefined || (Array.isArray(value.changes) && value.changes.every(summarizedChange)))
     && (value.renames === undefined || (Array.isArray(value.renames) && value.renames.every(moved)))),
   definition('operation.failed', 'A guarded workspace operation failed.', value => workspace(value) && error(value.error)),
   definition('vault.create', 'A file or folder was created by a committed write.', vault('created', ['file', 'folder'])),

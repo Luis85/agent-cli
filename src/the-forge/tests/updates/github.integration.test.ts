@@ -42,6 +42,17 @@ describe('GitHub release transport and extraction', () => {
   it('rejects corrupted downloads before extraction', async () => {
     await expect(githubReleases(policy, transport(true)).download(metadata.version)).rejects.toMatchObject({ code: 'UPDATE_INVALID', message: expect.stringContaining('checksum') });
   });
+  it('refuses an archive whose listing declares a decompression bomb without extracting it', async () => {
+    const calls: string[][] = [];
+    const bomb: ReleaseTool = async (file, args, options) => {
+      calls.push([file, ...args]);
+      if (file === 'tar' && args[0] === '-tvzf') return { stdout: '-rw-r--r-- root/root 10737418240 2026-10-11 12:00 bin/bomb.bin\n' };
+      return transport()(file, args, options);
+    };
+    await expect(githubReleases(policy, bomb).download(metadata.version)).rejects.toMatchObject({ code: 'UPDATE_INVALID', message: expect.stringContaining('unpacks to more than') });
+    expect(calls.some(call => call[0] === 'tar' && call[1] === '-xzf')).toBe(false);
+    expect(calls.some(call => call[0] === process.execPath)).toBe(false);
+  }, 60_000);
   it('rejects redirected release discovery outside the official stable release path', async () => {
     await expect(githubReleases(policy, transport(false, 'https://other.example/releases/tag/v99.0.0')).latest()).rejects.toMatchObject({ code: 'UPDATE_INVALID' });
   });

@@ -3,6 +3,7 @@ import type { ConnectorMapping, RemoteDraft, RemoteItem, RemotePatch } from '../
 import type { HttpClient, HttpResponse } from '../../../application/connectors/http.ts';
 import type { JsonSchema } from '../../../domain/schema/json-schema.ts';
 import { isRecord } from '../../../domain/shared/errors.ts';
+import { PluginFailure } from '../../../domain/shared/plugin-failure.ts';
 import { redact } from '../../../domain/connectors/secrets.ts';
 import { PROCESSES, processMapping, unknownFields, type MappingOverrides, type Process } from '../domain/processes.ts';
 import { createOperations, relationsLanded, remoteItem, updateOperations, type DescriptionFormat, type PatchContext } from '../domain/work-items.ts';
@@ -27,8 +28,8 @@ const connectionSchema: JsonSchema = {
   },
 };
 
-type ErrorCode = 'CONNECTOR_AUTH_FAILED' | 'CONNECTOR_REQUEST_FAILED';
-const failure = (code: ErrorCode, message: string, details: Record<string, unknown>) => Object.assign(new Error(message), { code, details });
+type ErrorCode = 'CONNECTOR_AUTH_FAILED' | 'CONNECTOR_REQUEST_FAILED' | 'CONNECTION_INVALID';
+const failure = (code: ErrorCode, message: string, details: Record<string, unknown>) => new PluginFailure(code, message, details);
 const setting = (connection: Connection, key: string) => (typeof connection.settings[key] === 'string' ? connection.settings[key] : undefined);
 const organizationOf = (connection: Connection) => setting(connection, 'organization')!.replace(/\/+$/, '');
 /** The connection's default area: its `areaPath`, else the project root. */
@@ -41,12 +42,28 @@ function withDefaults<T extends { iteration?: string | null; area?: string | nul
   return { ...change, ...(change.iteration === null ? { iteration: setting(connection, 'project')! } : {}), ...(change.area === null ? { area: defaultArea(connection) } : {}) };
 }
 const knownHost = (host: string) => host === 'dev.azure.com' || host.endsWith('.visualstudio.com');
+const loopback = (host: string) => ['localhost', '127.0.0.1', '[::1]'].includes(host);
+const decoded = (value: string) => { try { return decodeURIComponent(value); } catch { return null; } };
+const hostOf = (url: string) => { try { return new URL(url).hostname.toLowerCase(); } catch { return null; } };
+/** The environment variable listing further trusted organization hosts (Azure DevOps Server), comma-separated. */
+export const ALLOWED_HOSTS_ENV = 'FORGE_CONNECTOR_ALLOWED_HOSTS';
 
 /** Azure DevOps Boards over the Work Items REST API (api-version 7.1) with a personal access token. */
 export class AzureDevOpsConnector implements BacklogConnector {
   readonly id = 'azure-devops';
-  /** `translations` render the self-description in other languages than English. */
-  constructor(private readonly http: HttpClient, private readonly translations: Partial<Record<Language, ConnectorMessages>> = {}) {}
+  /**
+   * `translations` render the self-description in other languages than English. `allowedHosts` lists the hosts
+   * besides Azure DevOps Services and loopback that may receive the token; the user sets them outside shared
+   * configuration, so a cloned repository's profile cannot send a token to a host of its choosing.
+   */
+  constructor(
+    private readonly http: HttpClient, private readonly translations: Partial<Record<Language, ConnectorMessages>> = {},
+    private readonly allowedHosts: () => readonly string[] = () => [],
+  ) {}
+
+  private trusted(host: string): boolean {
+    return knownHost(host) || loopback(host) || this.allowedHosts().some(allowed => allowed.toLowerCase() === host);
+  }
 
   describe(language: Language = 'en'): ConnectorDescription {
     const text = this.translations[language] ?? connectorMessages;
@@ -60,9 +77,8 @@ export class AzureDevOpsConnector implements BacklogConnector {
         ...(setting(connection, 'iterationRoot') ? { iterationRoot: setting(connection, 'iterationRoot') } : {}),
       }),
       warnings: connection => {
-        let host: string;
-        try { host = new URL(organizationOf(connection)).hostname.toLowerCase(); } catch { return []; }
-        return knownHost(host) ? [] : [fill(text.unknownHost, { host, tokenEnv: connection.tokenEnv })];
+        const host = hostOf(organizationOf(connection));
+        return host === null || this.trusted(host) ? [] : [fill(text.unknownHost, { host, tokenEnv: connection.tokenEnv, variable: ALLOWED_HOSTS_ENV })];
       },
     };
   }
@@ -70,7 +86,7 @@ export class AzureDevOpsConnector implements BacklogConnector {
   mapping(connection: Connection): ConnectorMapping {
     const overrides = (isRecord(connection.settings.mappings) ? connection.settings.mappings : {}) as MappingOverrides;
     const unknown = unknownFields(overrides);
-    if (unknown.length > 0) throw Object.assign(new Error(`Connection ${connection.id} maps unknown fields: ${unknown.join(', ')}.`), { code: 'CONNECTION_INVALID', details: { connection: connection.id, issues: unknown.map(name => `mappings.fields.${name}: not a neutral field`) } });
+    if (unknown.length > 0) throw failure('CONNECTION_INVALID', `Connection ${connection.id} maps unknown fields: ${unknown.join(', ')}.`, { connection: connection.id, issues: unknown.map(name => `mappings.fields.${name}: not a neutral field`) });
     return processMapping((setting(connection, 'process') ?? 'agile') as Process, overrides);
   }
 
@@ -81,9 +97,10 @@ export class AzureDevOpsConnector implements BacklogConnector {
   idFromLink(connection: Connection, url: string): string | null {
     const match = /^(.*)\/_workitems\/edit\/(\d+)\/?$/i.exec(url.trim());
     if (!match) return null;
-    const expected = `${organizationOf(connection)}/${setting(connection, 'project')}`.toLowerCase();
-    let prefix: string;
-    try { prefix = decodeURIComponent(match[1]!).toLowerCase(); } catch { return null; }
+    // Both sides compare decoded: an organization URL may itself be percent-encoded (`Default%20Collection`).
+    const organization = decoded(organizationOf(connection)) ?? organizationOf(connection);
+    const expected = `${organization}/${setting(connection, 'project')}`.toLowerCase();
+    const prefix = decoded(match[1]!)?.toLowerCase();
     return prefix === expected ? match[2]! : null;
   }
 
@@ -154,6 +171,12 @@ export class AzureDevOpsConnector implements BacklogConnector {
   /** One authenticated JSON request; failures are coded, carry the status and never the token. */
   private async call(connection: Connection, method: 'GET' | 'POST' | 'PATCH', url: string, body?: unknown, options: { contentType?: string; retry?: boolean } = {}): Promise<Record<string, unknown>> {
     const contentType = options.contentType ?? 'application/json';
+    const host = hostOf(url);
+    if (host === null || !this.trusted(host)) {
+      throw failure('CONNECTION_INVALID', `Connection ${connection.id} targets the untrusted host ${host ?? url}; no request was sent. Add the host to ${ALLOWED_HOSTS_ENV} to trust it.`, {
+        connection: connection.id, host, issues: [`plugins.settings.connector.connections.${connection.id}.organization: host ${host ?? url} is not trusted; list it in ${ALLOWED_HOSTS_ENV}`],
+      });
+    }
     const token = connection.token();
     const clean = (text: string) => redact(text, [token]);
     let response: HttpResponse;

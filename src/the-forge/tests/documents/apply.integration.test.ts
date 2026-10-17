@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
 import { basename, join } from 'node:path';
 import { parsePlan } from '../../src/domain/documents/apply-plan.ts';
 import { PlanRunner } from '../../src/application/documents/apply.ts';
@@ -25,6 +26,8 @@ const vault = {
   'notes/Old.md': '# Old\n',
   'notes/Scratch.md': 'scratch\n',
 };
+/** The revision a read returns for an original vault file. */
+const rev = (path: keyof typeof vault) => createHash('sha256').update(vault[path]).digest('hex');
 async function runner(options: { dryRun?: boolean } = {}) {
   const scope = await vaultScope(root, options);
   const run = (operations: unknown[]) => new PlanRunner({ workspace: scope.workspace, metadata: scope.metadata, workspaceScope: true }).run(parsePlan({ version: 1, operations }));
@@ -43,7 +46,7 @@ describe('apply plans', () => {
       { op: 'frontmatter', path: 'notes/Plan.md', set: { status: 'active' }, ifMatch: plan.revision },
       { op: 'move', from: 'notes/Plan.md', to: 'specs/Roadmap.md', ifMatch: plan.revision },
       { op: 'edit', path: 'specs/Roadmap.md', edits: [{ find: 'Ship.', replace: 'Ship v1.' }], ifMatch: plan.revision },
-      { op: 'delete', path: 'notes/Scratch.md' },
+      { op: 'delete', path: 'notes/Scratch.md', ifMatch: rev('notes/Scratch.md') },
     ]);
     expect(result.operations.map(item => [item.index, item.op, item.path])).toEqual([
       [0, 'write', 'notes/New.md'], [1, 'edit', 'notes/Plan.md'], [2, 'frontmatter', 'notes/Plan.md'], [3, 'move', 'notes/Plan.md'], [4, 'edit', 'specs/Roadmap.md'], [5, 'delete', 'notes/Scratch.md'],
@@ -70,12 +73,12 @@ describe('apply plans', () => {
     await writeVault(root, vault);
     const { run, records } = await runner({ dryRun: true });
     const result = await run([
-      { op: 'edit', path: 'notes/Plan.md', block: 'missing', append: 'x' },
+      { op: 'edit', path: 'notes/Plan.md', block: 'missing', append: 'x', ifMatch: rev('notes/Plan.md') },
     ]).catch((error: unknown) => error);
     expect(result).toMatchObject({ code: 'SECTION_NOT_FOUND', details: { operation: 0, block: 'missing' } });
     const preview = await run([
-      { op: 'move', from: 'notes/Plan.md', to: 'specs/Plan.md' },
-      { op: 'edit', path: 'specs/Plan.md', edits: [{ find: 'Ship.', replace: 'Ship v1.' }] },
+      { op: 'move', from: 'notes/Plan.md', to: 'specs/Plan.md', ifMatch: rev('notes/Plan.md') },
+      { op: 'edit', path: 'specs/Plan.md', edits: [{ find: 'Ship.', replace: 'Ship v1.' }], ifMatch: rev('notes/Plan.md') },
     ]);
     expect(preview.dryRun).toBe(true);
     expect(preview.renames).toEqual([{ from: 'notes/Plan.md', to: 'specs/Plan.md', kind: 'file', revision: expect.any(String), bytes: vault['notes/Plan.md'].length }]);
@@ -95,10 +98,17 @@ describe('apply plans', () => {
     ])).rejects.toMatchObject({ code: 'CONFLICT', message: expect.stringMatching(/^Operation 2 \(edit\): /), details: { operation: 2, path: 'Index.md', expectedRevision: 'stale' } });
     await expect(run([
       { op: 'write', path: 'notes/Other.md', content: 'x' },
-      { op: 'edit', path: 'notes/Old.md', edits: [{ find: 'Old', replace: 'Older' }, { find: 'Nope', replace: '' }] },
+      { op: 'edit', path: 'notes/Old.md', edits: [{ find: 'Old', replace: 'Older' }, { find: 'Nope', replace: '' }], ifMatch: old.revision },
     ])).rejects.toMatchObject({ code: 'NO_MATCH', details: { operation: 1, edit: 1 } });
-    await expect(run([{ op: 'write', path: 'Index.md', content: 'blind' }])).rejects.toMatchObject({ code: 'CONFLICT', details: { operation: 0, currentRevision: expect.any(String) } });
-    await expect(run([{ op: 'delete', path: 'notes/Old.md' }])).rejects.toMatchObject({ code: 'HAS_BACKLINKS', details: { operation: 0 } });
+    // Like the standalone commands, every operation on a path that existed before the plan needs its ifMatch.
+    for (const operation of [
+      { op: 'write', path: 'Index.md', content: 'blind' }, { op: 'edit', path: 'Index.md', append: 'x' }, { op: 'frontmatter', path: 'Index.md', set: { a: 1 } },
+      { op: 'move', from: 'Index.md', to: 'Home.md' }, { op: 'delete', path: 'Index.md' }, { op: 'move', from: 'notes', to: 'archive' },
+    ]) {
+      const path = 'from' in operation ? operation.from : operation.path;
+      await expect(run([operation]), operation.op).rejects.toMatchObject({ code: 'CONFLICT', message: `Operation 0 (${operation.op}): ${path} existed before the plan; pass ifMatch with the revision a read returned (error.details.currentRevision).`, details: { operation: 0, path, expectedRevision: null, currentRevision: expect.any(String) } });
+    }
+    await expect(run([{ op: 'delete', path: 'notes/Old.md', ifMatch: old.revision }])).rejects.toMatchObject({ code: 'HAS_BACKLINKS', details: { operation: 0 } });
     expect(await tree()).toEqual(Object.keys(vault).sort());
     expect(await text('notes/Old.md')).toBe(vault['notes/Old.md']);
     expect(records()).toEqual([]);
@@ -113,7 +123,7 @@ describe('apply plans', () => {
       await replace(target, ...args);
     });
     await expect(scope.run([
-      { op: 'move', from: 'notes/Plan.md', to: 'specs/Plan.md' },
+      { op: 'move', from: 'notes/Plan.md', to: 'specs/Plan.md', ifMatch: rev('notes/Plan.md') },
       { op: 'write', path: 'specs/Extra.md', content: 'extra' },
     ])).rejects.toThrow('Injected write failure');
     expect(await tree()).toEqual(Object.keys(vault).sort());
@@ -126,21 +136,22 @@ describe('apply plans', () => {
       if (path === 'Index.md' && !changed) { changed = true; await writeFile(join(root, 'Index.md'), 'changed elsewhere\n'); }
       return snapshot;
     });
-    await expect(changing.run([{ op: 'edit', path: 'Index.md', append: 'x\n' }])).rejects.toMatchObject({ code: 'CONFLICT', details: { operation: 0, path: 'Index.md' } });
+    await expect(changing.run([{ op: 'edit', path: 'Index.md', append: 'x\n', ifMatch: rev('Index.md') }])).rejects.toMatchObject({ code: 'CONFLICT', details: { operation: 0, path: 'Index.md' } });
     expect(await text('Index.md')).toBe('changed elsewhere\n');
     expect(changing.records()).toEqual([]);
   });
 
   it('names the operation whose moved, trashed or folder-moved source changed between planning and commit', async () => {
-    const cases: [unknown[], string, number, string][] = [
-      [[{ op: 'write', path: 'specs/README.md', content: 'specs' }, { op: 'move', from: 'notes/Plan.md', to: 'specs/Plan.md' }], 'notes/Plan.md', 1, 'notes/Plan.md'],
-      [[{ op: 'edit', path: 'Index.md', append: 'x\n' }, { op: 'delete', path: 'notes/Scratch.md', allowBrokenLinks: true }], 'notes/Scratch.md', 1, 'notes/Scratch.md'],
-      [[{ op: 'write', path: 'specs/README.md', content: 'specs' }, { op: 'move', from: 'notes', to: 'archive/notes' }], 'notes/Old.md', 1, 'notes'],
+    const cases: [(notes: string) => unknown[], string, number, string][] = [
+      [() => [{ op: 'write', path: 'specs/README.md', content: 'specs' }, { op: 'move', from: 'notes/Plan.md', to: 'specs/Plan.md', ifMatch: rev('notes/Plan.md') }], 'notes/Plan.md', 1, 'notes/Plan.md'],
+      [() => [{ op: 'edit', path: 'Index.md', append: 'x\n', ifMatch: rev('Index.md') }, { op: 'delete', path: 'notes/Scratch.md', allowBrokenLinks: true, ifMatch: rev('notes/Scratch.md') }], 'notes/Scratch.md', 1, 'notes/Scratch.md'],
+      [notes => [{ op: 'write', path: 'specs/README.md', content: 'specs' }, { op: 'move', from: 'notes', to: 'archive/notes', ifMatch: notes }], 'notes/Old.md', 1, 'notes'],
     ];
-    for (const [operations, changed, operation, path] of cases) {
+    for (const [plan, changed, operation, path] of cases) {
       await rm(root, { recursive: true, force: true });
       await writeVault(root, vault);
       const scope = await runner();
+      const operations = plan((await scope.files.stat('notes')).revision);
       // The test hook: another writer changes the source after the plan was built, just before it commits.
       const commit = scope.workspace.commit.bind(scope.workspace);
       vi.spyOn(scope.workspace, 'commit').mockImplementation(async (...args) => {
@@ -158,10 +169,10 @@ describe('apply plans', () => {
 
   it('commits a moved folder as one folder rename and refuses to reuse a vacated path', async () => {
     await writeVault(root, vault);
-    const { run, records } = await runner();
+    const { run, records, files } = await runner();
     const result = await run([
-      { op: 'move', from: 'notes', to: 'archive/notes' },
-      { op: 'edit', path: 'archive/notes/Old.md', append: 'archived\n' },
+      { op: 'move', from: 'notes', to: 'archive/notes', ifMatch: (await files.stat('notes')).revision },
+      { op: 'edit', path: 'archive/notes/Old.md', append: 'archived\n', ifMatch: rev('notes/Old.md') },
       { op: 'write', path: 'archive/notes/README.md', content: 'Archived notes.\n' },
     ]);
     expect(result.renames.slice(0, 1)).toEqual([{ from: 'notes', to: 'archive/notes', kind: 'folder' }]);
@@ -172,7 +183,7 @@ describe('apply plans', () => {
     expect(await tree()).toEqual(['Index.md', 'archive/notes/Old.md', 'archive/notes/Plan.md', 'archive/notes/README.md', 'archive/notes/Scratch.md']);
     expect(await text('Index.md')).toBe(vault['Index.md']);
     await expect(run([
-      { op: 'move', from: 'Index.md', to: 'Home.md' },
+      { op: 'move', from: 'Index.md', to: 'Home.md', ifMatch: rev('Index.md') },
       { op: 'write', path: 'Index.md', content: 'new index' },
     ])).rejects.toMatchObject({ code: 'INVALID_PLAN', details: { operation: 1, path: 'Index.md', vacated: 'Index.md' } });
   });
@@ -182,8 +193,8 @@ describe('apply plans', () => {
     for (const dryRun of [true, false]) {
       const { run, records } = await runner({ dryRun });
       const result = await run([
-        { op: 'edit', path: 'notes/Scratch.md', append: 'last words\n' },
-        { op: 'delete', path: 'notes/Scratch.md' },
+        { op: 'edit', path: 'notes/Scratch.md', append: 'last words\n', ifMatch: rev('notes/Scratch.md') },
+        { op: 'delete', path: 'notes/Scratch.md', ifMatch: rev('notes/Scratch.md') },
       ]);
       expect(result.changes.map((change: { path: string }) => change.path)).toEqual([]);
       expect(result.renames).toMatchObject([{ from: 'notes/Scratch.md', to: '.trash/notes/Scratch.md', kind: 'file' }]);
@@ -201,7 +212,7 @@ describe('apply plans', () => {
       { op: 'write', path: 'tmp/Draft.md', content: 'draft' },
       { op: 'move', from: 'tmp/Draft.md', to: 'tmp/Later.md' },
       { op: 'delete', path: 'tmp/Later.md' },
-      { op: 'frontmatter', path: 'notes/Plan.md', set: { status: 'draft' } },
+      { op: 'frontmatter', path: 'notes/Plan.md', set: { status: 'draft' }, ifMatch: rev('notes/Plan.md') },
     ]);
     expect(result).toMatchObject({ dryRun: false, renames: [], changes: [] });
     expect(result.operations[2]).toMatchObject({ op: 'delete', path: 'tmp/Later.md', trashPath: null });

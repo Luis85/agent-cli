@@ -14,27 +14,39 @@ node bin/forge.js read-many README.md src/main.ts --project the-forge
 raw `bytes` and `document` representation as a default `read`: Markdown includes
 content and properties, Canvas/Base include parsed data, text includes UTF-8
 content, and attachments or invalid UTF-8 text include base64. Markdown's separate
-`body` field is omitted. Optional `--parts` is available only on `read`.
+`body` field is omitted. Optional `--parts` and `--lines` are available only on
+`read`. Text and attachment content longer than `--max-bytes` (default 262,144
+bytes) is truncated as `read` truncates it, with `truncated: true`, `lines` for
+text and a warning per file.
 
-`data.bytes` sums the raw byte counts and must not exceed 8 MiB (8,388,608 bytes).
-Exactly 32 files and exactly 8 MiB are permitted. JSON escaping, parsed metadata
-and base64 can make the serialized response larger. Each file is read whole and
-its raw bytes count against the budget before it is parsed, so the file that
-exceeds the budget fails the command without being parsed. This is an
+`data.bytes` sums the raw byte counts. Each file counts toward an 8 MiB
+(8,388,608 bytes) aggregate limit with its raw size up to `--max-bytes`, so with
+the default limit 32 files always fit; with `--max-bytes 8388608`, exactly 8 MiB
+of raw bytes are permitted. JSON escaping, parsed metadata and base64 can make the
+serialized response larger. Each file is read whole and counts against the budget
+before it is parsed, so the file that exceeds the budget fails the command without
+being parsed. This is an
 accepted-content limit, not a streaming or hard memory limit.
 For larger requests, split the path list into smaller invocations or use `read`
 for an individual file.
 
 The entire path list is checked before reading. Duplicate canonical path strings
 are refused; case-distinct names retain the same filesystem semantics as `read`.
-Paths containing `./`, traversal, empty segments or backslashes are invalid
-instead of being silently normalized. Symlink traversal remains forbidden.
+A leading `./`, backslash separators and absolute paths inside the scope root
+are first rewritten to the relative POSIX path, as for every file argument (see
+the [write contract](../reference/cli.md#write-contract)). Traversal, empty
+segments and absolute paths outside the scope are invalid, and the error names
+the argument's position in `details.index`. Symlink traversal remains forbidden.
 
 A missing, unsafe or invalid document, or exceeding the byte limit, fails the
 whole command. No partial `data.files` payload is returned. Per-file failures keep
-the original error code and add `error.details.index` (the zero-based position of
-the path argument) and `error.details.path`; the message names the same index, as
-in `read-many path at index 1: ...`. Duplicate errors also identify `duplicateOf`. Limit and
+the original error code and add `error.details.argument` (`paths`),
+`error.details.index` (the zero-based position of the path argument) and
+`error.details.path`; the message names the same index, as in
+`read-many path at index 1: ...`, and with `--lang de` as
+`Argument <paths> an Position 1: ...`. An exceeded budget reports
+`details.aggregateLimit` (8 MiB), `details.maxBytes` (the per-file
+`--max-bytes`) and `details.bytes`. Duplicate errors also identify `duplicateOf`. Limit and
 argument-count violations use `INVALID_ARGUMENT`. The command stops at the first
 read failure. Standard read events for preceding successful reads may already
 have been delivered; no file writes or committed vault-change events occur.

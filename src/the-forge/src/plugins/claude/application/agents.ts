@@ -1,7 +1,8 @@
-import { forgeError, errorMessage, AppError, ensure } from '../../../domain/shared/errors.ts';
+import { forgeError, errorMessage, ensure, failureCode } from '../../../domain/shared/errors.ts';
 import { vaultPath } from '../../../domain/documents/file.ts';
 import type { ClaudeAgentDocument } from '../../../domain/claude/agents.ts';
 import type { Workspace } from '../../../application/workspace/workspace.ts';
+import { decodeUtf8 } from '../../../domain/shared/utf8.ts';
 
 export interface ClaudeAgentCodec {
   parse(text: string): ClaudeAgentDocument;
@@ -13,7 +14,7 @@ interface AgentSummary {
 }
 
 function text(bytes: Uint8Array): string {
-  try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
+  try { return decodeUtf8(bytes, 'keep'); }
   catch { throw forgeError('INVALID_ENCODING', 'Agent definitions must be valid UTF-8.'); }
 }
 
@@ -40,7 +41,7 @@ export class ClaudeAgents {
         if (names.has(entry.name)) duplicates.add(entry.name);
         names.add(entry.name);
       } catch (error) {
-        entry.error = { code: error instanceof AppError ? error.code : 'OPERATION_FAILED', message: errorMessage(error) };
+        entry.error = { code: failureCode(error) ?? 'OPERATION_FAILED', message: errorMessage(error) };
       }
       agents.push(entry);
     }

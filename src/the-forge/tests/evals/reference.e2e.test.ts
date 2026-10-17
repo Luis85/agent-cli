@@ -5,29 +5,40 @@ import { createWorkspace } from '../../scripts/eval/workspace.mjs';
 import { distribution } from '../support/workspace.ts';
 
 const tasks = loadTasks();
-let commands: string[];
-const results = new Map<string, ReferenceResult>();
+/** Each outcome, or the error that ended it, so one failing task fails only its own test. */
+let commands: string[] | Error;
+const results = new Map<string, ReferenceResult | Error>();
+const failure = (error: unknown) => (error instanceof Error ? error : new Error(String(error)));
+const outcome = <Value>(value: Value | Error): Value => {
+  if (value instanceof Error) throw value;
+  return value;
+};
 /** Tasks in flight at once: each copies the built distribution and runs a dozen CLI processes. */
 const concurrency = 2;
 
 beforeAll(async () => {
-  const workspace = await createWorkspace(tasks[0]!, { distribution });
-  try { commands = (await workspace.forge(['schema'])).body.data.commands.map((command: { id: string }) => command.id); }
-  finally { await workspace.dispose(); }
+  try {
+    const workspace = await createWorkspace(tasks[0]!, { distribution });
+    try { commands = (await workspace.forge(['schema'])).body.data.commands.map((command: { id: string }) => command.id); }
+    finally { await workspace.dispose(); }
+  } catch (error) { commands = failure(error); }
   // A small fixed pool keeps the suite's parallel load bounded instead of starting every task at once.
   const queue = [...tasks];
   await Promise.all(Array.from({ length: concurrency }, async () => {
-    for (let task = queue.shift(); task; task = queue.shift()) results.set(task.id, await runReference(task, { distribution }));
+    for (let task = queue.shift(); task; task = queue.shift()) {
+      results.set(task.id, await runReference(task, { distribution }).catch(failure));
+    }
   }));
 }, 900_000);
 
 describe('agent evaluation tasks under the reference driver', () => {
   it('use only commands that the built executable registers', () => {
-    for (const task of tasks) for (const id of commandIds(task)) expect(commands, `${task.id} uses ${id}`).toContain(id);
+    const registered = outcome(commands);
+    for (const task of tasks) for (const id of commandIds(task)) expect(registered, `${task.id} uses ${id}`).toContain(id);
   });
 
   it.each(tasks.map(task => task.id))('%s is solvable with its reference commands and its checks discriminate', id => {
-    const result = results.get(id)!;
+    const result = outcome(results.get(id)!);
     expect(result.failures).toEqual([]);
     expect(result.baseline.some(check => !check.passed)).toBe(true);
     expect(result.checks.every(check => check.passed)).toBe(true);
@@ -44,6 +55,12 @@ describe('agent evaluation tasks under the reference driver', () => {
     const wrongStep: Task = { ...task, id: 'wrong-step', reference: [{ run: ['read', 'Missing.md'] }] };
     expect((await runReference(wrongStep, { distribution })).failures[0]).toContain('read Missing.md: expected success, got NOT_FOUND');
   }, 120_000);
+
+  it('names the task, the arguments and the working directory when the CLI cannot start', async () => {
+    const workspace = await createWorkspace(tasks[0]!, { distribution });
+    await workspace.dispose();
+    await expect(workspace.forge(['schema'])).rejects.toThrow(`${tasks[0]!.id}: forge schema could not start in ${workspace.root} (missing)`);
+  });
 
   it('rejects a reference answer that the reference commands do not support, although it passes its own check', async () => {
     const [list, property] = loadTasks('tests/evals/fixtures/wrong-tasks');

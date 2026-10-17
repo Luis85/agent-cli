@@ -14,6 +14,7 @@ const project = option.string('Use this project instead of the selected project.
 const executable = option.string('Use this Chromium executable; otherwise use FORGE_BROWSER_EXECUTABLE or the installed managed browser.');
 const timeout = option.string('Browser operation timeout in milliseconds, from 1 to 120000.', { default: '30000' });
 const revision = option.string('Current output revision from read (screenshot) or browser validate (tutorial); required before replacing existing output.');
+const noSandbox = option.boolean('Run Chromium without its operating-system sandbox; only for trusted pages where the sandbox cannot start.');
 const projectMode = { scope: 'project', projectOption: 'project', discovery: false } as const;
 
 export function browserCommand(runtime: BrowserRuntime, blocks: TutorialBlocks): Command<PluginContext> {
@@ -38,7 +39,7 @@ export function browserCommand(runtime: BrowserRuntime, blocks: TutorialBlocks):
           height: option.string('Viewport height in pixels, from 1 to 7680.', { default: '900' }),
           'full-page': option.boolean('Capture the full page instead of only the viewport.'),
           'wait-for-selector': option.string('Wait for this selector to become visible before capturing the page.'),
-          'timeout-ms': timeout, 'browser-executable': executable, 'if-match': revision,
+          'timeout-ms': timeout, 'browser-executable': executable, 'if-match': revision, 'no-browser-sandbox': noSandbox,
         } },
       validate: { description: 'Validate a declared tutorial flow without opening a browser and inspect its output revision.', ...projectMode,
         options: { project, out: option.string('Optional project-relative tutorial directory whose current revision should be inspected.') },
@@ -46,7 +47,7 @@ export function browserCommand(runtime: BrowserRuntime, blocks: TutorialBlocks):
       tutorial: { description: 'Replay a declared flow and atomically save its manual, screenshots and repeatable plan.', ...projectMode,
         mutating: true, destructive: true, idempotent: true,
         options: { project, out: option.string('Project-relative tutorial directory for index.md, screenshots and flow.json.', { required: true }),
-          'timeout-ms': timeout, 'browser-executable': executable, 'if-match': revision },
+          'timeout-ms': timeout, 'browser-executable': executable, 'if-match': revision, 'no-browser-sandbox': noSandbox },
         output: tutorialSchema },
     },
     errors: ['INVALID_ARGUMENT', 'INVALID_PATH', 'UNSAFE_PATH', 'CONFLICT', 'NOT_FOUND', 'BROWSER_UNAVAILABLE', 'BROWSER_CAPTURE_FAILED', 'BROWSER_INSTALL_FAILED', 'BROWSER_FLOW_INVALID', 'BROWSER_FLOW_FAILED'],
@@ -64,9 +65,10 @@ export function browserCommand(runtime: BrowserRuntime, blocks: TutorialBlocks):
       const out = value(flags, 'out', true)!;
       const timeoutMs = browserTimeout(integer(flags, 'timeout-ms', 1));
       const executablePath = browserExecutable(value(flags, 'browser-executable')), ifMatch = expectedRevision(value(flags, 'if-match'));
-      if (action === 'tutorial') return tutorial.run(context, { source: args[1]!, out, timeoutMs, executablePath, ifMatch });
+      const disableSandbox = flags['no-browser-sandbox'] === true;
+      if (action === 'tutorial') return tutorial.run(context, { source: args[1]!, out, timeoutMs, executablePath, ifMatch, disableSandbox });
       return screenshot.run(context, { url: args[1]!, out, viewport: browserViewport(integer(flags, 'width', 1), integer(flags, 'height', 1)),
-        fullPage: flags['full-page'] === true, waitForSelector: value(flags, 'wait-for-selector'), timeoutMs, executablePath, ifMatch });
+        fullPage: flags['full-page'] === true, waitForSelector: value(flags, 'wait-for-selector'), timeoutMs, executablePath, ifMatch, disableSandbox });
     },
   };
 }

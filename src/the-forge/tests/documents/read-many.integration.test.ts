@@ -24,7 +24,9 @@ beforeEach(async () => {
   context = { workspace, root, workspaceRoot: root, project: null, events } as unknown as CommandContext;
 });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
-const run = (paths: string[]) => command.run(paths, {}, context);
+const run = (paths: string[], flags: Record<string, string> = {}) => command.run(paths, flags, context);
+/** A per-file limit as large as the aggregate one, so every raw byte counts toward the budget. */
+const whole = { 'max-bytes': String(8 * 1024 * 1024) };
 
 describe('bounded read-many file inspection', () => {
   it('matches default read representations and revisions for every supported document family', async () => {
@@ -47,16 +49,33 @@ describe('bounded read-many file inspection', () => {
     await writeFile(join(root, 'a.bin'), Buffer.alloc(4 * 1024 * 1024));
     await writeFile(join(root, 'b.bin'), Buffer.alloc(4 * 1024 * 1024));
     await writeFile(join(root, 'c.bin'), Buffer.from([1]));
-    const result = await run(['a.bin', 'b.bin']);
+    const result = await run(['a.bin', 'b.bin'], whole);
     expect(result).toMatchObject({ bytes: 8 * 1024 * 1024 });
     expect(Buffer.byteLength(JSON.stringify(result))).toBeGreaterThan(8 * 1024 * 1024);
-    await expect(run(['a.bin', 'b.bin', 'c.bin'])).rejects.toMatchObject({ code: 'INVALID_ARGUMENT', details: { index: 2, path: 'c.bin', maxBytes: 8388608, bytes: 8388609 } });
+    await expect(run(['a.bin', 'b.bin', 'c.bin'], whole)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT', details: { index: 2, path: 'c.bin', aggregateLimit: 8388608, maxBytes: 8388608, bytes: 8388609 } });
+  });
+  it('truncates each file at the default per-file limit, so 32 files never exceed the aggregate budget', async () => {
+    const big = 'line\n'.repeat(100_000);
+    for (const name of ['a', 'b', 'c']) await writeFile(join(root, `${name}.txt`), big);
+    await writeFile(join(root, 'image.bin'), Buffer.alloc(300 * 1024, 7));
+    const result = await run(['a.txt', 'b.txt', 'c.txt', 'image.bin']) as { files: Array<Record<string, any>>; bytes: number };
+    expect(result.bytes).toBe(3 * big.length + 300 * 1024);
+    for (const file of result.files.slice(0, 3)) {
+      expect(file).toMatchObject({ truncated: true, bytes: big.length, lines: { start: 1, end: 52428, total: 100_000 } });
+      expect(file.document.content).toBe('line\n'.repeat(52428));
+    }
+    expect(Buffer.from(result.files[3]!.document.content, 'base64')).toEqual(Buffer.alloc(256 * 1024, 7));
+    expect(result.files[3]).toMatchObject({ truncated: true, bytes: 300 * 1024 });
+    expect(events.warnings).toHaveLength(4);
+    expect(validateJsonValue(readManyOutput, result, 'data').issues).toEqual([]);
+    const small = await run(['a.txt'], { 'max-bytes': '10' }) as { files: Array<Record<string, any>> };
+    expect(small.files[0]).toMatchObject({ truncated: true, document: { content: 'line\nline\n' }, lines: { start: 1, end: 2, total: 100_000 } });
   });
   it('refuses a file over the remaining budget without parsing it or reporting it opened', async () => {
     await writeFile(join(root, 'a.bin'), Buffer.alloc(8 * 1024 * 1024));
     const invalid = '---\nvalue: [\n---\n';
     await writeFile(join(root, 'bad.md'), invalid);
-    await expect(run(['a.bin', 'bad.md'])).rejects.toMatchObject({ code: 'INVALID_ARGUMENT', details: { index: 1, path: 'bad.md', bytes: 8 * 1024 * 1024 + Buffer.byteLength(invalid) } });
+    await expect(run(['a.bin', 'bad.md'], whole)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT', details: { index: 1, path: 'bad.md', bytes: 8 * 1024 * 1024 + Buffer.byteLength(invalid) } });
     expect(events.history.filter(event => event.id === 'workspace.file-open').map(event => (event.payload as { path: string }).path)).toEqual(['a.bin']);
   });
   it('fails the bundle at a missing file, reports its index, and does not read later files', async () => {
@@ -64,8 +83,13 @@ describe('bounded read-many file inspection', () => {
     await expect(run(['valid.txt', 'missing.md', 'never.txt'])).rejects.toMatchObject({ code: 'NOT_FOUND', details: { index: 1, path: 'missing.md' } });
     expect(events.history.filter(event => event.id === 'workspace.file-open')).toHaveLength(1);
   });
+  it('returns a note whose frontmatter does not parse with its issue, as read does', async () => {
+    await writeFile(join(root, 'bad.md'), '---\nvalue: [\n---\n');
+    const inspected = await single.run(['bad.md'], {}, context) as { document: unknown };
+    expect(inspected.document).toMatchObject({ kind: 'markdown', properties: null, issue: { code: 'INVALID_YAML' } });
+    expect(await run(['bad.md'])).toMatchObject({ files: [{ path: 'bad.md', document: inspected.document }] });
+  });
   it.each([
-    ['bad.md', '---\nvalue: [\n---\n', 'INVALID_YAML'],
     ['bad.canvas', '{"nodes":', 'INVALID_CANVAS'],
     ['bad.base', 'views: [', 'INVALID_YAML'],
   ])('preserves the existing read error for %s with bundle location', async (path, content, code) => {

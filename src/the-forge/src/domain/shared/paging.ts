@@ -1,4 +1,5 @@
 import { ensure, isRecord } from './errors.ts';
+import { decodeUtf8 } from './utf8.ts';
 
 /** A position in a result order: compared element by element, strings by code unit and numbers numerically. */
 export type PageKey = readonly (string | number)[];
@@ -81,7 +82,7 @@ export class Pager<Item> {
 
   private decode(cursor: string): PageKey {
     let value: unknown;
-    try { value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(fromBase64url(cursor) ?? new Uint8Array([0xff]))); }
+    try { value = JSON.parse(decodeUtf8(fromBase64url(cursor) ?? new Uint8Array([0xff]))); }
     catch { value = undefined; }
     ensure(isRecord(value) && validKey(value.after), 'INVALID_ARGUMENT', '--cursor is not a cursor returned by this command; rerun without --cursor.');
     ensure(value.q === fingerprint(this.query), 'INVALID_ARGUMENT', '--cursor belongs to a different query; pass the same pattern and filters, or rerun without --cursor.');

@@ -36,7 +36,7 @@ export function webviewCommand(publication: WebviewPublication): Command {
           check: option.boolean('Check publication drift without writing; fail with WEBVIEW_DRIFT when assets differ.'),
         } },
     },
-    errors: ['PROJECT_REQUIRED', 'INVALID_ARGUMENT', 'WEBVIEW_INVALID', 'WEBVIEW_BUILD_REQUIRED', 'WEBVIEW_DRIFT', 'CONFLICT', 'UNSAFE_PATH', 'INVALID_PATH', 'NOT_FOUND'],
+    errors: ['PROJECT_REQUIRED', 'INVALID_ARGUMENT', 'WEBVIEW_INVALID', 'WEBVIEW_BUILD_REQUIRED', 'WEBVIEW_PROJECT_REQUIRED', 'WEBVIEW_DRIFT', 'CONFLICT', 'UNSAFE_PATH', 'INVALID_PATH', 'NOT_FOUND'],
     async run(args, flags, context) {
       arity(args, 0, 1);
       if ((args[0] ?? 'inspect') === 'inspect') return publication.inspect(context);

@@ -4,9 +4,6 @@ import source from './vendor/source.json';
 import { diagnostic, pointer, type AgentDiagnostic } from '../domain/config.ts';
 import type { DefinitionSchema } from '../application/ports.ts';
 
-/** The docker-agent commit whose `agent-schema.json` is vendored (see `scripts/vendor-docker-agent.mjs`). */
-export const vendoredSchema = { repository: source.repository, commit: source.commit, configVersion: source.configVersion };
-
 let compiled: ValidateFunction | undefined;
 /** Compiled once per process, on first use: only agents commands pay for the large schema. */
 function validator(): ValidateFunction {

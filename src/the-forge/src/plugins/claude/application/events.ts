@@ -46,7 +46,8 @@ export async function notifyClaude<Id extends keyof ClaudeEventMap>(events: Even
     if (!events.ids().includes(id)) return;
     await events.emit(id, payload);
   } catch (failure) {
-    try { events.warn(localize('notificationFailed', { event: id, diagnostic: errorMessage(failure) })); }
+    const details = { event: id, diagnostic: errorMessage(failure) };
+    try { events.warn({ code: 'CLAUDE_NOTIFICATION_FAILED', message: localize('notificationFailed', details), details }); }
     catch { /* A diagnostic sink cannot replace the Claude result. */ }
   }
 }

@@ -1,19 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { NoteSource } from '../../src/plugins/backlog/domain/items.ts';
 import { buildModel } from '../../src/plugins/backlog/domain/model.ts';
 import { observedStates, requirementsBoard } from '../../src/plugins/backlog/domain/board.ts';
 import { resolveSettings, type ViewOptions } from '../../src/plugins/backlog/domain/settings-resolve.ts';
+import { noteSource } from '../support/backlog.ts';
 
 type Notes = Record<string, Record<string, unknown>>;
-function vault(notes: Notes): NoteSource {
-  return {
-    frontmatter: path => notes[path],
-    frontmatterLinks: path => Object.entries(notes[path] ?? {}).flatMap(([key, value]) => (typeof value === 'string' && /^\[\[.+\]\]$/.test(value) ? [{ key, link: value.slice(2, -2) }] : [])),
-    resolve: linkpath => (`${linkpath}.md` in notes ? `${linkpath}.md` : null),
-  };
-}
 const settingsFor = (options: ViewOptions) => resolveSettings({ stateProperty: 'note.status', ...options });
-const model = (notes: Notes, options: ViewOptions = {}, results = Object.keys(notes)) => buildModel(vault(notes), results, settingsFor(options), path => path in notes);
+const model = (notes: Notes, options: ViewOptions = {}, results = Object.keys(notes)) => buildModel(noteSource(notes), results, settingsFor(options), path => path in notes);
 const board = (notes: Notes, options: ViewOptions = {}, results = Object.keys(notes)) =>
   requirementsBoard(model(notes, options, results), settingsFor(options)).map(({ cards, ...column }) => ({ ...column, cards: cards.map(card => card.title) }));
 

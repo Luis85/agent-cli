@@ -1,6 +1,5 @@
 import type { CorePlugin } from '../../application/plugins/core-plugins.ts';
-import type { PluginContext } from '../../application/plugins/registry.ts';
-import { searchFiles } from './application/search.ts';
+import { searchFiles, searchMatchingFiles, type SearchSources } from './application/search.ts';
 import { vmSearchBudget } from './infrastructure/budget.ts';
 import { searchCommand } from './presentation/command.ts';
 import { searchStrings } from './presentation/strings.ts';
@@ -19,12 +18,16 @@ export const searchPlugin: CorePlugin = {
   },
   strings: searchStrings,
   create: () => ({
-    commands: [searchCommand(context => (query, page) => searchFiles({
-      files: context.workspace.files,
-      paths: () => context.metadata.vaultFiles(),
-      parse: file => context.metadata.parseFile(file),
-      budget: vmSearchBudget(Number((context as PluginContext).settings?.timeoutMs ?? defaultTimeoutMs)),
-    }, query, page))],
+    commands: [searchCommand(context => {
+      const sources = (): SearchSources => ({
+        files: context.workspace.files,
+        paths: () => context.metadata.vaultFiles(),
+        parse: file => context.metadata.parseFile(file),
+        budget: vmSearchBudget(Number(context.settings?.timeoutMs ?? defaultTimeoutMs)),
+        warn: message => context.events.warn(message),
+      });
+      return { hits: (query, page) => searchFiles(sources(), query, page), files: (query, page) => searchMatchingFiles(sources(), query, page) };
+    })],
     settings: {
       type: 'object', additionalProperties: false,
       properties: {

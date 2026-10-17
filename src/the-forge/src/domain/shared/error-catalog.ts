@@ -1,7 +1,8 @@
 /**
- * Single source of truth for built-in failure codes. The category fixes the process exit status;
- * `hint` names the next step an agent or user should take and `retryable` says whether repeating the
- * unchanged invocation later can succeed. Plugin-defined codes are outside this catalog.
+ * Single source of truth for built-in failure codes: the kernel's own, and the document and Claude Code file codecs
+ * that several core plugins share. The category fixes the process exit status; `hint` names the next step an agent
+ * or user should take and `retryable` says whether repeating the unchanged invocation later can succeed. A code only
+ * one plugin raises belongs to that plugin's `errors` instead.
  */
 export type ErrorCategory = 'input' | 'conflict' | 'not-found' | 'busy' | 'drift' | 'runtime' | 'external' | 'interrupted';
 export interface ErrorDefinition {
@@ -10,7 +11,10 @@ export interface ErrorDefinition {
   readonly summary: string;
   readonly hint: string;
   readonly retryable: boolean;
+  /** Hints for one occurrence, chosen by the first of `details[...details]` whose value names one; others use `hint`. */
+  readonly variants?: HintVariants;
 }
+export interface HintVariants { readonly details: readonly string[]; readonly hints: Readonly<Record<string, string>> }
 
 /** SIGTERM interruptions report 143 instead of the category's SIGINT status 130. */
 export const categoryExitCodes = {
@@ -46,15 +50,22 @@ export const errorCatalog = {
   // Paths, files and guarded writes
   INVALID_PATH: entry('input', 'The path is not a valid workspace-relative path.', 'Use a relative path inside the selected workspace or project, with forward slashes and no .. segments.'),
   UNSAFE_PATH: entry('input', 'The path leaves the workspace or crosses a symbolic link.', 'Use a path inside the workspace that does not traverse symbolic links.'),
-  NOT_FOUND: entry('not-found', 'The file or resource does not exist.', 'Check the path and the selected project (project current); run list to find files.'),
-  CONFLICT: entry('conflict', 'The file already exists or its revision changed since it was read.', 'Reread the file and reconcile your change with the current content (error.details.currentRevision), then retry with the command\'s revision guard (--if-match or --revisions-from); create only adds new paths.'),
-  NO_MATCH: entry('input', 'The --find text does not occur in the file.', 'Read the file again and copy the exact current text into --find, including whitespace and line endings.'),
-  AMBIGUOUS_EDIT: entry('input', 'The --find text occurs more than once, counting overlapping matches.', 'Extend --find with surrounding text so it matches exactly once; error.details.lines lists the matching lines.'),
+  NOT_FOUND: entry('not-found', 'The file or resource does not exist.', 'Check the path and the selected project (project current); run list to find files. error.details.alreadyDeleted true means a delete already moved the file to error.details.trashPath.'),
+  CONFLICT: { ...entry('conflict', 'The file already exists or its revision changed since it was read.', 'The message names the case. An existing file (error.details.expectedRevision null): replace it with write --if-match or change it with edit. A missing file (error.details.currentRevision null): check the path, or drop the guard to create it. A changed file: reread it, reconcile your change with the current content and retry with error.details.currentRevision through the command\'s revision guard (--if-match, ifMatch in a plan, or --revisions-from). error.details.alreadyApplied true means the file already holds the requested change, so no retry is needed.'), variants: { details: ['reason'], hints: {
+    'changed-while-planning': 'A note linking to the moved path (error.details.path) changed while Forge planned the link updates, and nothing was written: rerun the same move; read that note first if you are editing it too.',
+  } } },
+  NO_MATCH: entry('input', 'The --find text does not occur in the file.', 'Read the file again and copy the exact current text into --find, including whitespace and line endings; error.details.lineEndings names the file\'s line endings and error.details.nearMatch a line that matches when whitespace and case are ignored.'),
+  AMBIGUOUS_EDIT: entry('input', 'The --find text occurs more than once, counting overlapping matches.', 'Extend --find with surrounding text so it matches exactly once; error.details.lines lists the matching lines and error.details.snippets their text.'),
   UNSUPPORTED_EDIT: entry('input', 'This edit is not supported for the file kind.', 'Use edit for Markdown and text, properties for frontmatter, patch for Canvas and Bases, and write for attachments.'),
   SECTION_NOT_FOUND: entry('input', 'No heading matches the --section path, or no block has the --block id.', 'Read the note and copy a heading path from error.details.headings (segments joined with " > ") or a block id from error.details.blocks.'),
   AMBIGUOUS_SECTION: entry('input', 'The --section path matches several headings, or the --block id occurs more than once.', 'Add ancestor headings to the path (Parent > Heading) until one of error.details.candidates remains, or pass a candidate\'s line as --section-line (sectionLine in an apply plan); give each block a unique id.'),
   INVALID_PLAN: entry('input', 'The apply plan or write batch is invalid: it does not match the plan schema, or its steps have duplicate or overlapping paths.', 'Fix the operation named in error.details.operation (see error.details.issues and the plan schema in help apply); write each path once and do not reuse a path that the same plan moves or deletes.'),
-  WORKSPACE_BUSY: entry('busy', 'Another Forge writer holds the workspace lock or a backlog sync lock.', 'error.details.stale says why the lock stays (a lock whose holder provably no longer runs is removed automatically with a warning). "active": the holder runs, or another running writer is removing the stale lock; wait and retry. "unknown": Forge cannot verify the holder (another host, pid namespace or boot, or an unreadable lock), so error.retryable is false; confirm in error.details.lock that it no longer runs, inspect its unfinished changes, then delete the file named in error.details.path (relative to the workspace root) and retry. "stale": the holder provably no longer runs but removing the lock failed, so error.retryable is false; confirm no Forge process uses it, then delete that file and retry.', true),
+  WORKSPACE_BUSY: { ...entry('busy', 'Another Forge writer holds the workspace lock or a backlog sync lock.', 'error.details.stale says why the lock stays (a lock whose holder provably no longer runs is removed automatically with a warning). "active": the holder runs, or another running writer is removing the stale lock; wait and retry. "unknown": Forge cannot verify the holder (another host, pid namespace or boot, or an unreadable lock), so error.retryable is false; confirm in error.details.lock that it no longer runs, inspect its unfinished changes, then delete the file named in error.details.path (relative to the workspace root) and retry. "stale": the holder provably no longer runs but removing the lock failed, so error.retryable is false; confirm no Forge process uses it, then delete that file and retry.', true), variants: { details: ['nestedWriter', 'stale'], hints: {
+    running: 'A running writer of a nested root holds its lock (error.details.path) inside the folder this move or deletion would take along; --wait does not wait for it. Let that writer finish, then retry after error.details.retryAfterMs milliseconds or later.',
+    active: 'The holder runs, or another running writer is removing a stale lock: retry after error.details.retryAfterMs milliseconds, or rerun with --wait <ms> to wait for the lock.',
+    unknown: 'Forge cannot verify the holder (another host, pid namespace or boot, or an unreadable lock) and never removes its lock, so waiting does not help: confirm in error.details.lock that it no longer runs, inspect its unfinished changes, then delete the file named in error.details.path (relative to the workspace root) and retry.',
+    stale: 'The holder provably no longer runs, but removing its lock failed: confirm no Forge process uses it, then delete the file named in error.details.path (relative to the workspace root) and retry.',
+  } } },
   DESTINATION_EXISTS: entry('conflict', 'The move or rename destination already exists.', 'Choose a destination that does not exist (error.details.path), or move or delete the existing file first; Forge never overwrites a destination.'),
   PROTECTED_PATH: entry('input', 'The path is protected from moves and deletion.', 'Forge never moves or deletes .obsidian, .forge or, at workspace scope, bin (in any letter case), nor a folder holding a .git repository; it permanently deletes only folders without symlinks, node_modules or special files, so move such a folder to the trash instead. The scope root and .git paths are refused as INVALID_PATH.'),
   INVALID_MOVE: entry('input', 'The move or rename is not possible.', 'Use a destination that differs from the source and is not inside it; rename takes a new name without slashes.'),
@@ -66,15 +77,8 @@ export const errorCatalog = {
   INVALID_CANVAS: entry('input', 'The Canvas structure is invalid.', 'Fix the nodes, edges or ids named in the message; run validate <file.canvas>.'),
   INVALID_BASE: entry('input', 'The Base structure is invalid.', 'Fix the Base definition named in the message; run validate <file.base>.'),
   INVALID_POINTER: entry('input', 'The JSON Pointer is invalid or does not address a valid location.', 'Read the document and use an existing pointer path; /- appends only to an existing array.'),
-  // Bases queries
-  INVALID_BASE_QUERY: entry('input', 'The Bases query is invalid.', 'Check the view, context and expressions named in the message.'),
-  INVALID_BASE_EXPRESSION: entry('input', 'A Bases expression cannot be parsed.', 'Fix the expression named in the message.'),
-  BASE_EVALUATION_ERROR: entry('input', 'A Bases expression failed while evaluating a file.', 'Check the view, file and expression named in the message.'),
-  BASE_VIEW_NOT_FOUND: entry('input', 'The requested Bases view does not exist.', 'Run bases inspect <file.base> and pass an existing --view.'),
-  BASE_CONTEXT_NOT_FOUND: entry('input', 'The context file is not an indexed vault file.', 'Pass an existing vault file to --context.'),
-  INVALID_BASE_PROPERTY_TYPES: entry('input', 'The Obsidian property type registry is invalid.', 'Fix .obsidian/types.json so it is a JSON object of property types.'),
-  UNSUPPORTED_BASE_PROPERTY_TYPE: entry('input', 'An Obsidian property type is not supported.', 'Use a supported type in .obsidian/types.json.'),
   // Configuration, setup and projects
+  INVALID_ROOT: entry('not-found', 'The workspace root does not exist or is not a directory.', 'Pass --root (or set FORGE_ROOT) to the existing workspace directory that contains bin/; --root wins over FORGE_ROOT.'),
   INVALID_CONFIG: entry('input', 'The configuration is invalid or unreadable.', 'Fix bin/config.json at the location named in the message, then run config.'),
   INVALID_SETUP: entry('input', 'Setup cannot complete with the current distribution files.', 'Repair the bin path named in the message, then run setup again.'),
   INVALID_PROJECT: entry('input', 'The project metadata is invalid.', 'Fix .forge/project.json in the project directory.'),
@@ -85,39 +89,14 @@ export const errorCatalog = {
   PROJECT_NOT_FOUND: entry('not-found', 'The project does not exist.', 'Run project list and open an existing project.'),
   PROJECT_REQUIRED: entry('input', 'This command needs a selected project.', 'Run project open <name> first.'),
   STALE_PROJECT_CONTEXT: entry('not-found', 'The selected project is missing or no longer matches the configuration.', 'Run project open <name> to select a valid project, or project close.'),
-  // Templates and generation
-  INVALID_TEMPLATE: entry('input', 'The Markdown template is invalid.', 'Fix the template frontmatter or placeholders named in the message.'),
-  INVALID_TEMPLATE_DATE: entry('input', 'A template date or date format is invalid.', 'Use an ISO date and a supported date format.'),
-  INVALID_TEMPLATE_PACK: entry('input', 'The template pack is invalid.', 'Use unique template ids and destinations.'),
-  INVALID_TEMPLATE_VALUES: entry('input', 'Template values are missing or have the wrong type.', 'Run templates inspect <template.md> and supply its required values.'),
-  UNKNOWN_TEMPLATE_VARIABLE: entry('input', 'The template uses an undeclared variable.', 'Declare the variable in the template or remove the placeholder; run templates inspect <template.md>.'),
+  // Generation
   UNKNOWN_GENERATOR: entry('input', 'The generator is not registered.', 'Run make to list generators.'),
   INVALID_GENERATION_PLAN: entry('input', 'The generation plan has overlapping outputs or invalid options.', 'Use separate output and manifest paths, and do not combine planning with --revisions-from.'),
   INVALID_GENERATION_REVISIONS: entry('input', 'The revision approval does not match the reviewed plan.', 'Create a new plan with --plan-out and pass that file to --revisions-from.'),
-  UI_DRIFT: entry('drift', 'Generated UI files are missing or differ from their definitions.', 'Run the same command with --plan to review, then regenerate.'),
-  DATA_SOURCE_DRIFT: entry('drift', 'Generated data-source files are missing or differ from their definitions.', 'Run the same command with --plan to review, then regenerate.'),
   GENERATION_DRIFT: entry('drift', 'Generated files are missing or differ from what the generator produces.', 'Run the same make command with --plan to review, then regenerate.'),
   // Project workflows
   INVALID_WORKFLOW: entry('input', 'An authored project workflow is invalid or two workflows generate the same file.', 'Fix or rename the workflow under src/infrastructure/workflows/<concern>/ named in the message, then run workflows sync.'),
   WORKFLOW_DRIFT: entry('drift', 'Generated GitHub workflows are missing, changed or stale.', 'Run workflows sync, review the changes in .github/workflows and commit them with their sources.'),
-  // UI, interactions and data sources
-  INVALID_UI: entry('input', 'A component definition is invalid.', 'Fix the definition named in the message; run components validate.'),
-  INVALID_UI_LIBRARY: entry('input', 'The component library is invalid.', 'Run components validate and fix the reported definitions.'),
-  INVALID_UI_FRAMEWORK: entry('input', 'The UI target is not supported.', 'Use html, htmx, vanilla, vue, svelte, react or angular.'),
-  EMPTY_UI_LIBRARY: entry('input', 'The component library has no definitions.', 'Run components init or add a Markdown definition.'),
-  DUPLICATE_UI_COMPONENT: entry('input', 'Two component definitions share an id.', 'Give each component a unique id.'),
-  UNKNOWN_UI_COMPONENT: entry('input', 'The component is not defined.', 'Run components list and use an existing id.'),
-  CYCLIC_UI_COMPONENT: entry('input', 'Component references form a cycle.', 'Remove the cyclic reference named in the message.'),
-  UI_RENDERER_UNAVAILABLE: entry('input', 'No renderer is available for this UI target.', 'Choose a supported --framework.'),
-  INVALID_INTERACTION: entry('input', 'An interaction definition is invalid.', 'Fix the event, actions or bindings named in the message; run interactions validate.'),
-  DUPLICATE_INTERACTION: entry('input', 'Two interaction definitions share an id.', 'Give each interaction a unique id.'),
-  EMPTY_INTERACTION_LIBRARY: entry('input', 'The interaction library has no definitions.', 'Run interactions init or add a Markdown definition.'),
-  UNKNOWN_INTERACTION: entry('input', 'The interaction is not defined.', 'Run interactions list and check the component\'s interaction references.'),
-  INVALID_DATA_SOURCE: entry('input', 'A data-source definition is invalid.', 'Fix the fields named in the message; run data-sources validate.'),
-  DUPLICATE_DATA_SOURCE: entry('input', 'Two data-source definitions share an id.', 'Give each data source a unique id.'),
-  EMPTY_DATA_SOURCE_LIBRARY: entry('input', 'The data-source library has no definitions.', 'Run data-sources init or add a Markdown definition.'),
-  UNKNOWN_DATA_SOURCE: entry('input', 'The data source is not defined.', 'Run data-sources list and use an existing id.'),
-  DATA_SOURCE_RENDERER_UNAVAILABLE: entry('input', 'No generator is available for this data source.', 'Use a supported data-source kind; run help make for data-source generation.'),
   // Plugins, skills and events
   INVALID_PLUGIN: entry('input', 'A plugin manifest or implementation is invalid.', 'Fix the plugin named in the message, or disable it with --no-plugins.'),
   INVALID_PLUGIN_CONFIG: entry('input', 'The plugin configuration is invalid.', 'List unique lowercase kebab-case ids of installed user plugins in plugins.enabled in bin/config.json; run plugins to list them.'),
@@ -129,7 +108,6 @@ export const errorCatalog = {
   PLUGIN_SERVICE_CYCLE: entry('input', 'Plugin service requirements form a cycle.', 'Break the cycle named in error.details.plugins so that one plugin no longer requires a service of another.'),
   PLUGIN_LIFECYCLE: entry('input', 'A plugin used the host outside its lifecycle.', 'Register contributions before activation and stop using the host after disposal.'),
   DUPLICATE_OR_INVALID_ID: entry('input', 'A contribution id is invalid or already registered.', 'Use a unique lowercase dotted id.'),
-  UNKNOWN_SKILL: entry('input', 'The skill is not registered.', 'Run skills list.'),
   INVALID_EVENT: entry('input', 'An event definition or event state is invalid.', 'Define events with a dotted id and validator before disposal.'),
   INVALID_EVENT_LISTENER: entry('input', 'An event listener is not a function.', 'Pass a function as the listener.'),
   INVALID_EVENT_PAYLOAD: entry('input', 'The event payload does not match its contract.', 'Run events and emit a payload that matches the contract.'),
@@ -137,29 +115,10 @@ export const errorCatalog = {
   UNKNOWN_EVENT: entry('input', 'The event is not registered.', 'Run events to list registered event ids.'),
   EVENT_RECURSION: entry('input', 'Event handlers recursed too deeply.', 'Stop handlers from emitting the events that trigger them.'),
   EVENT_OWNERSHIP: entry('input', 'A plugin tried to emit an event it does not own.', 'Emit only events in your plugin\'s own namespace; host events (vault.*, metadataCache.*, workspace.*, operation.*, command.*, plugin.*) are emitted by the host and another plugin\'s events by that plugin.'),
-  // Claude Code definitions
+  // Claude Code definitions shared by the claude and agents plugins
   INVALID_CLAUDE_AGENT: entry('input', 'The Claude agent definition is invalid.', claudeDefinitionHint),
   INVALID_CLAUDE_HOOKS: entry('input', 'The Claude hook configuration is invalid.', claudeDefinitionHint),
-  INVALID_CLAUDE_PLUGIN: entry('input', 'The Claude plugin manifest or a plugin file is invalid.', claudeDefinitionHint),
   INVALID_CLAUDE_SETTINGS: entry('input', 'The Claude settings file is invalid.', 'Fix the JSON structure of the settings file named in the message. When it names the generation manifest .claude/forge-generated.json, an older Forge wrote it: delete .claude/forge-generated.json and run agents generate again; the rules it listed stay in .claude/settings.json until you remove them.'),
-  INVALID_CLAUDE_COMMAND: entry('input', 'The Claude command is not supported.', 'Run claude capabilities.'),
-  INVALID_CLAUDE_ARGUMENT: entry('input', 'A Claude command argument is invalid.', argumentsHint),
-  INVALID_CLAUDE_OPTION: entry('input', 'The option is not allowed for this Claude command.', 'Run help claude and remove the option.'),
-  INVALID_CLAUDE_SCOPE: entry('input', 'The Claude scope is invalid.', 'Run help claude and pass a --scope value supported by that action.'),
-  INVALID_CLAUDE_INPUT: entry('input', 'The Claude input is invalid or too large.', 'Pass valid input within the size limit.'),
-  INVALID_CLAUDE_OUTPUT: entry('input', 'The Claude output format is invalid.', 'Use text, json or json-last-line.'),
-  INVALID_CLAUDE_OUTPUT_LIMIT: entry('input', 'The Claude output limit is invalid.', 'Use a positive integer number of bytes.'),
-  INVALID_CLAUDE_TIMEOUT: entry('input', 'The Claude timeout is invalid.', 'Pass the timeout in milliseconds within the range named in the message.'),
-  INVALID_CLAUDE_EXECUTABLE: entry('input', 'The Claude executable path is invalid.', 'Pass an executable path to --claude-bin.'),
-  // Claude Code process
-  CLAUDE_NOT_INSTALLED: entry('external', 'The Claude Code executable was not found.', 'Install Claude Code and put claude on PATH, or pass --claude-bin.'),
-  CLAUDE_WORKING_DIRECTORY_UNAVAILABLE: entry('external', 'The Claude working directory is unavailable.', 'Check that the selected project or workspace root exists and is a directory.'),
-  CLAUDE_COMMAND_FAILED: entry('external', 'Claude Code could not be started or stopped unexpectedly.', 'Read error.details, inspect external state, then retry deliberately.'),
-  CLAUDE_COMMAND_TIMEOUT: entry('external', 'The Claude command exceeded its timeout.', 'Inspect external state; retry with a larger --timeout only if the work did not complete.'),
-  CLAUDE_OUTPUT_LIMIT: entry('external', 'Claude output exceeded the size limit.', 'Inspect external state; retry with a larger output limit only if needed.'),
-  CLAUDE_COMMAND_INTERRUPTED: entry('interrupted', 'The Claude command was interrupted by a signal (exit 130 for SIGINT, 143 for SIGTERM).', 'Inspect external state before running the command again.'),
-  CLAUDE_RUNTIME_FAILED: entry('external', 'Claude Code exited with a nonzero status.', 'Inspect error.details (native status, output and parsed result) and external state before retrying.'),
-  CLAUDE_INVALID_OUTPUT: entry('external', 'Claude Code succeeded but did not return the requested JSON.', 'Inspect stdout and external state before retrying.'),
 } as const satisfies Record<string, ErrorDefinition>;
 
 export type ErrorCode = keyof typeof errorCatalog;

@@ -6,6 +6,7 @@ import type { UiDefinition, UiNode, UiValue } from '../../../domain/components/d
 import { uiBooleanAttributes as booleanAttrs, uiBindings, uiWholeBinding } from '../../../domain/components/syntax.ts';
 import { ordered, textExpression, json, expression, propsWithDefaults, defaultAssignments, className } from '../rendering.ts';
 import { reactStyleHelper } from './react-style.ts';
+import { guardsUrl, safeUrl, safeUrlHelper } from '../url-guard.ts';
 
 const reactNames: Record<string, string> = { class: 'className', for: 'htmlFor', tabindex: 'tabIndex', readonly: 'readOnly', autofocus: 'autoFocus', autocomplete: 'autoComplete', colspan: 'colSpan', rowspan: 'rowSpan', maxlength: 'maxLength', minlength: 'minLength', contenteditable: 'contentEditable', spellcheck: 'spellCheck', srcset: 'srcSet', usemap: 'useMap', datetime: 'dateTime', crossorigin: 'crossOrigin', novalidate: 'noValidate', formnovalidate: 'formNoValidate', acceptcharset: 'acceptCharset', httpequiv: 'httpEquiv' };
 export function reactModule(definition: UiDefinition, definitions: Map<string, UiDefinition>, interactions: readonly InteractionDefinition[] = []): string {
@@ -28,6 +29,7 @@ export function reactModule(definition: UiDefinition, definitions: Map<string, U
   let usesStyle = false;
   let usesAttributes = false;
   let usesControls = false;
+  let usesUrls = false;
   function nodeCode(node: UiNode): string {
     if ('slot' in node) { usesProps = true; return 'props.children'; }
     const children = (node.children ?? []).map(nodeCode);
@@ -47,8 +49,10 @@ export function reactModule(definition: UiDefinition, definitions: Map<string, U
       const isStyle = 'tag' in node && key === 'style';
       if (isStyle) usesStyle = true;
       const isAttribute = 'tag' in node && !isStyle && !booleanAttrs.has(key.toLowerCase());
-      if (isAttribute) usesAttributes = true;
-      const rendered = isStyle ? `css(${expression(value, 'props', state)})` : isAttribute ? `attribute(${expression(value, 'props', state)})` : expression(value, 'props', state);
+      const isUrl = isAttribute && guardsUrl(key, value);
+      if (isUrl) usesUrls = true;
+      else if (isAttribute) usesAttributes = true;
+      const rendered = isStyle ? `css(${expression(value, 'props', state)})` : isUrl ? `${safeUrl}(${expression(value, 'props', state)})` : isAttribute ? `attribute(${expression(value, 'props', state)})` : expression(value, 'props', state);
       return [`${json('tag' in node ? reactNames[key] ?? key : key)}: ${rendered}`];
     });
     const events = groupElementInteractions(node, interactions, prefix);
@@ -66,7 +70,7 @@ ${refs.map(id => `import ${aliases.get(id)} from ${json(`./${definitions.get(id)
 export interface ${className(definition)}Props {
 ${propTypes}${propTypes ? '\n' : ''}  children?: _UiReactNode;
 }
-${usesStyle ? reactStyleHelper : ''}
+${usesStyle ? reactStyleHelper : ''}${usesUrls ? safeUrlHelper(true) : ''}
 ${usesControls ? `const ${prefix}ControlValues = new globalThis.WeakMap<HTMLElement, Record<string, unknown>>();\n` : ''}${usesAttributes ? `function attribute(value: unknown): string | undefined {\n  return value == null ? undefined : globalThis.String(value);\n}\n` : ''}
 export default function ${className(definition)}(${usesProps ? 'input' : '_input'}: ${className(definition)}Props) {
 ${usesProps ? `  const props = ${propsWithDefaults(definition)};

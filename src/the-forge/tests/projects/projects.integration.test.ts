@@ -59,7 +59,11 @@ describe('Forge project management', () => {
     await expect(service().create('existing')).rejects.toMatchObject({ code: 'PROJECT_EXISTS' });
     await service().create('billing');
     await service().component('billing', 'Invoice');
+    // A repeat finds the identical files and writes nothing; an edited component is never overwritten.
+    expect((await service().component('billing', 'Invoice')).changes.every(change => change.operation === 'unchanged')).toBe(true);
+    await writeFile(join(root, 'projects/billing/src/domain/invoice.ts'), 'edited\n');
     await expect(service().component('billing', 'Invoice')).rejects.toMatchObject({ code: 'CONFLICT' });
+    expect(await readFile(join(root, 'projects/billing/src/domain/invoice.ts'), 'utf8')).toBe('edited\n');
     expect(await readFile(join(root, 'projects/existing/notes.txt'), 'utf8')).toBe('User content');
   });
 
@@ -72,6 +76,21 @@ describe('Forge project management', () => {
     await writeFile(marker, '{broken');
     await expect(service().inspect('billing')).rejects.toMatchObject({ code: 'INVALID_PROJECT' });
     expect(await files.list()).not.toContain('projects/billing/src/domain/invoice.ts');
+  });
+
+  it('lists the valid projects beside each invalid one, while list keeps failing for callers that need every project', async () => {
+    await service().create('billing');
+    await service().create('accounts');
+    await writeFile(join(root, 'projects/billing/.forge/project.json'), JSON.stringify({ schemaVersion: 1, name: 'payments', type: 'library' }));
+    await mkdir(join(root, 'projects/Bad_Name/.forge'), { recursive: true });
+    await writeFile(join(root, 'projects/Bad_Name/.forge/project.json'), '{}');
+    const reason = 'projects/billing/.forge/project.json names the project "payments", but its directory is billing; set name to billing or rename the directory to match.';
+    expect(await service().discover()).toEqual({
+      projects: [expect.objectContaining({ name: 'accounts' })],
+      invalid: [{ directory: 'projects/Bad_Name', code: 'INVALID_PROJECT_NAME', reason: expect.any(String) }, { directory: 'projects/billing', code: 'INVALID_PROJECT', reason }],
+    });
+    await expect(service().inspect('billing')).rejects.toMatchObject({ code: 'INVALID_PROJECT', message: reason, details: { directory: 'projects/billing', expected: 'billing', found: 'payments' } });
+    await expect(service().list()).rejects.toMatchObject({ code: 'INVALID_PROJECT_NAME' });
   });
 
   it('validates project names, component names and kinds before writes', async () => {
@@ -197,7 +216,10 @@ describe('Forge project management', () => {
     const marker = join(root, 'projects/billing/.forge/project.json');
     if (failure === 'missing') await rm(marker);
     else await writeFile(marker, '{}');
-    await expect(service().current()).rejects.toMatchObject({ code: 'STALE_PROJECT_CONTEXT', message: expect.stringContaining('project open') });
+    await expect(service().current()).rejects.toMatchObject({
+      code: 'STALE_PROJECT_CONTEXT', message: expect.stringContaining('project open'),
+      details: { project: 'billing', directory: 'projects/billing', cause: failure === 'missing' ? 'PROJECT_NOT_FOUND' : 'INVALID_PROJECT', reason: expect.any(String) },
+    });
     await service().open('accounts');
     expect(await service().current()).toMatchObject({ name: 'accounts' });
     await writeFile(join(root, 'bin/data/context.json'), JSON.stringify({ schemaVersion: 1, project: 'billing' }));
@@ -219,7 +241,7 @@ describe('Forge project management', () => {
     await service('other').create('billing');
     await service('projects').open('billing');
     const before = await readFile(join(root, 'bin/data/context.json'), 'utf8');
-    await expect(service('other').current()).rejects.toMatchObject({ code: 'STALE_PROJECT_CONTEXT', message: expect.stringContaining('project open') });
+    await expect(service('other').current()).rejects.toMatchObject({ code: 'STALE_PROJECT_CONTEXT', message: expect.stringContaining('project open'), details: { project: 'billing', directory: 'projects/billing', projectsDirectory: 'other' } });
     expect(await readFile(join(root, 'bin/data/context.json'), 'utf8')).toBe(before);
     expect((await service('other', true).open('billing')).changes).toMatchObject([{ operation: 'updated' }]);
     expect(await readFile(join(root, 'bin/data/context.json'), 'utf8')).toBe(before);

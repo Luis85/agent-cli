@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
+import { warningMessages } from '../support/warnings.ts';
 
 const fixture = portableCli();
 const cli = fixture.cli;
@@ -16,7 +17,7 @@ describe('a user plugin that plugins.enabled names but bin/plugins lacks', () =>
     for (const args of [['help'], ['setup'], ['config'], ['hello.run']]) {
       const result = await cli(args);
       expect(result.status, `${args.join(' ')}: ${result.stdout}`).toBe(0);
-      expect(result.body.warnings, args.join(' ')).toEqual(expect.arrayContaining([expect.stringContaining(warning)]));
+      expect(result.body.warnings, args.join(' ')).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'PLUGIN_MISSING_WARNING', message: expect.stringContaining(warning) })]));
     }
     const listed = (await cli(['plugins'])).body.data.plugins as Array<{ id: string; state: string; reason: string | null; contributions: unknown }>;
     expect(listed.find(plugin => plugin.id === 'nope')).toEqual({ id: 'nope', core: false, state: 'missing', reason: expect.stringContaining('remove it from plugins.enabled'), contributions: null });
@@ -24,7 +25,7 @@ describe('a user plugin that plugins.enabled names but bin/plugins lacks', () =>
     expect((await cli(['nope.run'])).body.error.code).toBe('UNKNOWN_COMMAND');
     // The warning and the reason are kernel messages: German responses render them in German.
     const german = await cli(['--lang', 'de', 'plugins']);
-    expect(german.body.warnings).toEqual(expect.arrayContaining([expect.stringContaining('plugins.enabled nennt nope, aber bin/plugins/nope/manifest.json existiert nicht')]));
+    expect(warningMessages(german.body)).toEqual(expect.arrayContaining([expect.stringContaining('plugins.enabled nennt nope, aber bin/plugins/nope/manifest.json existiert nicht')]));
     expect(german.body.data.plugins.find((plugin: { id: string }) => plugin.id === 'nope').reason).toContain('entfernen Sie es aus plugins.enabled');
   });
 
@@ -46,6 +47,6 @@ describe('a user plugin that plugins.enabled names but bin/plugins lacks', () =>
     const result = await cli(['--no-plugins', 'plugins']);
     const users = (result.body.data.plugins as Array<{ id: string; core: boolean; state: string }>).filter(plugin => !plugin.core);
     expect(users.map(plugin => [plugin.id, plugin.state]).sort()).toEqual([['hello', 'skipped'], ['needy', 'skipped'], ['nope', 'missing']]);
-    expect(result.body.warnings).toEqual(expect.arrayContaining([expect.stringContaining(warning)]));
+    expect(result.body.warnings).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'PLUGIN_MISSING_WARNING', message: expect.stringContaining(warning) })]));
   });
 });

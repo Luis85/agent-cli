@@ -7,30 +7,19 @@ import { claudePluginCapabilities } from '../domain/plugins.ts';
 import type { Command } from '../../../application/plugins/registry.ts';
 import type { ClaudeCommandServices, ClaudeServices } from './services.ts';
 import { arity, parseJson, value } from '../../../application/plugins/command-input.ts';
-import { option } from '../../../application/plugins/command-metadata.ts';
-import { claudeInput, claudeOptions } from './input.ts';
-import { buildClaudeRuntimeArgs, claudeRuntimeNeedsInput, claudeRuntimeOptions, claudeRuntimeOutput } from './runtime-commands.ts';
+import { claudeInput } from './input.ts';
+import { buildClaudeRuntimeArgs, claudeRuntimeNeedsInput, claudeRuntimeOutput } from './runtime-commands.ts';
+import { claudeActions } from './actions.ts';
 import { claudeMessages } from '../domain/messages.ts';
 import { withLocalizedResults } from './messages.ts';
-
-/** `--scope` of one section: each section declares the Claude configuration scopes it supports; default project. */
-const scope = (description: string, scopes: readonly string[]) => option.string(`Claude configuration scope (default project). ${description}`, { enum: scopes });
+import { ensureClaude } from '../domain/errors.ts';
 
 export function claudeCommand(adapters: ClaudeCommandServices): Command {
   return withLocalizedResults({
     id: 'claude', description: 'Manage native Claude Code agents, hooks and plugins with guarded writes and installed CLI lifecycle.',
     usage: 'claude capabilities | agents list|inspect|create|update|remove|enable|disable|export [id] | hooks inspect|check|set|add|remove|configure|enable|disable [event] | plugins create|inspect|manifest|check|asset|write-asset|remove-asset <directory> [path] | plugins list|details|install|update|uninstall|enable|disable|validate|configure|prune|init|tag|test|eval [id] | marketplaces add|list|remove|update [source] | runtime version|doctor|install|update',
     scope: 'project', discovery: false, mutating: true, defaultAction: 'capabilities',
-    actions: {
-      capabilities: { description: 'Describe supported formats, scopes and operations.', scope: 'workspace', discovery: true, mutating: false },
-      // Agent files and settings need --if-match once they exist, so a repeated write fails with CONFLICT. The
-      // plugins, marketplaces and runtime sections run the installed CLI, whose repeats Forge cannot guarantee.
-      agents: { description: 'List, inspect, create, update, remove, enable, disable or export native agents.', idempotent: true, options: { scope: scope('Agent files of the project, the user or a plugin.', ['project', 'user', 'plugin']) } },
-      hooks: { description: 'Inspect, check and edit native hook configuration.', idempotent: true, options: { scope: scope('Hook settings of the project, local settings, the user or a plugin.', ['project', 'local', 'user', 'plugin']) } },
-      plugins: { description: 'Author Claude plugin assets, or run the installed CLI\'s plugin lifecycle.', options: { scope: scope('Installed-CLI plugin commands: the native scope; managed only with plugins update.', ['project', 'local', 'user', 'managed']) } },
-      marketplaces: { description: 'Add, list, remove or update plugin marketplaces through the installed CLI.', options: { scope: scope('Marketplace add and remove: the native scope.', ['project', 'local', 'user']) } },
-      runtime: { description: 'Report, diagnose, install or update the installed Claude Code CLI.' },
-    },
+    actions: claudeActions, unknownAction: 'INVALID_ARGUMENT',
     args: [
       { name: 'section', description: 'capabilities (default), agents, hooks, plugins, marketplaces or runtime.', enum: ['capabilities', 'agents', 'hooks', 'plugins', 'marketplaces', 'runtime'] },
       { name: 'operands', description: 'The section action and its operands; see usage.', variadic: true },
@@ -41,27 +30,10 @@ export function claudeCommand(adapters: ClaudeCommandServices): Command {
       'CLAUDE_COMMAND_FAILED', 'CLAUDE_COMMAND_TIMEOUT', 'CLAUDE_COMMAND_INTERRUPTED', 'CLAUDE_OUTPUT_LIMIT', 'CLAUDE_RUNTIME_FAILED', 'CLAUDE_INVALID_OUTPUT',
       'INVALID_INPUT', 'INVALID_ENCODING', 'NOT_FOUND', 'CONFLICT',
     ],
-    options: {
-      ...claudeRuntimeOptions,
-      directory: option.string('Plugin directory for plugin-scoped agents and hooks.'),
-      'claude-dir': option.string('Claude user configuration directory for user scope.'),
-      from: option.string('Read native input from a file.'),
-      content: option.string('Native input as literal text.'),
-      stdin: option.boolean('Read native input from piped standard input.'),
-      metadata: option.string('JSON metadata for agent create or update.'),
-      prompt: option.string('Agent system prompt for create or update.'),
-      'if-match': option.string('SHA-256 revision the native file must still have.'),
-      out: option.string('Destination path for export.'),
-      index: option.string('Hook entry index for hooks remove.'),
-      'claude-bin': option.string('Path of the Claude Code executable; defaults to claude on PATH.'),
-      timeout: option.string('Native process timeout in milliseconds (1 to 3600000).'),
-      available: option.boolean('Passed to the native Claude Code CLI as --available by claude plugins list.'),
-      strict: option.boolean('Passed to the native Claude Code CLI as --strict by claude plugins validate.'),
-    },
     async run(args, flags, context) {
       const [section, action] = args;
       if (!section || section === 'capabilities') {
-        arity(args, 0, 1); claudeOptions(flags, []);
+        arity(args, 0, 1);
         return { provider: 'Claude Code', nativeFormats: true, documentation: 'https://code.claude.com/docs/en/sub-agents',
           agents: { scopes: ['project', 'user', 'plugin'], format: claudeMessages.agentFormat, operations: ['list', 'inspect', 'create', 'update', 'remove', 'enable', 'disable', 'export'], pluginIgnoredFields: ['hooks', 'mcpServers', 'permissionMode', 'initialPrompt'] },
           hooks: { scopes: ['project', 'local', 'user', 'plugin'], events: claudeHookEvents, operations: ['inspect', 'check', 'set', 'add', 'remove', 'configure', 'enable', 'disable'], execution: claudeMessages.hookExecution },
@@ -83,7 +55,7 @@ export function claudeCommand(adapters: ClaudeCommandServices): Command {
         const values = parseJson(await claudeInput(flags, context));
         ensure(isRecord(values) && Object.values(values).every(item => typeof item === 'string' && !/[\r\n]/.test(item)), 'INVALID_INPUT', 'Claude plugin configuration must map keys to single-line string values.');
         input = JSON.stringify(values) + '\n';
-        ensure(new TextEncoder().encode(input).length <= 1024 * 1024, 'INVALID_CLAUDE_INPUT', 'Claude configuration input must not exceed 1 MiB.');
+        ensureClaude(new TextEncoder().encode(input).length <= 1024 * 1024, 'INVALID_CLAUDE_INPUT', 'Claude configuration input must not exceed 1 MiB.');
       }
       return adapters.lifecycle.execute({ args: command, executable, timeoutMs, stdin: input, output: claudeRuntimeOutput(section, args.slice(1), flags) });
     },

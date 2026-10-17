@@ -4,7 +4,7 @@ import { isRecord } from '../../domain/shared/errors.ts';
 import { Hub } from './application/hub.ts';
 import { connectorSettings } from './domain/profiles.ts';
 import { connectorsCommand } from './presentation/command.ts';
-import { connectorStrings } from './presentation/strings.ts';
+import { de, connectorStrings } from './presentation/strings.ts';
 
 const payload = (value: unknown): value is Record<string, unknown> => isRecord(value)
   && ['connection', 'platform', 'path', 'remoteId', 'url'].every(key => typeof value[key] === 'string') && Array.isArray(value.fields);
@@ -13,26 +13,6 @@ const events: EventDefinition[] = [
   { id: 'connector.pulled', description: 'Remote changes were written into a note: {connection, platform, path, remoteId, url, fields}.', validate: payload },
   { id: 'connector.conflict', description: 'Fields changed on both sides since the last sync and were left untouched: {connection, platform, path, remoteId, url, fields}.', validate: payload },
 ];
-
-const de = {
-  commands: { connectors: 'Die in plugins.settings.connector.connections konfigurierten Backlog-Verbindungen auflisten, prüfen und testen.' },
-  actions: {
-    'connectors list': 'Jede Verbindung mit Plattform, Gültigkeit, Warnungen und der Angabe, ob ihre Token-Variable gesetzt ist.',
-    'connectors inspect': 'Eine Verbindung mit ihren aufgelösten Typ-, Status- und Feldzuordnungen.',
-    'connectors test': 'Eine authentifizierte, nur lesende Prüfung einer Verbindung.',
-  },
-  events: {
-    'connector.pushed': 'Eine Notiz wurde in ihr entferntes Work Item übertragen.',
-    'connector.pulled': 'Entfernte Änderungen wurden in eine Notiz geschrieben.',
-    'connector.conflict': 'Felder wurden seit dem letzten Abgleich auf beiden Seiten geändert und blieben unverändert.',
-  },
-  errors: {
-    CONNECTOR_NOT_FOUND: { summary: 'Die Verbindung oder ihre Plattform ist nicht verfügbar.', hint: 'Prüfen Sie die Verbindungs-ID mit connectors list und aktivieren Sie das Connector-Plugin der Plattform.' },
-    CONNECTION_INVALID: { summary: 'Das Verbindungsprofil ist ungültig.', hint: 'Korrigieren Sie die in error.details.issues genannten Felder in plugins.settings.connector.connections.' },
-    CONNECTOR_AUTH_FAILED: { summary: 'Die Anmeldung beim entfernten Dienst ist fehlgeschlagen.', hint: 'Setzen Sie die in error.details.tokenEnv genannte Umgebungsvariable auf ein gültiges Zugriffstoken mit Lese- und Schreibrechten für Work Items.' },
-    CONNECTOR_REQUEST_FAILED: { summary: 'Eine Anfrage an den entfernten Dienst ist fehlgeschlagen.', hint: 'Prüfen Sie error.details.status und die Meldung, die Organisations-URL und das Projekt, und wiederholen Sie den Befehl.' },
-  },
-};
 
 /**
  * The `connector` core plugin: the shared backlog connector hub. It owns the connection profiles in

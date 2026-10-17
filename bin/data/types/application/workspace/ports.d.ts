@@ -67,12 +67,16 @@ export interface RecoveredLock {
     holder: LockHolder;
     reason: StaleReason;
 }
+/** A change that persisted: unchanged writes are never committed. */
+export type CommittedChange = FileChange & {
+    operation: 'created' | 'updated' | 'deleted';
+};
 /** The committed batch handed to observers: file renames (folder records omitted) and file changes, in batch order. */
 export interface CommittedBatch {
     renames: readonly (FileRename & {
         kind: 'file';
     })[];
-    changes: readonly FileChange[];
+    changes: readonly CommittedChange[];
 }
 /**
  * Runs once per committed (never dry-run) batch, after the batch's `vault.*` records were published. Paths are
@@ -102,7 +106,14 @@ export interface MarkdownParts {
 export interface DocumentCodec {
     /** Splits Markdown text at its frontmatter without changing any body byte; unclosed frontmatter is INVALID_FRONTMATTER. */
     markdownParts(text: string): MarkdownParts;
-    inspect(path: string, bytes: Uint8Array): unknown;
+    /**
+     * The parsed document by kind; invalid structure fails with its code. With `tolerant` (as `read` uses it), bytes
+     * that are not UTF-8 return the base64 attachment form and a note whose frontmatter does not parse returns its
+     * content with `properties: null` and an `issue: {code, message}`.
+     */
+    inspect(path: string, bytes: Uint8Array, options?: {
+        tolerant?: boolean;
+    }): unknown;
     validate(path: string, bytes: Uint8Array): void;
     /** Sets each top-level frontmatter property in `changes` and deletes each key in `remove`, preserving the body and YAML formatting. */
     properties(bytes: Uint8Array, changes: Record<string, unknown>, remove?: readonly string[]): Uint8Array;

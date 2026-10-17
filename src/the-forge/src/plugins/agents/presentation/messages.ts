@@ -1,5 +1,5 @@
 import type { Language } from '../../../application/plugins/plugin-catalog.ts';
-import type { Command } from '../../../application/plugins/registry.ts';
+import type { Command, CommandContext } from '../../../application/plugins/registry.ts';
 import { isRecord } from '../../../domain/shared/errors.ts';
 import { retranslate } from '../../../domain/shared/messages.ts';
 import { agentFragments, agentMessages, type AgentMessage } from '../domain/messages.ts';
@@ -140,7 +140,7 @@ export function localizedDiagnostics<T>(value: T, language: Language): T {
 }
 
 /** The `agents` command with the diagnostics of its results and failures in the response language. */
-export function withLocalizedDiagnostics(command: Command): Command {
+export function withLocalizedDiagnostics<Context extends CommandContext>(command: Command<Context>): Command<Context> {
   return {
     ...command,
     async run(args, flags, context) {

@@ -19,7 +19,7 @@ node bin/forge.js make plugin Quality --dry-run
 node bin/forge.js make plugin Quality
 ```
 
-The generator creates `quality/manifest.json` and `quality/main.mjs` under workspace `bin/plugins`, including while a project is open. This location is fixed; `make plugin` rejects `--out`. Review the generated code and its dependencies, then merge the directory ID into `plugins.enabled` in the workspace `bin/config.json`. Preserve existing project paths, settings and enabled plugins; the following is an illustrative configuration, not a replacement for your file:
+The generator creates `quality/manifest.json` and `quality/main.mjs` under workspace `bin/plugins`, including while a project is open. Its read-only `quality.hello` command already declares the metadata every command needs (`scope`, `mutating: false`, `options` and `errors`) and a German `strings` stub; keep them accurate as the command grows, since they drive the invocation policy, `help` and `schema`. This location is fixed; `make plugin` rejects `--out`. Review the generated code and its dependencies, then merge the directory ID into `plugins.enabled` in the workspace `bin/config.json`. Preserve existing project paths, settings and enabled plugins; the following is an illustrative configuration, not a replacement for your file:
 
 ```json
 {
