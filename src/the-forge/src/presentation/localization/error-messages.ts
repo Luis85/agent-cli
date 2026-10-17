@@ -51,7 +51,7 @@ const templates: Partial<Record<ErrorCode, readonly Template[]>> = {
     { text: 'Falsche Anzahl an Positionsargumenten: erwartet {range}, erhalten {received}.' },
     { text: 'Unbekannte Aktion {action}; verfügbar sind {allowedValues}.' },
     { text: 'Jeder Pfad darf nur einmal vorkommen; er steht bereits an Position {duplicateOf}.' },
-    { text: 'Die gelesenen Dateien umfassen {bytes} Bytes und überschreiten die Gesamtgrenze von 8 MiB; senken Sie --max-bytes ({maxBytes}) oder lesen Sie weniger Dateien.' },
+    { text: 'Die gelesenen Dateien umfassen {bytes} Bytes und überschreiten die Gesamtgrenze von {aggregateLimit} Bytes; senken Sie --max-bytes (derzeit {maxBytes}) oder lesen Sie weniger Dateien.' },
     { text: '--lines beginnt nach der letzten Zeile; der Text hat {total} Zeile(n).' },
   ],
   INVALID_OPTION_VALUE: [{ text: '--{option} erlaubt {quoted} nicht; gültige Werte (bei einer kommagetrennten Listenoption mehrere davon): {allowedValues}.' }],
@@ -83,9 +83,21 @@ export function germanErrorMessage(code: ErrorCode, details: Details | undefined
   const values = templateValues(details);
   const template = candidates.find(entry => (entry.when?.(details) ?? true) && placeholders(entry.text).every(name => Object.hasOwn(values, name)));
   if (template === undefined) return undefined;
-  // An operation of an apply plan names its position, as the English message does.
-  const located = typeof details.operation === 'number' ? `Vorgang ${details.operation}: ` : '';
-  return located + fill(template.text, values);
+  return location(details, template.text) + fill(template.text, values);
+}
+
+/**
+ * The position an occurrence names, as the English message does: an operation of an apply plan, or an argument value
+ * (a read-many path) that `text` does not already name with `{named}`.
+ */
+function location(details: Details, text: string): string {
+  if (typeof details.operation === 'number') return `Vorgang ${details.operation}: `;
+  return typeof details.argument === 'string' && !placeholders(text).includes('named') ? `${templateValues(details).named}: ` : '';
+}
+
+/** A built-in code's German summary, located like a templated message when no template covers the details. */
+export function locatedGermanSummary(details: Details | undefined, summary: string): string {
+  return details === undefined ? summary : location(details, summary) + summary;
 }
 
 /** The codes with German message templates, for tests. */

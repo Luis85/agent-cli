@@ -5,7 +5,7 @@ import { germanKernelMessages } from './messages.ts';
 import { responseWarning, type Warning } from '../../domain/shared/warnings.ts';
 import type { CommandArgument, CommandMetadata, CommandOption, OutputLocalization } from '../../application/plugins/command-metadata.ts';
 import { germanErrors, germanHintVariant } from './errors.ts';
-import { germanErrorMessage } from './error-messages.ts';
+import { germanErrorMessage, locatedGermanSummary } from './error-messages.ts';
 import { guidedHint } from './hints.ts';
 import { errorDefinition, type ErrorCode } from '../../domain/shared/error-catalog.ts';
 import type { Language, PluginCatalog } from '../../application/plugins/plugin-catalog.ts';
@@ -159,7 +159,7 @@ export class Localizer {
     if (!german) return { code, message: diagnostic, hint: guidedHint(refined ? builtIn!.variants!.hints[refined]! : definition.hint, code, details, 'en', this.invoked), retryable, ...(details ? { details } : {}) };
     const germanHint = refined === undefined ? undefined : germanHintVariant(code as ErrorCode, refined);
     // Built-in codes keep the concrete values of the occurrence where a German template covers its details.
-    const message = (builtIn ? germanErrorMessage(code as ErrorCode, details) : undefined) ?? german.summary;
+    const message = builtIn ? germanErrorMessage(code as ErrorCode, details) ?? locatedGermanSummary(details, german.summary) : german.summary;
     // A namespaced diagnostic preserves plugin/application details, including their own diagnostic key.
     return { code, message, hint: guidedHint(germanHint ?? german.hint, code, details, 'de', this.invoked), retryable, details: { ...details, localization: { originalMessage: diagnostic, ...(details?.localization !== undefined ? { originalDetails: details.localization } : {}) } } };
   }

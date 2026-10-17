@@ -52,7 +52,7 @@ describe('bounded read-many file inspection', () => {
     const result = await run(['a.bin', 'b.bin'], whole);
     expect(result).toMatchObject({ bytes: 8 * 1024 * 1024 });
     expect(Buffer.byteLength(JSON.stringify(result))).toBeGreaterThan(8 * 1024 * 1024);
-    await expect(run(['a.bin', 'b.bin', 'c.bin'], whole)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT', details: { index: 2, path: 'c.bin', maxBytes: 8388608, bytes: 8388609 } });
+    await expect(run(['a.bin', 'b.bin', 'c.bin'], whole)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT', details: { index: 2, path: 'c.bin', aggregateLimit: 8388608, maxBytes: 8388608, bytes: 8388609 } });
   });
   it('truncates each file at the default per-file limit, so 32 files never exceed the aggregate budget', async () => {
     const big = 'line\n'.repeat(100_000);

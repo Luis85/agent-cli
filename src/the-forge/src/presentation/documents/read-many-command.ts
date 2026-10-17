@@ -8,10 +8,10 @@ import { readView } from './read-view.ts';
 import { readManyOutput } from './read-many-output.ts';
 
 const maxFiles = 32, maxBytes = 8 * 1024 * 1024;
-/** Locates a failure by the path's zero-based argument position, in both the message and `details.index`. */
+/** Locates a failure by the path's zero-based argument position, in the message and in `details.argument` and `details.index`. */
 function atPath(error: unknown, index: number, path: string): AppError {
   const failure = error instanceof AppError ? error : forgeError('OPERATION_FAILED', errorMessage(error));
-  return locatedError(failure, `read-many path at index ${index}: `, { index, path });
+  return locatedError(failure, `read-many path at index ${index}: `, { argument: 'paths', index, path });
 }
 
 /**
@@ -49,7 +49,8 @@ export function readManyCommand(): Command {
       // exceeds it is never parsed. With the default limit, 32 files fit exactly.
       const budget = (size: number) => {
         bytes += size; counted += Math.min(size, limit);
-        ensure(counted <= maxBytes, 'INVALID_ARGUMENT', 'read-many exceeds its 8 MiB aggregate limit; lower --max-bytes or read fewer files.', { maxBytes, bytes: counted });
+        // `maxBytes` is the per-file --max-bytes, as for read; `aggregateLimit` is the fixed budget of the whole bundle.
+        ensure(counted <= maxBytes, 'INVALID_ARGUMENT', 'read-many exceeds its 8 MiB aggregate limit; lower --max-bytes or read fewer files.', { aggregateLimit: maxBytes, maxBytes: limit, bytes: counted });
       };
       for (const [index, path] of [...paths].entries()) {
         try { files.push(await readFile(context, path, limit, budget)); }

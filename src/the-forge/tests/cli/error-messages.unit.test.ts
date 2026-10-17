@@ -45,6 +45,12 @@ describe('German error messages with the values of the occurrence', () => {
     expect(german('INVALID_ARGUMENT', { total: 3 })).toBe('--lines beginnt nach der letzten Zeile; der Text hat 3 Zeile(n).');
   });
 
+  it('locates a failure at an argument value that its message does not name, also by the summary', () => {
+    expect(german('NOT_FOUND', { argument: 'paths', index: 1, path: 'b.md' })).toBe('Argument <paths> an Position 1: Die Datei oder Ressource b.md wurde nicht gefunden.');
+    expect(german('INVALID_FRONTMATTER', { argument: 'paths', index: 0, path: 'a.md' })).toBe(`Argument <paths> an Position 0: ${germanErrors.INVALID_FRONTMATTER.summary}`);
+    expect(german('INVALID_PATH', { argument: 'paths', index: 1, value: '../b.md' })).toBe('Argument <paths> an Position 1 "../b.md" ist kein gültiger relativer Pfad im Workspace oder Projekt.');
+  });
+
   it('keeps the summary when no template covers the details, and the English diagnostic in every case', () => {
     expect(german('INVALID_ARGUMENT')).toBe(germanErrors.INVALID_ARGUMENT.summary);
     expect(german('NOT_FOUND', { path: { nested: true } })).toBe(germanErrors.NOT_FOUND.summary);
