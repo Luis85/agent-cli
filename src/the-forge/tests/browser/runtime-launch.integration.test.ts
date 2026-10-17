@@ -49,6 +49,17 @@ const options = { viewport: { width: 800, height: 600 }, timeoutMs: 5_000 };
 const asUser = (uid: number) => { if (process.getuid) vi.spyOn(process, 'getuid').mockReturnValue(uid); };
 
 describe('browser launch policy', () => {
+  it('names the sandbox when a sandboxed launch fails, and stays generic without it', async () => {
+    asUser(1000);
+    const { runtime } = await fixture();
+    const playwright = (globalThis as Record<string, any>)[fakeKey];
+    playwright.chromium.launch = async () => { throw new Error('No usable sandbox!'); };
+    const failure = runtime.screenshot({ ...options, url: 'https://example.test/', fullPage: false });
+    await expect(failure).rejects.toMatchObject({ code: 'BROWSER_UNAVAILABLE', details: { sandbox: 'enabled' }, message: expect.stringContaining('--no-browser-sandbox') });
+    const unsandboxed = runtime.screenshot({ ...options, url: 'https://example.test/', fullPage: false, disableSandbox: true });
+    await expect(unsandboxed).rejects.toMatchObject({ code: 'BROWSER_UNAVAILABLE', details: { sandbox: 'disabled-option' }, message: 'Chromium could not start. Check the executable and its operating-system dependencies.' });
+  });
+
   it('launches Chromium sandboxed by default and reports the sandbox in status and results', async () => {
     asUser(1000);
     const { runtime, recorded } = await fixture();

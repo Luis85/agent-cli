@@ -116,7 +116,9 @@ export function createBrowserRuntime(distributionPath: string): BrowserRuntime {
     } catch (error) {
       await browser?.close().catch(() => {});
       if (error instanceof AppError) throw error;
-      throw browserError('BROWSER_UNAVAILABLE', 'Chromium could not start. Check the executable and its operating-system dependencies.');
+      // A sandboxed start also fails where the OS forbids its user namespaces, as AppArmor does on Ubuntu 24.04.
+      if (sandbox === 'enabled') throw browserError('BROWSER_UNAVAILABLE', 'Chromium could not start with its sandbox. Check the executable and its operating-system dependencies; on Linux the sandbox also needs unprivileged user namespaces (Ubuntu 24.04 restricts them through AppArmor). Allow them, or pass --no-browser-sandbox only for pages you trust.', { sandbox });
+      throw browserError('BROWSER_UNAVAILABLE', 'Chromium could not start. Check the executable and its operating-system dependencies.', { sandbox });
     }
   }
 

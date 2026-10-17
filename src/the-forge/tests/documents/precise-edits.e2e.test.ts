@@ -49,7 +49,7 @@ describe('precise edits through the portable CLI', () => {
   });
 
   it('refuses literal edits that would put NUL characters into a text file', async () => {
-    const { cli, revision, text } = await vault('nul');
+    const { cli, revision, text } = await vault('nul-bytes');
     expect((await cli(['write', 'notes/list.txt', '--content', 'one\ntwo\n'])).body.ok).toBe(true);
     const nul = await cli(['edit', 'notes/list.txt', '--edits', '-', '--if-match', await revision('notes/list.txt')], JSON.stringify([{ find: 'two', replace: 'tw\u0000o' }]));
     expect(nul.status).toBe(2);
