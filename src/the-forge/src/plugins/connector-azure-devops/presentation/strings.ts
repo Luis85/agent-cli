@@ -11,5 +11,5 @@ export const azureDevOpsStrings: PluginStrings = {
 /** The German self-description that `connectors list` and `connectors inspect` show. */
 export const germanConnectorMessages: ConnectorMessages = {
   description: 'Work Items eines Azure-DevOps-Projekts über die REST-API 7.1 für Work Items.',
-  unknownHost: 'Der Organisations-Host {host} ist weder dev.azure.com noch *.visualstudio.com; das Token aus {tokenEnv} wird dorthin gesendet (nur für Azure DevOps Server zu erwarten).',
+  unknownHost: 'Der Organisations-Host {host} ist weder dev.azure.com noch *.visualstudio.com, daher werden Anfragen abgelehnt und das Token aus {tokenEnv} wird nicht gesendet; tragen Sie den Host für Azure DevOps Server in die Umgebungsvariable {variable} ein.',
 };

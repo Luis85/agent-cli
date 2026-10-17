@@ -20,7 +20,7 @@ export const connectorSettings: JsonSchema = {
         type: 'object', required: ['platform'], additionalProperties: true,
         properties: {
           platform: { type: 'string', pattern: '^[a-z][a-z0-9-]*$', description: 'The connector platform, for example azure-devops.' },
-          tokenEnv: { type: 'string', pattern: '^[A-Za-z_][A-Za-z0-9_]*$', description: 'The environment variable holding the access token; the platform default when omitted. Its value is sent to the organization, so review both in shared configuration.' },
+          tokenEnv: { type: 'string', pattern: '^([A-Za-z_][A-Za-z0-9_]*_)?(PAT|TOKEN)$', description: 'The environment variable holding the access token, named PAT, TOKEN or ending in _PAT or _TOKEN so a shared profile cannot pick an unrelated secret; the platform default when omitted. Its value is sent to the organization, so review both in shared configuration.' },
           linkProperty: { type: 'string', minLength: 1, description: 'The frontmatter key that links a note to its remote item; the platform default when omitted.' },
           effortProperty: { type: 'string', minLength: 1, default: 'effort', description: 'The frontmatter key of the effort or story points.' },
           areaProperty: { type: 'string', minLength: 1, default: 'area', description: 'The frontmatter key of the area path; a note without it uses the connection\'s default area.' },
