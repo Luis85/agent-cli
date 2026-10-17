@@ -4,7 +4,6 @@ import { uiFrameworks, type UiDefinition, type UiFramework } from '../../domain/
 import { componentDependencies } from '../../domain/components/library.ts';
 import type { WriteRequest } from '../../../../domain/documents/file.ts';
 import { vaultPath } from '../../../../domain/documents/file.ts';
-import { ensure } from '../../../../domain/shared/errors.ts';
 import { componentArtifact, defaults } from './rendering.ts';
 import { domModule, staticMarkup } from './renderers/dom.ts';
 import { domDeclaration } from './renderers/dom-source.ts';
@@ -12,6 +11,7 @@ import { reactModule } from './renderers/react.ts';
 import { vueModule } from './renderers/vue.ts';
 import { svelteModule } from './renderers/svelte.ts';
 import { angularModule } from './renderers/angular.ts';
+import { ensureUi } from '../../domain/errors.ts';
 
 export { componentArtifact } from './rendering.ts';
 
@@ -23,15 +23,15 @@ const renderers: Record<UiFramework, (definition: UiDefinition, definitions: Map
 /** Pure generation: callers validate definitions and commit the returned write plan. */
 export function renderUiComponents(input: readonly UiDefinition[], framework: UiFramework, outputDirectory: string, interactions: readonly InteractionDefinition[] = []): WriteRequest[] {
   vaultPath(outputDirectory);
-  ensure(uiFrameworks.includes(framework), 'INVALID_UI_FRAMEWORK', `Unknown UI framework: ${framework}`);
+  ensureUi(uiFrameworks.includes(framework), 'INVALID_UI_FRAMEWORK', `Unknown UI framework: ${framework}`);
   const definitions = new Map(input.map(definition => [definition.id, definition]));
-  ensure(definitions.size === input.length, 'INVALID_UI_LIBRARY', 'Duplicate UI component IDs.');
+  ensureUi(definitions.size === input.length, 'INVALID_UI_LIBRARY', 'Duplicate UI component IDs.');
   const visited = new Set<string>();
   function visit(id: string, stack: string[]) {
-    ensure(!stack.includes(id), 'INVALID_UI_LIBRARY', `Cyclic component reference: ${[...stack, id].join(' -> ')}`);
+    ensureUi(!stack.includes(id), 'INVALID_UI_LIBRARY', `Cyclic component reference: ${[...stack, id].join(' -> ')}`);
     if (visited.has(id)) return;
     const definition = definitions.get(id);
-    ensure(definition, 'INVALID_UI_LIBRARY', `Unknown UI component: ${id}`);
+    ensureUi(definition, 'INVALID_UI_LIBRARY', `Unknown UI component: ${id}`);
     for (const child of componentDependencies(definition.root)) visit(child, [...stack, id]);
     visited.add(id);
   }

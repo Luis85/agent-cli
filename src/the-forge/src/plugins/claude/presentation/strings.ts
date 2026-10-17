@@ -1,6 +1,7 @@
 import type { PluginStrings } from '../../../application/plugins/plugin-catalog.ts';
 import { retranslate } from '../../../domain/shared/messages.ts';
 import { claudeRuntimeOptions } from './runtime-commands.ts';
+import { germanClaudeErrors } from './errors.ts';
 
 /** The descriptions of options passed through to the native Claude Code CLI; the list form must match first. */
 const passthrough = {
@@ -15,6 +16,7 @@ const germanPassthrough: Record<keyof typeof passthrough, string> = {
 /** The claude plugin's German manifest and option and argument descriptions, available while it is disabled. */
 export const claudeStrings: PluginStrings = {
   de: {
+    errors: germanClaudeErrors,
     manifest: { name: 'Claude-Code-Verwaltung', description: 'Native Claude-Code-Agenten, -Hooks und -Plugins verwalten und den Lebenszyklus der installierten Claude-Code-CLI ausführen.' },
     descriptions: {
       ...Object.fromEntries(Object.values(claudeRuntimeOptions).map(({ description }) => [description, retranslate(description, passthrough, germanPassthrough)])),

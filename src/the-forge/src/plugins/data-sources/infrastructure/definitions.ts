@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { stringify } from 'yaml';
-import { forgeError, AppError, ensure } from '../../../domain/shared/errors.ts';
 import { vaultPath } from '../../../domain/documents/file.ts';
 import type { DataSourceDefinition, DataSourceField, DataSourceValue } from '../domain/definition.ts';
 import type { DataSourceDefinitionCodec } from '../application/library.ts';
 import type { DocumentCodec } from '../../../application/workspace/ports.ts';
+import { dataSourceError, ensureDataSource, isDataSourceError } from '../domain/errors.ts';
 
 const reserved = new Set('arguments await break case catch class const constructor continue debugger default delete do else enum eval export extends false finally for function if implements import in instanceof interface let new null package private protected prototype public return static super switch this throw true try typeof var void while with yield undefined __proto__'.split(' '));
 const identifier = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).refine(value => !reserved.has(value), 'Reserved field name');
@@ -87,15 +87,15 @@ export class MarkdownDataSourceDefinitions implements DataSourceDefinitionCodec 
     try {
       const document = this.documents.inspect('definition.md', bytes) as { properties: unknown; body: string };
       const result = schema.safeParse(document.properties);
-      ensure(result.success, 'INVALID_DATA_SOURCE', `${path}: ${result.success ? '' : result.error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join('; ')}`);
+      ensureDataSource(result.success, 'INVALID_DATA_SOURCE', `${path}: ${result.success ? '' : result.error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join('; ')}`);
       if (result.data.json) {
         vaultPath(result.data.json.path);
-        ensure(result.data.json.path.endsWith('.json'), 'INVALID_DATA_SOURCE', `${path}: JSON source path must end in .json.`);
+        ensureDataSource(result.data.json.path.endsWith('.json'), 'INVALID_DATA_SOURCE', `${path}: JSON source path must end in .json.`);
       }
       return { ...result.data, description: document.body, sourcePath: path };
     } catch (error) {
-      if (error instanceof AppError && error.code === 'INVALID_DATA_SOURCE') throw error;
-      throw forgeError('INVALID_DATA_SOURCE', `${path}: ${error instanceof Error ? error.message : 'Invalid data-source definition.'}`);
+      if (isDataSourceError(error, 'INVALID_DATA_SOURCE')) throw error;
+      throw dataSourceError('INVALID_DATA_SOURCE', `${path}: ${error instanceof Error ? error.message : 'Invalid data-source definition.'}`);
     }
   }
   serialize(definition: DataSourceDefinition): Uint8Array {

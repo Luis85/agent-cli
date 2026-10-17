@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process';
 import { stat } from 'node:fs/promises';
 import type { ClaudeRuntime, ClaudeRuntimeOptions, ClaudeRuntimeResult } from '../application/runtime.ts';
-import { forgeError, errorMessage, ensure } from '../../../domain/shared/errors.ts';
-import type { ErrorCode } from '../../../domain/shared/error-catalog.ts';
+import { errorMessage } from '../../../domain/shared/errors.ts';
+import { claudeError, ensureClaude, type ClaudeErrorCode } from '../domain/errors.ts';
 
 /** A reader that closed its input pipe: EPIPE on POSIX; libuv reports the Windows broken pipe as EOF. */
 const closedInputCodes: ReadonlySet<string> = new Set(['EPIPE', 'EOF']);
@@ -20,24 +20,24 @@ export class NodeClaudeRuntime implements ClaudeRuntime {
   constructor(options: NodeClaudeRuntimeOptions = {}) {
     this.executable = options.executable ?? 'claude';
     this.maxOutputBytes = options.maxOutputBytes ?? 1024 * 1024;
-    ensure(this.executable.trim().length > 0 && !this.executable.includes('\0'), 'INVALID_CLAUDE_EXECUTABLE', 'Provide the Claude executable name or path.');
-    ensure(Number.isSafeInteger(this.maxOutputBytes) && this.maxOutputBytes > 0, 'INVALID_CLAUDE_OUTPUT_LIMIT', 'Claude output limit must be a positive integer.');
+    ensureClaude(this.executable.trim().length > 0 && !this.executable.includes('\0'), 'INVALID_CLAUDE_EXECUTABLE', 'Provide the Claude executable name or path.');
+    ensureClaude(Number.isSafeInteger(this.maxOutputBytes) && this.maxOutputBytes > 0, 'INVALID_CLAUDE_OUTPUT_LIMIT', 'Claude output limit must be a positive integer.');
   }
 
   async run(args: readonly string[], options: ClaudeRuntimeOptions): Promise<ClaudeRuntimeResult> {
     const timeoutMs = options.timeoutMs ?? 120_000;
-    ensure(Number.isInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 2_147_483_647,
+    ensureClaude(Number.isInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 2_147_483_647,
       'INVALID_CLAUDE_TIMEOUT', 'Claude timeout must be a positive integer no greater than 2147483647 milliseconds.');
-    ensure(args.every(argument => typeof argument === 'string' && !argument.includes('\0')),
+    ensureClaude(args.every(argument => typeof argument === 'string' && !argument.includes('\0')),
       'INVALID_CLAUDE_ARGUMENT', 'Claude arguments must be strings without null bytes.');
-    ensure(options.stdin === undefined || (typeof options.stdin === 'string' && Buffer.byteLength(options.stdin, 'utf8') <= 1024 * 1024),
+    ensureClaude(options.stdin === undefined || (typeof options.stdin === 'string' && Buffer.byteLength(options.stdin, 'utf8') <= 1024 * 1024),
       'INVALID_CLAUDE_INPUT', 'Claude standard input must be UTF-8 text no larger than 1048576 bytes.');
     let directory: boolean;
     try { directory = (await stat(options.cwd)).isDirectory(); }
     catch (error) {
-      throw forgeError('CLAUDE_WORKING_DIRECTORY_UNAVAILABLE', `Cannot access Claude working directory: ${options.cwd}`, { cause: errorMessage(error) });
+      throw claudeError('CLAUDE_WORKING_DIRECTORY_UNAVAILABLE', `Cannot access Claude working directory: ${options.cwd}`, { cause: errorMessage(error) });
     }
-    ensure(directory, 'CLAUDE_WORKING_DIRECTORY_UNAVAILABLE', `Claude working directory is not a directory: ${options.cwd}`);
+    ensureClaude(directory, 'CLAUDE_WORKING_DIRECTORY_UNAVAILABLE', `Claude working directory is not a directory: ${options.cwd}`);
 
     return new Promise((resolve, reject) => {
       const grouped = process.platform !== 'win32';
@@ -62,7 +62,7 @@ export class NodeClaudeRuntime implements ClaudeRuntime {
         process.removeListener('SIGTERM', terminate);
         process.removeListener('exit', exit);
       };
-      const fail = (code: ErrorCode, message: string, details: Record<string, unknown> = {}, exitCode?: number) => {
+      const fail = (code: ClaudeErrorCode, message: string, details: Record<string, unknown> = {}, exitCode?: number) => {
         if (settled) return;
         settled = true;
         cleanup();
@@ -76,10 +76,12 @@ export class NodeClaudeRuntime implements ClaudeRuntime {
         if (['CLAUDE_COMMAND_TIMEOUT', 'CLAUDE_OUTPUT_LIMIT', 'CLAUDE_COMMAND_INTERRUPTED'].includes(code)) {
           message += ` ${terminationRequested ? 'Termination requested.' : 'Termination could not be requested.'} Inspect its state before retrying.`;
         }
-        reject(forgeError(code, message, { executable: this.executable, ...details,
-          terminationScope: grouped ? 'process-group' : 'direct-process', terminationRequested, ...output() }, exitCode));
+        // An interruption carries its signal's exit status (130 for SIGINT, 143 for SIGTERM), which the host keeps.
+        const failure = claudeError(code, message, { executable: this.executable, ...details,
+          terminationScope: grouped ? 'process-group' : 'direct-process', terminationRequested, ...output() });
+        reject(exitCode === undefined ? failure : Object.assign(failure, { exitCode }));
       };
-      const interrupt = () => fail('CLAUDE_COMMAND_INTERRUPTED', 'Forge received SIGINT while running Claude.', { signal: 'SIGINT' });
+      const interrupt = () => fail('CLAUDE_COMMAND_INTERRUPTED', 'Forge received SIGINT while running Claude.', { signal: 'SIGINT' }, 130);
       const terminate = () => fail('CLAUDE_COMMAND_INTERRUPTED', 'Forge received SIGTERM while running Claude.', { signal: 'SIGTERM' }, 143);
       const exit = () => { try { stop(); } catch { /* The host is already exiting; cleanup cannot be reported asynchronously. */ } };
       process.once('SIGINT', interrupt);

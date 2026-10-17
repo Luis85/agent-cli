@@ -1,6 +1,8 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { readFile, readdir } from 'node:fs/promises';
 import { errorCodes } from '../../src/domain/shared/error-catalog.ts';
+import { kernelMessages } from '../../src/domain/shared/kernel-messages.ts';
+import { pluginWarningCode } from '../../src/domain/shared/warnings.ts';
 import { globalOptionMetadata } from '../../src/presentation/cli/arguments.ts';
 import type { Registry } from '../../src/application/plugins/registry.ts';
 import { bundledCorePlugins } from '../support/core-plugins.ts';
@@ -65,6 +67,11 @@ describe('reference documentation consistency', () => {
     const codes = [...errorCodes, ...registry.catalog.errors().map(entry => entry.code)];
     expect(codes.filter(code => rows.filter(row => row === code).length !== 1)).toEqual([]);
     expect(rows.filter(row => !codes.includes(row))).toEqual([]);
+  });
+
+  it('names every host warning code, reason and the generic plugin warning code in the warning reference', () => {
+    const text = section(reference['errors.md']!, 'Warnings').join('\n');
+    expect([...Object.keys(kernelMessages), pluginWarningCode].filter(code => !text.includes(`\`${code}\``))).toEqual([]);
   });
 
   it('lists the bundled core plugins in bundle order', () => {

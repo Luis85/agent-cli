@@ -5,6 +5,9 @@ import { kernelMessage } from '../../src/domain/shared/kernel-messages.ts';
 import { fill, retranslate } from '../../src/domain/shared/messages.ts';
 import { globalOptionMetadata } from '../../src/presentation/cli/arguments.ts';
 import { option } from '../../src/application/plugins/command-metadata.ts';
+import { builtinCommands } from '../support/builtin-commands.ts';
+
+const { commands } = builtinCommands();
 
 const read = {
   id: 'read', description: 'Read a document.', usage: 'read <path>',
@@ -29,7 +32,7 @@ describe('German output by category', () => {
   });
 
   it('translates global option descriptions in help and schema', () => {
-    const help = new Localizer('de').result('help', { globalOptions: globalOptionMetadata }) as { globalOptions: typeof globalOptionMetadata };
+    const help = new Localizer('de').result(commands.get('help'), { globalOptions: globalOptionMetadata }) as { globalOptions: typeof globalOptionMetadata };
     expect(help.globalOptions.lang).toEqual({ ...globalOptionMetadata.lang, description: 'Antwortsprache für Beschreibungen, Hinweise und Zusammenfassungen.' });
   });
 
@@ -38,22 +41,23 @@ describe('German output by category', () => {
     const command = localizer.command({ id: 'quality', description: 'Check quality.', options: { failing: option.boolean('Only failing checks.') } });
     expect(command.options.failing.description).toBe('Nur fehlgeschlagene Prüfungen.');
     const sections = [{ plugin: 'quality', path: 'plugins.settings.quality', schema: { type: 'object', properties: { failing: { type: 'boolean', description: 'Only failing checks.' }, other: { type: 'string', description: 'Untranslated.' } } } }];
-    expect(localizer.result('config', { sections })).toEqual({ sections: [{ ...sections[0], schema: { type: 'object', properties: { failing: { type: 'boolean', description: 'Nur fehlgeschlagene Prüfungen.' }, other: { type: 'string', description: 'Untranslated.' } } } }] });
+    expect(localizer.result(commands.get('config'), { sections })).toEqual({ sections: [{ ...sections[0], schema: { type: 'object', properties: { failing: { type: 'boolean', description: 'Nur fehlgeschlagene Prüfungen.' }, other: { type: 'string', description: 'Untranslated.' } } } }] });
   });
 
   it('renders host warnings and plugin state reasons in the response language, keeping plugin warnings', () => {
     const warning = kernelMessage('PLUGIN_UNAVAILABLE', { plugin: 'backlog', reason: kernelMessage('PLUGIN_PROVIDER_DISABLED', { service: 'bases.query', provider: 'bases' }) });
-    expect(new Localizer('en').warning(warning)).toBe('Plugin backlog is unavailable in this invocation: Requires service bases.query; its provider bases is disabled. Its commands and generators fail with PLUGIN_UNAVAILABLE; fix bin/config.json and run config.');
-    expect(new Localizer('de').warning(warning)).toBe('Das Plugin backlog ist in diesem Aufruf nicht verfügbar: Benötigt den Dienst bases.query; sein Anbieter bases ist deaktiviert. Seine Befehle und Generatoren schlagen mit PLUGIN_UNAVAILABLE fehl; korrigieren Sie bin/config.json und führen Sie config aus.');
-    expect(new Localizer('de').warning(kernelMessage('EVENT_LISTENER_FAILED', { event: 'vault.create', diagnostic: 'boom' }))).toBe('Der Listener für vault.create ist fehlgeschlagen: boom');
-    expect(new Localizer('de').warning('Plugin-owned text')).toBe('Plugin-owned text');
+    expect(new Localizer('en').warning(warning).message).toBe('Plugin backlog is unavailable in this invocation: Requires service bases.query; its provider bases is disabled. Its commands and generators fail with PLUGIN_UNAVAILABLE; fix bin/config.json and run config.');
+    expect(new Localizer('de').warning(warning).message).toBe('Das Plugin backlog ist in diesem Aufruf nicht verfügbar: Benötigt den Dienst bases.query; sein Anbieter bases ist deaktiviert. Seine Befehle und Generatoren schlagen mit PLUGIN_UNAVAILABLE fehl; korrigieren Sie bin/config.json und führen Sie config aus.');
+    expect(new Localizer('de').warning(kernelMessage('EVENT_LISTENER_FAILED', { event: 'vault.create', diagnostic: 'boom' })).message).toBe('Der Listener für vault.create ist fehlgeschlagen: boom');
+    expect(new Localizer('de').warning('Plugin-owned text')).toEqual({ code: 'PLUGIN_WARNING', message: 'Plugin-owned text' });
+    expect(new Localizer('de').warning(warning)).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { plugin: 'backlog', reason: { code: 'PLUGIN_PROVIDER_DISABLED', message: expect.stringContaining('deaktiviert'), details: { service: 'bases.query', provider: 'bases' } } } });
   });
 
   it('renders only messages the host created from its catalog, and any other record as text', () => {
     const german = new Localizer('de');
-    expect(german.warning(kernelMessage('PLUGIN_SKIPPED'))).toBe('Durch --no-plugins übersprungen.');
-    expect(german.warning({ code: 'PLUGIN_SKIPPED', params: {} })).toBe('{"code":"PLUGIN_SKIPPED","params":{}}');
-    expect(german.warning(kernelMessage('PLUGIN_MISSING_WARNING', { reason: { code: 'PLUGIN_SKIPPED', params: {} } as never }))).toBe('{"code":"PLUGIN_SKIPPED","params":{}} Seine Befehle sind in diesem Aufruf nicht verfügbar.');
+    expect(german.warning(kernelMessage('PLUGIN_SKIPPED')).message).toBe('Durch --no-plugins übersprungen.');
+    expect(german.warning({ code: 'PLUGIN_SKIPPED', params: {} }).message).toBe('{"code":"PLUGIN_SKIPPED","params":{}}');
+    expect(german.warning(kernelMessage('PLUGIN_MISSING_WARNING', { reason: { code: 'PLUGIN_SKIPPED', params: {} } as never })).message).toBe('{"code":"PLUGIN_SKIPPED","params":{}} Seine Befehle sind in diesem Aufruf nicht verfügbar.');
     for (const record of [new Error('raw'), null, undefined, { code: 'PLUGIN_MISSING_WARNING', params: null }, 42]) expect(() => german.warning(record)).not.toThrow();
     const message = kernelMessage('EVENT_LISTENER_FAILED', { event: 'vault.create', diagnostic: 'boom' });
     expect(() => Object.assign(message.params, { event: null })).toThrow(TypeError);

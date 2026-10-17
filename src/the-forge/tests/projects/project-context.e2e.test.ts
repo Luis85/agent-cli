@@ -209,7 +209,7 @@ describe('portable selected-project workflows', () => {
       }
     };`);
     const run = (args: string[]) => cli(args, undefined, { root });
-    const observations = (result: Awaited<ReturnType<typeof run>>) => result.body.warnings.map((warning: string) => JSON.parse(warning));
+    const observations = (result: Awaited<ReturnType<typeof run>>) => result.body.warnings.map((warning: { message: string }) => JSON.parse(warning.message));
     const created = await run(['project', 'create', 'alpha']);
     expect(created.status).toBe(0);
     expect(observations(created)).toContainEqual({ id: 'vault.create', root, path: 'projects/alpha/.forge/project.json' });

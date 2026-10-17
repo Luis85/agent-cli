@@ -42,19 +42,31 @@ export const germanActions: Record<string, string> = {
   'workflows sync': 'Die generierten .github/workflows-Einstiegspunkte schreiben; mit --check Abweichungen melden, ohne zu schreiben.',
 };
 
-export const germanGuidance = {
-  helpNext: 'Verwendung, Optionen, Argumente, Fehler und Beispiele eines Befehls zeigt help <command>, seine JSON-Schemas schema <command>. make listet die Generatoren, skills die Agent-Skills.',
-  attachments: 'Dateien verlustfrei als Bytes lesen, kopieren, ersetzen und einbetten; keine integrierte Konvertierung, Darstellung oder PDF-Inhaltsbearbeitung.',
-  otherFiles: 'Uninterpretierte Bytes; Plugins können weitere Verarbeitung bereitstellen.',
-  textFiles: 'textFilenames gelten ohne Beachtung der Groß- und Kleinschreibung, auch mit Punkt-Suffixen, die mit einem anderen Zeichen als einem Punkt beginnen; native Erweiterungen haben Vorrang. UTF-8 lesen, wörtlich bearbeiten, ergänzen und vollständig ersetzen, mit Unified-Diffs im Probelauf; ungültiges UTF-8 und Inhalte mit NUL-Zeichen werden als Base64-Anhang gelesen.',
-  delivery: 'Geordnet, abgewartet und mit separaten Snapshots je Behandler; Fehler werden zu Warnungen. Obsidian-artige vault.*-Ereignisse folgen jedem erfolgreichen Schreibvorgang (zuerst neue Ordner, übergeordnete vor untergeordneten, dann Dateien in Stapelreihenfolge); Probeläufe senden stattdessen workspace.quick-preview. Nach den vault.*-Ereignissen eines Stapels folgen metadataCache.changed, metadataCache.deleted, metadataCache.resolve und ein metadataCache.resolved, sobald der Metadaten-Cache in diesem Aufruf geladen wurde. operation.*-, command.*- und plugin.*-Ereignisse sind Lebenszyklusphasen des Hosts, die claude.*-Ereignisse des claude-Kern-Plugins Phasen jedes Claude-Aufrufs; workspace.*-Ereignisse entsprechen Obsidians Workspace (file-open, quick-preview, layout-ready, quit, project-change). Host-Namensräume gehören dem Host: Plugins beobachten sie, senden aber nur eigene Ereignisse. onAny beobachtet alle Ereignisse; replay liest den begrenzten Verlauf dieses Aufrufs. Keine dauerhafte Wiederholung. Die Antwort enthält standardmäßig nur vault.*-Ereignisse; --events none|changes|all oder settings.events wählt die Ausgabe, ohne Zustellung oder replay zu ändern.',
-  schemaMore: 'Führen Sie schema <Befehl> für den Vertrag eines Befehls oder schema --all für alle Befehle aus.',
-  eventChanges: 'Nur erfolgreich geschriebene vault.*-Ereignisse: vault.create, vault.modify, vault.delete und vault.rename für Dateien und Ordner.',
-  setup: {
-    'node bin/forge.js templates list': 'Die installierten, bearbeitbaren Planungsvorlagen entdecken.',
-    'node bin/forge.js templates inspect workflow/prd.md': 'Planungseingaben vor dem Generieren eines Anforderungsdokuments prüfen.',
-    'node bin/forge.js project list': 'Ein Projekt suchen und vor dem Generieren von Projektdateien ausdrücklich öffnen.',
-  },
+/**
+ * German guidance texts of the kernel's discovery results, keyed by their English text: the result fields that a
+ * command's `localizedOutput` marks `text` read in German wherever they hold one of these texts.
+ */
+export const germanGuidance: Record<string, string> = {
+  'Run help <command> for its usage, options, arguments, errors and examples, or schema <command> for its JSON Schemas. make lists generators; skills lists agent skills.':
+    'Verwendung, Optionen, Argumente, Fehler und Beispiele eines Befehls zeigt help <command>, seine JSON-Schemas schema <command>. make listet die Generatoren, skills die Agent-Skills.',
+  'Run schema <command> for one command\'s contract, or schema --all for every command.':
+    'Führen Sie schema <Befehl> für den Vertrag eines Befehls oder schema --all für alle Befehle aus.',
+  'Only committed vault.* records: vault.create, vault.modify, vault.delete and vault.rename, for files and folders.':
+    'Nur erfolgreich geschriebene vault.*-Ereignisse: vault.create, vault.modify, vault.delete und vault.rename für Dateien und Ordner.',
+  'textFilenames match case-insensitively, including dot suffixes that start with a non-dot character; native extensions take precedence. UTF-8 read, literal edit, append and full replacement with unified dry-run diffs; files that are not valid UTF-8 or contain NUL characters read as base64 attachments.':
+    'textFilenames gelten ohne Beachtung der Groß- und Kleinschreibung, auch mit Punkt-Suffixen, die mit einem anderen Zeichen als einem Punkt beginnen; native Erweiterungen haben Vorrang. UTF-8 lesen, wörtlich bearbeiten, ergänzen und vollständig ersetzen, mit Unified-Diffs im Probelauf; ungültiges UTF-8 und Inhalte mit NUL-Zeichen werden als Base64-Anhang gelesen.',
+  'Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.':
+    'Dateien verlustfrei als Bytes lesen, kopieren, ersetzen und einbetten; keine integrierte Konvertierung, Darstellung oder PDF-Inhaltsbearbeitung.',
+  'Opaque bytes; plugins can provide additional processing.':
+    'Uninterpretierte Bytes; Plugins können weitere Verarbeitung bereitstellen.',
+  'Ordered, awaited, per-listener snapshots; failures become warnings. Obsidian-style vault.* records follow each committed write (new folders first, parent before child, then files in batch order); dry runs emit workspace.quick-preview instead. Once the metadata cache is loaded in the invocation, the vault.* records of each batch are followed by metadataCache.changed, metadataCache.deleted, metadataCache.resolve and one metadataCache.resolved. operation.*, command.* and plugin.* records are host lifecycle phases, and the claude core plugin\'s claude.* records are the phases of each Claude invocation; workspace.* records are Obsidian workspace analogues (file-open, quick-preview, layout-ready, quit, project-change). Host namespaces are host-owned: plugins observe them but emit only their own events. onAny observes all events; replay reads bounded invocation history. No persistent replay. Responses include only vault.* records by default; --events none|changes|all or settings.events selects the output without changing delivery or replay.':
+    'Geordnet, abgewartet und mit separaten Snapshots je Behandler; Fehler werden zu Warnungen. Obsidian-artige vault.*-Ereignisse folgen jedem erfolgreichen Schreibvorgang (zuerst neue Ordner, übergeordnete vor untergeordneten, dann Dateien in Stapelreihenfolge); Probeläufe senden stattdessen workspace.quick-preview. Nach den vault.*-Ereignissen eines Stapels folgen metadataCache.changed, metadataCache.deleted, metadataCache.resolve und ein metadataCache.resolved, sobald der Metadaten-Cache in diesem Aufruf geladen wurde. operation.*-, command.*- und plugin.*-Ereignisse sind Lebenszyklusphasen des Hosts, die claude.*-Ereignisse des claude-Kern-Plugins Phasen jedes Claude-Aufrufs; workspace.*-Ereignisse entsprechen Obsidians Workspace (file-open, quick-preview, layout-ready, quit, project-change). Host-Namensräume gehören dem Host: Plugins beobachten sie, senden aber nur eigene Ereignisse. onAny beobachtet alle Ereignisse; replay liest den begrenzten Verlauf dieses Aufrufs. Keine dauerhafte Wiederholung. Die Antwort enthält standardmäßig nur vault.*-Ereignisse; --events none|changes|all oder settings.events wählt die Ausgabe, ohne Zustellung oder replay zu ändern.',
+  'Discover the installed editable planning templates.':
+    'Die installierten, bearbeitbaren Planungsvorlagen entdecken.',
+  'Inspect planning inputs before generating a requirements document.':
+    'Planungseingaben vor dem Generieren eines Anforderungsdokuments prüfen.',
+  'Find a project, then explicitly open it before generating project files.':
+    'Ein Projekt suchen und vor dem Generieren von Projektdateien ausdrücklich öffnen.',
 };
 
 /** German descriptions of host event contracts; plugin-defined events keep their own descriptions. */

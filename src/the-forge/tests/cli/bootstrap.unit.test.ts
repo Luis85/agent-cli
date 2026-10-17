@@ -34,7 +34,7 @@ describe('prefix-only command bootstrap', () => {
   it('rejects routing options after the command that repeat, miss or swallow a value', () => {
     expect(() => parseBootstrap(['--root', '/a', 'read', 'x.md', '--root', '/b'])).toThrow(expect.objectContaining({ code: 'DUPLICATE_OPTION' }));
     expect(() => parseBootstrap(['read', 'x.md', '--root'])).toThrow(expect.objectContaining({ code: 'MISSING_ARGUMENT' }));
-    expect(() => parseBootstrap(['read', 'x.md', '--root', '--json'])).toThrow(expect.objectContaining({ code: 'MISSING_ARGUMENT', details: { option: 'root' } }));
+    expect(() => parseBootstrap(['read', 'x.md', '--root', '--json'])).toThrow(expect.objectContaining({ code: 'MISSING_ARGUMENT', details: { option: 'root', next: '--json' } }));
   });
 
   it('leaves plugin options and values untouched until their descriptor is loaded', () => {

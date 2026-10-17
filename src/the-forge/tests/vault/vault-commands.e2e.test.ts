@@ -3,6 +3,7 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
 import { writeVault } from '../support/vault.ts';
+import { warningMessages } from '../support/warnings.ts';
 
 const fixture = portableCli();
 type Record = { id: string; payload: { path?: string; oldPath?: string; [key: string]: unknown } };
@@ -65,7 +66,7 @@ describe('moving and deleting through the portable CLI', () => {
       ['metadataCache.resolve', 'Board.canvas'], ['metadataCache.resolve', 'docs/Index.md'], ['metadataCache.resolve', 'notes/Roadmap.md'],
       ['metadataCache.resolved', undefined],
     ]);
-    expect(renamed.body.warnings).toEqual(['renamed notes/Plan.md -> notes/Roadmap.md']);
+    expect(warningMessages(renamed.body)).toEqual(['renamed notes/Plan.md -> notes/Roadmap.md']);
     expect(await read('docs/Index.md')).toBe('---\nrelated: "[[Roadmap]]"\nsteps:\n  - "[[Roadmap#Goals|goals]]"\n---\n# Index\n\nSee [[Roadmap]], ![[Roadmap#^b1]] and [the plan](../notes/Roadmap.md#Goals).\n');
     expect(JSON.parse(await read('Board.canvas')).nodes[0]).toMatchObject({ file: 'notes/Roadmap.md', subpath: '#Goals' });
     expect((await run('checker.unresolved')).body.data).toEqual({ unresolved: 0, files: ['docs/Index.md', 'notes/Roadmap.md', 'scratch/Idea.md'] });

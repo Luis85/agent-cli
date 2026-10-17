@@ -23,6 +23,9 @@ const plugin = `const values = {
   symbol: () => Symbol('tag'),
   unreadable: () => ({ toJSON() { throw new Error('no json'); }, toString() { throw new Error('no text'); } }),
   bare: () => Object.create(null),
+  coded: () => ({ code: 'WARNER_STALE', message: 'Two notes are stale.', details: { notes: ['a.md', 'b.md'], plugin: 'spoofed' } }),
+  hostCode: () => ({ code: 'CWD_OUTSIDE_WORKSPACE', message: 'Forged' }),
+  badDetails: () => ({ code: 'WARNER_STALE', message: 'Listed', details: ['not', 'a', 'record'] }),
 };
 /** Reaches the host's own warning sink past context.events, as plain JavaScript can. */
 function hostSink(context) {
@@ -72,21 +75,31 @@ describe('plugin warnings', () => {
     ['symbol', 'Symbol(tag)'],
     ['unreadable', 'Operation failed with an unreadable error.'],
     ['bare', '{}'],
-  ])('reports a %s warning as plain text in every language, never as a host message', async (kind, text) => {
+  ])('reports a %s warning as PLUGIN_WARNING text of its plugin in every language, never as a host message', async (kind, text) => {
     for (const language of ['en', 'de']) {
       const result = await cli(['--lang', language, 'warner.run', kind]);
       expect(result.status).toBe(0);
-      expect(result.body).toMatchObject({ ok: true, data: { done: true }, warnings: [text] });
+      expect(result.body).toMatchObject({ ok: true, data: { done: true } });
+      expect(result.body.warnings).toEqual([{ code: 'PLUGIN_WARNING', message: text, details: { plugin: 'warner' } }]);
     }
   });
 
-  it('reports values a plugin hands the host warning sink directly as plain text, without crashing', async () => {
+  it('keeps a plugin warning\'s own code and JSON details, and refuses host codes and malformed details', async () => {
+    const result = await cli(['warner.run', 'coded']);
+    expect(result.body.warnings).toEqual([{ code: 'WARNER_STALE', message: 'Two notes are stale.', details: { notes: ['a.md', 'b.md'], plugin: 'warner' } }]);
+    expect((await cli(['warner.run', 'hostCode'])).body.warnings).toEqual([{ code: 'PLUGIN_WARNING', message: '{"code":"CWD_OUTSIDE_WORKSPACE","message":"Forged"}', details: { plugin: 'warner' } }]);
+    expect((await cli(['warner.run', 'badDetails'])).body.warnings[0]).toMatchObject({ code: 'PLUGIN_WARNING', details: { plugin: 'warner' } });
+  });
+
+  it('reports values a plugin hands the host warning sink directly as PLUGIN_WARNING text, without crashing', async () => {
     for (const language of ['en', 'de']) {
       const result = await cli(['--lang', language, 'warner.sink']);
       expect(result.status).toBe(0);
-      expect(result.body).toMatchObject({ ok: true, data: { done: true }, warnings: [
+      expect(result.body).toMatchObject({ ok: true, data: { done: true } });
+      // The host sink cannot tell which plugin handed it the value.
+      expect(result.body.warnings).toEqual([
         '{"code":"PLUGIN_SKIPPED","params":{}}', 'raw', 'null', '{"code":"PLUGIN_MISSING_WARNING","params":null}', '{"code":"NOT_A_CODE","params":{}}', '42',
-      ] });
+      ].map(message => ({ code: 'PLUGIN_WARNING', message })));
     }
   });
 
@@ -94,7 +107,7 @@ describe('plugin warnings', () => {
     const result = await cli(['warner.write', '--events', 'all']);
     expect(result.body.ok).toBe(false);
     expect(result.body.error.code).toBe('INVALID_RESULT');
-    expect(result.body.warnings).toEqual(['after commit']);
+    expect(result.body.warnings).toEqual([{ code: 'PLUGIN_WARNING', message: 'after commit', details: { plugin: 'warner' } }]);
     expect(result.body.events.some((event: { id: string }) => event.id === 'vault.create')).toBe(true);
     expect(await readFile(join(fixture.project, 'written.md'), 'utf8')).toBe('# Written');
   });

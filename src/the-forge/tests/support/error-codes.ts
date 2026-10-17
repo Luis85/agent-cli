@@ -10,7 +10,7 @@ import ts from 'typescript';
  * - a string literal is a code;
  * - `a ? b : c` and parentheses resolve each branch;
  * - an identifier resolves through its same-file `const` initializer, or, for a function parameter, through
- *   its literal union type annotation (inline or a same-file type alias), its default value and every same-file
+ *   its literal union (or single literal) type annotation (inline or a same-file type alias), its default value and every same-file
  *   call of that function.
  * Anything else is reported as unresolved, so a new indirection must stay explainable by these rules.
  * Direct `new AppError(...)` outside the error module is reported because it bypasses the catalog's exit codes.
@@ -78,13 +78,14 @@ function declaration(identifier: ts.Identifier): ts.ParameterDeclaration | ts.Va
   return undefined;
 }
 
-/** The members of a string literal union, written inline or as a same-file type alias. */
+/** The members of a string literal union (or a single string literal type), written inline or as a same-file type alias. */
 function literalUnion(type: ts.TypeNode | undefined, source: ts.SourceFile): string[] | undefined {
   if (type && ts.isTypeReferenceNode(type) && ts.isIdentifier(type.typeName)) {
     const name = type.typeName.text;
     const alias = source.statements.find((statement): statement is ts.TypeAliasDeclaration => ts.isTypeAliasDeclaration(statement) && statement.name.text === name);
     return alias ? literalUnion(alias.type, source) : undefined;
   }
+  if (type && ts.isLiteralTypeNode(type) && ts.isStringLiteral(type.literal)) return [type.literal.text];
   if (!type || !ts.isUnionTypeNode(type) || !type.types.every(item => ts.isLiteralTypeNode(item) && ts.isStringLiteral(item.literal))) return undefined;
   return type.types.map(item => ((item as ts.LiteralTypeNode).literal as ts.StringLiteral).text);
 }

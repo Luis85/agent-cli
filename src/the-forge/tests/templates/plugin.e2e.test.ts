@@ -37,7 +37,7 @@ describe('the templates core plugin', () => {
       expect(setup.status).toBe(0);
       expect(paths(setup.body.data.changes).filter(path => path.startsWith('bin/templates/'))).toEqual([]);
       expect(setup.body.data.nextSteps.map((step: { command: string }) => step.command)).toEqual(['node bin/forge.js project list']);
-      expect(setup.body.warnings).toEqual([expect.stringContaining('templates core plugin is disabled or unavailable')]);
+      expect(setup.body.warnings).toEqual([{ code: 'SETUP_TEMPLATES_UNAVAILABLE', message: expect.stringContaining('templates core plugin is disabled or unavailable') }]);
       expect((await cli(['plugins'])).body.data.plugins).toContainEqual(expect.objectContaining({ id: 'templates', state: 'disabled', contributions: null }));
     } finally { await rm(join(fixture.project, 'bin/config.json')); }
     const setup = (await cli(['setup', '--dry-run'])).body;
@@ -51,7 +51,7 @@ describe('the templates core plugin', () => {
       const make = await cli(['make', 'document', 'Plan', '--template', 'entity.md']);
       expect(make.body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { generator: 'document', plugin: 'templates', issues: ['plugins.settings.templates.dateFormat: must have at least 1 characters'] } });
       expect((await cli(['templates'])).body.error.code).toBe('PLUGIN_UNAVAILABLE');
-      expect((await cli(['setup', '--dry-run'])).body.warnings).toEqual(expect.arrayContaining([expect.stringContaining('templates core plugin is disabled or unavailable')]));
+      expect((await cli(['setup', '--dry-run'])).body.warnings).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'SETUP_TEMPLATES_UNAVAILABLE' })]));
     } finally { await rm(join(fixture.project, 'bin/config.json')); }
   });
 });

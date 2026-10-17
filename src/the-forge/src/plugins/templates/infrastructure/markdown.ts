@@ -5,7 +5,8 @@ import localizedFormat from 'dayjs/plugin/localizedFormat.js';
 import { isMap, isScalar, parseDocument, visit } from 'yaml';
 import type { DocumentTemplates, TemplateInspection, TemplateOptions } from '../application/templates.ts';
 import type { MarkdownParts } from '../../../application/workspace/ports.ts';
-import { forgeError, ensure, isRecord } from '../../../domain/shared/errors.ts';
+import { forgeError, isRecord } from '../../../domain/shared/errors.ts';
+import { ensureTemplate, templateError } from '../domain/errors.ts';
 
 dayjs.extend(utc);
 dayjs.extend(advancedFormat);
@@ -22,14 +23,14 @@ function placeholders(text: string): Placeholder[] {
   const result: Placeholder[] = [];
   const braces = /{{|}}/g;
   for (let match = braces.exec(text); match; match = braces.exec(text)) {
-    ensure(match[0] === '{{', 'INVALID_TEMPLATE', 'Unexpected closing template braces.');
+    ensureTemplate(match[0] === '{{', 'INVALID_TEMPLATE', 'Unexpected closing template braces.');
     const close = text.indexOf('}}', braces.lastIndex);
-    ensure(close >= 0, 'INVALID_TEMPLATE', 'Unclosed template placeholder.');
+    ensureTemplate(close >= 0, 'INVALID_TEMPLATE', 'Unclosed template placeholder.');
     const expression = text.slice(braces.lastIndex, close).trim();
     const parsed = /^([A-Za-z_][\w.-]*)(?::([^{}\r\n]+))?$/.exec(expression);
-    ensure(parsed, 'INVALID_TEMPLATE', `Invalid template placeholder: {{${expression}}}.`);
+    ensureTemplate(parsed, 'INVALID_TEMPLATE', `Invalid template placeholder: {{${expression}}}.`);
     const key = parsed[1]!, format = parsed[2];
-    ensure(format === undefined || key === 'date' || key === 'time', 'INVALID_TEMPLATE', 'Only date and time placeholders accept a format.');
+    ensureTemplate(format === undefined || key === 'date' || key === 'time', 'INVALID_TEMPLATE', 'Only date and time placeholders accept a format.');
     result.push({ expression, key, ...(format === undefined ? {} : { format }), start: match.index, end: close + 2 });
     braces.lastIndex = close + 2;
   }
@@ -46,11 +47,11 @@ function replaceTokens(text: string, tokens: Placeholder[], value: (token: Place
 }
 
 function jsonValue(value: unknown, ancestors = new Set<object>(), depth = 0): void {
-  ensure(depth < 100, 'INVALID_TEMPLATE_VALUES', 'Template values are nested too deeply.');
+  ensureTemplate(depth < 100, 'INVALID_TEMPLATE_VALUES', 'Template values are nested too deeply.');
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return;
-  if (typeof value === 'number') { ensure(Number.isFinite(value), 'INVALID_TEMPLATE_VALUES', 'Template numbers must be finite.'); return; }
-  ensure(typeof value === 'object' && (Array.isArray(value) || Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null), 'INVALID_TEMPLATE_VALUES', 'Template values must be JSON-compatible.');
-  ensure(!ancestors.has(value), 'INVALID_TEMPLATE_VALUES', 'Template values cannot contain cycles.');
+  if (typeof value === 'number') { ensureTemplate(Number.isFinite(value), 'INVALID_TEMPLATE_VALUES', 'Template numbers must be finite.'); return; }
+  ensureTemplate(typeof value === 'object' && (Array.isArray(value) || Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null), 'INVALID_TEMPLATE_VALUES', 'Template values must be JSON-compatible.');
+  ensureTemplate(!ancestors.has(value), 'INVALID_TEMPLATE_VALUES', 'Template values cannot contain cycles.');
   ancestors.add(value);
   for (const child of Object.values(value)) jsonValue(child, ancestors, depth + 1);
   ancestors.delete(value);
@@ -67,15 +68,15 @@ function renderYaml(source: string, resolve: (token: Placeholder) => unknown): s
   while (source.includes(prefix) || serializedValues.includes(prefix)) prefix += 'X';
   const sentinels = tokens.map((_, index) => `${prefix}${index}END`);
   const document = parseDocument(replaceTokens(source, tokens, (_, index) => sentinels[index]!), { uniqueKeys: true });
-  ensure(document.errors.length === 0, 'INVALID_TEMPLATE', document.errors.map(error => error.message).join('; '));
-  ensure(document.contents === null || isMap(document.contents), 'INVALID_TEMPLATE', 'Template frontmatter must be a YAML mapping.');
+  ensureTemplate(document.errors.length === 0, 'INVALID_TEMPLATE', document.errors.map(error => error.message).join('; '));
+  ensureTemplate(document.contents === null || isMap(document.contents), 'INVALID_TEMPLATE', 'Template frontmatter must be a YAML mapping.');
   const consumed = new Set<number>();
   const sentinelPattern = new RegExp(`${prefix}(\\d+)END`, 'g');
   visit(document, (key, node, path) => {
-    ensure(path.length < 100, 'INVALID_TEMPLATE', 'Template YAML is nested too deeply.');
+    ensureTemplate(path.length < 100, 'INVALID_TEMPLATE', 'Template YAML is nested too deeply.');
     if (key === 'key') {
-      ensure(isScalar(node) && typeof node.value === 'string', 'INVALID_TEMPLATE', 'Template YAML keys must be strings.');
-      ensure(!node.value.includes(prefix), 'INVALID_TEMPLATE', 'Template placeholders cannot be used in YAML keys.');
+      ensureTemplate(isScalar(node) && typeof node.value === 'string', 'INVALID_TEMPLATE', 'Template YAML keys must be strings.');
+      ensureTemplate(!node.value.includes(prefix), 'INVALID_TEMPLATE', 'Template placeholders cannot be used in YAML keys.');
     }
     if (!isScalar(node) || typeof node.value !== 'string' || key === 'key') return;
     const scalar = node.value;
@@ -95,25 +96,25 @@ function renderYaml(source: string, resolve: (token: Placeholder) => unknown): s
       return asText(resolved[position]);
     });
   });
-  ensure(consumed.size === tokens.length, 'INVALID_TEMPLATE', 'Placeholders in frontmatter are supported only in scalar values, not comments, tags or anchors.');
+  ensureTemplate(consumed.size === tokens.length, 'INVALID_TEMPLATE', 'Placeholders in frontmatter are supported only in scalar values, not comments, tags or anchors.');
   let data: unknown;
   try { data = document.toJS({ maxAliasCount: 100 }); }
-  catch { throw forgeError('INVALID_TEMPLATE', 'Template YAML aliases are invalid or excessive.'); }
+  catch { throw templateError('INVALID_TEMPLATE', 'Template YAML aliases are invalid or excessive.'); }
   try { jsonValue(data); }
-  catch { throw forgeError('INVALID_TEMPLATE', 'Template YAML must contain JSON-compatible values without cycles.'); }
+  catch { throw templateError('INVALID_TEMPLATE', 'Template YAML must contain JSON-compatible values without cycles.'); }
   return document.toString();
 }
 
 function instant(date: string | undefined) {
   if (date === undefined) return dayjs.utc();
   const match = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2}))?$/.exec(date);
-  ensure(match, 'INVALID_TEMPLATE_DATE', 'Use an ISO date (YYYY-MM-DD) or timestamp with an explicit timezone.');
+  ensureTemplate(match, 'INVALID_TEMPLATE_DATE', 'Use an ISO date (YYYY-MM-DD) or timestamp with an explicit timezone.');
   const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
   const calendar = new Date(0);
   calendar.setUTCFullYear(year, month, 0);
   const daysInMonth = calendar.getUTCDate();
   const parsed = dayjs.utc(date);
-  ensure(month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth && Number(match[4] ?? 0) < 24 && Number(match[5] ?? 0) < 60 && Number(match[6] ?? 0) < 60 && parsed.isValid(), 'INVALID_TEMPLATE_DATE', 'Template date is not a valid calendar date.');
+  ensureTemplate(month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth && Number(match[4] ?? 0) < 24 && Number(match[5] ?? 0) < 60 && Number(match[6] ?? 0) < 60 && parsed.isValid(), 'INVALID_TEMPLATE_DATE', 'Template date is not a valid calendar date.');
   return parsed;
 }
 
@@ -134,21 +135,21 @@ export class MarkdownTemplates implements DocumentTemplates {
   }
 
   render(bytes: Uint8Array, options: TemplateOptions): Uint8Array {
-    ensure(typeof options.title === 'string' && options.title.trim().length > 0, 'INVALID_TEMPLATE_VALUES', 'A nonempty template title is required.');
+    ensureTemplate(typeof options.title === 'string' && options.title.trim().length > 0, 'INVALID_TEMPLATE_VALUES', 'A nonempty template title is required.');
     const values = options.values ?? {};
-    ensure(isRecord(values), 'INVALID_TEMPLATE_VALUES', 'Template values must be a JSON object.');
+    ensureTemplate(isRecord(values), 'INVALID_TEMPLATE_VALUES', 'Template values must be a JSON object.');
     jsonValue(values);
-    for (const key of ['title', 'date', 'time']) ensure(!Object.hasOwn(values, key), 'INVALID_TEMPLATE_VALUES', `${key} is reserved; use the corresponding template option.`);
+    for (const key of ['title', 'date', 'time']) ensureTemplate(!Object.hasOwn(values, key), 'INVALID_TEMPLATE_VALUES', `${key} is reserved; use the corresponding template option.`);
     const date = instant(options.date);
-    for (const format of [options.dateFormat, options.timeFormat]) ensure(format === undefined || (typeof format === 'string' && format.length > 0), 'INVALID_TEMPLATE_DATE', 'Date and time formats must be nonempty strings.');
+    for (const format of [options.dateFormat, options.timeFormat]) ensureTemplate(format === undefined || (typeof format === 'string' && format.length > 0), 'INVALID_TEMPLATE_DATE', 'Date and time formats must be nonempty strings.');
     const resolve = (token: Placeholder): unknown => {
       if (token.key === 'title') return options.title;
       if (token.key === 'date' || token.key === 'time') {
         const format = token.format ?? (token.key === 'date' ? options.dateFormat ?? 'YYYY-MM-DD' : options.timeFormat ?? 'HH:mm');
         try { return date.format(format); }
-        catch { throw forgeError('INVALID_TEMPLATE_DATE', `Unsupported date format: ${format}.`); }
+        catch { throw templateError('INVALID_TEMPLATE_DATE', `Unsupported date format: ${format}.`); }
       }
-      ensure(Object.hasOwn(values, token.key), 'UNKNOWN_TEMPLATE_VARIABLE', `Missing template value: ${token.key}.`);
+      ensureTemplate(Object.hasOwn(values, token.key), 'UNKNOWN_TEMPLATE_VARIABLE', `Missing template value: ${token.key}.`);
       return values[token.key];
     };
     const parts = this.parts(textOf(bytes));

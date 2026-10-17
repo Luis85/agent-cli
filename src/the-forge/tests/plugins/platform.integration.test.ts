@@ -166,7 +166,7 @@ describe('plugin strings and error catalog', () => {
     expect(failure).toMatchObject({ code: 'QUALITY_UNOWNED', exitCode: 5, details: { notes: 2 } });
     expect(new Localizer('en', registry.catalog).error(failure)).toEqual({ code: 'QUALITY_UNOWNED', message: 'Two notes lack owners.', hint: 'Add an owner property to each note.', retryable: false, details: { notes: 2 } });
     expect(german.error(failure)).toMatchObject({ code: 'QUALITY_UNOWNED', message: 'Notizen ohne Verantwortliche.', hint: 'Ergänzen Sie die Eigenschaft owner.', details: { notes: 2, localization: { originalMessage: 'Two notes lack owners.' } } });
-    expect(german.result('schema', { errors: [{ code: 'QUALITY_UNOWNED', summary: 'Notes lack an owner.' }] })).toEqual({ errors: [{ code: 'QUALITY_UNOWNED', summary: 'Notizen ohne Verantwortliche.' }] });
+    expect(german.result({ localizedOutput: { errors: 'errors' } }, { errors: [{ code: 'QUALITY_UNOWNED', summary: 'Notes lack an owner.' }] })).toEqual({ errors: [{ code: 'QUALITY_UNOWNED', summary: 'Notizen ohne Verantwortliche.' }] });
   });
 
   it('resolves plugin messages in the invocation language with an English fallback', () => {

@@ -6,6 +6,7 @@ import type { ClaudeAgentCodec } from './agents.ts';
 import type { Workspace } from '../../../application/workspace/workspace.ts';
 import { fill } from '../../../domain/shared/messages.ts';
 import { claudeMessages } from '../domain/messages.ts';
+import { claudeError, ensureClaude } from '../domain/errors.ts';
 
 const manifestPath = '.claude-plugin/plugin.json';
 type AssetKind = 'agent' | 'hooks' | 'mcp' | 'lsp' | 'settings' | 'other';
@@ -19,8 +20,8 @@ function decode(bytes: Uint8Array): string {
 function json(bytes: Uint8Array, path: string): Record<string, unknown> {
   let value: unknown;
   try { value = JSON.parse(decode(bytes)); }
-  catch (error) { throw forgeError('INVALID_CLAUDE_PLUGIN', `${path}: ${errorMessage(error)}`); }
-  ensure(isRecord(value), 'INVALID_CLAUDE_PLUGIN', `${path} must contain a JSON object.`);
+  catch (error) { throw claudeError('INVALID_CLAUDE_PLUGIN', `${path}: ${errorMessage(error)}`); }
+  ensureClaude(isRecord(value), 'INVALID_CLAUDE_PLUGIN', `${path} must contain a JSON object.`);
   return value;
 }
 function nativeReferences(manifest: Record<string, unknown>): Reference[] {
@@ -171,9 +172,9 @@ export class ClaudePluginService {
     }
     if (kinds.has('hooks')) {
       const config = json(bytes, path);
-      ensure(config.hooks !== undefined || config.modules !== undefined, 'INVALID_CLAUDE_PLUGIN', `${path}: hook files require a hooks wrapper, or modules for a Claude mod.`);
+      ensureClaude(config.hooks !== undefined || config.modules !== undefined, 'INVALID_CLAUDE_PLUGIN', `${path}: hook files require a hooks wrapper, or modules for a Claude mod.`);
       if (config.hooks !== undefined) validateClaudeHooks(config.hooks);
-      if (config.modules !== undefined) ensure(Array.isArray(config.modules) && config.modules.every(entry => typeof entry === 'string'), 'INVALID_CLAUDE_PLUGIN', `${path}: modules must be an array of module paths.`);
+      if (config.modules !== undefined) ensureClaude(Array.isArray(config.modules) && config.modules.every(entry => typeof entry === 'string'), 'INVALID_CLAUDE_PLUGIN', `${path}: modules must be an array of module paths.`);
     }
     if (kinds.has('mcp') && !/\.(mcpb|dxt)$/.test(path)) {
       const config = json(bytes, path);

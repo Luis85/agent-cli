@@ -1,8 +1,8 @@
-import { ensure } from '../../../../domain/shared/errors.ts';
 import { ensureSeparateDirectories, vaultPath, type WriteRequest } from '../../../../domain/documents/file.ts';
 import { validateInteractionLibrary, type InteractionDefinition, type InteractionEvent } from '../../domain/interactions/definition.ts';
 import type { Workspace } from '../../../../application/workspace/workspace.ts';
 import { defaultInteractionIds, starterInteraction } from './defaults.ts';
+import { ensureUi } from '../../domain/errors.ts';
 
 export interface InteractionDefinitionCodec {
   parse(bytes: Uint8Array, path: string): InteractionDefinition;
@@ -21,7 +21,7 @@ export class InteractionLibrary {
     const sources = await this.sources(directory);
     validateInteractionLibrary(sources.map(source => source.definition));
     const source = sources.find(candidate => candidate.definition.id === id);
-    ensure(source, 'UNKNOWN_INTERACTION', `No interaction ${id} in ${directory}. Run interactions list --library ${directory}.`);
+    ensureUi(source, 'UNKNOWN_INTERACTION', `No interaction ${id} in ${directory}. Run interactions list --library ${directory}.`);
     return { ...source.definition, revision: source.revision, bytes: source.bytes.length };
   }
   async validate(directory: string) {
@@ -46,7 +46,7 @@ export class InteractionLibrary {
   async import(sourceDirectory: string, directory: string) {
     ensureSeparateDirectories(sourceDirectory, directory);
     const sources = await this.sources(sourceDirectory);
-    ensure(sources.length, 'EMPTY_INTERACTION_LIBRARY', `No interaction definitions in ${sourceDirectory}.`);
+    ensureUi(sources.length, 'EMPTY_INTERACTION_LIBRARY', `No interaction definitions in ${sourceDirectory}.`);
     validateInteractionLibrary([...await this.list(directory), ...sources.map(source => source.definition)]);
     const plan = sources.map(({ definition, bytes }) => ({ path: `${directory}/${definition.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
     return { interactions: sources.map(source => source.definition.id), ...await this.commit(plan) };

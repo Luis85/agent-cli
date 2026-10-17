@@ -1,11 +1,12 @@
 import type { LocalizedError } from '../localization/localization.ts';
+import type { Warning } from '../../domain/shared/warnings.ts';
 
 /** What one invocation reports: its result, the executed scope once resolved, selected events and warnings. */
 export interface InvocationResponse {
   result: { ok: true; data: unknown } | { ok: false; error: LocalizedError };
   context?: unknown;
   events: readonly unknown[];
-  warnings: readonly string[];
+  warnings: readonly Warning[];
 }
 
 /**

@@ -181,7 +181,9 @@ async function run(): Promise<void> {
       activeContext = { workspaceRoot: files.root, root: project ? resolve(files.root, project.directory) : files.root, project };
       const app = createApp({ workspace, metadata: vaultMetadata, events, project });
       const context: CommandContext = { workspace, environment, events, metadata: vaultMetadata, app, ...activeContext, language: settings.language, input: standardInput };
-      const commandId = parsed.flags.help ? 'help' : id;
+      // --help runs the help command for the requested command id.
+      const invokedCommand = parsed.flags.help ? registry.resolveCommand('help') : command;
+      const commandId = invokedCommand.id;
       const data = await invokeCommand(events, {
         command: commandId, root: context.root, workspaceRoot: context.workspaceRoot, dryRun: workspace.dryRun,
       }, async () => {
@@ -196,9 +198,9 @@ async function run(): Promise<void> {
         await announceLayoutReady(events);
       }, async () => {
         const output = parsed.flags.help
-          ? await registry.commands.get('help')!.run(id === 'help' ? [] : [id], {}, context)
+          ? await invokedCommand.run(id === 'help' ? [] : [id], {}, context)
           : await runCommand(command, ...normalizedPathInputs(command, parsed.args.slice(1), flags, context), context);
-        return localizer().result(commandId, output);
+        return localizer().result(registry.commands.get(commandId), output);
       });
       result = { ok: true, data };
     }

@@ -112,7 +112,7 @@ export async function runSync(context: CommandContext, services: SyncServices, r
   } finally {
     interruption?.dispose();
     services.activity.syncing = false;
-    for (const { lock, release } of releases.reverse()) if (!(await release())) context.events.warn(warning('lockLeft', { lock }));
+    for (const { lock, release } of releases.reverse()) if (!(await release())) context.events.warn({ code: 'BACKLOG_SYNC_LOCK_LEFT', message: warning('lockLeft', { lock }), details: { lock } });
   }
   return {
     dryRun: request.mode === 'status' || context.workspace.dryRun, mode: request.resolve ? 'resolve' : request.mode, direction: request.resolve ? 'both' : request.direction,

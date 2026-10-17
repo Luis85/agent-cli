@@ -5,7 +5,7 @@ import { portableCli } from '../support/portable-cli.ts';
 
 const fixture = portableCli();
 const { cli } = fixture;
-const outsideWarning = (cwd: string, workspaceRoot: string) => `The working directory ${cwd} is outside the workspace root ${workspaceRoot}; relative paths resolve against the workspace root (context.root), not the working directory. Pass --root or set FORGE_ROOT to use another workspace.`;
+const outsideWarning = (cwd: string, workspaceRoot: string) => ({ code: 'CWD_OUTSIDE_WORKSPACE', details: { cwd, workspaceRoot }, message: `The working directory ${cwd} is outside the workspace root ${workspaceRoot}; relative paths resolve against the workspace root (context.root), not the working directory. Pass --root or set FORGE_ROOT to use another workspace.` });
 
 describe('value-taking options followed by a flag', () => {
   it('refuse an edit whose empty --replace would swallow --dry-run, so nothing is written', async () => {
@@ -78,7 +78,7 @@ describe('workspace root selection', () => {
     const defaulted = await cli(['config'], undefined, { root: null, env: { FORGE_ROOT: undefined } });
     expect(defaulted.body).toMatchObject({ context: { workspaceRoot: fixture.bundle }, warnings: [outsideWarning(fixture.project, fixture.bundle)] });
     const german = await cli(['config', '--lang', 'de'], undefined, { cwd: fixture.bundle });
-    expect(german.body.warnings).toEqual([expect.stringContaining(`Das Arbeitsverzeichnis ${fixture.bundle} liegt außerhalb`)]);
+    expect(german.body.warnings).toEqual([expect.objectContaining({ code: 'CWD_OUTSIDE_WORKSPACE', message: expect.stringContaining(`Das Arbeitsverzeichnis ${fixture.bundle} liegt außerhalb`) })]);
   });
 });
 

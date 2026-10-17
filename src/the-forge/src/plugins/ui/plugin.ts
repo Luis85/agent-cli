@@ -12,6 +12,7 @@ import { componentsCommand, type UiServicesFactory } from './presentation/compon
 import { interactionsCommand } from './presentation/interactions.ts';
 import { uiGenerators } from './presentation/generators.ts';
 import { de, uiStrings } from './presentation/strings.ts';
+import { uiErrors } from './presentation/errors.ts';
 
 /** Framework components and Storybook stories for the seven UI targets. */
 const renderer: UiRenderer = {
@@ -47,6 +48,7 @@ export const uiPlugin: CorePlugin = {
     generators: uiGenerators(services),
     settings: uiSettingsSchema,
     pathSettings: uiPathSettings,
+    errors: uiErrors,
     strings: { de },
   }),
 };

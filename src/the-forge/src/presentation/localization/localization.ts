@@ -2,9 +2,10 @@ import { AppError, ensure, errorMessage, isRecord } from '../../domain/shared/er
 import { germanActions, germanCommands, germanEvents, germanGuidance } from './catalog.ts';
 import { germanDescriptions } from './descriptions.ts';
 import { germanKernelMessages } from './messages.ts';
-import { renderWarning } from '../../domain/shared/kernel-messages.ts';
-import type { CommandArgument, CommandOption } from '../../application/plugins/command-metadata.ts';
+import { responseWarning, type Warning } from '../../domain/shared/warnings.ts';
+import type { CommandArgument, CommandMetadata, CommandOption, OutputLocalization } from '../../application/plugins/command-metadata.ts';
 import { germanErrors, germanHintVariant } from './errors.ts';
+import { germanErrorMessage } from './error-messages.ts';
 import { guidedHint } from './hints.ts';
 import { errorDefinition, type ErrorCode } from '../../domain/shared/error-catalog.ts';
 import type { Language, PluginCatalog } from '../../application/plugins/plugin-catalog.ts';
@@ -36,16 +37,17 @@ export class Localizer {
 
   /**
    * The command with German descriptions of itself and its actions where a catalog has them. Actions are keyed
-   * `<command> <action>` in the kernel and plugin catalogs; `make` actions are generators.
+   * `<command> <action>` in the kernel and plugin catalogs; the actions of a command with `generatorActions` are
+   * generators, described by generator id.
    */
-  command<T extends { id: string; description: string; options?: Options; args?: readonly CommandArgument[]; actions?: Readonly<Record<string, Described & { options?: Options }>> }>(command: T): T {
+  command<T extends { id: string; description: string; options?: Options; args?: readonly CommandArgument[]; actions?: Readonly<Record<string, Described & { options?: Options }>>; generatorActions?: boolean }>(command: T): T {
     if (this.language !== 'de') return command;
     const description = this.german('commands', command.id);
     const options = this.options(command.options), args = command.args && this.described(command.args);
     let translatedActions = false;
     const actions = command.actions && Object.fromEntries(Object.entries(command.actions).map(([id, action]) => {
       const key = `${command.id} ${id}`;
-      const german = translated(germanActions, key) ?? this.plugins?.text('de', 'actions', key) ?? (command.id === 'make' ? this.german('generators', id) : undefined);
+      const german = translated(germanActions, key) ?? this.plugins?.text('de', 'actions', key) ?? (command.generatorActions ? this.german('generators', id) : undefined);
       const actionOptions = this.options(action.options);
       if (german || actionOptions !== action.options) translatedActions = true;
       return [id, { ...action, ...(german ? { description: german } : {}), ...(actionOptions ? { options: actionOptions } : {}) }];
@@ -80,11 +82,12 @@ export class Localizer {
   }
 
   /**
-   * A host warning or plugin state reason in the response language. Plugin warnings keep their own text, and any
-   * record that is not a message the host created reads as text, so it can neither pass for one nor break the response.
+   * A host warning or plugin state reason as the response's `{code, message, details?}`: host messages in the
+   * response language, plugin warnings as raised. Any record that is not a message the host created reads as
+   * PLUGIN_WARNING text, so it can neither pass for one nor break the response.
    */
-  warning(warning: unknown): string {
-    return renderWarning(warning, this.language === 'de' ? germanKernelMessages : undefined);
+  warning(warning: unknown): Warning {
+    return responseWarning(warning, this.language === 'de' ? germanKernelMessages : undefined);
   }
 
   /** A plugin's manifest `name` and `description` in the response language. */
@@ -110,32 +113,29 @@ export class Localizer {
     });
   }
 
-  private globalOptions(data: Record<string, unknown>): { globalOptions?: Options } {
-    return isRecord(data.globalOptions) ? { globalOptions: this.options(data.globalOptions as Options) } : {};
+  /** English guidance text in the response language, by its text, wherever `value` holds it. */
+  private text(value: unknown): unknown {
+    if (typeof value === 'string') return translated(germanGuidance, value) ?? this.plugins?.description('de', value) ?? value;
+    if (Array.isArray(value)) return value.map(item => this.text(item));
+    return isRecord(value) ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, this.text(item)])) : value;
   }
 
-  private eventOutput(value: unknown): unknown {
-    return isRecord(value) && typeof value.changes === 'string' ? { ...value, changes: germanGuidance.eventChanges } : value;
+  private output(kind: OutputLocalization, value: unknown): unknown {
+    switch (kind) {
+      case 'text': return this.text(value);
+      case 'generators': case 'events': return this.catalogued(kind, value);
+      case 'errors': return Array.isArray(value) ? this.errors(value) : value;
+      case 'options': return isRecord(value) ? this.options(value as Options) : value;
+      case 'settings': return Array.isArray(value) ? value.map((section: unknown) => isRecord(section) ? { ...section, schema: this.schema(section.schema) } : section) : value;
+    }
   }
 
-  result(command: string, data: unknown): unknown {
-    if (this.language === 'en' || !isRecord(data)) return data;
-    if (command === 'schema' && typeof data.more === 'string') return { ...data, generators: this.catalogued('generators', data.generators), more: germanGuidance.schemaMore };
-    if (command === 'schema' && Array.isArray(data.errors)) return { ...data, eventOutput: this.eventOutput(data.eventOutput), ...this.globalOptions(data), generators: this.catalogued('generators', data.generators), errors: this.errors(data.errors) };
-    if (command === 'help' && typeof data.next === 'string') return { ...data, next: germanGuidance.helpNext };
-    if (['help', 'schema', 'make'].includes(command) && Array.isArray(data.generators)) return { ...data, ...(data.eventOutput === undefined ? {} : { eventOutput: this.eventOutput(data.eventOutput) }), ...this.globalOptions(data), generators: this.catalogued('generators', data.generators) };
-    if (command === 'help' && isRecord(data.globalOptions)) return { ...data, ...this.globalOptions(data) };
-    if (command === 'config' && Array.isArray(data.sections)) return { ...data, sections: data.sections.map((section: unknown) => isRecord(section) ? { ...section, schema: this.schema(section.schema) } : section) };
-    if (command === 'formats') return { ...data, textFiles: germanGuidance.textFiles, attachments: germanGuidance.attachments, otherFiles: germanGuidance.otherFiles };
-    if (command === 'events') return { ...data, contracts: this.catalogued('events', data.contracts), delivery: germanGuidance.delivery };
-    if (command === 'setup' && Array.isArray(data.nextSteps)) return {
-      ...data, nextSteps: data.nextSteps.map((step: unknown) => {
-        if (!isRecord(step) || typeof step.command !== 'string') return step;
-        const purpose = translated(germanGuidance.setup, step.command);
-        return purpose ? { ...step, purpose } : step;
-      }),
-    };
-    return data;
+  /** A successful result in the response language: only the fields the command's `localizedOutput` names change. */
+  result(command: Pick<CommandMetadata, 'localizedOutput'> | undefined, data: unknown): unknown {
+    const fields = command?.localizedOutput;
+    if (this.language === 'en' || fields === undefined || !isRecord(data)) return data;
+    const localized = Object.entries(fields).filter(([field]) => Object.hasOwn(data, field));
+    return localized.length === 0 ? data : { ...data, ...Object.fromEntries(localized.map(([field, kind]) => [field, this.output(kind, data[field])])) };
   }
 
   /** Built-in and plugin-registered codes add a catalog hint and retryability; other plugin codes keep their own shape. */
@@ -158,7 +158,9 @@ export class Localizer {
     const refined = typeof variant === 'string' && Object.hasOwn(builtIn!.variants!.hints, variant) ? variant : undefined;
     if (!german) return { code, message: diagnostic, hint: guidedHint(refined ? builtIn!.variants!.hints[refined]! : definition.hint, code, details, 'en', this.invoked), retryable, ...(details ? { details } : {}) };
     const germanHint = refined === undefined ? undefined : germanHintVariant(code as ErrorCode, refined);
+    // Built-in codes keep the concrete values of the occurrence where a German template covers its details.
+    const message = (builtIn ? germanErrorMessage(code as ErrorCode, details) : undefined) ?? german.summary;
     // A namespaced diagnostic preserves plugin/application details, including their own diagnostic key.
-    return { code, message: german.summary, hint: guidedHint(germanHint ?? german.hint, code, details, 'de', this.invoked), retryable, details: { ...details, localization: { originalMessage: diagnostic, ...(details?.localization !== undefined ? { originalDetails: details.localization } : {}) } } };
+    return { code, message, hint: guidedHint(germanHint ?? german.hint, code, details, 'de', this.invoked), retryable, details: { ...details, localization: { originalMessage: diagnostic, ...(details?.localization !== undefined ? { originalDetails: details.localization } : {}) } } };
   }
 }

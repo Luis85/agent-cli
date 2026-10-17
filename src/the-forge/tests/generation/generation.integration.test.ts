@@ -67,11 +67,13 @@ describe('generation review and explicit revision authorization', () => {
 
   it('provides CI drift status with no writes and succeeds after explicit generation', async () => {
     const service = new GenerationService(workspace), writes = [write('ui/item.ts', 'content')];
-    await expect(service.check(writes, 'UI_DRIFT')).rejects.toMatchObject({ code: 'UI_DRIFT', exitCode: 5, details: { outputs: [{ path: 'ui/item.ts', status: 'missing' }] } });
+    await expect(service.check(writes)).rejects.toMatchObject({ code: 'GENERATION_DRIFT', exitCode: 5, details: { outputs: [{ path: 'ui/item.ts', status: 'missing' }] } });
     expect(await files.list()).toEqual([]);
     await service.commit(writes);
-    expect((await service.check(writes, 'UI_DRIFT')).matches).toBe(true);
-    await expect(service.check([write('ui/item.ts', 'changed')], 'DATA_SOURCE_DRIFT')).rejects.toMatchObject({ code: 'DATA_SOURCE_DRIFT', exitCode: 5, details: { outputs: [{ path: 'ui/item.ts', status: 'changed' }] } });
+    expect((await service.check(writes)).matches).toBe(true);
+    // A plugin reports drift with its own code; the service only supplies the message and the drifted outputs.
+    const drift = (message: string, details: object) => Object.assign(new Error(message), { code: 'UI_DRIFT', details });
+    await expect(service.check([write('ui/item.ts', 'changed')], drift)).rejects.toMatchObject({ code: 'UI_DRIFT', message: expect.stringContaining('--plan'), details: { outputs: [{ path: 'ui/item.ts', status: 'changed' }] } });
     expect(new TextDecoder().decode((await files.read('ui/item.ts')).bytes)).toBe('content');
   });
 
@@ -83,6 +85,6 @@ describe('generation review and explicit revision authorization', () => {
     expect(Object.keys(plan.revisions)).toEqual(['__proto__', 'toString']);
     expect(JSON.parse(new TextDecoder().decode((await files.read('review.json')).bytes))).toEqual(plan.revisions);
     await service.commit(writes, plan.revisions);
-    expect((await service.check(writes, 'UI_DRIFT')).matches).toBe(true);
+    expect((await service.check(writes)).matches).toBe(true);
   });
 });

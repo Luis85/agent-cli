@@ -63,13 +63,26 @@ export interface CommandMetadata extends CommandMode {
   actions?: Readonly<Record<string, CommandAction>>;
   defaultAction?: string;
   unknownAction?: UnknownActionCode;
+  /** The actions are registered generators (`make`): their descriptions translate by generator id. */
+  generatorActions?: boolean;
   /** Optional JSON Schema of `data` in a successful response. */
   output?: JsonSchema;
   /** Failure codes the command reports itself, beyond the input and routing codes every command can raise. */
   errors?: readonly string[];
   /** One to three invocations after `forge`, each starting with the command id; examples are not translated. */
   examples?: readonly string[];
+  /** Which top-level fields of a successful result `--lang` translates, and how; results are otherwise never translated. */
+  localizedOutput?: Readonly<Record<string, OutputLocalization>>;
 }
+/**
+ * How the response language rewrites one result field: `text` translates English guidance by its text wherever the
+ * value holds it (a string, or strings inside arrays and objects); `generators` and `events` translate the
+ * `description` of `[{id, description}]` entries by id; `errors` the `summary` of `[{code, summary}]` entries by
+ * code; `options` the descriptions of an option metadata object; `settings` the descriptions inside the `schema` of
+ * `[{schema}]` sections. A value of another shape stays unchanged.
+ */
+export type OutputLocalization = 'text' | 'generators' | 'events' | 'errors' | 'options' | 'settings';
+const outputLocalizations: readonly OutputLocalization[] = ['text', 'generators', 'events', 'errors', 'options', 'settings'];
 /** The words of an action id: `iteration add` selects the arguments `iteration`, `add`. */
 const actionWords = (id: string): string[] => id.split(' ');
 
@@ -346,5 +359,7 @@ export function validateCommandMetadata(command: Record<string, unknown>): void 
   ensure(command.unknownAction === undefined || (unknownActionCodes.includes(command.unknownAction as UnknownActionCode) && isRecord(command.actions)), 'INVALID_PLUGIN', `${where} unknownAction must be ${unknownActionCodes.join(' or ')} for a command with actions.`);
   ensure(command.examples === undefined || (Array.isArray(command.examples) && command.examples.length >= 1 && command.examples.length <= 3
     && command.examples.every(example => typeof example === 'string' && (example === command.id || example.startsWith(`${String(command.id)} `)))), 'INVALID_PLUGIN', `${where} examples must list one to three invocations that start with the command id.`);
+  ensure(command.generatorActions === undefined || typeof command.generatorActions === 'boolean', 'INVALID_PLUGIN', `${where} generatorActions must be a boolean.`);
+  ensure(command.localizedOutput === undefined || (isRecord(command.localizedOutput) && Object.values(command.localizedOutput).every(kind => outputLocalizations.includes(kind as OutputLocalization))), 'INVALID_PLUGIN', `${where} localizedOutput must map result fields to ${outputLocalizations.join(', ')}.`);
   ensure(command.errors === undefined || (Array.isArray(command.errors) && command.errors.every(code => typeof code === 'string' && /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code))), 'INVALID_PLUGIN', `${where} errors must list UPPER_SNAKE_CASE codes.`);
 }

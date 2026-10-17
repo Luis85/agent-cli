@@ -6,6 +6,7 @@ import { setupTemplates, workflowTemplates } from './infrastructure/pack.ts';
 import { templatesCommand } from './presentation/command.ts';
 import { documentGenerator } from './presentation/document.ts';
 import { templatesStrings } from './presentation/strings.ts';
+import { templateErrors } from './presentation/errors.ts';
 
 const installer: TemplateInstallerService = { setupTemplates: () => setupTemplates };
 
@@ -35,6 +36,7 @@ export const templatesPlugin: CorePlugin = {
           timeFormat: { type: 'string', minLength: 1, default: 'HH:mm', description: 'dayjs format of {{time}} placeholders without their own format.' },
         },
       },
+      errors: templateErrors,
       strings: {
         de: {
           commands: { templates: 'Markdown-Vorlagen und Pflichtfelder entdecken oder das Planungspaket installieren.' },

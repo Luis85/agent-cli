@@ -6,6 +6,7 @@ import { arity, value } from '../../../application/plugins/command-input.ts';
 import type { JsonSchema } from '../../../domain/schema/json-schema.ts';
 import { ensure } from '../../../domain/shared/errors.ts';
 import { skillPaths, skillTargetChoices, targetRoots } from '../../../domain/skills/skill.ts';
+import { ensureSkill } from '../domain/errors.ts';
 
 const listOutput: JsonSchema = { type: 'object', required: ['skills'], properties: { skills: { type: 'array', items: { type: 'string' } } } };
 const showOutput: JsonSchema = {
@@ -39,7 +40,7 @@ export function skillsCommand(skills: SkillCatalog): Command {
     async run(args, flags, { workspace }) {
       const action = args[0] ?? 'list';
       if (action === 'list') { arity(args, 0, 1); return { skills: skills.list().map(skill => skill.id) }; }
-      if (action === 'show') { arity(args, 2); const skill = skills.get(args[1]!); ensure(skill, 'UNKNOWN_SKILL', args[1]!); return skill; }
+      if (action === 'show') { arity(args, 2); const skill = skills.get(args[1]!); ensureSkill(skill, 'UNKNOWN_SKILL', args[1]!); return skill; }
       ensure(action === 'install', 'INVALID_ARGUMENT', 'Use skills list, show, or install.'); arity(args, 1);
       const out = value(flags, 'out'), target = value(flags, 'target');
       ensure(out === undefined || target === undefined, 'INVALID_ARGUMENT', 'Use either --target or --out.');

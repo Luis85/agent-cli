@@ -70,7 +70,7 @@ describe('declared option constraints', () => {
     expect((await cli(['read', 'notes/parts.md', '--parts', 'body,nope'])).body.error)
       .toMatchObject({ code: 'INVALID_OPTION_VALUE', details: { option: 'parts', value: 'body,nope', allowed: ['content', 'properties', 'body'] } });
     const german = (await cli(['--lang', 'de', 'read', 'notes/parts.md', '--parts', 'body,nope'])).body.error;
-    expect(german.message).toContain('kommagetrennten Listenoption');
+    expect(german.message).toBe('--parts erlaubt "body,nope" nicht; gültige Werte (bei einer kommagetrennten Listenoption mehrere davon): content, properties, body.');
     expect(german.details.localization.originalMessage).toBe('--parts must be a comma-separated list of: content, properties, body.');
     const contract = (await cli(['schema', 'read'])).body.data.commands[0];
     expect(contract.options.parts).toMatchObject({ type: 'string', enum: ['content', 'properties', 'body'], list: true });
@@ -101,7 +101,7 @@ describe('declared option constraints', () => {
 
   it('describes the constraint in the response language and leaves help available', async () => {
     const german = await cli(['--lang', 'de', 'list', '--kind', 'note']);
-    expect(german.body.error).toMatchObject({ code: 'INVALID_OPTION_VALUE', message: expect.stringContaining('Optionswert'), details: { option: 'kind', localization: { originalMessage: expect.stringContaining('--kind must be one of') } } });
+    expect(german.body.error).toMatchObject({ code: 'INVALID_OPTION_VALUE', message: expect.stringMatching(/^--kind erlaubt "note" nicht; gültige Werte .*: /), details: { option: 'kind', localization: { originalMessage: expect.stringContaining('--kind must be one of') } } });
     expect((await cli(['edit', '--help'])).status).toBe(0);
   });
 });

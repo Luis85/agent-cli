@@ -3,6 +3,8 @@ import { revisionConflict } from '../../domain/documents/write-plan.ts';
 import { editRequest, type ApplyPlan, type PlanOperation } from '../../domain/documents/apply-plan.ts';
 import { base64Bytes } from '../../domain/documents/base64.ts';
 import { EventBus } from '../plugins/events.ts';
+import { registerHostEvents } from '../plugins/host-events.ts';
+import { isKernelMessage } from '../../domain/shared/kernel-messages.ts';
 import type { MetadataIndex } from '../metadata/ports.ts';
 import { metadataChanges } from '../metadata/cache-events.ts';
 import { FileManager } from '../vault/file-manager.ts';
@@ -18,8 +20,15 @@ export interface ApplyScope { workspace: Workspace; metadata: MetadataIndex; wor
 type Summary = { op: PlanOperation['op']; path: string } & Record<string, unknown>;
 type OperationSummary = Summary & { index: number };
 
-/** Planning publishes nothing: its records would describe changes that are not committed yet. */
-const silentEvents = () => new EventBus({ depth: () => 0, run: callback => callback() });
+/**
+ * Planning publishes no events: its records would describe changes that are not committed yet, so they stay on a bus
+ * of their own that knows the host events and has no listeners. Its warnings describe the plan and are kept.
+ */
+function silentEvents(): EventBus {
+  const bus = new EventBus({ depth: () => 0, run: callback => callback() });
+  registerHostEvents(bus);
+  return bus;
+}
 
 function contentBytes(content: string, encoding: 'utf8' | 'base64'): Uint8Array {
   if (encoding === 'utf8') return new TextEncoder().encode(content);
@@ -54,7 +63,8 @@ export class PlanRunner {
     const index = await metadata.fork(this.staged);
     let failure: unknown;
     const observer: CommitObserver = { async committed(batch) { try { await index.update(metadataChanges(batch)); } catch (error) { failure ??= error; } } };
-    const planned = new Workspace(this.staged, workspace.codec, silentEvents(), false, workspace.root, observer);
+    const planningEvents = silentEvents();
+    const planned = new Workspace(this.staged, workspace.codec, planningEvents, false, workspace.root, observer);
     this.planning = { workspace: planned, files: new FileManager(planned, index, { workspace: this.scope.workspaceScope }) };
     const operations: OperationSummary[] = [];
     for (const [position, item] of plan.operations.entries()) {
@@ -64,6 +74,8 @@ export class PlanRunner {
         if (failure !== undefined) throw failure;
       } catch (error) { throw located(error, position, item.op); }
     }
+    // Warnings of the planned operations (a move that drops an extension) describe the plan the batch commits.
+    for (const warning of planningEvents.warningRecords) if (isKernelMessage(warning)) workspace.warn(warning);
     const { batch, previous, trash, operations: owners } = await plannedBatch(this.staged, this.trash);
     // A delete whose files the plan created itself trashes nothing, so its trash path never exists.
     for (const summary of operations) if (summary.op === 'delete' && !trash.includes(String(summary.trashPath))) summary.trashPath = null;

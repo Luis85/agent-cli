@@ -1,5 +1,5 @@
-import { ensure } from '../../../../domain/shared/errors.ts';
 import type { UiValue } from '../components/definition.ts';
+import { ensureUi } from '../errors.ts';
 
 export const interactionEvents = ['click', 'dblclick', 'input', 'change', 'submit', 'keydown', 'keyup', 'focus', 'blur'] as const;
 /** React maps focus/blur to the bubbling native focusin/focusout events. */
@@ -29,7 +29,7 @@ export interface InteractionDefinition {
 export function validateInteractionLibrary(definitions: readonly InteractionDefinition[]): void {
   const ids = new Set<string>();
   for (const definition of definitions) {
-    ensure(!ids.has(definition.id), 'DUPLICATE_INTERACTION', `Duplicate interaction ${definition.id}.`);
+    ensureUi(!ids.has(definition.id), 'DUPLICATE_INTERACTION', `Duplicate interaction ${definition.id}.`);
     ids.add(definition.id);
   }
 }

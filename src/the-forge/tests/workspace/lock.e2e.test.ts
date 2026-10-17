@@ -18,14 +18,15 @@ it('breaks a writer lock whose process no longer runs and reports it in the invo
   await writeFile(lock, holder);
   const english = await cli(['create', 'first.md', '--content', '# Note']);
   expect(english.status).toBe(0);
-  expect(english.body.warnings).toEqual([expect.stringContaining(`Removed the stale lock .agent-cli.lock of pid ${pid}`)]);
+  expect(english.body.warnings).toEqual([expect.objectContaining({ code: 'LOCK_RECOVERED', message: expect.stringContaining(`Removed the stale lock .agent-cli.lock of pid ${pid}`) })]);
+  expect(english.body.warnings[0].details).toMatchObject({ path: '.agent-cli.lock', pid, reason: { code: 'LOCK_STALE_DEAD_PROCESS' }, command: { code: 'LOCK_HOLDER_COMMAND', details: { command: 'create' } } });
   expect(await lockFiles()).toEqual([]);
 
   await writeFile(lock, holder);
   const german = await cli(['create', 'second.md', '--content', '# Note', '--lang', 'de']);
   expect(german.status).toBe(0);
-  expect(german.body.warnings).toEqual([expect.stringContaining(`Die verwaiste Sperre .agent-cli.lock von PID ${pid}`)]);
-  expect(german.body.warnings[0]).toMatch(/, Befehl create\) wurde entfernt: ihr Prozess läuft nicht mehr\./);
+  expect(german.body.warnings).toEqual([expect.objectContaining({ code: 'LOCK_RECOVERED', message: expect.stringContaining(`Die verwaiste Sperre .agent-cli.lock von PID ${pid}`) })]);
+  expect(german.body.warnings[0].message).toMatch(/, Befehl create\) wurde entfernt: ihr Prozess läuft nicht mehr\./);
   expect(await lockFiles()).toEqual([]);
 });
 
@@ -53,7 +54,7 @@ it('lets concurrent processes contend for a stale lock: one breaks it, every wri
   const results = await Promise.all(Array.from({ length: 5 }, (_, index) => fixture.cli(['create', `contender-${index}.md`, '--content', '# Contender'])));
   for (const result of results) if (result.status !== 0) expect(result.body.error).toMatchObject({ code: 'WORKSPACE_BUSY', retryable: true, details: { stale: 'active' } });
   expect(results.some(result => result.status === 0)).toBe(true);
-  expect(results.flatMap(result => result.body.warnings ?? []).filter((warning: string) => warning.includes('Removed the stale lock'))).toHaveLength(1);
+  expect(results.flatMap(result => result.body.warnings ?? []).filter((warning: { code: string }) => warning.code === 'LOCK_RECOVERED')).toHaveLength(1);
   expect(await lockFiles()).toEqual([]);
 });
 

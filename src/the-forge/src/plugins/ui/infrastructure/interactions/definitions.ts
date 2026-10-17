@@ -1,11 +1,11 @@
 import { z } from 'zod';
 import { stringify } from 'yaml';
-import { forgeError, AppError, ensure } from '../../../../domain/shared/errors.ts';
 import { vaultPath } from '../../../../domain/documents/file.ts';
 import { interactionEvents, interactionTriggerEvents, isSafeNavigationUrl, type InteractionDefinition } from '../../domain/interactions/definition.ts';
 import { uiBindingParts, uiHasMalformedBinding, uiWholeBinding } from '../../domain/components/syntax.ts';
 import type { InteractionDefinitionCodec } from '../../application/interactions/library.ts';
 import type { DocumentCodec } from '../../../../application/workspace/ports.ts';
+import { ensureUi, isUiError, uiError } from '../../domain/errors.ts';
 
 const identifier = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).refine(value => !['__proto__', 'constructor', 'prototype'].includes(value), 'Reserved state name.');
 const scalar = z.union([z.string(), z.number().finite(), z.boolean(), z.null()]).refine(value => !uiHasMalformedBinding(value), 'Invalid scalar binding syntax.');
@@ -51,11 +51,11 @@ export class MarkdownInteractionDefinitions implements InteractionDefinitionCode
     try {
       const document = this.documents.inspect('interaction.md', bytes) as { properties: unknown; body: string };
       const result = schema.safeParse(document.properties);
-      ensure(result.success, 'INVALID_INTERACTION', `${path}: ${result.success ? '' : result.error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join('; ')}`);
+      ensureUi(result.success, 'INVALID_INTERACTION', `${path}: ${result.success ? '' : result.error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join('; ')}`);
       return { ...result.data, description: document.body, sourcePath: path };
     } catch (error) {
-      if (error instanceof AppError && error.code === 'INVALID_INTERACTION') throw error;
-      throw forgeError('INVALID_INTERACTION', `${path}: ${error instanceof Error ? error.message : 'Invalid interaction definition.'}`);
+      if (isUiError(error, 'INVALID_INTERACTION')) throw error;
+      throw uiError('INVALID_INTERACTION', `${path}: ${error instanceof Error ? error.message : 'Invalid interaction definition.'}`);
     }
   }
   serialize(definition: InteractionDefinition): Uint8Array {
