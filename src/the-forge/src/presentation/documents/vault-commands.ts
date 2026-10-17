@@ -4,8 +4,8 @@ import { option } from '../../application/plugins/command-metadata.ts';
 
 const ifMatch = option.string('SHA-256 revision of the source file (from read); required unless --dry-run.');
 const linkOptions = { 'if-match': ifMatch, 'no-update-links': option.boolean('Move without rewriting links to the moved files.') };
-// Idempotent although --if-match is optional for a dry run: a real change requires it, and a repeat then fails
-// with NOT_FOUND (the source moved or was deleted) or CONFLICT.
+// Idempotent although --if-match is optional for a dry run: a real change requires it, and a repeat then reports
+// the move as already applied, or fails with NOT_FOUND (the source was deleted) or CONFLICT.
 const vaultWrite = { scope: 'project', discovery: false, mutating: true, idempotent: true } as const;
 const moveErrors = ['NOT_FOUND', 'CONFLICT', 'DESTINATION_EXISTS', 'PROTECTED_PATH', 'INVALID_MOVE'];
 /** A real change needs the source's revision; a dry run may omit it and reports the revision to pass. */
@@ -22,7 +22,7 @@ export function vaultCommands(): Command[] {
       });
     } },
     { id: 'move', description: 'Move or rename a file or folder and rewrite every link to it in one guarded batch.', usage: 'move <from> <to> --if-match sha256 [--no-update-links]', options: linkOptions, ...vaultWrite, errors: moveErrors,
-      args: [{ name: 'from', description: 'File or folder to move.', required: true }, { name: 'to', description: 'New path; it must not exist.', required: true }], async run(args, flags, { app, workspace }) {
+      args: [{ name: 'from', description: 'File or folder to move.', required: true }, { name: 'to', description: 'New path that must not exist, or a folder to move into: one ending with / or one that exists.', required: true }], async run(args, flags, { app, workspace }) {
       arity(args, 2);
       return app.fileManager.move(args[0]!, args[1]!, { ifMatch: guard(flags, workspace.dryRun), updateLinks: flags['no-update-links'] !== true });
     } },

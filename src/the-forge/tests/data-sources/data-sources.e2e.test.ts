@@ -1,4 +1,4 @@
-import { committedEvents } from '../support/events.ts';
+import { committedEvents, unchangedRepeat } from '../support/events.ts';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -66,7 +66,7 @@ describe('portable data-source workflow', () => {
     expect(records).toHaveLength(3);
     expect(new Set(records.map((record: { id: string }) => record.id)).size).toBe(3);
     expect(records[0]).toMatchObject({ title: 'Purchase request', approved: false });
-    expect((await cli(args)).body.error.code).toBe('CONFLICT');
+    expect(unchangedRepeat(await cli(args))).toBe(true);
   });
 
   it('plans and checks drift without mutation, then regenerates only reviewed revisions', async () => {

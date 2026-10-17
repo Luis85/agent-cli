@@ -45,7 +45,8 @@ describe('portable explicit read/apply project targeting', () => {
     expect(await readFile(file('alpha'), 'utf8')).toBe('alpha only\n');
     expect(await readFile(file('beta'), 'utf8')).toBe('identical bytes\n');
     expect((await run(['apply', '-', '--project', 'alpha'], input)).body.error.code).toBe('CONFLICT');
-    const protectedPlan = JSON.stringify({ version: 1, operations: [{ op: 'delete', path: '.forge/project.json' }] });
+    const marker = (await run(['read', '.forge/project.json', '--project', 'alpha'])).body.data.revision as string;
+    const protectedPlan = JSON.stringify({ version: 1, operations: [{ op: 'delete', path: '.forge/project.json', ifMatch: marker }] });
     expect((await run(['apply', '-', '--project', 'alpha'], protectedPlan)).body.error.code).toBe('PROTECTED_PATH');
     expect((await run(['read', '../beta/same.txt', '--project', 'alpha'])).body.error.code).toBe('INVALID_PATH');
     await unchangedSelection();

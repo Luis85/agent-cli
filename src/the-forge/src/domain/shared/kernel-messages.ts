@@ -48,6 +48,10 @@ export const kernelMessages = {
   LAYOUT_CALLBACK_FAILED: 'Layout ready: {diagnostic}',
   QUIT_TASK_FAILED: 'Quit task: {diagnostic}',
   PLUGIN_CLEANUP_FAILED: 'Plugin cleanup: {diagnostic}',
+  // Mutations that succeed but probably differ from what the caller meant; each text starts with its stable code.
+  EXTENSION_DROPPED: 'EXTENSION_DROPPED: {to} has no extension, so moving {from} drops {extension}. End the destination with / to move into a folder, or add the extension.',
+  LITERAL_NEWLINE: 'LITERAL_NEWLINE: --{option} contains the two characters \\n but no line break, so they are written literally. Pass real line breaks, for example with --stdin.',
+  EMPTY_STDIN: 'EMPTY_STDIN: --stdin read no bytes, so {path} is written empty. Pipe the content, or pass --content "" to write an empty file on purpose.',
 } as const satisfies Record<string, string>;
 
 export type KernelMessageCode = keyof typeof kernelMessages;

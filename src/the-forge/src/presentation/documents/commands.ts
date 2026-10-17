@@ -6,11 +6,13 @@ import type { Command, CommandContext } from '../../application/plugins/registry
 import { arity, integer, parseJson, readInputBytes, value } from '../../application/plugins/command-input.ts';
 import { listOptionItems, option } from '../../application/plugins/command-metadata.ts';
 import { encodeText } from '../cli/input.ts';
+import { inputWarnings } from './input-warnings.ts';
 import { applyCommand, editCommand } from './edit-commands.ts';
 import { listOutput, readOutput, validateOutput } from './output.ts';
 
-async function content(flags: Record<string, string | boolean>, context: CommandContext): Promise<Uint8Array> {
+async function content(path: string, flags: Record<string, string | boolean>, context: CommandContext): Promise<Uint8Array> {
   const bytes = await readInputBytes(flags, context, 'Choose exactly one of --content, --from, or --stdin.');
+  inputWarnings(path, flags, bytes, ['content'], context.workspace);
   const encoding = value(flags, 'encoding') ?? 'utf8';
   if (encoding === 'base64') {
     const text = Buffer.from(bytes).toString('utf8').trim();
@@ -64,7 +66,7 @@ export function documentCommands(): Command[] {
       const nextCursor = pager.nextCursor();
       return { files: pager.items.map(path => ({ path, kind: fileKind(path) })), ...(nextCursor === undefined ? {} : { nextCursor }) };
     } },
-    { id: 'read', description: 'Read a document, UTF-8 text or base64 attachment with its SHA-256 revision.', usage: 'read <path> [--parts body] [--project id]', ...reading, projectOption: 'project', args: [pathArgument()], errors: ['NOT_FOUND', 'INVALID_FRONTMATTER'],
+    { id: 'read', description: 'Read a document, UTF-8 text or base64 attachment with its SHA-256 revision.', usage: 'read <path> [--parts body] [--project id]', ...reading, projectOption: 'project', args: [pathArgument()], errors: ['NOT_FOUND', 'INVALID_CANVAS', 'INVALID_BASE', 'INVALID_YAML'],
       options: { parts: option.string('Comma-separated optional parts of a Markdown read.', { enum: readParts, list: true }), project: option.string('Use this project instead of the selected project.') }, output: readOutput, async run(args, flags, { workspace }) {
       arity(args, 1); const parts = selectedParts(flags, fileKind(args[0]!));
       const result = await workspace.read(args[0]!);
@@ -84,21 +86,29 @@ export function documentCommands(): Command[] {
       const kind = fileKind(path);
       ensure(hasInput || flags.encoding === undefined, 'INVALID_INPUT', '--encoding requires an input source.');
       ensure(hasInput || defaultable.includes(kind), 'INVALID_INPUT', 'Attachments require content, from, or stdin.');
-      const bytes = hasInput ? await content(flags, context) : defaultDocument(kind);
+      const bytes = hasInput ? await content(path, flags, context) : defaultDocument(kind);
       return context.workspace.write([{ path, bytes }], { diff: true });
     } },
     // Idempotent although --if-match is optional: it is required once the file exists, so a repeat is refused with
     // CONFLICT, or writes the same bytes when the revision still matches.
     { id: 'write', description: 'Create or replace a file; replacement requires its current revision.', usage: 'write <path> (--content text | --from path | --stdin) [--encoding base64] [--if-match sha256]', ...writing, idempotent: true, args: [pathArgument()],
       options: { ...contentOptions, 'if-match': ifMatch() }, errors: ['CONFLICT', 'INVALID_INPUT', 'INVALID_ENCODING', 'INVALID_FRONTMATTER', 'INVALID_CANVAS', 'INVALID_BASE'], async run(args, flags, context) {
-      arity(args, 1); return context.workspace.write([{ path: args[0]!, bytes: await content(flags, context), expectedRevision: value(flags, 'if-match') }], { diff: true });
+      arity(args, 1); return context.workspace.write([{ path: args[0]!, bytes: await content(args[0]!, flags, context), expectedRevision: value(flags, 'if-match') }], { diff: true });
     } },
     editCommand(),
-    { id: 'properties', description: 'Merge YAML frontmatter properties while preserving the Markdown body.', usage: 'properties <note.md> --set JSON --if-match sha256', ...writing, args: [pathArgument('Markdown note path.')], errors: ['CONFLICT', 'UNSUPPORTED_EDIT', 'INVALID_JSON', 'INVALID_INPUT', 'INVALID_KEY', 'INVALID_FRONTMATTER'],
-      options: { set: option.string('JSON object of properties to set.', { required: true }), 'if-match': ifMatch(true) }, async run(args, flags, { workspace }) {
+    { id: 'properties', description: 'Set or remove YAML frontmatter properties while preserving the Markdown body and untouched YAML.', usage: 'properties <note.md> (--set JSON | --unset key[,key] | both) --if-match sha256', ...writing, args: [pathArgument('Markdown note path.')], errors: ['CONFLICT', 'UNSUPPORTED_EDIT', 'INVALID_JSON', 'INVALID_INPUT', 'INVALID_KEY', 'INVALID_FRONTMATTER', 'INVALID_YAML'],
+      options: {
+        set: option.string('JSON object of properties to set; null stores YAML null (use --unset to remove a key).'),
+        unset: option.string('Comma-separated property names to remove.'),
+        'if-match': ifMatch(true),
+      }, async run(args, flags, { workspace }) {
       arity(args, 1); ensure(fileKind(args[0]!) === 'markdown', 'UNSUPPORTED_EDIT', 'Properties require a Markdown note.');
-      const changes = parseJson(value(flags, 'set', true)!); ensure(isRecord(changes), 'INVALID_INPUT', '--set must be a JSON object.');
-      return workspace.edit(args[0]!, value(flags, 'if-match', true)!, bytes => workspace.codec.properties(bytes, changes));
+      const set = value(flags, 'set'), unset = value(flags, 'unset');
+      ensure(set !== undefined || unset !== undefined, 'INVALID_INPUT', 'Pass --set, --unset or both.');
+      const changes = set === undefined ? {} : parseJson(set); ensure(isRecord(changes), 'INVALID_INPUT', '--set must be a JSON object.');
+      const removed = unset === undefined ? [] : listOptionItems(unset);
+      ensure(removed.every(key => key.length > 0) && removed.every(key => !Object.hasOwn(changes, key)), 'INVALID_INPUT', '--unset lists nonempty property names that --set does not also set.');
+      return workspace.edit(args[0]!, value(flags, 'if-match', true)!, bytes => workspace.codec.properties(bytes, changes, removed));
     } },
     { id: 'patch', description: 'Set a Canvas/Base JSON Pointer; - appends to an existing array.', usage: 'patch <path> --pointer /nodes/- --value JSON --if-match sha256', ...writing, args: [pathArgument('Canvas or Base path.')], errors: ['CONFLICT', 'INVALID_POINTER', 'INVALID_JSON', 'INVALID_CANVAS', 'INVALID_BASE', 'UNSUPPORTED_EDIT'],
       options: { pointer: option.string('JSON Pointer to set; /- appends to an existing array.', { required: true }), value: option.string('JSON value to set.', { required: true }), 'if-match': ifMatch(true) }, async run(args, flags, { workspace }) {

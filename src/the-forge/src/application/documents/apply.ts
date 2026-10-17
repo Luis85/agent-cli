@@ -85,10 +85,17 @@ export class PlanRunner {
     }
   }
 
-  /** `ifMatch` names the revision before the plan; the planned operation then runs against the planned revision. */
+  /**
+   * `ifMatch` names the revision before the plan; the planned operation then runs against the planned revision.
+   * Like the standalone commands' --if-match, it is required for every path that existed before the plan; only a
+   * path the plan itself creates (or one it moved away earlier) needs none.
+   */
   private async guard(path: string, ifMatch: string | undefined): Promise<void> {
-    if (ifMatch === undefined) return;
     const original = await this.staged.originalRevision(path);
+    if (ifMatch === undefined) {
+      ensure(original === null, 'CONFLICT', `${path} existed before the plan; pass ifMatch with the revision a read returned (error.details.currentRevision).`, revisionConflict(path, null, original));
+      return;
+    }
     ensure(original === ifMatch, 'CONFLICT', `${path} changed; read it again and use its current revision as ifMatch.`, revisionConflict(path, ifMatch, original));
   }
 
@@ -98,7 +105,6 @@ export class PlanRunner {
       case 'write': {
         const current = await this.staged.current(item.path);
         await this.guard(item.path, item.ifMatch);
-        if (current?.origin && item.ifMatch === undefined) throw forgeError('CONFLICT', `Replacing ${item.path} requires ifMatch with the revision it had before the plan.`, revisionConflict(item.path, null, current.origin.revision));
         await workspace.write([{ path: item.path, bytes: contentBytes(item.content, item.encoding), expectedRevision: current?.revision }]);
         return { op: 'write', path: item.path, operation: current ? 'updated' : 'created' };
       }

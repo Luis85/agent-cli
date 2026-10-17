@@ -1,4 +1,4 @@
-import { committedEvents } from '../support/events.ts';
+import { committedEvents, unchangedRepeat } from '../support/events.ts';
 import { beforeAll, expect, it } from 'vitest';
 import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -33,7 +33,7 @@ it('creates discoverable library projects and tested components in the configure
     expect(await readFile(join(project, 'src/task-lib/tests/work-item.domain.unit.test.ts'), 'utf8')).toContain('rejects an empty identity');
     expect((await cli([...args, 'project', 'component', 'task-lib', 'FindItem', '--kind', 'application'])).status).toBe(0);
     expect(await readFile(join(project, 'src/task-lib/src/application/find-item.ts'), 'utf8')).toContain('FindItemRepository');
-    expect((await cli([...args, 'project', 'component', 'task-lib', 'WorkItem'])).body.error.code).toBe('CONFLICT');
+    expect(unchangedRepeat(await cli([...args, 'project', 'component', 'task-lib', 'WorkItem']))).toBe(true);
     expect((await cli([...args, 'project', 'create', 'task-lib'])).body.error.code).toBe('PROJECT_EXISTS');
     expect((await cli([...args, 'project', 'inspect', 'absent'])).body.error.code).toBe('PROJECT_NOT_FOUND');
     expect((await cli([...args, 'project', 'create', '../escape'])).body.error.code).toBe('INVALID_PROJECT_NAME');

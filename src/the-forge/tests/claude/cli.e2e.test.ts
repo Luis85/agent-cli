@@ -1,4 +1,4 @@
-import { committedEvents } from '../support/events.ts';
+import { committedEvents, unchangedRepeat } from '../support/events.ts';
 import { describe, expect, it } from 'vitest';
 import { chmod, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -118,7 +118,8 @@ describe('portable native Claude management', () => {
     expect(replaced.status).toBe(0);
     expect(replaced.body.data.changes[0]).toMatchObject({ path: out, operation: 'updated' });
     expect(await readFile(join(selected, out), 'utf8')).toBe(replaced.body.data.content);
-    expect((await cli([...args, '--if-match', destinationRevision])).body.error.code).toBe('CONFLICT');
+    // The repeat with the replaced revision finds the exported bytes in place.
+    expect(unchangedRepeat(await cli([...args, '--if-match', destinationRevision]))).toBe(true);
     expect((await cli(['agents', 'export', 'review', ...scope, '--if-match', agentRevision])).body.error.code).toBe('INVALID_ARGUMENT');
     expect((await cli(['agents', 'export', 'review', ...scope, '--out', '../escape.md'])).body.error.code).toBe('INVALID_PATH');
     expect((await cli(['agents', 'export', 'review', ...scope, '--out', 'agent.json'])).body.error.code).toBe('INVALID_ARGUMENT');

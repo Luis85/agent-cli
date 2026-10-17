@@ -12,7 +12,7 @@ describe('actionable failures', () => {
     const before = await revision('plan.md');
     const missing = await cli(['edit', 'plan.md', '--find', 'Final', '--replace', 'Ready', '--if-match', before]);
     expect(missing.status).toBe(2);
-    expect(missing.body.error).toEqual({ code: 'NO_MATCH', message: expect.any(String), hint: expect.stringContaining('--find'), retryable: false, details: { find: 'Final', matches: 0 } });
+    expect(missing.body.error).toEqual({ code: 'NO_MATCH', message: expect.any(String), hint: expect.stringContaining('--find'), retryable: false, details: { find: 'Final', matches: 0, lineEndings: 'lf' } });
     const ambiguous = await cli(['edit', 'plan.md', '--find', 'Draft', '--replace', 'Ready', '--if-match', before, '--dry-run']);
     expect(ambiguous.status).toBe(2);
     expect(ambiguous.body.error).toMatchObject({ code: 'AMBIGUOUS_EDIT', retryable: false, details: { matches: 2, lines: [2, 4] } });
@@ -61,7 +61,7 @@ describe('actionable failures', () => {
     expect(failure.status).toBe(2);
     expect(failure.body.error).toEqual({
       code: 'NO_MATCH', message: 'Der --find-Text kommt in der Datei nicht vor.', hint: expect.stringContaining('Lesen Sie die Datei erneut'), retryable: false,
-      details: { find: 'Absent', matches: 0, localization: { originalMessage: original.body.error.message } },
+      details: { find: 'Absent', matches: 0, lineEndings: 'lf', localization: { originalMessage: original.body.error.message } },
     });
     const missing = await cli(['read', 'missing.md']);
     expect(missing.status).toBe(3);

@@ -53,7 +53,7 @@ export class NodeFiles implements FileRepository, BatchHost {
       const bytes = await readFile(await this.resolvePath(path));
       return { path, bytes, revision: revisionOf(bytes) };
     } catch (error) {
-      if (missing(error)) throw forgeError('NOT_FOUND', `File not found: ${path}`);
+      if (missing(error)) throw forgeError('NOT_FOUND', `File not found: ${path}`, { path });
       throw error;
     }
   }
@@ -110,7 +110,7 @@ export class NodeFiles implements FileRepository, BatchHost {
     const target = await this.resolvePath(path, true);
     let info;
     try { info = await lstat(target); }
-    catch (error) { if (missing(error)) throw forgeError('NOT_FOUND', `File or folder not found: ${path}`); throw error; }
+    catch (error) { if (missing(error)) throw forgeError('NOT_FOUND', `File or folder not found: ${path}`, { path }); throw error; }
     if (info.isDirectory()) {
       const { revision, files, folders } = (await this.folder(path))!;
       return { path, kind: 'folder', revision, files: files.map(file => file.path), folders };

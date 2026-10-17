@@ -24,6 +24,10 @@ export function codedError(code: string, message: string, exitCode: number, deta
 export function locatedError(error: AppError, prefix: string, details: Record<string, unknown>): AppError {
   return new AppError(error.code, `${prefix}${error.message}`, error.exitCode, { ...error.details, ...details }, error.retryable);
 }
+/** The same failure restated for another frame of reference, such as paths relative to a narrower scope. */
+export function restatedError(error: AppError, message: string, details: Record<string, unknown> | undefined): AppError {
+  return new AppError(error.code, message, error.exitCode, details, error.retryable);
+}
 /** Event diagnostics deliberately omit messages, input and arbitrary error details. */
 export function summarizeError(error: unknown): { code: string; exitCode: number } {
   return error instanceof AppError ? { code: error.code, exitCode: error.exitCode } : { code: 'OPERATION_FAILED', exitCode: errorCatalog.OPERATION_FAILED.exitCode };

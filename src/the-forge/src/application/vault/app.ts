@@ -23,7 +23,7 @@ type WorkspaceEvents = { 'file-open': HostEventMap['workspace.file-open']; 'quic
 export interface VaultFacade {
   /** UTF-8 text of a file. */
   read(path: string): Promise<string>;
-  /** Creates a new file; an existing file is a CONFLICT. */
+  /** Creates a new file; an existing file is a CONFLICT unless it holds these bytes, which reports `unchanged`. */
   create(path: string, data: string | Uint8Array): Promise<FileChange>;
   modify(path: string, data: string | Uint8Array, options?: Guard): Promise<FileChange>;
   /** Atomic read-modify-write of UTF-8 text; returns the new text. */

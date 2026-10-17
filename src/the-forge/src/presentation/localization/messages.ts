@@ -40,4 +40,7 @@ export const germanKernelMessages: Record<KernelMessageCode, string> = {
   LAYOUT_CALLBACK_FAILED: 'Layout bereit: {diagnostic}',
   QUIT_TASK_FAILED: 'Beendigungsaufgabe: {diagnostic}',
   PLUGIN_CLEANUP_FAILED: 'Plugin-Bereinigung: {diagnostic}',
+  EXTENSION_DROPPED: 'EXTENSION_DROPPED: {to} hat keine Dateiendung, daher verliert {from} beim Verschieben die Endung {extension}. Beenden Sie das Ziel mit /, um in einen Ordner zu verschieben, oder ergänzen Sie die Endung.',
+  LITERAL_NEWLINE: 'LITERAL_NEWLINE: --{option} enthält die beiden Zeichen \\n, aber keinen Zeilenumbruch, daher werden sie wörtlich geschrieben. Übergeben Sie echte Zeilenumbrüche, zum Beispiel mit --stdin.',
+  EMPTY_STDIN: 'EMPTY_STDIN: --stdin hat keine Bytes gelesen, daher wird {path} leer geschrieben. Leiten Sie den Inhalt weiter oder übergeben Sie --content "", um absichtlich eine leere Datei zu schreiben.',
 };

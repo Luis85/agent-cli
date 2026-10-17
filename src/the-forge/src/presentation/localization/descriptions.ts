@@ -49,7 +49,8 @@ export const germanDescriptions: Record<string, string> = {
   'Markdown heading path such as "Plan > Risks"; the section runs to the next heading of the same or a higher level. Write " > " inside a heading as " \\> ".': 'Markdown-Überschriftenpfad wie "Plan > Risks"; der Abschnitt reicht bis zur nächsten Überschrift derselben oder einer höheren Ebene. Schreiben Sie " > " innerhalb einer Überschrift als " \\> ".',
   '1-based line of the --section heading, from AMBIGUOUS_SECTION details.candidates, when the path matches several headings.': '1-basierte Zeile der --section-Überschrift aus AMBIGUOUS_SECTION details.candidates, wenn der Pfad mehrere Überschriften trifft.',
   'Markdown block id (^id) of a paragraph, list item or section; a list item keeps its marker and checkbox, and content added next to it must be list items.': 'Markdown-Block-ID (^id) eines Absatzes, Listeneintrags oder Abschnitts; ein Listeneintrag behält Aufzählungszeichen und Kontrollkästchen, und daneben eingefügter Inhalt muss aus Listeneinträgen bestehen.',
-  'JSON object of properties to set.': 'JSON-Objekt der zu setzenden Eigenschaften.',
+  'JSON object of properties to set; null stores YAML null (use --unset to remove a key).': 'JSON-Objekt der zu setzenden Eigenschaften; null speichert YAML-null (zum Entfernen eines Schlüssels --unset verwenden).',
+  'Comma-separated property names to remove.': 'Kommagetrennte Namen der zu entfernenden Eigenschaften.',
   'Markdown note path.': 'Pfad der Markdown-Notiz.',
   'JSON Pointer to set; /- appends to an existing array.': 'Zu setzender JSON Pointer; /- hängt an ein vorhandenes Array an.',
   'JSON value to set.': 'Zu setzender JSON-Wert.',
@@ -62,7 +63,7 @@ export const germanDescriptions: Record<string, string> = {
   'File or folder to delete.': 'Zu löschende Datei oder zu löschender Ordner.',
   'Move without rewriting links to the moved files.': 'Verschieben, ohne Links auf die verschobenen Dateien umzuschreiben.',
   'File or folder to move.': 'Zu verschiebende Datei oder zu verschiebender Ordner.',
-  'New path; it must not exist.': 'Neuer Pfad; er darf noch nicht existieren.',
+  'New path that must not exist, or a folder to move into: one ending with / or one that exists.': 'Neuer Pfad, der noch nicht existieren darf, oder ein Ordner, in den verschoben wird: einer, der auf / endet oder bereits existiert.',
   'File or folder to rename.': 'Umzubenennende Datei oder umzubenennender Ordner.',
   'New name without slashes; a file keeps its extension.': 'Neuer Name ohne Schrägstriche; eine Datei behält ihre Erweiterung.',
   // Generation and shared library options.

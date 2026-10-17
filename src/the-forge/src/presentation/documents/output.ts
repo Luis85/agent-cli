@@ -15,13 +15,20 @@ export const readOutput: JsonSchema = {
     document: { oneOf: [
       {
         title: 'markdown', type: 'object', required: ['kind', 'content', 'properties'],
-        properties: { kind: kind('markdown'), content: text, properties: { type: 'object', description: 'Parsed YAML frontmatter.' }, body: { type: 'string', description: 'Text after the frontmatter, with --parts body.' } },
+        properties: {
+          kind: kind('markdown'), content: text, properties: { oneOf: [{ type: 'object' }, { type: 'null' }], description: 'Parsed YAML frontmatter, or null when it does not parse (see issue).' },
+          body: { type: 'string', description: 'Text after the frontmatter, with --parts body.' },
+          issue: {
+            type: 'object', required: ['code', 'message'], description: 'Why the frontmatter does not parse; fix it with edit or write, then validate.',
+            properties: { code: kind('INVALID_YAML', 'INVALID_FRONTMATTER'), message: text },
+          },
+        },
       },
       { title: 'canvas or base', type: 'object', required: ['kind', 'data'], properties: { kind: kind('canvas', 'base'), data: { type: 'object' } } },
       { title: 'text', type: 'object', required: ['kind', 'content'], properties: { kind: kind('text'), content: text } },
       {
         title: 'bytes', type: 'object', required: ['kind', 'encoding', 'content'],
-        description: 'Attachments, and text-extension files that are not valid UTF-8 or contain NUL characters, as base64.',
+        description: 'Attachments, and text-extension, Markdown, Canvas and Base files that are not valid UTF-8 (or text files with NUL characters), as base64.',
         properties: { kind: kind(...attachmentKinds), encoding: kind('base64'), content: text },
       },
     ] },

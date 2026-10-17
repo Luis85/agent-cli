@@ -18,7 +18,7 @@ export const germanCommands = {
   write: 'Eine Datei erstellen oder ersetzen; Ersetzen erfordert die aktuelle Revision.',
   edit: 'Markdown oder UTF-8-Text gezielt bearbeiten: wörtliche Ersetzungen, Anhängen am Ende oder Bearbeiten eines Abschnitts oder Blocks.',
   apply: 'Einen JSON-Plan aus Schreib-, Bearbeitungs-, Frontmatter-, Verschiebe- und Löschvorgängen als einen geschützten Stapel ausführen.',
-  properties: 'YAML-Frontmatter-Eigenschaften zusammenführen und den Markdown-Inhalt erhalten.',
+  properties: 'YAML-Frontmatter-Eigenschaften setzen oder entfernen und dabei den Markdown-Inhalt und unberührtes YAML erhalten.',
   patch: 'Einen Canvas-/Base-Wert über JSON Pointer setzen; - hängt an ein vorhandenes Array an.',
   delete: 'Eine Datei oder einen Ordner nach .trash verschieben oder mit --permanent entfernen; verweigert, solange andere Dateien darauf verlinken.',
   move: 'Eine Datei oder einen Ordner verschieben oder umbenennen und alle Links darauf in einem geschützten Stapel umschreiben.',

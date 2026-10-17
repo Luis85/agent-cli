@@ -3,7 +3,7 @@ import { MetadataCacheEvents } from '../../src/application/metadata/cache-events
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { registerHostEvents } from '../../src/application/plugins/host-events.ts';
 import { scopedCommitObserver } from '../../src/application/workspace/scoped-files.ts';
-import type { FileChange } from '../../src/domain/documents/file.ts';
+import type { CommittedChange } from '../../src/application/workspace/ports.ts';
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { MemoryFiles, metadataIndex } from '../support/metadata.ts';
 
@@ -12,7 +12,7 @@ const vault = () => new MemoryFiles({
   'Notes/Ideas.md': '---\naliases: [Brainstorm]\n---\nBack to [[Plan]] and [[Target]].\n',
   'A/Target.md': '# A', 'B/Target.md': '# B', 'Bad.md': '---\nx: [\n---\n',
 });
-const change = (path: string, operation: FileChange['operation']): FileChange => ({ path, operation, revision: 'r', bytes: 1 });
+const change = (path: string, operation: CommittedChange['operation']): CommittedChange => ({ path, operation, revision: 'r', bytes: 1 });
 
 function publisher(files: MemoryFiles) {
   const events = new EventBus(new NodeEventScope());

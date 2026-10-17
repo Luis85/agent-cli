@@ -7,7 +7,8 @@ import { portableCli } from '../support/portable-cli.ts';
 
 /**
  * `idempotentHint` against behavior: every mutating mode the schema publishes runs twice in one workspace. A mode
- * declared idempotent must leave every file unchanged on the identical repeat (it reports no changes or fails);
+ * declared idempotent must leave every file unchanged on the identical repeat (it reports no changes, only
+ * `unchanged` ones, or fails);
  * a mode declared non-idempotent must change the workspace again, or name why no probe can run it.
  */
 const fixture = portableCli();
@@ -39,7 +40,8 @@ views:
 const agent = '---\nname: reviewer\ndescription: Review changes\n---\n\nReview the change without modifying files.\n';
 const hook = JSON.stringify({ matcher: 'Bash', hooks: [{ type: 'command', command: 'true' }] });
 const workflow = 'name: web check\non:\n  pull_request:\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npm ci\n';
-const appendPlan = JSON.stringify({ version: 1, operations: [{ op: 'edit', path: 'notes/log.md', append: 'again' }] });
+// The repeat needs ifMatch for the file the first run created, so it fails with CONFLICT.
+const createPlan = JSON.stringify({ version: 1, operations: [{ op: 'write', path: 'notes/log.md', content: 'start\n' }, { op: 'edit', path: 'notes/log.md', append: 'again' }] });
 
 type Args = readonly string[] | (() => Promise<readonly string[]>);
 /** The revision of a file in the selected project, as `read` reports it. */
@@ -63,7 +65,7 @@ const probes: Array<{ mode: string; args: Args; input?: string; prepare?: Array<
   { mode: 'move', args: async () => ['move', 'notes/b.md', 'notes/c.md', '--if-match', await revision('notes/b.md')] },
   { mode: 'rename', args: async () => ['rename', 'notes/c.md', 'd.md', '--if-match', await revision('notes/c.md')] },
   { mode: 'delete', args: async () => ['delete', 'notes/d.md', '--if-match', await revision('notes/d.md')] },
-  { mode: 'apply', args: ['apply', '-'], input: appendPlan, prepare: [[['create', 'notes/log.md', '--content', 'start\n']]] },
+  { mode: 'apply', args: ['apply', '-'], input: createPlan },
   { mode: 'templates install', args: ['templates', 'install'] },
   { mode: 'make document', args: ['make', 'document', 'Entity note', '--template', 'entity.md', '--date', '2026-10-01'] },
   { mode: 'make form', args: ['make', 'form', 'Signup'] },
@@ -167,7 +169,8 @@ describe('idempotentHint agrees with a repeated invocation', () => {
         const after = await snapshot();
         if (declared.get(probe.mode)) {
           expect(after, repeat.stdout).toEqual(before);
-          if (repeat.status === 0) expect(repeat.body.data.changes ?? [], repeat.stdout).toEqual([]);
+          const changed = (repeat.body.data?.changes ?? []).filter((change: { operation: string }) => change.operation !== 'unchanged');
+          if (repeat.status === 0) expect(changed, repeat.stdout).toEqual([]);
         } else {
           expect(repeat.status, repeat.stdout).toBe(0);
           expect(after, repeat.stdout).not.toEqual(before);

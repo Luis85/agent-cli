@@ -41,7 +41,10 @@ describe('generation review and explicit revision authorization', () => {
     const plan = await service.plan(writes, 'reviews/first.json');
     expect(JSON.parse(new TextDecoder().decode((await files.read('reviews/first.json')).bytes))).toEqual(plan.revisions);
     expect(new TextDecoder().decode((await files.read('ui/item.ts')).bytes)).toBe('before');
-    await expect(service.plan(writes, 'reviews/first.json')).rejects.toMatchObject({ code: 'CONFLICT' });
+    // The same manifest again is unchanged; a different one never replaces it.
+    expect((await service.plan(writes, 'reviews/first.json')).manifest?.changes).toMatchObject([{ operation: 'unchanged' }]);
+    await files.writeBatch([write('ui/other.ts', 'x')], false);
+    await expect(service.plan([...writes, write('ui/other.ts', 'y')], 'reviews/first.json')).rejects.toMatchObject({ code: 'CONFLICT' });
     const before = await files.read('ui/item.ts');
     await files.writeBatch([{ ...write('ui/item.ts', 'manual edit'), expectedRevision: before.revision }], false);
     await expect(service.commit(writes, plan.revisions)).rejects.toMatchObject({ code: 'CONFLICT', message: expect.stringContaining('--plan-out') });

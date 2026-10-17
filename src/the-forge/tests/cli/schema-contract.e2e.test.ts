@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
@@ -12,21 +13,25 @@ const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 
 beforeAll(async () => {
   const project = fixture.project;
+  const notes = {
+    'Home.md': '---\nstatus: draft\ntags: [plan]\n---\n# Home\nSee [[Projects/Alpha]], [[Missing]] and ![[assets/pixel.png]].\n',
+    'Projects/Alpha.md': 'Back to [[Home]].\n',
+    'Lonely.md': 'No links here.\n',
+  };
+  const ifMatch = (path: keyof typeof notes) => createHash('sha256').update(notes[path]).digest('hex');
   for (const [path, content] of [
-    ['Home.md', '---\nstatus: draft\ntags: [plan]\n---\n# Home\nSee [[Projects/Alpha]], [[Missing]] and ![[assets/pixel.png]].\n'],
-    ['Projects/Alpha.md', 'Back to [[Home]].\n'],
-    ['Lonely.md', 'No links here.\n'],
+    ...Object.entries(notes),
     ['board.canvas', '{"nodes":[{"id":"a","type":"file","file":"Home.md","x":0,"y":0,"width":200,"height":100}],"edges":[]}\n'],
     ['tasks.base', 'views:\n  - type: table\n    name: Table\n'],
     ['src/index.ts', 'export const answer = 42;\n'],
     ['plan.json', JSON.stringify({ version: 1, operations: [
       { op: 'write', path: 'Inbox/New.md', content: '# New\n' },
-      { op: 'frontmatter', path: 'Home.md', set: { status: 'active' } },
-      { op: 'move', from: 'Projects/Alpha.md', to: 'Archive/Alpha.md' },
-      { op: 'edit', path: 'Archive/Alpha.md', edits: [{ find: 'Back', replace: 'Return' }] },
-      { op: 'delete', path: 'Lonely.md' },
+      { op: 'frontmatter', path: 'Home.md', set: { status: 'active' }, ifMatch: ifMatch('Home.md') },
+      { op: 'move', from: 'Projects/Alpha.md', to: 'Archive/Alpha.md', ifMatch: ifMatch('Projects/Alpha.md') },
+      { op: 'edit', path: 'Archive/Alpha.md', edits: [{ find: 'Back', replace: 'Return' }], ifMatch: ifMatch('Projects/Alpha.md') },
+      { op: 'delete', path: 'Lonely.md', ifMatch: ifMatch('Lonely.md') },
     ] })],
-  ] as const) {
+  ] as Array<[string, string]>) {
     await mkdir(join(project, path, '..'), { recursive: true });
     await writeFile(join(project, path), content);
   }
@@ -64,7 +69,7 @@ describe('the published schema contract', () => {
     expect(annotations.create).toMatchObject({ readOnlyHint: false, destructiveHint: false, idempotentHint: true });
     for (const id of ['write', 'edit', 'properties', 'patch', 'delete', 'move', 'rename']) expect(annotations[id], id).toMatchObject({ destructiveHint: true, idempotentHint: true });
     expect(annotations.make).toMatchObject({ destructiveHint: true, idempotentHint: true });
-    expect(annotations.apply).toMatchObject({ readOnlyHint: false, destructiveHint: true, idempotentHint: false });
+    expect(annotations.apply).toMatchObject({ readOnlyHint: false, destructiveHint: true, idempotentHint: true });
     expect(annotations.vault).toMatchObject({ readOnlyHint: true, destructiveHint: false, idempotentHint: true, defaultAction: 'check' });
     expect(annotations.project).toMatchObject({ mutating: true, destructiveHint: false, actions: { current: { readOnlyHint: true }, open: { destructiveHint: false, idempotentHint: true } } });
   });
@@ -78,7 +83,7 @@ describe('the published schema contract', () => {
     const expected: [string, string | undefined, boolean, boolean][] = [
       ['setup', undefined, false, true], ['project', 'create', false, true], ['project', 'component', false, true], ['create', undefined, false, true],
       ['write', undefined, true, true], ['edit', undefined, true, true], ['delete', undefined, true, true], ['move', undefined, true, true], ['rename', undefined, true, true],
-      ['apply', undefined, true, false], ['make', 'document', false, true], ['make', 'entity', false, true], ['make', 'ui', true, true], ['templates', 'install', false, true], ['skills', 'install', false, true],
+      ['apply', undefined, true, true], ['make', 'document', false, true], ['make', 'entity', false, true], ['make', 'ui', true, true], ['templates', 'install', false, true], ['skills', 'install', false, true],
       ['components', 'init', false, true], ['data-sources', 'export', false, true], ['workflows', 'sync', true, true], ['agents', 'generate', true, true],
       ['backlog', 'set', true, true], ['backlog', 'move', true, true], ['backlog', 'depend', true, true], ['backlog', 'undepend', true, true], ['backlog', 'ranks', true, true],
       // An optional --if-match does not make these repeatable: backlog init, add, iteration add and release add create
@@ -101,7 +106,7 @@ describe('the published schema contract', () => {
     expect(one.body.data.commands.map((command: { id: string }) => command.id)).toEqual(['read']);
     expect(one.body.data.commands[0]).toEqual(document.commands.find(command => command.id === 'read'));
     const codes = one.body.data.errors.map((entry: { code: string }) => entry.code);
-    expect(codes).toEqual(expect.arrayContaining(['NOT_FOUND', 'INVALID_FRONTMATTER', 'UNKNOWN_OPTION', 'WORKSPACE_BUSY']));
+    expect(codes).toEqual(expect.arrayContaining(['NOT_FOUND', 'INVALID_CANVAS', 'UNKNOWN_OPTION', 'WORKSPACE_BUSY']));
     expect(codes).not.toContain('CLAUDE_NOT_INSTALLED');
     const unknown = await cli(['schema', 'nonsense']);
     expect(unknown.body.error.code).toBe('UNKNOWN_COMMAND');
