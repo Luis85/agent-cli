@@ -32,15 +32,8 @@ export const basesPlugin: CorePlugin = {
         'bases.query': { query: async (context: CommandContext, path: string, options: { view?: string }) => localizedQuery(await bases(context).query(path, options), context.language) },
         'bases.validation': { validate: (context: CommandContext, path: string) => validateBaseFile(context.workspace.files, context.workspace.codec, baseDefinitionIssues, path) },
       },
-      errors: [{
-        code: 'BASE_TIMEOUT', category: 'input', summary: 'A Bases query exceeded its expression evaluation time budget.',
-        hint: 'Simplify the expressions of the .base file named in the message (avoid nested regular-expression quantifiers such as (a+)+) or narrow its filters.',
-      }],
       strings: {
         de: {
-          errors: {
-            BASE_TIMEOUT: { summary: 'Eine Bases-Abfrage hat ihr Zeitbudget für die Auswertung von Ausdrücken überschritten.', hint: 'Vereinfachen Sie die Ausdrücke der in der Meldung genannten .base-Datei (vermeiden Sie verschachtelte Quantoren in regulären Ausdrücken wie (a+)+) oder grenzen Sie ihre Filter ein.' },
-          },
           commands: { bases: 'Native Obsidian-Bases-Ansichten ohne laufendes Obsidian als Datei-Repositories abfragen.' },
           actions: {
             'bases list': 'Die sichtbaren .base-Dateien im Bereich des Befehls auflisten.',

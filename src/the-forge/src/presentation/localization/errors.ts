@@ -54,6 +54,7 @@ export const germanErrors = {
   INVALID_BASE_QUERY: { summary: 'Die Bases-Abfrage ist ungültig.', hint: 'Prüfen Sie die in der Meldung genannte Ansicht, den Kontext und die Ausdrücke.' },
   INVALID_BASE_EXPRESSION: { summary: 'Ein Bases-Ausdruck kann nicht geparst werden.', hint: 'Korrigieren Sie den in der Meldung genannten Ausdruck.' },
   BASE_EVALUATION_ERROR: { summary: 'Ein Bases-Ausdruck ist bei der Auswertung einer Datei fehlgeschlagen.', hint: 'Prüfen Sie die in der Meldung genannte Ansicht, Datei und den Ausdruck.' },
+  BASE_TIMEOUT: { summary: 'Eine Bases-Abfrage hat ihr Zeitbudget für die Auswertung von Ausdrücken überschritten.', hint: 'Vereinfachen Sie die Ausdrücke der in der Meldung genannten .base-Datei (vermeiden Sie verschachtelte Quantoren in regulären Ausdrücken wie (a+)+) oder grenzen Sie ihre Filter ein.' },
   BASE_VIEW_NOT_FOUND: { summary: 'Die angeforderte Bases-Ansicht existiert nicht.', hint: 'Führen Sie bases inspect <file.base> aus und übergeben Sie eine vorhandene --view.' },
   BASE_CONTEXT_NOT_FOUND: { summary: 'Die Kontextdatei ist keine indexierte Tresordatei.', hint: 'Übergeben Sie eine vorhandene Tresordatei an --context.' },
   INVALID_BASE_PROPERTY_TYPES: { summary: 'Das Register der Obsidian-Eigenschaftstypen ist ungültig.', hint: 'Korrigieren Sie .obsidian/types.json zu einem JSON-Objekt mit Eigenschaftstypen.' },

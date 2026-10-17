@@ -12,7 +12,7 @@ export type TutorialAction =
   | { type: 'press'; locator: TutorialLocator; key: string }
   | { type: 'wait'; locator: TutorialLocator; state: 'visible' | 'hidden' | 'attached' | 'detached' };
 /** The only environment variables a tutorial `fill` action may read. */
-export const tutorialEnvPrefix = 'FORGE_TUTORIAL_';
+const tutorialEnvPrefix = 'FORGE_TUTORIAL_';
 export interface TutorialStep { id: string; title: string; text?: string; actions: TutorialAction[]; screenshot: boolean; fullPage: boolean }
 export interface TutorialPlan { version: 1; title: string; description?: string; startUrl: string; viewport: { width: number; height: number }; steps: TutorialStep[] }
 

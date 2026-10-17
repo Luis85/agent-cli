@@ -63,7 +63,7 @@ it('drops an unsafe default from the static HTML markup', () => {
 });
 
 it('drops unsafe bound URLs from React components', () => {
-  const component = load('react', link()) as (props: object) => ReturnType<typeof createElement>;
+  const component = load('react', link()) as (props: { href?: string; src?: string }) => ReturnType<typeof createElement>;
   for (const href of unsafe) {
     const document = new JSDOM(renderToStaticMarkup(createElement(component, { href, src: href }))).window.document;
     expect(document.querySelector('a')?.hasAttribute('href'), href).toBe(false);
