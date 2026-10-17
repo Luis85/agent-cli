@@ -83,7 +83,7 @@ describe('the published schema contract', () => {
       ['backlog', 'set', true, true], ['backlog', 'move', true, true], ['backlog', 'depend', true, true], ['backlog', 'undepend', true, true], ['backlog', 'ranks', true, true],
       // An optional --if-match does not make these repeatable: backlog init, add, iteration add and release add create
       // another note, backlog sync talks to a remote tracker, and the claude plugins, marketplaces and runtime
-      // sections run the installed CLI. tests/cli/idempotency.e2e.test.ts runs every mutating mode twice.
+      // sections run the installed CLI. the tests/cli/idempotency-*.e2e.test.ts families run every mutating mode twice.
       ['backlog', 'init', true, false], ['backlog', 'add', true, false], ['backlog', 'iteration', true, false], ['backlog', 'release', true, false], ['backlog', 'sync', true, false],
       ['claude', 'plugins', true, false], ['claude', 'marketplaces', true, false], ['claude', 'runtime', true, false],
       // These require --if-match once their file exists, so a repeat fails with CONFLICT.
