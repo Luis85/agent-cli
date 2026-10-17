@@ -39,7 +39,7 @@ Import the concrete module you need. Do not add layer barrels, re-export chains 
 | --- | --- |
 | File formats and editing | `domain/documents/`, `application/workspace/`, `infrastructure/documents/`, `presentation/documents/` |
 | Workspace configuration and setup | `application/workspace/`, `infrastructure/workspace/`, `presentation/workspace/` |
-| Localhost server and read-only webviews | `application/server/`, `infrastructure/server/`, `presentation/server/`; the independent Vue application ships prebuilt assets in `bin/webviews/admin/` |
+| Localhost server and read-only webviews | `domain/server/` (the webview manifest rule shared with the `webviews` plugin), `application/server/`, `infrastructure/server/`, `presentation/server/`; the independent Vue application ships prebuilt assets in `bin/webviews/admin/` |
 | Projects (selection, `project create`/`component` policy) | `application/projects/`, `presentation/workspace/` |
 | Code, form, plugin-folder and project scaffolds (`scaffolds` core plugin, service `scaffolds.projects`) | `plugins/scaffolds/` |
 | Markdown templates, `make document` and the workflow pack (`templates` core plugin, service `templates.installer` for `setup`) | `plugins/templates/` |
