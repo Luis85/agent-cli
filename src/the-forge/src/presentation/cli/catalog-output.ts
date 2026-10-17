@@ -6,15 +6,16 @@ const flag: JsonSchema = { type: 'boolean' };
 /** A JSON Schema document; its own validity is checked against the 2020-12 meta-schema, not here. */
 const schemaDocument: JsonSchema = { type: 'object', description: 'A JSON Schema 2020-12 document.' };
 const scope: JsonSchema = { type: 'string', enum: ['workspace', 'project'] };
+const pathFlag: JsonSchema = { type: 'boolean', description: 'Names a file or folder in the command scope; \\ separators, a leading ./ and absolute paths inside the scope root are accepted and passed on as the relative POSIX path.' };
 
 const optionSchema: JsonSchema = {
   type: 'object', required: ['type', 'description'],
-  properties: { type: { type: 'string', enum: ['string', 'boolean'] }, description: text, enum: texts, list: flag, default: {}, required: flag },
+  properties: { type: { type: 'string', enum: ['string', 'boolean'] }, description: text, enum: texts, list: flag, default: {}, required: flag, path: pathFlag },
 };
 const options: JsonSchema = { type: 'object', additionalProperties: optionSchema };
 const argumentSchema: JsonSchema = {
   type: 'object', required: ['name', 'description'],
-  properties: { name: text, description: text, required: flag, enum: texts, variadic: flag },
+  properties: { name: text, description: text, required: flag, enum: texts, variadic: flag, path: pathFlag },
 };
 const hints: Record<string, JsonSchema> = {
   scope, discovery: flag, mutating: flag, readOnlyHint: flag, destructiveHint: flag, idempotentHint: flag,

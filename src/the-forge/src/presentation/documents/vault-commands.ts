@@ -14,7 +14,7 @@ const guard = (flags: Record<string, string | boolean>, dryRun: boolean) => valu
 /** Obsidian's file operations: guarded moves and renames that keep links intact, and deletion to the vault trash. */
 export function vaultCommands(): Command[] {
   return [
-    { id: 'delete', description: 'Move a file or folder to .trash, or remove it with --permanent; refuses while other files link to it.', usage: 'delete <path> --if-match sha256 [--recursive] [--permanent] [--allow-broken-links]', ...vaultWrite, args: [{ name: 'path', description: 'File or folder to delete.', required: true }], errors: ['NOT_FOUND', 'CONFLICT', 'PROTECTED_PATH', 'HAS_BACKLINKS'],
+    { id: 'delete', description: 'Move a file or folder to .trash, or remove it with --permanent; refuses while other files link to it.', usage: 'delete <path> --if-match sha256 [--recursive] [--permanent] [--allow-broken-links]', ...vaultWrite, args: [{ name: 'path', description: 'File or folder to delete.', required: true, path: true }], errors: ['NOT_FOUND', 'CONFLICT', 'PROTECTED_PATH', 'HAS_BACKLINKS'],
       options: { 'if-match': ifMatch, recursive: option.boolean('Required to delete a folder.'), permanent: option.boolean('Remove instead of moving to .trash.'), 'allow-broken-links': option.boolean('Delete even while other files link to it.') }, async run(args, flags, { app, workspace }) {
       arity(args, 1);
       return app.fileManager.delete(args[0]!, {
@@ -22,12 +22,12 @@ export function vaultCommands(): Command[] {
       });
     } },
     { id: 'move', description: 'Move or rename a file or folder and rewrite every link to it in one guarded batch.', usage: 'move <from> <to> --if-match sha256 [--no-update-links]', options: linkOptions, ...vaultWrite, errors: moveErrors,
-      args: [{ name: 'from', description: 'File or folder to move.', required: true }, { name: 'to', description: 'New path; it must not exist.', required: true }], async run(args, flags, { app, workspace }) {
+      args: [{ name: 'from', description: 'File or folder to move.', required: true, path: true }, { name: 'to', description: 'New path; it must not exist.', required: true, path: true }], async run(args, flags, { app, workspace }) {
       arity(args, 2);
       return app.fileManager.move(args[0]!, args[1]!, { ifMatch: guard(flags, workspace.dryRun), updateLinks: flags['no-update-links'] !== true });
     } },
     { id: 'rename', description: 'Rename a file or folder in place and rewrite every link to it; a file keeps its extension.', usage: 'rename <path> <new-name> --if-match sha256 [--no-update-links]', options: linkOptions, ...vaultWrite, errors: moveErrors,
-      args: [{ name: 'path', description: 'File or folder to rename.', required: true }, { name: 'new-name', description: 'New name without slashes; a file keeps its extension.', required: true }], async run(args, flags, { app, workspace }) {
+      args: [{ name: 'path', description: 'File or folder to rename.', required: true, path: true }, { name: 'new-name', description: 'New name without slashes; a file keeps its extension.', required: true }], async run(args, flags, { app, workspace }) {
       arity(args, 2);
       return app.fileManager.rename(args[0]!, args[1]!, { ifMatch: guard(flags, workspace.dryRun), updateLinks: flags['no-update-links'] !== true });
     } },

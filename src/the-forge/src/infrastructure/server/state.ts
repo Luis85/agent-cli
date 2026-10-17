@@ -3,6 +3,7 @@ import { lstat, mkdir, open, rename, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { AppError, forgeError, isRecord } from '../../domain/shared/errors.ts';
+import { temporaryPrefix } from '../../domain/documents/file.ts';
 import { acquireLock, releaseLock } from '../workspace/lock.ts';
 import type { WebviewInfo } from '../../application/server/contracts.ts';
 
@@ -74,7 +75,7 @@ export async function ensureStateIgnored(root: string): Promise<void> {
     if (!missing(error)) throw invalid();
   } finally { await handle?.close(); }
   const lines = original.toString('utf8').trimEnd().split(/\r?\n/);
-  const entries = ['/server.json', '/server.lock', '/.server-*.tmp', '/.agent-cli-tmp-*'];
+  const entries = ['/server.json', '/server.lock', '/.server-*.tmp', `/${temporaryPrefix}*`];
   // Ignore rules use last-match precedence: earlier entries may be undone by later negations.
   if (entries.every((entry, index) => lines.at(index - entries.length) === entry)) return;
   const newline = original.includes(Buffer.from('\r\n')) ? '\r\n' : '\n';

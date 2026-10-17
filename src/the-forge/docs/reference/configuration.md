@@ -2,7 +2,7 @@
 
 [Documentation](../index.md) · Reference
 
-The app reads the selected workspace's fixed `bin/config.json`. By default, the workspace is the parent of the executable's `bin` directory. `--root <directory>` selects another workspace and reads that workspace's `bin/config.json`; the current working directory does not change the default workspace. A missing configuration uses built-in defaults. `node bin/forge.js config --json` returns `data:{path,root,config}` with the configuration source, resolved workspace root and effective settings.
+The app reads the selected workspace's fixed `bin/config.json`. By default, the workspace is the parent of the executable's `bin` directory. `--root <directory>` selects another workspace and reads that workspace's `bin/config.json`; the current working directory does not change the default workspace. A missing configuration uses built-in defaults; a leading UTF-8 byte order mark is ignored. `node bin/forge.js config --json` returns `data:{path,root,config}` with the configuration source, resolved workspace root and effective settings.
 
 The shipped configuration is:
 

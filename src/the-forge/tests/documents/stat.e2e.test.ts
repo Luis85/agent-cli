@@ -28,7 +28,7 @@ describe('portable stat workflows', () => {
     expect(help.options.project.type).toBe('string');
     const schema = (await cli(['schema', 'stat'])).body.data;
     expect(schema.commands[0].outputSchema).toEqual({ $schema: 'https://json-schema.org/draft/2020-12/schema', title: 'stat output', ...statOutput });
-    expect(schema.commands[0].errors).toEqual(['NOT_FOUND', 'INVALID_PROJECT_NAME', 'PROJECT_NOT_FOUND', 'INVALID_PROJECT']);
+    expect(schema.commands[0].errors).toEqual(['NOT_FOUND', 'CONFLICT', 'INVALID_PROJECT_NAME', 'PROJECT_NOT_FOUND', 'INVALID_PROJECT']);
     expect(schema.commonErrors).toEqual(expect.arrayContaining(['INVALID_PROJECT_CONTEXT', 'STALE_PROJECT_CONTEXT']));
     expect(schema.errors.map((error: { code: string }) => error.code)).toEqual(expect.arrayContaining(['PROJECT_NOT_FOUND', 'INVALID_PROJECT_NAME', 'INVALID_PROJECT', 'INVALID_PROJECT_CONTEXT']));
     const german = (await cli(['--lang', 'de', 'help', 'stat'])).body.data;

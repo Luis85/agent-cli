@@ -44,8 +44,8 @@ describe('error catalog contract', () => {
 
 describe('failure envelope guidance', () => {
   it('adds the catalog hint and retryability to English failures without changing the diagnostic', () => {
-    const output = new Localizer().error(forgeError('WORKSPACE_BUSY', 'Lock held by pid 7.', { stale: 'active' }));
-    expect(output).toEqual({ code: 'WORKSPACE_BUSY', message: 'Lock held by pid 7.', hint: errorCatalog.WORKSPACE_BUSY.hint, retryable: true, details: { stale: 'active' } });
+    const output = new Localizer().error(forgeError('WORKSPACE_BUSY', 'Lock held by pid 7.', { path: '.agent-cli.lock' }));
+    expect(output).toEqual({ code: 'WORKSPACE_BUSY', message: 'Lock held by pid 7.', hint: errorCatalog.WORKSPACE_BUSY.hint, retryable: true, details: { path: '.agent-cli.lock' } });
     expect(new Localizer().error(new TypeError('boom'))).toEqual({ code: 'OPERATION_FAILED', message: 'boom', hint: errorCatalog.OPERATION_FAILED.hint, retryable: false });
   });
 
@@ -56,6 +56,24 @@ describe('failure envelope guidance', () => {
       code: 'CONFLICT', message: germanErrors.CONFLICT.summary, hint: germanErrors.CONFLICT.hint, retryable: false,
       details: { ...details, localization: { originalMessage: 'File changed; read again before editing: note.md' } },
     });
+  });
+
+  it('refines the hint by the occurrence detail a code names, in both languages', () => {
+    const variants = errorCatalog.WORKSPACE_BUSY.variants!;
+    expect(variants.detail).toBe('stale');
+    expect(Object.keys(variants.hints).sort()).toEqual(['active', 'stale', 'unknown']);
+    expect(Object.keys(germanErrors.WORKSPACE_BUSY.variants).sort()).toEqual(['active', 'stale', 'unknown']);
+    for (const stale of ['active', 'stale', 'unknown'] as const) {
+      const error = forgeError('WORKSPACE_BUSY', 'busy', { stale }, undefined, stale === 'active');
+      expect(new Localizer().error(error).hint, stale).toBe(variants.hints[stale]);
+      expect(new Localizer('de').error(error).hint, stale).toBe(germanErrors.WORKSPACE_BUSY.variants[stale]);
+    }
+    expect(variants.hints.active).toContain('--wait');
+    expect(variants.hints.unknown).not.toContain('--wait <ms>');
+    // A detail value without a variant, or a code without variants, keeps the code's own hint.
+    expect(new Localizer().error(forgeError('WORKSPACE_BUSY', 'busy', { stale: 'other' })).hint).toBe(errorCatalog.WORKSPACE_BUSY.hint);
+    expect(new Localizer('de').error(forgeError('WORKSPACE_BUSY', 'busy', { stale: 'toString' })).hint).toBe(germanErrors.WORKSPACE_BUSY.hint);
+    expect(new Localizer().error(forgeError('CONFLICT', 'stale', { stale: 'active' })).hint).toBe(errorCatalog.CONFLICT.hint);
   });
 
   it('keeps plugin-defined codes in their own shape', () => {

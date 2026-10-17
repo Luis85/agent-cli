@@ -12,6 +12,7 @@ export const globalOptionMetadata = {
   'dry-run': option.boolean('Validate and preview writes without changing files.'),
   'no-dry-run': option.boolean('Write even when settings.dryRun is true.'),
   'no-plugins': option.boolean('Skip loading user plugins; core plugins stay. Must precede the command.'),
+  wait: option.string('Milliseconds (0 to 600000, default 0) a write waits for another Forge writer\'s lock while WORKSPACE_BUSY is retryable.'),
   help: option.boolean('Describe the command instead of running it.'),
   version: option.boolean('Report the Forge version; used without a command.'),
 } satisfies Record<keyof typeof globalOptions, CommandOption>;

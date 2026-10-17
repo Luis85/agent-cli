@@ -1,5 +1,5 @@
 import { AppError, ensure, forgeError, isRecord } from '../../domain/shared/errors.ts';
-import { fileKind, isInTrash, trashFolder, vaultPath, type FileSnapshot, type FileStat, type WriteRequest } from '../../domain/documents/file.ts';
+import { aliasesName, fileKind, isInTrash, trashFolder, vaultPath, type FileSnapshot, type FileStat, type WriteRequest } from '../../domain/documents/file.ts';
 import { revisionConflict } from '../../domain/documents/write-plan.ts';
 import type { Workspace } from '../workspace/workspace.ts';
 import type { Backlink, MetadataIndex } from '../metadata/ports.ts';
@@ -19,6 +19,12 @@ const encoder = new TextEncoder();
 const decode = (bytes: Uint8Array) => new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
 const notFound = (error: unknown) => error instanceof AppError && error.code === 'NOT_FOUND';
 const json = (value: unknown) => JSON.stringify(value);
+/** `name`, or its numbered copy ` 1`, ` 2`… before a file's extension. */
+function copyName(name: string, kind: FileStat['kind'], copy: number): string {
+  if (copy === 0) return name;
+  const dot = kind === 'file' ? name.lastIndexOf('.') : -1;
+  return dot > 0 ? `${name.slice(0, dot)} ${copy}${name.slice(dot)}` : `${name} ${copy}`;
+}
 const folders = (paths: readonly string[]) => paths.map((path): DeletedEntry => ({ path, kind: 'folder' }));
 
 /**
@@ -153,15 +159,27 @@ export class FileManager {
     }));
   }
 
-  /** `.trash/<path>`, or with ` 1`, ` 2`… before the extension when that name is taken, as Obsidian names trash copies. */
+  /**
+   * `.trash/<path>`, or with ` 1`, ` 2`… before the extension when that name is taken, as Obsidian names trash copies.
+   * A trash folder on the way that is a file (an extensionless file trashed earlier) is passed by such a name too.
+   */
   private async trashDestination(path: string, kind: FileStat['kind']): Promise<string> {
-    const slash = path.lastIndexOf('/'), name = path.slice(slash + 1), dot = kind === 'file' ? name.lastIndexOf('.') : -1;
-    const [stem, extension] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ''];
-    const folder = `${trashFolder}/${path.slice(0, slash + 1)}`;
+    const parts = path.split('/'), name = parts.pop()!;
+    let folder = trashFolder;
+    for (const part of parts) folder = `${folder}/${await this.trashFolderName(folder, part)}`;
     for (let copy = 0; ; copy++) {
-      const candidate = `${folder}${stem}${copy === 0 ? '' : ` ${copy}`}${extension}`;
+      const candidate = `${folder}/${copyName(name, kind, copy)}`;
       try { await this.workspace.files.stat(candidate); }
       catch (error) { if (notFound(error)) return candidate; throw error; }
+    }
+  }
+
+  /** The first copy name of `name` in `folder` that is a folder or free; reading tells a file from a folder without walking it. */
+  private async trashFolderName(folder: string, name: string): Promise<string> {
+    for (let copy = 0; ; copy++) {
+      const candidate = copyName(name, 'folder', copy);
+      try { await this.workspace.files.read(`${folder}/${candidate}`); }
+      catch (error) { if (notFound(error) || (error instanceof AppError && error.code === 'INVALID_PATH')) return candidate; throw error; }
     }
   }
 
@@ -173,10 +191,10 @@ export class FileManager {
     } catch (error) { if (!notFound(error)) throw error; }
   }
 
-  /** Protect case-insensitive names and Windows trailing-dot/space aliases of the reserved roots. */
+  /** Protect every alias of the reserved roots: letter case, Windows trailing dots, spaces and short names, HFS+ ignorable code points. */
   private ensureMovable(path: string): void {
     const top = path.split('/')[0]!;
     const protectedRoots = ['.obsidian', '.forge', ...(this.scope.workspace ? ['bin'] : [])];
-    ensure(!protectedRoots.includes(top.toLowerCase().replace(/[. ]+$/, '')), 'PROTECTED_PATH', `${top} is protected; Forge does not move or delete it.`, { path, protected: top });
+    ensure(!protectedRoots.some(root => aliasesName(top, root)), 'PROTECTED_PATH', `${top} is protected; Forge does not move or delete it.`, { path, protected: top });
   }
 }

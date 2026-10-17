@@ -26,7 +26,7 @@ import { ObsidianDocuments } from './infrastructure/documents/codec.ts';
 import { installedPlugins, loadEnabledPlugins, recordMissingPlugins } from './infrastructure/plugins/loader.ts';
 import { registerCorePlugins, registrySkills } from './application/plugins/core-plugins.ts';
 import { commandOptions, ensureKnownAction, hasActionOptions, optionTypes } from './application/plugins/command-metadata.ts';
-import { globalOptions, value } from './application/plugins/command-input.ts';
+import { globalOptions, value, waitBudget } from './application/plugins/command-input.ts';
 import { basesPlugin } from './plugins/bases/plugin.ts';
 import { skillsPlugin } from './plugins/skills/plugin.ts';
 import { searchPlugin } from './plugins/search/plugin.ts';
@@ -58,6 +58,7 @@ import { createApp } from './application/vault/app.ts';
 import { commands } from './presentation/cli/commands.ts';
 import { declaredValues, parseArguments, parseBootstrap } from './presentation/cli/arguments.ts';
 import { invocationPolicy } from './presentation/cli/invocation-policy.ts';
+import { normalizedPathInputs } from './presentation/cli/path-inputs.ts';
 import { language, Localizer } from './presentation/localization/localization.ts';
 import { kernelMessage, type KernelMessage } from './domain/shared/kernel-messages.ts';
 
@@ -101,10 +102,10 @@ async function run(): Promise<void> {
       config.settings.dryRun = bootstrap.flags['no-dry-run'] ? false : bootstrap.flags['dry-run'] ? true : config.settings.dryRun;
       if (requestedEvents !== undefined) config.settings.events = eventLevel; else eventLevel = config.settings.events;
       compact = config.settings.json;
-      let lockOwner: LockOwner = {};
+      let lockOwner: LockOwner = {}, lockWait = 0;
       // A stale lock an acquisition removed is reported in the invocation's language.
       const warn = (message: KernelMessage) => events.warn(message);
-      const files = await NodeFiles.at(loaded.root, warn, () => lockOwner);
+      const files = await NodeFiles.at(loaded.root, warn, () => lockOwner, () => lockWait);
       activeContext = { workspaceRoot: files.root, root: files.root, project: null };
       registerHostEvents(events);
       // The writer lock names the routed command so WORKSPACE_BUSY can identify its holder.
@@ -131,8 +132,8 @@ async function run(): Promise<void> {
       // Bundled core plugins register in bundle order before user plugins; --no-plugins skips only user plugins.
       registerCorePlugins(registry, events, corePlugins, {
         skills: registrySkills(registry), fileDates: nodeFileDates,
-        openFiles: root => NodeFiles.at(root, warn), operationId: () => events.nextOperationId(),
-        locks: root => nodeLockFiles(root, warn), http: new FetchHttpClient(), environment: name => process.env[name],
+        openFiles: root => NodeFiles.at(root, warn, undefined, () => lockWait), operationId: () => events.nextOperationId(),
+        locks: root => nodeLockFiles(root, warn, () => lockWait), http: new FetchHttpClient(), environment: name => process.env[name],
       }, config.plugins.disabled);
       if (!skipUserPlugins) await loadEnabledPlugins('bin/plugins', config.plugins.enabled, files, registry, events);
       else await recordMissingPlugins('bin/plugins', config.plugins.enabled, files, registry, events);
@@ -165,6 +166,7 @@ async function run(): Promise<void> {
       ensure(!parsed.flags.version, 'INVALID_ARGUMENT', '--version must be used without a command.');
       // help describes a command without running it, so its declared constraints do not apply.
       const flags = parsed.flags.help ? parsed.flags : declaredValues(commandOptions(command, parsed.args.slice(1)), parsed.flags);
+      if (!parsed.flags.help) lockWait = waitBudget(parsed.flags);
       for (const option of ['root', 'no-plugins']) ensure(parsed.flags[option] === bootstrap.flags[option], 'INVALID_ARGUMENT', `--${option} must precede the command.`);
       config.settings.dryRun = parsed.flags['no-dry-run'] ? false : parsed.flags['dry-run'] ? true : config.settings.dryRun;
       // Environment commits reach the metadata index once the command's scope binds it below.
@@ -215,7 +217,7 @@ async function run(): Promise<void> {
       }, async () => {
         const output = parsed.flags.help
           ? await registry.commands.get('help')!.run(id === 'help' ? [] : [id], {}, context)
-          : await command.run(parsed.args.slice(1), flags, context);
+          : await command.run(...normalizedPathInputs(command, parsed.args.slice(1), flags, context), context);
         return localizer.result(commandId, output);
       });
       result = { ok: true, data };

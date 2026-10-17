@@ -27,7 +27,7 @@ export function readManyCommand(): Command {
   return {
     id: 'read-many', description: 'Read up to 32 files sequentially with revisions and an 8 MiB aggregate raw-byte limit.',
     usage: 'read-many <paths...> [--project id]', scope: 'project', projectOption: 'project', discovery: false, mutating: false,
-    args: [{ name: 'paths', description: 'Vault path relative to the command scope.', required: true, variadic: true }],
+    args: [{ name: 'paths', description: 'Vault path relative to the command scope.', required: true, variadic: true, path: true }],
     options: { project: option.string('Use this project instead of the selected project.') },
     output: readManyOutput,
     errors: ['NOT_FOUND', 'INVALID_FRONTMATTER', 'INVALID_YAML', 'INVALID_CANVAS', 'INVALID_BASE', 'INVALID_ENCODING'],

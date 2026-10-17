@@ -5,9 +5,11 @@ import type { CommandContext } from './registry.ts';
 /** The parser types of the global options, which every command accepts in addition to its own. */
 export const globalOptions = {
   root: 'string', lang: 'string', events: 'string', json: 'boolean', 'no-json': 'boolean',
-  'dry-run': 'boolean', 'no-dry-run': 'boolean', 'no-plugins': 'boolean',
+  'dry-run': 'boolean', 'no-dry-run': 'boolean', 'no-plugins': 'boolean', wait: 'string',
   help: 'boolean', version: 'boolean',
 } as const;
+/** The longest global `--wait` budget, in milliseconds (ten minutes). */
+export const maximumWaitMs = 600_000;
 
 /** A string option's value; `required` reports MISSING_ARGUMENT when it is absent. */
 export function value(flags: CommandFlags, key: string, required = false): string | undefined {
@@ -24,6 +26,13 @@ export function integer(flags: CommandFlags, key: string, minimum = 0): number |
   return Number(text);
 }
 
+/** The global `--wait` budget: the milliseconds a write may wait for another Forge writer's lock, 0 when absent. */
+export function waitBudget(flags: CommandFlags): number {
+  const wait = integer(flags, 'wait') ?? 0;
+  ensure(wait <= maximumWaitMs, 'INVALID_ARGUMENT', `--wait must be at most ${maximumWaitMs} milliseconds.`);
+  return wait;
+}
+
 /** Positional argument count check shared by every command. */
 export function arity(args: readonly string[], min: number, max = min): void {
   ensure(args.length >= min && args.length <= max, 'INVALID_ARGUMENT', `Expected ${min === max ? min : `${min}–${max}`} positional arguments.`);
@@ -36,8 +45,8 @@ export async function readInputBytes(flags: CommandFlags, context: Pick<CommandC
   return from !== undefined ? (await context.workspace.files.read(from)).bytes : flags.stdin ? await context.input() : new TextEncoder().encode(content!);
 }
 
-/** Parses JSON input; malformed input is INVALID_JSON. */
+/** Parses JSON input, ignoring a leading UTF-8 byte order mark (Windows PowerShell writes one); malformed input is INVALID_JSON. */
 export function parseJson(text: string): unknown {
-  try { return JSON.parse(text) as unknown; }
+  try { return JSON.parse(text.startsWith('\ufeff') ? text.slice(1) : text) as unknown; }
   catch { throw forgeError('INVALID_JSON', 'Expected valid JSON input.'); }
 }

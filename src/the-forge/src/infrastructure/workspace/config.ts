@@ -28,7 +28,8 @@ export async function loadConfig(options: { defaultPath: string; cwd: string; ro
   const path = resolve(root, 'bin/config.json');
   let content: unknown;
   let exists = true;
-  try { content = JSON.parse(await readFile(path, 'utf8')) as unknown; }
+  // A leading byte order mark, as Windows PowerShell 5.1 writes it, is not part of the JSON text.
+  try { content = JSON.parse((await readFile(path, 'utf8')).replace(/^\ufeff/, '')) as unknown; }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') { content = {}; exists = false; }
     else throw forgeError('INVALID_CONFIG', `Cannot read configuration ${path}: ${errorMessage(error)}`);

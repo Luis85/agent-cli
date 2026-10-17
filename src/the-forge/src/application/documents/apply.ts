@@ -1,6 +1,7 @@
 import { AppError, ensure, forgeError, locatedError } from '../../domain/shared/errors.ts';
 import { revisionConflict } from '../../domain/documents/write-plan.ts';
 import { editRequest, type ApplyPlan, type PlanOperation } from '../../domain/documents/apply-plan.ts';
+import { base64Bytes } from '../../domain/documents/base64.ts';
 import { EventBus } from '../plugins/events.ts';
 import type { MetadataIndex } from '../metadata/ports.ts';
 import { metadataChanges } from '../metadata/cache-events.ts';
@@ -17,15 +18,12 @@ export interface ApplyScope { workspace: Workspace; metadata: MetadataIndex; wor
 type Summary = { op: PlanOperation['op']; path: string } & Record<string, unknown>;
 type OperationSummary = Summary & { index: number };
 
-const base64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 /** Planning publishes nothing: its records would describe changes that are not committed yet. */
 const silentEvents = () => new EventBus({ depth: () => 0, run: callback => callback() });
 
 function contentBytes(content: string, encoding: 'utf8' | 'base64'): Uint8Array {
   if (encoding === 'utf8') return new TextEncoder().encode(content);
-  const text = content.trim();
-  ensure(base64.test(text), 'INVALID_ENCODING', 'Invalid base64 content.');
-  return Uint8Array.from(atob(text), character => character.charCodeAt(0));
+  return base64Bytes(content, 'Invalid base64 content.');
 }
 
 /** Prefixes a failure with the operation that caused it and records its index in `details.operation`. */
