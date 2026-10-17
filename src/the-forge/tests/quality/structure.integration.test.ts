@@ -42,6 +42,20 @@ describe('structure quality gate', () => {
     expect(lint.status).toBe(0);
   });
 
+  it('lints a scope too long for one command line in batches and reports every finding', async () => {
+    const root = await fixture();
+    // 150 paths of about 240 characters exceed the batch budget, and Windows' command-line limit, together.
+    const folder = `src/${'nested-folder-name/'.repeat(11)}`;
+    await mkdir(join(root, folder), { recursive: true });
+    for (let index = 0; index < 150; index++) await writeFile(join(root, folder, `module-${String(index).padStart(3, '0')}.ts`), 'export const value = 1;\n');
+    await writeFile(join(root, folder, 'module-149.ts'), 'void 0;\n// comment\n\n'.repeat(400) + 'void 0;');
+    const result = check(root, 'lint');
+    expect(result.output.report.number_of_files).toBe(result.output.scope.length);
+    expect(result.output.scope.join(' ').length).toBeGreaterThan(32_767);
+    expect(result.output.report.diagnostics).toEqual([expect.objectContaining({ filename: `${folder}module-149.ts` })]);
+    expect(result.status).toBe(1);
+  });
+
   it.each([
     ['src/index.ts', 401, 400],
     ['tests/example.unit.test.ts', 451, 450],
