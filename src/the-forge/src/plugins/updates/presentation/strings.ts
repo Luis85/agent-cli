@@ -1,11 +1,11 @@
 import type { PluginStrings } from '../../../application/plugins/plugin-catalog.ts';
 
 export const updatesStrings: PluginStrings = { de: {
-  manifest: { name: 'App-Aktualisierungen', description: 'Das portable Programm aus GitHub Releases mit Revisionsschutz aktualisieren und Arbeitsbereichsdaten erhalten.' },
-  commands: { update: 'GitHub Releases prüfen und das Programm dieses Arbeitsbereichs aktualisieren; lokale Einstellungen bleiben erhalten.' },
+  manifest: { name: 'App-Aktualisierungen', description: 'Das portable Programm aus GitHub Releases mit Revisionsschutz aktualisieren und Workspace-Daten erhalten.' },
+  commands: { update: 'GitHub Releases prüfen und das Programm dieses Workspace aktualisieren; lokale Einstellungen bleiben erhalten.' },
   actions: {
     'update check': 'Installierte Revision und neueste stabile GitHub-Version ohne Änderungen am Programm prüfen.',
-    'update apply': 'Eine feste Version herunterladen, prüfen und als geschützten Stapel anwenden; veränderbare Arbeitsbereichsdaten erhalten.',
+    'update apply': 'Eine feste Version herunterladen, prüfen und als geschützten Stapel anwenden; veränderbare Workspace-Daten erhalten.',
   },
   descriptions: {
     'check (default) or apply.': 'check (Standard) oder apply.',
@@ -14,8 +14,8 @@ export const updatesStrings: PluginStrings = { de: {
     'Installed bin folder revision returned by update check; required before upgrading.': 'Installierte bin-Ordnerrevision aus update check; vor der Aktualisierung erforderlich.',
   },
   errors: {
-    UPDATE_DOWNLOAD_FAILED: { summary: 'Die GitHub-Version konnte nicht abgerufen werden.', hint: 'Netzwerkzugriff, curl, tar und Speicherplatz prüfen; anschließend erneut versuchen.' },
-    UPDATE_INVALID: { summary: 'Die Version oder das Archiv ist ungültig.', hint: 'Stabile Version, Prüfsumme und Verteilungsmanifest prüfen; das bestehende Programm bleibt erhalten.' },
-    UPDATE_SCOPE_INVALID: { summary: 'Der Zielarbeitsbereich hat keine installierte Forge-Verteilung.', hint: 'Zuerst eine Version installieren oder --root auf den richtigen Arbeitsbereich setzen.' },
+    UPDATE_DOWNLOAD_FAILED: { summary: 'Die GitHub-Version konnte nicht abgerufen werden.', hint: 'Prüfen Sie Netzwerkzugriff, curl, tar und Speicherplatz und versuchen Sie es dann erneut.' },
+    UPDATE_INVALID: { summary: 'Die Version oder das Archiv ist ungültig.', hint: 'Prüfen Sie stabile Version, Prüfsumme und Verteilungsmanifest; das bestehende Programm bleibt erhalten.' },
+    UPDATE_SCOPE_INVALID: { summary: 'Der Ziel-Workspace hat keine installierte Forge-Verteilung.', hint: 'Installieren Sie zuerst eine Version, oder wählen Sie mit --root den richtigen Workspace.' },
   },
 } };

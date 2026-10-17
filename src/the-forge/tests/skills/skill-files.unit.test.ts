@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
+import { relative } from 'node:path';
 import { parse } from 'yaml';
 import { bundledSkills } from '../../src/plugins/skills/infrastructure/bundled-skills.ts';
 import { agentsSkill } from '../../src/plugins/agents/infrastructure/skill.ts';
@@ -7,12 +8,17 @@ import { backlogSkill } from '../../src/plugins/backlog/infrastructure/skill.ts'
 import { webviewsSkill } from '../../src/plugins/webviews/infrastructure/skill.ts';
 import { browserSkill } from '../../src/plugins/browser/infrastructure/skill.ts';
 import { skillIssues } from '../../src/domain/skills/skill.ts';
+import type { Skill } from '../../src/application/plugins/registry.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const folders = readdirSync('skills', { withFileTypes: true });
 const allowed = ['name', 'description', 'license', 'compatibility', 'metadata', 'allowed-tools'];
+/** The files of one skill folder besides SKILL.md, by path inside the folder. */
+const folderFiles = (id: string) => Object.fromEntries(readdirSync(`skills/${id}`, { recursive: true, withFileTypes: true })
+  .filter(entry => entry.isFile()).map(entry => relative(`skills/${id}`, `${entry.parentPath}/${entry.name}`).replaceAll('\\', '/'))
+  .filter(path => path !== 'SKILL.md').map(path => [path, readFileSync(`skills/${id}/${path}`, 'utf8')]));
 
 /** The Agent Skills specification (https://agentskills.io/specification), checked with a complete YAML parser. */
 function specificationIssues(folder: string, content: string): string[] {
@@ -45,12 +51,23 @@ describe('authored Agent Skills', () => {
     expect(skillIssues(folder, skillFrontmatter(content))).toEqual([]);
   });
 
+  it.each(folders.map(entry => entry.name))('%s keeps a short SKILL.md that links each reference file', folder => {
+    // Agents load SKILL.md whenever the skill triggers; details belong in reference files read on demand.
+    const content = readFileSync(`skills/${folder}/SKILL.md`, 'utf8');
+    expect(Buffer.byteLength(content)).toBeLessThanOrEqual(4096);
+    expect(Object.keys(folderFiles(folder)).filter(path => !content.includes(`](${path})`))).toEqual([]);
+  });
+
   it('registers each authored folder under its own name, as plugins contribute skills in the same shape', async () => {
     // Loaded by URL: the example plugin is runnable JavaScript, not part of the typed test program.
     const examplePlugin = (await import(pathToFileURL(resolve('docs/examples/plugins/quality/main.mjs')).href)).default as { skills: Array<{ id: string; content: string }> };
-    const registered = [...bundledSkills, agentsSkill, backlogSkill, webviewsSkill, browserSkill];
+    const registered: Skill[] = [...bundledSkills, agentsSkill, backlogSkill, webviewsSkill, browserSkill];
     expect(registered.map(skill => skill.id).sort()).toEqual(folders.map(entry => entry.name).sort());
-    for (const skill of registered) expect(skill.content).toBe(readFileSync(`skills/${skill.id}/SKILL.md`, 'utf8'));
+    for (const skill of registered) {
+      expect(skill.content).toBe(readFileSync(`skills/${skill.id}/SKILL.md`, 'utf8'));
+      // Reference files ship with their skill: every file in the folder is registered, and nothing else.
+      expect(skill.files ?? {}, skill.id).toEqual(folderFiles(skill.id));
+    }
     for (const skill of examplePlugin.skills) expect(specificationIssues(skill.id, skill.content)).toEqual([]);
   });
 });

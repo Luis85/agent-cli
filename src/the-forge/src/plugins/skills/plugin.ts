@@ -21,8 +21,8 @@ export const skillsPlugin: CorePlugin = {
         commands: { skills: 'Mitgelieferte und von Plugins bereitgestellte Agent-Skills auflisten, lesen oder installieren.' },
         actions: {
           'skills list': 'Die IDs aller registrierten Skills auflisten.',
-          'skills show': 'Einen Skill mit seinem SKILL.md-Inhalt zurückgeben.',
-          'skills install': 'Jeden Skill im ausgewählten Projekt nach .claude/skills/<id>/SKILL.md und .agents/skills/<id>/SKILL.md schreiben, oder in ein --target bzw. ein --out-Verzeichnis; vorhandene Dateien werden abgelehnt.',
+          'skills show': 'Einen Skill mit seinem SKILL.md-Inhalt und der Liste seiner Dateien zurückgeben, oder mit --file eine seiner Referenzdateien.',
+          'skills install': 'Jeden Skill-Ordner (SKILL.md und seine Referenzdateien) im ausgewählten Projekt nach .claude/skills/<id>/ und .agents/skills/<id>/ schreiben, oder in ein --target bzw. ein --out-Verzeichnis; vorhandene Dateien werden abgelehnt.',
         },
       },
     },

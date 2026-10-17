@@ -10,10 +10,44 @@ export const skillTargetChoices = ['both', ...Object.keys(skillTargets)] as cons
 /** 1–64 lowercase letters, digits and single hyphens, neither leading nor trailing. */
 const skillName = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const isSkillName = (value: string) => value.length <= 64 && skillName.test(value);
+const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 
-/** The SKILL.md paths of one skill under the selected roots. */
-export function skillPaths(id: string, roots: readonly string[]): string[] {
-  return roots.map(root => `${root}/${id}/SKILL.md`);
+/**
+ * A skill's text: its SKILL.md `content` and optional further `files` keyed by their path inside the skill folder,
+ * such as `references/editing.md`, which SKILL.md links for agents to read on demand.
+ */
+export interface SkillText { id: string; content: string; files?: Readonly<Record<string, string>> }
+
+/** The file paths inside one skill folder: SKILL.md first, then its further files in path order. */
+export function skillFileNames(skill: SkillText): string[] {
+  return ['SKILL.md', ...Object.keys(skill.files ?? {}).sort()];
+}
+
+/** Every file of one skill under each selected root, SKILL.md first. */
+export function skillFiles(skill: SkillText, roots: readonly string[]): Array<{ path: string; content: string }> {
+  const texts: Readonly<Record<string, string>> = { ...skill.files, 'SKILL.md': skill.content };
+  return roots.flatMap(root => skillFileNames(skill).map(name => ({ path: `${root}/${skill.id}/${name}`, content: texts[name]! })));
+}
+
+/**
+ * Bundled skill files from a build-time glob such as `skills/<id>/references/*.md`, keyed by their path inside the
+ * skill folder.
+ */
+export function skillFolderFiles(id: string, modules: Readonly<Record<string, string>>): Record<string, string> {
+  return Object.fromEntries(Object.entries(modules).map(([path, content]) => [path.slice(path.lastIndexOf(`/${id}/`) + id.length + 2), content]));
+}
+
+/** A relative POSIX path of names that start with a letter or digit, so it never escapes or hides in the folder. */
+const skillFileName = /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/;
+
+/** Problems of a skill's further `files`: a map of relative paths other than SKILL.md to text. */
+export function skillFileIssues(id: string, files: unknown): string[] {
+  if (files === undefined) return [];
+  if (!isRecord(files)) return [`Skill ${id} files must map paths inside the skill folder to text.`];
+  return Object.entries(files).flatMap(([path, content]) => [
+    ...(skillFileName.test(path) && path.length <= 255 && path.toUpperCase() !== 'SKILL.MD' ? [] : [`Skill ${id} file ${path} must be a relative path inside the skill folder other than SKILL.md.`]),
+    ...(typeof content === 'string' ? [] : [`Skill ${id} file ${path} must be text.`]),
+  ]);
 }
 
 /** The roots of `--target both|claude|agents`. */
@@ -24,7 +58,6 @@ export function targetRoots(target: string): string[] {
 /** The YAML frontmatter of a SKILL.md: its parsed value, the YAML syntax error, or null when the file has none. */
 export type SkillFrontmatter = { value: unknown } | { error: string } | null;
 
-const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const text = (value: unknown, maximum: number) => typeof value === 'string' && value.trim().length > 0 && value.length <= maximum;
 
 /** Problems of the optional fields: `license`, `compatibility` (1-500 characters), `metadata`, `allowed-tools`. */
