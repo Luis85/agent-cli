@@ -6,7 +6,7 @@ import { committedEvents } from '../support/events.ts';
 import { workspaceRoot } from '../support/workspace.ts';
 
 const generic = portableCli();
-const checkout = portableCli();
+const checkout = portableCli({ privateBundle: true });
 let selected: string;
 beforeAll(async () => {
   // Restore the checked-in checkout settings only in this private fixture.

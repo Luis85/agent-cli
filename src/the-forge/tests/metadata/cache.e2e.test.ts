@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { racyWindowMs, snapshotFormat } from '../../src/domain/metadata/snapshot.ts';
 import { portableCli } from '../support/portable-cli.ts';
 
-const fixture = portableCli();
+const fixture = portableCli({ privateBundle: true });
 const cli = fixture.cli;
 const cacheFile = () => join(fixture.project, `.forge/cache/metadata.v${snapshotFormat}.workspace.json`);
 const tags = (body: { data: { tags: Array<{ tag: string; files: string[] }> } }) => Object.fromEntries(body.data.tags.map(item => [item.tag, item.files]));

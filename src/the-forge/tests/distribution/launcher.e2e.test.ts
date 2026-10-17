@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { errorCatalog } from '../../src/domain/shared/error-catalog.ts';
 import { portableCli } from '../support/portable-cli.ts';
 
-const fixture = portableCli();
+const fixture = portableCli({ privateBundle: true });
 beforeAll(async () => { await rm(join(fixture.bundle, 'bin/forge-runtime.js')); });
 
 it('reports a missing runtime bundle as a JSON error instead of a Node stack trace', async () => {
