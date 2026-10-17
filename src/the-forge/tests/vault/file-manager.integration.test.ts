@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { vaultScope, writeVault } from '../support/vault.ts';
+import { Localizer } from '../../src/presentation/localization/localization.ts';
 
 let root: string;
 beforeEach(async () => { root = await mkdtemp(join(tmpdir(), 'forge-file-manager-')); });
@@ -35,6 +36,24 @@ describe('moving notes with link updates', () => {
     const cache = await metadata.load();
     expect(Object.values(cache.unresolvedLinks).every(links => Object.keys(links).length === 0)).toBe(true);
     expect(cache.resolvedLinks['Index.md']).toEqual({ 'notes/Roadmap.md': 3 });
+  });
+
+  it('refuses a move whose linking note changed while its link updates were planned, saying so in both languages', async () => {
+    await writeVault(root, vault);
+    const { app, files, metadata, records } = await vaultScope(root);
+    const { revision } = await files.read('notes/Plan.md');
+    // Another writer edits Index.md right after the metadata cache was read, so its link offsets no longer match.
+    const load = metadata.load.bind(metadata), edited = `Edited first.\n${vault['Index.md']}`;
+    metadata.load = async () => { const cache = await load(); await writeFile(join(root, 'Index.md'), edited); return cache; };
+    const failure = await app.fileManager.rename('notes/Plan.md', 'Roadmap', { ifMatch: revision }).catch((error: unknown) => error);
+    expect(failure).toMatchObject({ code: 'CONFLICT', details: { path: 'Index.md', reason: 'changed-while-planning' } });
+    const german = new Localizer('de').error(failure), english = new Localizer('en').error(failure);
+    expect(german.message).toBe('Index.md wurde geändert, während die Linkaktualisierungen geplant wurden; wiederholen Sie den Befehl.');
+    expect(german.hint).toContain('Wiederholen Sie dasselbe Verschieben');
+    expect(english.hint).toContain('rerun the same move');
+    expect(await text('Index.md')).toBe(edited);
+    expect(await text('notes/Plan.md')).toBe(vault['notes/Plan.md']);
+    expect(records()).toEqual([]);
   });
 
   it('previews every rewritten file with diffs and changes nothing in a dry run', async () => {

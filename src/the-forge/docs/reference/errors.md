@@ -82,7 +82,7 @@ Each failure's `hint` names the invoked command where the catalog hint says `hel
 
 **`INVALID_MOVE`** (exit 2): the destination equals the source, lies inside the moved folder, or a `rename` name contains `/`.
 
-A stale `--if-match` for the moved or deleted path, or a referring file that changed while links were planned, fails with `CONFLICT`; reread with `read` (files) or `delete --dry-run`/`move --dry-run` and retry.
+A stale `--if-match` for the moved or deleted path, or a referring file that changed while links were planned, fails with `CONFLICT`; reread with `read` (files) or `delete --dry-run`/`move --dry-run` and retry. The referring file's case carries `details.reason: "changed-while-planning"` with `details.path` naming that file, and nothing was written, so the same move can simply be rerun.
 
 ## Codes
 
