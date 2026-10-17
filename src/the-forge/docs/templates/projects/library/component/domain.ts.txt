@@ -1,0 +1,8 @@
+export class __FORGE_COMPONENT__ {
+  private constructor(readonly id: string) {}
+
+  static create(id: string): __FORGE_COMPONENT__ {
+    if (!id.trim()) throw new globalThis.Error('Identity is required');
+    return new __FORGE_COMPONENT__(id);
+  }
+}
