@@ -88,6 +88,9 @@ describe('the backlog core plugin through the portable CLI', () => {
     expect(board.columns.map((column: { state: string | null; count: number }) => [column.state, column.count])).toEqual([[null, 4], ['Open', 0], ['Active', 0], ['Done', 1]]);
     const check = (await cli(['backlog', 'check'])).body.data;
     expect(check).toMatchObject({ ok: true, counts: { items: 7, errors: 0 } });
+    // The generated release notes are an untyped root the view hides by design, so check does not warn about them.
+    expect(check.counts.ignored).toBe(1);
+    expect(check.problems.map((problem: { code: string }) => problem.code)).not.toContain('ignored');
     expect((await cli(['links', 'unresolved', '--path', 'plan/**'])).body.data.links).toEqual([]);
     expect((await cli(['backlog', 'show', 'Nothing'])).body.error.code).toBe('BACKLOG_NOT_FOUND');
   });

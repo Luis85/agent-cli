@@ -12,6 +12,8 @@ export interface CheckInput {
   model: BacklogModel; settings: BacklogSettings;
   /** Release configuration problems (release view) and membership paths that do not resolve to one Release. */
   releaseProblems: string[]; unresolvedMemberships: string[];
+  /** The notes `hierarchyOnly` hid that the check reports; default every note the model ignored. */
+  ignored?: readonly string[];
   typeOf(path: string): string | null;
 }
 
@@ -84,6 +86,7 @@ export function checkBacklog(input: CheckInput): CheckProblem[] {
   const unranked = results.filter(item => item.order === null && !isReleaseType(item.typeName)).map(item => item.path);
   if (unranked.length > 0) problems.push(warning('unranked', fill(unranked.length === 1 ? checkMessages.unrankedOne : checkMessages.unranked, { count: unranked.length }), { paths: unranked }));
   // hierarchyOnly hides roots without a backlog type; the notes exist but no view shows them.
-  if (model.ignored.length > 0) problems.push(warning('ignored', fill(model.ignored.length === 1 ? checkMessages.ignoredOne : checkMessages.ignored, { count: model.ignored.length }), { paths: [...model.ignored] }));
+  const ignored = input.ignored ?? model.ignored;
+  if (ignored.length > 0) problems.push(warning('ignored', fill(ignored.length === 1 ? checkMessages.ignoredOne : checkMessages.ignored, { count: ignored.length }), { paths: [...ignored] }));
   return problems;
 }
