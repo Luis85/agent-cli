@@ -64,7 +64,7 @@ export const agentsPlugin: CorePlugin = {
     ],
     strings: {
       de: {
-        commands: { agents: 'docker-agent-Definitionen verwalten (auflisten, prüfen, validieren, anlegen, importieren) und daraus Claude-Code-Agenten generieren.' },
+        commands: { agents: 'docker-agent-Definitionen verwalten (auflisten, untersuchen, validieren, anlegen, importieren) und daraus Claude-Code-Agenten generieren.' },
         actions: {
           'agents list': 'Definitionsdateien mit ihren Agenten, dem Standardagenten und der Anzahl der Diagnosen auflisten.',
           'agents inspect': 'Eine Definitionsdatei oder mit datei#agent einen Agenten samt Diagnosen zurückgeben.',
