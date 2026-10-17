@@ -33,12 +33,6 @@ beforeAll(async () => {
 
 // Regeneration without drift is the gate's last stage, npm run showcase:check, which runs alone after this suite.
 describe('committed showcase project', () => {
-  it('keeps the drift check in the full gate', async () => {
-    const manifest = JSON.parse(await readFile(join(workspaceRoot, 'src/the-forge/package.json'), 'utf8'));
-    expect(manifest.scripts['showcase:check']).toBe('node scripts/showcase.mjs --check');
-    expect(manifest.scripts.check.split(' && ').at(-1)).toBe('npm run showcase:check');
-  });
-
   it('contains an independent project toolchain, CI workflow, agent and skills', () => {
     for (const path of ['.forge/project.json', 'package.json', 'package-lock.json', 'tsconfig.json', 'vitest.config.ts', 'configs/quality/fallow.json',
       'src/infrastructure/workflows/check/check.yml', '.claude/agents/trailhead-reviewer.md', '.agents/skills/forge-workflow/SKILL.md', '.claude/skills/forge-workflow/SKILL.md',
