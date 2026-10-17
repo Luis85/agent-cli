@@ -8,8 +8,9 @@ import { arity, integer, parseJson, value } from '../../application/plugins/comm
 import { option, type CommandFlags } from '../../application/plugins/command-metadata.ts';
 import { decodeText, editBytes, ensureEditable } from '../../application/documents/text-edit.ts';
 import { PlanRunner } from '../../application/documents/apply.ts';
-import { applyOutput, editOutput } from './output.ts';
+import { applyOutput } from './output.ts';
 import { inputWarnings } from './input-warnings.ts';
+import { changesOutput } from '../../application/plugins/output-schemas.ts';
 
 /** JSON text, `@path` (a file in the command scope) or `-` (standard input). */
 async function jsonInput(source: string, context: Pick<CommandContext, 'workspace' | 'input'>): Promise<unknown> {
@@ -64,7 +65,7 @@ export function editCommand(): Command {
       'edit notes/idea.md --edits @edits.json --if-match <revision> --dry-run',
     ],
     usage: 'edit <note.md|text-file> --if-match sha256 (--find text --replace text | --edits json|@file|- | --append --content text | (--section "A > B" [--section-line n] | --block id) (--replace text | --append --content text | --prepend --content text)) [--project id]',
-    scope: 'project', projectOption: 'project', discovery: false, mutating: true, args: [{ name: 'path', description: 'Vault path relative to the command scope.', required: true, path: true }], errors: editErrors, output: editOutput,
+    scope: 'project', projectOption: 'project', discovery: false, mutating: true, args: [{ name: 'path', description: 'Vault path relative to the command scope.', required: true, path: true }], errors: editErrors, output: changesOutput(),
     options: {
       'if-match': option.string('SHA-256 revision the file must still have (from read).', { required: true }),
       find: option.string('Exact literal text that must occur once.'),

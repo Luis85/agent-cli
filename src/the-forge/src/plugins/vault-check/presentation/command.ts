@@ -1,4 +1,4 @@
-import type { Command, CommandContext } from '../../../application/plugins/registry.ts';
+import type { Command, PluginContext } from '../../../application/plugins/registry.ts';
 import { option, type CommandFlags } from '../../../application/plugins/command-metadata.ts';
 import { arity, value } from '../../../application/plugins/command-input.ts';
 import { pathFilter, pathGlob, recordingFilter } from '../../../domain/documents/path-glob.ts';
@@ -70,7 +70,7 @@ function checkResult(report: CheckReport, service: VaultService, settings: Recor
  * The `vault` command: `check` (the default) reports broken links and embeds, invalid notes, Canvas and Bases files
  * and inconsistent structure; `tags` and `properties` inventory the vault. Read-only; `service` binds one context.
  */
-export function vaultCommand(service: (context: CommandContext) => VaultService): Command {
+export function vaultCommand(service: (context: PluginContext) => VaultService): Command<PluginContext> {
   return {
     id: 'vault', description: 'Check the vault for broken links, invalid files and inconsistent properties, and inventory its tags and properties.',
     usage: 'vault [check] [--path glob] [--rule id[,id…]] [--strict] | tags [--path glob] [--sort name|count] | properties [--path glob] [--name property] [--project id]',

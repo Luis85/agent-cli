@@ -25,7 +25,7 @@ const corePlugins = [
   basesPlugin, skillsPlugin, searchPlugin, linksPlugin, vaultCheckPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin,
 ];
 const { commands } = builtinCommands();
-for (const plugin of [searchPlugin, linksPlugin, vaultCheckPlugin]) for (const command of plugin.create(host).commands ?? []) commands.set(command.id, command);
+for (const plugin of [searchPlugin, linksPlugin, vaultCheckPlugin, agentsPlugin, backlogPlugin]) for (const command of plugin.create(host).commands ?? []) commands.set(command.id, command);
 /**
  * An independent JSON Schema 2020-12 validator in strict mode, so unknown keywords and formats fail to compile.
  * Positional arguments are deliberately open-ended tuples (optional trailing arguments), which strictTuples flags.
@@ -63,6 +63,31 @@ describe('published input schemas under an independent JSON Schema 2020-12 valid
     ['vault', invocation(['tags'], { strict: true }), false],
     ['vault', invocation(['properties'], { name: 'status', sort: 'name' }), false],
     ['claude', invocation(['plugins', 'install', 'review@team']), true],
+    ['claude', invocation(['plugins', 'install', 'review@team'], { scope: 'managed' }), false],
+    ['claude', invocation(['plugins', 'update', 'review@team'], { scope: 'managed' }), true],
+    ['claude', invocation(['plugins', 'create', 'plugins/team'], { stdin: true }), true],
+    ['claude', invocation(['plugins', 'create', 'plugins/team'], { scope: 'user' }), false],
+    ['claude', invocation(['plugins', 'eval', './plugin'], { runs: '2' }), true],
+    ['claude', invocation(['plugins', 'eval', 'init', 'case'], { bare: true }), true],
+    ['claude', invocation(['plugins', 'eval', 'init', 'case'], { runs: '2' }), false],
+    ['claude', invocation(['agents']), true],
+    ['claude', invocation(['agents', 'create', 'review'], { metadata: '{}', prompt: 'Hi' }), true],
+    ['claude', invocation(['agents', 'list'], { metadata: '{}' }), false],
+    ['claude', invocation(['capabilities'], { scope: 'user' }), false],
+    ['backlog', invocation(['list'], { context: true, base: 'b.base' }), true],
+    ['backlog', invocation(['list'], { goal: 'x' }), false],
+    ['backlog', invocation(['iteration', 'add'], { goal: 'x' }), true],
+    ['backlog', invocation(['iteration', 'assign', 'Item', 'Sprint'], { goal: 'x' }), false],
+    ['backlog', invocation(['iteration']), false],
+    ['backlog', invocation(['sync']), true],
+    ['backlog', invocation(['sync', 'status'], { direction: 'pull' }), true],
+    ['backlog', invocation(['sync', 'resolve', 'Item'], { take: 'local' }), true],
+    ['backlog', invocation(['sync', 'resolve', 'Item']), false],
+    ['backlog', invocation(['sync', 'resolve', 'Item'], { take: 'local', direction: 'pull' }), false],
+    ['agents', invocation(['list'], { model: 'x' }), false],
+    ['agents', invocation(['generate'], { target: 'claude', plan: true }), true],
+    ['components', invocation(['import'], { from: 'incoming' }), true],
+    ['components', invocation(['export'], { from: 'incoming' }), false],
     ['edit', invocation(['note.md'], { 'if-match': 'a'.repeat(64), append: true, content: 'More' }), true],
     ['edit', invocation([], { append: 'yes' }), false],
     ['list', invocation([], { kind: 'video' }), true],

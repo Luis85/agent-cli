@@ -1,4 +1,5 @@
 import { ensure } from '../../../domain/shared/errors.ts';
+import { changesOutput } from '../../../application/plugins/output-schemas.ts';
 import { vaultPath } from '../../../domain/documents/file.ts';
 import type { Command, CommandContext } from '../../../application/plugins/registry.ts';
 import { arity } from '../../../application/plugins/command-input.ts';
@@ -13,7 +14,10 @@ export function templatesCommand(templates: (context: CommandContext) => Documen
     actions: {
       list: { description: 'List the editable Markdown templates in bin/templates.', mutating: false },
       inspect: { description: 'Report a template\'s required and optional values.', mutating: false },
-      install: { description: 'Install the planning workflow template pack into bin/templates; existing templates are skipped.', destructive: false, idempotent: true },
+      install: {
+        description: 'Install the planning workflow template pack into bin/templates; existing templates are skipped.', destructive: false, idempotent: true,
+        output: changesOutput({ directory: { type: 'string' }, skipped: { type: 'array', items: { type: 'string' }, description: 'Templates that already exist and were left unchanged.' } }, ['directory', 'skipped']),
+      },
     },
     args: [{ name: 'action', description: 'list (default), inspect or install.', enum: ['list', 'inspect', 'install'] }, { name: 'target', description: 'The template for inspect, or the pack (workflow) for install.' }],
     async run(args, _flags, context) {

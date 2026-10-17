@@ -22,7 +22,9 @@ describe('a backlog over notes Obsidian indexes leniently', () => {
     expect(list.data.items.map((item: { path: string; parent: string | null }) => [item.path, item.parent])).toEqual([['b/Epic.md', null], ['b/stories/Story.md', 'b/Epic.md']]);
     const check = await runBacklog(vault.root, ['check']);
     expect(check.data.ok).toBe(true);
+    // The unparseable note has no readable type or parent, so hierarchyOnly hides it, and check says so.
     expect(check.data.problems).toEqual([
+      expect.objectContaining({ code: 'ignored', severity: 'warning', paths: ['b/Broken.md'] }),
       expect.objectContaining({ code: 'unparseable-note', severity: 'warning', path: 'b/Broken.md' }),
       expect.objectContaining({ code: 'ambiguous-link', severity: 'warning', path: 'b/Epic.md', value: 'README' }),
       expect.objectContaining({ code: 'ambiguous-link', severity: 'warning', path: 'b/stories/Story.md', value: 'Epic' }),

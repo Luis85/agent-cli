@@ -1,6 +1,7 @@
 import type { Command } from '../../../application/plugins/registry.ts';
 import type { SkillCatalog } from '../../../application/plugins/core-plugins.ts';
 import { option } from '../../../application/plugins/command-metadata.ts';
+import { changesOutput } from '../../../application/plugins/output-schemas.ts';
 import { arity, value } from '../../../application/plugins/command-input.ts';
 import type { JsonSchema } from '../../../domain/schema/json-schema.ts';
 import { ensure } from '../../../domain/shared/errors.ts';
@@ -17,27 +18,26 @@ export function skillsCommand(skills: SkillCatalog): Command {
     id: 'skills',
     description: 'List, read or install bundled and plugin agent skills.',
     usage: 'skills [list | show <id> | install [--target both|claude|agents | --out directory]]',
-    scope: 'workspace', discovery: false, mutating: false, defaultAction: 'list',
+    scope: 'workspace', discovery: false, mutating: false, defaultAction: 'list', unknownAction: 'INVALID_ARGUMENT',
     actions: {
-      list: { description: 'List the ids of every registered skill.', output: listOutput },
-      show: { description: 'Return one skill with its SKILL.md content.', output: showOutput },
+      list: { description: 'List the ids of every registered skill.', usage: 'skills [list]', output: listOutput },
+      show: { description: 'Return one skill with its SKILL.md content.', usage: 'skills show <id>', output: showOutput },
       install: {
         description: 'Write every skill to .claude/skills/<id>/SKILL.md and .agents/skills/<id>/SKILL.md in the selected project, or to one --target or an --out directory; existing files are refused.',
-        scope: 'project', mutating: true, destructive: false, idempotent: true,
+        usage: 'skills install [--target both|claude|agents | --out directory]', scope: 'project', mutating: true, destructive: false, idempotent: true, output: changesOutput(),
+        options: {
+          target: option.string('skills install: the skill roots, .claude/skills (claude), .agents/skills (agents) or both (the default).', { enum: skillTargetChoices }),
+          out: option.string('skills install: one custom directory instead of the --target roots.'),
+        },
       },
     },
     args: [
       { name: 'action', description: 'list (default), show or install.', enum: ['list', 'show', 'install'] },
       { name: 'id', description: 'The skill id for show.' },
     ],
-    options: {
-      target: option.string('skills install: the skill roots, .claude/skills (claude), .agents/skills (agents) or both (the default).', { enum: skillTargetChoices }),
-      out: option.string('skills install: one custom directory instead of the --target roots.'),
-    },
     errors: ['UNKNOWN_SKILL', 'CONFLICT'],
     async run(args, flags, { workspace }) {
       const action = args[0] ?? 'list';
-      if (action !== 'install') ensure(flags.out === undefined && flags.target === undefined, 'INVALID_ARGUMENT', '--target and --out are only valid with skills install.');
       if (action === 'list') { arity(args, 0, 1); return { skills: skills.list().map(skill => skill.id) }; }
       if (action === 'show') { arity(args, 2); const skill = skills.get(args[1]!); ensure(skill, 'UNKNOWN_SKILL', args[1]!); return skill; }
       ensure(action === 'install', 'INVALID_ARGUMENT', 'Use skills list, show, or install.'); arity(args, 1);

@@ -1,4 +1,4 @@
-import type { Command, CommandContext } from '../../../application/plugins/registry.ts';
+import type { Command, PluginContext } from '../../../application/plugins/registry.ts';
 import { option } from '../../../application/plugins/command-metadata.ts';
 import { arity, integer, value } from '../../../application/plugins/command-input.ts';
 import type { JsonSchema } from '../../../domain/schema/json-schema.ts';
@@ -46,7 +46,7 @@ export interface SearchService {
 }
 
 /** `service` binds the search to one command context: its files, metadata cache and configured time budget. */
-export function searchCommand(service: (context: CommandContext) => SearchService): Command {
+export function searchCommand(service: (context: PluginContext) => SearchService): Command<PluginContext> {
   return {
     id: 'search', description: 'Search text files for a literal or regular-expression pattern and return hits with line, column, snippet and revision.',
     examples: ['search "open question" --path "notes/**"', 'search "^- \\[ \\]" --regex --kind markdown'],

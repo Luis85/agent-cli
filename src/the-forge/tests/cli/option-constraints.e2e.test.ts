@@ -29,7 +29,7 @@ beforeAll(async () => {
   modes = commands.flatMap(command => [
     { tokens: [command.id], options: command.options },
     ...Object.entries(command.annotations.actions ?? {}).filter(([, action]) => action.options !== undefined)
-      .map(([id, action]) => ({ tokens: [command.id, id], options: { ...command.options, ...action.options } })),
+      .map(([id, action]) => ({ tokens: [command.id, ...id.split(' ')], options: { ...command.options, ...action.options } })),
   ]);
 });
 
@@ -48,7 +48,7 @@ describe('declared option constraints', () => {
   it('rejects a value outside a declared enum with INVALID_OPTION_VALUE', async () => {
     for (const [tokens, key] of [['list', 'kind'], ['make ui', 'framework']] as const) {
       const { options } = mode(tokens);
-      const result = await cli([...tokens.split(' '), ...requiredValues(options), `--${key}`, 'not-a-declared-value']);
+      const result = await cli([...tokens.split(' '), ...requiredValues(options, key), `--${key}`, 'not-a-declared-value']);
       expect(result.body.error, `${tokens} --${key}`).toMatchObject({ code: 'INVALID_OPTION_VALUE', details: { option: key, value: 'not-a-declared-value', allowed: options[key]!.enum } });
     }
   });

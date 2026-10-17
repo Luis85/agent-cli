@@ -1,6 +1,6 @@
 import { Command, CommanderError, Option } from 'commander';
 import { forgeError, ensure } from '../../domain/shared/errors.ts';
-import { commandOptions, ensureKnownAction, hasActionOptions, listOptionItems, option, optionTypes, type CommandMetadata, type CommandOption } from '../../application/plugins/command-metadata.ts';
+import { anyActionOptions, commandOptions, ensureKnownAction, hasActionOptions, listOptionItems, option, optionTypes, type CommandMetadata, type CommandOption } from '../../application/plugins/command-metadata.ts';
 import { globalOptions, requiredOptionMessage } from '../../application/plugins/command-input.ts';
 import { unknownOption, unknownOptionGuidance } from './guidance.ts';
 /** The global options as help and schema describe them; routing options select the workspace before the command loads. */
@@ -50,11 +50,11 @@ export function parseBootstrap(tokens: string[]): ParsedArguments {
 
 /**
  * The complete invocation parsed with the global options and those `command` declares. An action's own options
- * (make <generator>) parse only once the action is known: the first argument after the command id, unless an option
- * precedes it.
+ * (make <generator>, backlog iteration add) parse only once the action is known from the leading arguments, which
+ * options may precede.
  */
 export function parseCommand(tokens: string[], command: CommandMetadata): ParsedArguments {
-  const actionArgs = hasActionOptions(command) ? parseArguments(tokens, { ...globalOptions, ...optionTypes(command.options) }, true).args.slice(1) : [];
+  const actionArgs = hasActionOptions(command) ? actionArguments(tokens, command) : [];
   try { return parseArguments(tokens, { ...globalOptions, ...optionTypes(commandOptions(command, actionArgs)) }); }
   catch (error) {
     // An unknown action outranks its options: make <unknown> --template fails with UNKNOWN_GENERATOR.
@@ -87,6 +87,16 @@ export function declaredValues(options: Readonly<Record<string, CommandOption>>,
     if (schema.list) values[key] = items.join(',');
   }
   return values;
+}
+
+/**
+ * The arguments after the command id, found with every option any action declares so that an option before the
+ * action words cannot hide them. When those options do not parse (a repeated or valueless option), the command's
+ * own options find them, as the full parse with the selected action's options then reports.
+ */
+function actionArguments(tokens: string[], command: CommandMetadata): string[] {
+  try { return parseArguments(tokens, { ...globalOptions, ...anyActionOptions(command) }, true).args.slice(1); }
+  catch { return parseArguments(tokens, { ...globalOptions, ...optionTypes(command.options) }, true).args.slice(1); }
 }
 
 /**

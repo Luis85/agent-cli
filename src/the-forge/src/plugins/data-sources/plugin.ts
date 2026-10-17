@@ -1,5 +1,4 @@
 import type { CorePlugin } from '../../application/plugins/core-plugins.ts';
-import type { PluginContext } from '../../application/plugins/registry.ts';
 import { DataSourceLibrary } from './application/library.ts';
 import { dataSourceSettings, dataSourcePathSettings, dataSourceSettingsSchema } from './application/settings.ts';
 import { MarkdownDataSourceDefinitions } from './infrastructure/definitions.ts';
@@ -11,7 +10,7 @@ import { dataSourcesStrings } from './presentation/strings.ts';
 const services: DataSourceServicesFactory = context => {
   const workspace = context.environment;
   return {
-    settings: dataSourceSettings((context as PluginContext).settings),
+    settings: dataSourceSettings(context.settings),
     library: new DataSourceLibrary(workspace, new MarkdownDataSourceDefinitions(workspace.codec), new TypeScriptDataSourceRenderer()),
   };
 };

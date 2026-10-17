@@ -1,5 +1,4 @@
 import type { CorePlugin } from '../../application/plugins/core-plugins.ts';
-import type { PluginContext } from '../../application/plugins/registry.ts';
 import { errorMessage } from '../../domain/shared/errors.ts';
 import { pathGlob } from '../../domain/documents/path-glob.ts';
 import { linksCommand } from './presentation/command.ts';
@@ -28,7 +27,7 @@ export const linksPlugin: CorePlugin = {
   create: () => ({
     commands: [linksCommand(context => ({
       cache: () => context.metadata.load(),
-      roots: () => ((context as PluginContext).settings?.roots ?? []) as string[],
+      roots: () => (context.settings?.roots ?? []) as string[],
     }))],
     settings: {
       type: 'object', additionalProperties: false,

@@ -201,7 +201,7 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 | `INVALID_CLAUDE_SETTINGS` | 2 | input | no | The Claude settings file is invalid. | Fix the JSON structure of the settings file named in the message. When it names the generation manifest `.claude/forge-generated.json`, an older Forge wrote it: delete `.claude/forge-generated.json` and run `agents generate` again; the rules it listed stay in `.claude/settings.json` until you remove them. |
 | `INVALID_CLAUDE_COMMAND` | 2 | input | no | The Claude command is not supported. | Run claude capabilities. |
 | `INVALID_CLAUDE_ARGUMENT` | 2 | input | no | A Claude command argument is invalid. | Correct the arguments named in the message; run `help <command>` for usage. |
-| `INVALID_CLAUDE_OPTION` | 2 | input | no | The option is not allowed for this Claude command. | Run help claude and remove the option. |
+| `INVALID_CLAUDE_OPTION` | 2 | input | no | A Claude option has an invalid value or combination. | Run help claude and correct the option the message names. |
 | `INVALID_CLAUDE_SCOPE` | 2 | input | no | The Claude scope is invalid. | Run help claude and pass a `--scope` value supported by that action. |
 | `INVALID_CLAUDE_INPUT` | 2 | input | no | The Claude input is invalid or too large. | Pass valid input within the size limit. |
 | `INVALID_CLAUDE_OUTPUT` | 2 | input | no | The Claude output format is invalid. | Use text, json or json-last-line. |

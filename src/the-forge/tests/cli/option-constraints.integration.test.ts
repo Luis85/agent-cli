@@ -18,7 +18,7 @@ beforeAll(async () => {
   modes = [...registry.commands.values()].flatMap(command => [
     { tokens: [command.id], options: command.options ?? {} },
     ...Object.entries(command.actions ?? {}).filter(([, action]) => action.options !== undefined)
-      .map(([id, action]) => ({ tokens: [command.id, id], options: { ...command.options, ...action.options } })),
+      .map(([id, action]) => ({ tokens: [command.id, ...id.split(' ')], options: { ...command.options, ...action.options } })),
   ]);
 });
 
@@ -42,12 +42,12 @@ describe('declared option constraints of every mode', () => {
     for (const { tokens, options } of modes) {
       for (const [key, schema] of Object.entries(options)) {
         if (schema.enum === undefined) continue;
-        const error = rejection([...tokens, ...requiredValues(options), `--${key}`, 'not-a-declared-value']);
+        const error = rejection([...tokens, ...requiredValues(options, key), `--${key}`, 'not-a-declared-value']);
         expect(error, `${tokens.join(' ')} --${key}`).toMatchObject({ code: 'INVALID_OPTION_VALUE', details: { option: key, value: 'not-a-declared-value', allowed: schema.enum } });
         checked.push(`${tokens.join(' ')} --${key}`);
       }
     }
-    expect(checked).toEqual(expect.arrayContaining(['list --kind', 'create --encoding', 'make ui --framework', 'agents --mcp', 'backlog --direction', 'vault tags --sort']));
+    expect(checked).toEqual(expect.arrayContaining(['list --kind', 'create --encoding', 'make ui --framework', 'agents generate --mcp', 'backlog sync status --direction', 'claude plugins update --scope', 'vault tags --sort']));
   });
 
   it('rejects an invocation without a declared required option with MISSING_ARGUMENT', () => {
@@ -60,7 +60,7 @@ describe('declared option constraints of every mode', () => {
         checked.push(`${tokens.join(' ')} --${key}`);
       }
     }
-    expect(checked).toEqual(expect.arrayContaining(['edit --if-match', 'patch --pointer', 'make document --template']));
+    expect(checked).toEqual(expect.arrayContaining(['edit --if-match', 'patch --pointer', 'make document --template', 'backlog depend --on', 'backlog sync resolve --take', 'agents import --from']));
   });
 
   it('accepts every mode once its required options have declared values', () => {

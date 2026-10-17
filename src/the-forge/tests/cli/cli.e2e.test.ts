@@ -33,12 +33,12 @@ it.each([
     ['UNKNOWN_OPTION', 'make', '--date', '2026-10-07'],
     ['UNKNOWN_OPTION', 'make', 'entity', 'Order', '--template', 'entity.md'],
     ['UNKNOWN_OPTION', 'make', 'plugin', 'quality', '--out', 'elsewhere'],
-    ['UNKNOWN_OPTION', 'make', '--framework', 'react', 'ui', 'button'],
+    ['UNKNOWN_OPTION', 'make', '--framework', 'react', 'entity', 'Order'],
     ['UNKNOWN_GENERATOR', 'make', 'missing', 'Order', '--template', 'entity.md'],
     ['UNKNOWN_GENERATOR', 'make', 'missing', 'Order', '--out'],
-    ['INVALID_ARGUMENT', 'skills', '--out', 'ignored'],
-    ['INVALID_ARGUMENT', 'skills', 'list', '--out', 'ignored'],
-    ['INVALID_ARGUMENT', 'skills', 'show', 'forge-workflow', '--out', 'ignored'],
+    ['UNKNOWN_OPTION', 'skills', '--out', 'ignored'],
+    ['UNKNOWN_OPTION', 'skills', 'list', '--out', 'ignored'],
+    ['UNKNOWN_OPTION', 'skills', 'show', 'forge-workflow', '--out', 'ignored'],
   ])('rejects inapplicable generation or installation options with %s: %j', async (code, ...args) => {
     const result = await cli(args);
     expect(result.status).toBe(2);

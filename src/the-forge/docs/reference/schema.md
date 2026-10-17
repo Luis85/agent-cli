@@ -42,19 +42,28 @@ Output schemas describe the documented fields and their types. Objects stay open
 | Command | `data` |
 | --- | --- |
 | `read` | `{path, revision, bytes, document}`; `document` is one of Markdown `{kind: "markdown", content, properties, body?}`, Canvas/Base `{kind, data}`, text `{kind: "text", content}` or bytes `{kind, encoding: "base64", content}` |
+| `read-many` / `stat` | `{files, bytes}`, each file a `read` result or a failure / one file's or folder's revision and size metadata |
 | `list` | `{files: [{path, kind}], nextCursor?}` |
 | `validate` | `{path, valid: true, kind, validation}` |
 | `search` | `{hits: [{path, line, column, match, snippet, before?, after?, revision}], total, nextCursor?}` |
 | `links out` / `back` / `unresolved` | `{path?, links \| backlinks, issues}` with each link's location, resolution status, target or reason |
 | `links orphans` / `deadends` | `{files, issues}` |
-| `project list` / `project current` | `{directory, projects}` / `{project}`, where a project is `{schemaVersion, name, type, directory}` or `null` |
+| `project list` / `project current` | `{directory, projects, invalid}` / `{project}`, where a project is `{schemaVersion, name, type, directory}` or `null`, and `invalid` lists `{directory, code, reason}` for each project directory whose `.forge/project.json` is invalid, so the other projects stay listed |
+| `project create` / `open` / `close` / `component` | The guarded batch `{dryRun, changes, preview?}` with `project` (`null` after `close`), plus `nextSteps` for `create` and `component` `{name, kind}` for `component` |
 | `config` | `{path, root, config, sections}` |
 | `schema` | This document |
 | `skills list` / `skills show` | `{skills}` / `{id, content}` |
-| `edit` | `{dryRun, changes: [{path, revision, operation, bytes, diff?}]}`; `diff` is the unified diff of a dry run (`null` for binary content) |
+| `create`, `write`, `edit`, `properties`, `patch` | The guarded batch `{dryRun, changes: [{path, revision, operation, bytes, diff?}], preview?}`; `diff` is the unified diff of a dry run (`null` for binary content) and `preview` the planned content of generated files. Mutating plugin actions that commit one batch publish the same shape with their own fields: `templates install`, `skills install`, the `init`, `create`, `import` and `export` actions of `components`, `interactions` and `data-sources`, and the backlog writes (`backlog init`, `add`, `move`, `ranks`, `set`, `depend`, `undepend`, `iteration add`/`assign`, `release add`/`join`/`mark-released`/`notes`) |
+| `move` / `rename` | `{dryRun, from, to, kind, revision?, renames, changes, links: {updated, files, unrewritten}}` |
+| `delete` | `{dryRun, path, kind, revision?, permanent, trashPath, deleted, brokenLinks}`; `trashPath` is `null` with `--permanent` |
+| `make <generator>` | A generator that returns a write plan without review modes (`entity`, `value-object`, `use-case`, `event`, `form`, `plugin`) publishes `{generator, dryRun, changes, preview?}`; `make document` adds `template`. A plugin's `run` generator may declare its own `output` |
 | `apply` | `{dryRun, operations: [{index, op, path, …}], renames, changes, folders}`: one summary per plan operation (a move adds `to`, `kind` and `links`; a delete adds `kind`, `trashPath`, which is `null` when the plan created every file it deleted, and `brokenLinks`) and the one batch it committed or, with `--dry-run`, planned |
 | `vault check` | `{findings: [{rule, severity, path, line, column, message, hint, suggestion?}], summary: {files, findings, error, warning, info}, rules: [{id, severity, findings}], skipped, strict}` |
 | `vault tags` / `vault properties` | `{tags: [{tag, count, files}]}` / `{properties: [{name, count, empty, types, type, declared, conflicting, files?}], typesFile: {path, status}}` |
+| `server`, `server start` / `stop` | `{running, stale, server, url, webviews, dryRun?, changed?}` |
+| `webview inspect` / `publish` | `{id, source, destination, built, installed, revision, current, files, changed?, checked?, dryRun?, changes?}` |
+| `browser status` / `validate` / `tutorial`, `browser install` / `screenshot` | The browser runtime, a validated or executed tutorial plan; see [browser](browser.md) |
+| `update check` / `apply` | `{installedVersion, releaseVersion, available, revision, releaseUrl}` / `{installedVersion, releaseVersion, checksum, changed, dryRun, changes, revision, restartRequired}` |
 
 ## Annotations
 
