@@ -153,9 +153,9 @@ export class Localizer {
     if (!definition) return { code, message: diagnostic, ...(details ? { details } : {}) };
     const retryable = error instanceof AppError && error.retryable !== undefined ? error.retryable : definition.retryable;
     const german = this.language !== 'de' ? undefined : builtIn ? germanErrors[code as ErrorCode] : this.plugins?.localizedError(code, 'de');
-    // A built-in code may refine its hint by one detail of the occurrence, such as the lock state of WORKSPACE_BUSY.
-    const variant = builtIn?.variants === undefined ? undefined : details?.[builtIn.variants.detail];
-    const refined = typeof variant === 'string' && Object.hasOwn(builtIn!.variants!.hints, variant) ? variant : undefined;
+    // A built-in code may refine its hint by details of the occurrence, such as the lock state of WORKSPACE_BUSY.
+    const hints = builtIn?.variants?.hints ?? {};
+    const refined = builtIn?.variants?.details.map(key => details?.[key]).find((value): value is string => typeof value === 'string' && Object.hasOwn(hints, value));
     if (!german) return { code, message: diagnostic, hint: guidedHint(refined ? builtIn!.variants!.hints[refined]! : definition.hint, code, details, 'en', this.invoked), retryable, ...(details ? { details } : {}) };
     const germanHint = refined === undefined ? undefined : germanHintVariant(code as ErrorCode, refined);
     // Built-in codes keep the concrete values of the occurrence where a German template covers its details.

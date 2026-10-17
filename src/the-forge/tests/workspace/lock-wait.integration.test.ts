@@ -7,6 +7,7 @@ import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { acquireLock, releaseLock, retryAfterMs } from '../../src/infrastructure/workspace/lock.ts';
 import { hostIdentity } from '../../src/infrastructure/workspace/lock-holder.ts';
 import { encodeText } from '../../src/infrastructure/documents/codec.ts';
+import { Localizer } from '../../src/presentation/localization/localization.ts';
 
 let root: string, lock: string, identity: Awaited<ReturnType<typeof hostIdentity>>;
 beforeEach(async () => {
@@ -77,13 +78,14 @@ describe('folders holding the writer lock of a nested root', () => {
   };
 
   it.each([['running', active, true], ['unverifiable', () => holder({ pid: exitedPid(), hostname: `${hostname()}-elsewhere` }), false]] as const)(
-    'refuses to move or delete a folder whose nested lock holder is %s', async (_label, record, retryable) => {
+    'refuses to move or delete a folder whose nested lock holder is %s', async (label, record, retryable) => {
       const content = record();
       await nested(content);
       const files = await NodeFiles.at(root);
       const { revision } = await files.stat('src');
+      const nestedWriter = label === 'running' ? { nestedWriter: 'running' } : {};
       for (const dryRun of [true, false]) {
-        await expect(files.commit({ renames: [{ from: 'src', to: 'moved', expectedRevision: revision }] }, dryRun)).rejects.toMatchObject({ code: 'WORKSPACE_BUSY', retryable, details: { path: 'src/inner/.agent-cli.lock' } });
+        await expect(files.commit({ renames: [{ from: 'src', to: 'moved', expectedRevision: revision }] }, dryRun)).rejects.toMatchObject({ code: 'WORKSPACE_BUSY', retryable, details: { path: 'src/inner/.agent-cli.lock', ...nestedWriter } });
         await expect(files.commit({ removes: [{ path: 'src/inner', expectedRevision: (await files.stat('src/inner')).revision }] }, dryRun)).rejects.toMatchObject({ code: 'WORKSPACE_BUSY' });
       }
       expect(await readFile(join(root, 'src/inner/.agent-cli.lock'), 'utf8')).toBe(content);
@@ -100,6 +102,21 @@ describe('folders holding the writer lock of a nested root', () => {
     await releaseLock(inner, token);
     const moved = await files.commit({ renames: [{ from: 'src', to: 'moved', expectedRevision: (await files.stat('src')).revision }] }, false);
     expect(moved.renames[0]).toMatchObject({ from: 'src', to: 'moved', kind: 'folder' });
+  });
+
+  it('fails at once whatever the --wait budget, with a hint that does not promise --wait', async () => {
+    await nested(active());
+    const files = await NodeFiles.at(root, undefined, undefined, () => 60_000);
+    const { revision } = await files.stat('src');
+    const started = Date.now();
+    const error = await files.commit({ renames: [{ from: 'src', to: 'moved', expectedRevision: revision }] }, false).catch((failure: unknown) => failure);
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(error).toMatchObject({ code: 'WORKSPACE_BUSY', retryable: true, details: { stale: 'active', nestedWriter: 'running', retryAfterMs } });
+    for (const language of ['en', 'de'] as const) {
+      const { hint } = new Localizer(language).error(error);
+      expect(hint).toContain('--wait');
+      expect(hint).not.toMatch(/rerun with --wait|mit --wait <ms>/);
+    }
   });
 
   it('moves a folder whose nested lock is provably stale', async () => {

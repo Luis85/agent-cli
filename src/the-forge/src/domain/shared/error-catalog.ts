@@ -11,10 +11,10 @@ export interface ErrorDefinition {
   readonly summary: string;
   readonly hint: string;
   readonly retryable: boolean;
-  /** Hints for one occurrence, chosen by the value of `details[detail]`; other values use `hint`. */
+  /** Hints for one occurrence, chosen by the first of `details[...details]` whose value names one; others use `hint`. */
   readonly variants?: HintVariants;
 }
-export interface HintVariants { readonly detail: string; readonly hints: Readonly<Record<string, string>> }
+export interface HintVariants { readonly details: readonly string[]; readonly hints: Readonly<Record<string, string>> }
 
 /** SIGTERM interruptions report 143 instead of the category's SIGINT status 130. */
 export const categoryExitCodes = {
@@ -58,7 +58,8 @@ export const errorCatalog = {
   SECTION_NOT_FOUND: entry('input', 'No heading matches the --section path, or no block has the --block id.', 'Read the note and copy a heading path from error.details.headings (segments joined with " > ") or a block id from error.details.blocks.'),
   AMBIGUOUS_SECTION: entry('input', 'The --section path matches several headings, or the --block id occurs more than once.', 'Add ancestor headings to the path (Parent > Heading) until one of error.details.candidates remains, or pass a candidate\'s line as --section-line (sectionLine in an apply plan); give each block a unique id.'),
   INVALID_PLAN: entry('input', 'The apply plan or write batch is invalid: it does not match the plan schema, or its steps have duplicate or overlapping paths.', 'Fix the operation named in error.details.operation (see error.details.issues and the plan schema in help apply); write each path once and do not reuse a path that the same plan moves or deletes.'),
-  WORKSPACE_BUSY: { ...entry('busy', 'Another Forge writer holds the workspace lock or a backlog sync lock.', 'error.details.stale says why the lock stays (a lock whose holder provably no longer runs is removed automatically with a warning). "active": the holder runs, or another running writer is removing the stale lock; wait and retry. "unknown": Forge cannot verify the holder (another host, pid namespace or boot, or an unreadable lock), so error.retryable is false; confirm in error.details.lock that it no longer runs, inspect its unfinished changes, then delete the file named in error.details.path (relative to the workspace root) and retry. "stale": the holder provably no longer runs but removing the lock failed, so error.retryable is false; confirm no Forge process uses it, then delete that file and retry.', true), variants: { detail: 'stale', hints: {
+  WORKSPACE_BUSY: { ...entry('busy', 'Another Forge writer holds the workspace lock or a backlog sync lock.', 'error.details.stale says why the lock stays (a lock whose holder provably no longer runs is removed automatically with a warning). "active": the holder runs, or another running writer is removing the stale lock; wait and retry. "unknown": Forge cannot verify the holder (another host, pid namespace or boot, or an unreadable lock), so error.retryable is false; confirm in error.details.lock that it no longer runs, inspect its unfinished changes, then delete the file named in error.details.path (relative to the workspace root) and retry. "stale": the holder provably no longer runs but removing the lock failed, so error.retryable is false; confirm no Forge process uses it, then delete that file and retry.', true), variants: { details: ['nestedWriter', 'stale'], hints: {
+    running: 'A running writer of a nested root holds its lock (error.details.path) inside the folder this move or deletion would take along; --wait does not wait for it. Let that writer finish, then retry after error.details.retryAfterMs milliseconds or later.',
     active: 'The holder runs, or another running writer is removing a stale lock: retry after error.details.retryAfterMs milliseconds, or rerun with --wait <ms> to wait for the lock.',
     unknown: 'Forge cannot verify the holder (another host, pid namespace or boot, or an unreadable lock) and never removes its lock, so waiting does not help: confirm in error.details.lock that it no longer runs, inspect its unfinished changes, then delete the file named in error.details.path (relative to the workspace root) and retry.',
     stale: 'The holder provably no longer runs, but removing its lock failed: confirm no Forge process uses it, then delete the file named in error.details.path (relative to the workspace root) and retry.',

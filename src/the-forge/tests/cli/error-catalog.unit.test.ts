@@ -61,9 +61,9 @@ describe('failure envelope guidance', () => {
 
   it('refines the hint by the occurrence detail a code names, in both languages', () => {
     const variants = errorCatalog.WORKSPACE_BUSY.variants!;
-    expect(variants.detail).toBe('stale');
-    expect(Object.keys(variants.hints).sort()).toEqual(['active', 'stale', 'unknown']);
-    expect(Object.keys(germanErrors.WORKSPACE_BUSY.variants).sort()).toEqual(['active', 'stale', 'unknown']);
+    expect(variants.details).toEqual(['nestedWriter', 'stale']);
+    expect(Object.keys(variants.hints).sort()).toEqual(['active', 'running', 'stale', 'unknown']);
+    expect(Object.keys(germanErrors.WORKSPACE_BUSY.variants).sort()).toEqual(['active', 'running', 'stale', 'unknown']);
     for (const stale of ['active', 'stale', 'unknown'] as const) {
       const error = forgeError('WORKSPACE_BUSY', 'busy', { stale }, undefined, stale === 'active');
       expect(new Localizer().error(error).hint, stale).toBe(variants.hints[stale]);
@@ -71,6 +71,12 @@ describe('failure envelope guidance', () => {
     }
     expect(variants.hints.active).toContain('--wait');
     expect(variants.hints.unknown).not.toContain('--wait <ms>');
+    // A running nested root's writer is not waited for, so its hint never suggests rerunning with --wait.
+    const nested = forgeError('WORKSPACE_BUSY', 'busy', { stale: 'active', nestedWriter: 'running' }, undefined, true);
+    expect(new Localizer().error(nested).hint).toBe(variants.hints.running);
+    expect(new Localizer('de').error(nested).hint).toBe(germanErrors.WORKSPACE_BUSY.variants.running);
+    expect(variants.hints.running).not.toContain('--wait <ms>');
+    expect(germanErrors.WORKSPACE_BUSY.variants.running).not.toContain('--wait <ms>');
     // A detail value without a variant, or a code without variants, keeps the code's own hint.
     expect(new Localizer().error(forgeError('WORKSPACE_BUSY', 'busy', { stale: 'other' })).hint).toBe(errorCatalog.WORKSPACE_BUSY.hint);
     expect(new Localizer('de').error(forgeError('WORKSPACE_BUSY', 'busy', { stale: 'toString' })).hint).toBe(germanErrors.WORKSPACE_BUSY.hint);
