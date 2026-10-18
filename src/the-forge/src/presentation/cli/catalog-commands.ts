@@ -16,6 +16,7 @@ import { generatorCatalog } from '../generation/commands.ts';
 import { pluginCatalog } from './plugin-catalog.ts';
 import { Localizer } from '../localization/localization.ts';
 import { envelopeSchema } from './envelope.ts';
+import { helpIndex } from './help-index.ts';
 import { schemaOutput } from './catalog-output.ts';
 
 const discovery = { scope: 'workspace', discovery: true, mutating: false } as const;
@@ -30,19 +31,6 @@ export const commonErrors = [
   'UNKNOWN_COMMAND', 'UNKNOWN_OPTION', 'MISSING_ARGUMENT', 'INVALID_ARGUMENT', 'INVALID_OPTION_VALUE', 'DUPLICATE_OPTION', 'INVALID_LANGUAGE', 'INVALID_ROOT', 'INVALID_CONFIG',
   'INVALID_PATH', 'UNSAFE_PATH', 'INVALID_PROJECT_CONTEXT', 'STALE_PROJECT_CONTEXT', 'WORKSPACE_BUSY', 'INVALID_RESULT', 'OPERATION_FAILED',
 ];
-
-/** The most characters of a command description the help index shows; `help <command>` shows all of it. */
-export const indexDescriptionLength = 76;
-/**
- * A description as the help index lists it: its first sentence (up to the first `. ` or `; `), shortened at a word
- * boundary with `…` when it is longer than `indexDescriptionLength`.
- */
-export function indexDescription(description: string): string {
-  const sentence = /^(.*?)[.;](?:\s|$)/s.exec(description)?.[1]?.concat('.') ?? description;
-  if (sentence.length <= indexDescriptionLength) return sentence;
-  const cut = sentence.slice(0, indexDescriptionLength);
-  return `${cut.slice(0, cut.lastIndexOf(' ')).replace(/[\s,;:(]+$/, '')}…`;
-}
 
 /** One command as help and schema describe it, generated from its metadata. */
 function describe(command: Command, includeOutput = true) {
@@ -75,16 +63,7 @@ export function catalogCommands(registry: Registry): Command[] {
       localizedOutput: { next: 'text', globalOptions: 'options' }, run(args) {
       arity(args, 0, 1);
       // The entry index helps an agent choose its next command in under 4 KB; help <command> has the details.
-      if (!args[0]) {
-        const commands = [...registry.commands.values()];
-        return {
-          name: identity.name, version: identity.version, apiVersion: identity.apiVersion,
-          commands: Object.fromEntries(commands.map(command => [command.id, indexDescription(command.description)])),
-          mutating: commands.filter(command => commandAnnotations(command).mutating).map(command => command.id),
-          globalOptions: Object.keys(globalOptionMetadata).map(key => `--${key}`),
-          next: helpNext,
-        };
-      }
+      if (!args[0]) return helpIndex(identity, [...registry.commands.values()], Object.keys(globalOptionMetadata).map(key => `--${key}`), helpNext);
       const command = registry.resolveCommand(args[0]);
       return { ...describe(command, false), globalOptions: globalOptionMetadata };
     } },
