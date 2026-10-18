@@ -10,7 +10,11 @@ export interface PluginStringTable {
   actions?: Record<string, string>;
   generators?: Record<string, string>;
   events?: Record<string, string>;
-  errors?: Record<string, { summary: string; hint: string }>;
+  /**
+   * Summaries and next steps of the plugin's error codes. `reasons` holds the messages of occurrences by their
+   * `details.reason`, with `{name}` placeholders for their text and number details.
+   */
+  errors?: Record<string, { summary: string; hint: string; reasons?: Record<string, string> }>;
   /** Free-form guidance a plugin reads back through `context.t(key)`. */
   messages?: Record<string, string>;
   /**
@@ -62,6 +66,8 @@ export class PluginCatalog {
           const known = kind === 'messages' || kind === 'descriptions' || (kind === 'manifest' ? ['name', 'description'].includes(id) : kind === 'errors' ? codes.has(id) : owned[kind as TextKind].includes(id));
           ensure(known, 'PLUGIN_NAMESPACE', `strings.${language}.${kind}.${id} does not name a contribution of plugin ${pluginId}.`);
           ensure(kind === 'errors' ? isRecord(entry) && text(entry.summary) && text(entry.hint) : text(entry), 'INVALID_PLUGIN', `strings.${language}.${kind}.${id} must be ${kind === 'errors' ? 'a summary and hint' : 'nonempty text'}.`);
+          const reasons = kind === 'errors' && isRecord(entry) ? entry.reasons : undefined;
+          ensure(reasons === undefined || (isRecord(reasons) && Object.values(reasons).every(text)), 'INVALID_PLUGIN', `strings.${language}.errors.${id}.reasons must map reasons to nonempty messages.`);
         }
       }
     }
@@ -146,7 +152,7 @@ export class PluginCatalog {
   }
 
   error(code: string): CatalogedError | undefined { return this.codes.get(code); }
-  localizedError(code: string, language: Language): { summary: string; hint: string } | undefined {
+  localizedError(code: string, language: Language): { summary: string; hint: string; reasons?: Record<string, string> } | undefined {
     const entry = this.codes.get(code);
     const localized = entry ? this.tables.get(entry.pluginId)?.[language]?.errors?.[code] : undefined;
     return localized ?? (entry && language === 'en' ? { summary: entry.summary, hint: entry.hint } : undefined);

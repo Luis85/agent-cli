@@ -6,7 +6,7 @@ import { isKernelMessage } from '../../domain/shared/kernel-messages.ts';
 import { responseWarning, type Warning } from '../../domain/shared/warnings.ts';
 import type { CommandArgument, CommandMetadata, CommandOption, OutputLocalization } from '../../application/plugins/command-metadata.ts';
 import { germanErrors, germanHintVariant } from './errors.ts';
-import { germanErrorMessage, locatedGermanSummary } from './error-messages.ts';
+import { germanErrorMessage, locatedGermanSummary, reasonMessage } from './error-messages.ts';
 import { guidedHint } from './hints.ts';
 import { errorDefinition, type ErrorCode } from '../../domain/shared/error-catalog.ts';
 import type { Language, PluginCatalog } from '../../application/plugins/plugin-catalog.ts';
@@ -160,8 +160,10 @@ export class Localizer {
     const refined = builtIn?.variants?.details.map(key => details?.[key]).find((value): value is string => typeof value === 'string' && Object.hasOwn(hints, value));
     if (!german) return { code, message: diagnostic, hint: guidedHint(refined ? builtIn!.variants!.hints[refined]! : definition.hint, code, details, 'en', this.invoked), retryable, ...(details ? { details } : {}) };
     const germanHint = refined === undefined ? undefined : germanHintVariant(code as ErrorCode, refined);
-    // Built-in codes keep the concrete values of the occurrence where a German template covers its details.
-    const message = builtIn ? germanErrorMessage(code as ErrorCode, details) ?? locatedGermanSummary(details, german.summary) : german.summary;
+    // Built-in codes keep the concrete values of the occurrence where a German template covers its details, plugin
+    // codes where the plugin words the occurrence's reason.
+    const message = builtIn ? germanErrorMessage(code as ErrorCode, details) ?? locatedGermanSummary(details, german.summary)
+      : reasonMessage(this.plugins?.localizedError(code, 'de')?.reasons, details) ?? german.summary;
     // A namespaced diagnostic preserves plugin/application details, including their own diagnostic key.
     return { code, message, hint: guidedHint(germanHint ?? german.hint, code, details, 'de', this.invoked), retryable, details: { ...details, localization: { originalMessage: diagnostic, ...(details?.localization !== undefined ? { originalDetails: details.localization } : {}) } } };
   }

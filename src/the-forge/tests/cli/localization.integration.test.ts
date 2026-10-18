@@ -83,7 +83,7 @@ describe('built-in localization catalog coverage', () => {
         expect(description, `${command.id} ${action}`).not.toBe(command.actions![action]!.description);
       }
     }
-    for (const { code } of registry.catalog.errors()) expect(registry.catalog.localizedError(code, 'de'), code).toEqual({ summary: expect.any(String), hint: expect.any(String) });
+    for (const { code } of registry.catalog.errors()) expect(registry.catalog.localizedError(code, 'de'), code).toEqual(expect.objectContaining({ summary: expect.any(String), hint: expect.any(String) }));
     const pluginEvents = bus.catalog().filter(event => bundledCorePlugins.some(plugin => event.id.startsWith(`${plugin}.`)));
     expect(pluginEvents.length).toBeGreaterThan(0);
     for (const { id } of pluginEvents) expect(registry.catalog.text('de', 'events', id), id).toEqual(expect.any(String));

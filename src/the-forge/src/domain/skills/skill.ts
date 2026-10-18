@@ -1,4 +1,4 @@
-import { canonicalName, isDeviceName } from '../documents/file.ts';
+import { canonicalPath, isDeviceName, portablePathIssues } from '../documents/file.ts';
 
 /**
  * Agent Skills (https://agentskills.io/specification): a skill is a folder `<name>/SKILL.md` whose YAML frontmatter
@@ -62,22 +62,18 @@ export interface SkillPathIssue {
   details: { skill: string; reason: 'device-name' | 'case-duplicate' | 'folder-conflict'; file?: string; segment?: string; duplicateOf?: string };
 }
 
-/** A path as case-insensitive filesystems and Windows resolve it. */
-const canonicalPath = (path: string) => path.split('/').map(canonicalName).join('/');
-
 /**
  * Problems of the paths a valid skill installs (see `SkillPathIssue`), so a plugin fails at registration instead of
  * every later `setup` and `skills install`. `files` holds valid relative paths (see `skillFileIssues`).
  */
 export function skillPathIssues(id: string, files: Readonly<Record<string, unknown>> = {}): SkillPathIssue[] {
   if (isDeviceName(id)) return [{ message: `Skill id ${id} is a Windows reserved device name, which no skill folder can have on Windows; choose another id.`, details: { skill: id, reason: 'device-name', segment: id } }];
-  const issues: SkillPathIssue[] = [], installed = new Map([[canonicalPath('SKILL.md'), 'SKILL.md']]);
-  for (const file of Object.keys(files).sort()) {
-    const segment = file.split('/').find(isDeviceName), same = installed.get(canonicalPath(file));
-    if (segment !== undefined) issues.push({ message: `Skill ${id} file ${file} uses the Windows reserved device name ${segment}, which no Windows system can install; rename it.`, details: { skill: id, reason: 'device-name', file, segment } });
-    else if (same !== undefined) issues.push({ message: `Skill ${id} file ${file} names the same file as ${same} where letter case and trailing dots are ignored, as on Windows and macOS; rename one of them.`, details: { skill: id, reason: 'case-duplicate', file, duplicateOf: same } });
-    else installed.set(canonicalPath(file), file);
-  }
+  const paths = ['SKILL.md', ...Object.keys(files).sort()], found = portablePathIssues(paths);
+  const issues: SkillPathIssue[] = found.map(issue => issue.reason === 'device-name'
+    ? { message: `Skill ${id} file ${issue.path} uses the Windows reserved device name ${issue.segment}, which no Windows system can install; rename it.`, details: { skill: id, reason: 'device-name', file: issue.path, segment: issue.segment } }
+    : { message: `Skill ${id} file ${issue.path} names the same file as ${issue.duplicateOf} where letter case and trailing dots are ignored, as on Windows and macOS; rename one of them.`, details: { skill: id, reason: 'case-duplicate', file: issue.path, duplicateOf: issue.duplicateOf } });
+  const rejected = new Set(found.map(issue => issue.path));
+  const installed = new Map(paths.filter(path => !rejected.has(path)).map(path => [canonicalPath(path), path]));
   for (const [folder, file] of installed) {
     const inside = [...installed].find(([path]) => path.startsWith(`${folder}/`))?.[1];
     if (inside !== undefined) issues.push({ message: `Skill ${id} file ${file} is also the folder of ${inside}; a path cannot be both a file and a folder.`, details: { skill: id, reason: 'folder-conflict', file, duplicateOf: inside } });
