@@ -26,6 +26,7 @@ export const kernelMessages = {
   PLUGIN_STATE_IGNORED: 'Ignored invalid {path}; plugins with activation hooks are treated as newly enabled.',
   PLUGIN_STATE_UNSAVED: 'Could not record plugin activation state in {path}: {diagnostic}',
   SETUP_TEMPLATES_UNAVAILABLE: 'The templates core plugin is disabled or unavailable; setup did not install templates into bin/templates.',
+  CWD_OUTSIDE_WORKSPACE: 'The working directory {cwd} is outside the workspace root {workspaceRoot}; relative paths resolve against the workspace root (context.root), not the working directory. Pass --root or set FORGE_ROOT to use another workspace.',
   METADATA_CACHE_UNSAVED: 'The metadata cache could not be saved to {file}, so the next command reads and parses the vault again: {diagnostic}',
   // Writer and sync locks: a stale lock an acquisition removed, and a lock its writer could not release cleanly.
   LOCK_RECOVERED: 'Removed the stale lock {path} of pid {pid} on {host} (since {since}{command}): {reason}. Inspect what that run left unfinished (for example git status or backlog sync status).',
@@ -48,6 +49,15 @@ export const kernelMessages = {
   LAYOUT_CALLBACK_FAILED: 'Layout ready: {diagnostic}',
   QUIT_TASK_FAILED: 'Quit task: {diagnostic}',
   PLUGIN_CLEANUP_FAILED: 'Plugin cleanup: {diagnostic}',
+  // Read results an agent could misread: a path filter that selected nothing, and content cut at the read limit.
+  PATH_MATCHED_NOTHING: '{option} {pattern} matched no file in this scope. Paths are relative to context.root and case-sensitive, and a folder path without glob characters matches everything below it; run list to see the existing paths.',
+  READ_TRUNCATED: '{path} was truncated to lines {start}-{end} of {total} ({returned} of {bytes} bytes); continue with --lines {next}-, or raise --max-bytes.',
+  READ_BYTES_TRUNCATED: '{path} was truncated to the first {returned} of {bytes} bytes; raise --max-bytes to read the rest.',
+  READ_LINE_TRUNCATED: '{path} was truncated inside line {start} of {total} ({returned} of {bytes} bytes), which alone holds {lineBytes} bytes; raise --max-bytes to at least {lineBytes} to read that line.',
+  // Mutations that succeed but probably differ from what the caller meant.
+  EXTENSION_DROPPED: '{to} has no extension, so moving {from} drops {extension}. End the destination with / to move into a folder, or add the extension.',
+  LITERAL_NEWLINE: '--{option} contains the two characters \\n but no line break, so they are written literally. Pass real line breaks, for example with --stdin.',
+  EMPTY_STDIN: '--stdin read no bytes, so {path} is written empty. Pipe the content, or pass --content "" to write an empty file on purpose.',
 } as const satisfies Record<string, string>;
 
 export type KernelMessageCode = keyof typeof kernelMessages;

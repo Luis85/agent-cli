@@ -1,15 +1,16 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { z } from 'zod';
 import { forgeError, errorMessage } from '../../domain/shared/errors.ts';
-import { vaultPath } from '../../domain/documents/file.ts';
+import { isDeviceName, vaultPath } from '../../domain/documents/file.ts';
 import type { LoadedConfig } from '../../application/workspace/config.ts';
 import { eventOutputLevels } from '../../application/plugins/event-output.ts';
 
 const relativePath = z.string().min(1).transform(value => value.replace(/\/+$/, '')).refine(value => {
   try { vaultPath(value); return true; } catch { return false; }
 }, 'Must be a contained workspace-relative path.');
-const pluginIds = z.array(z.string().regex(/^[a-z][a-z0-9-]*$/)).refine(ids => new Set(ids).size === ids.length, 'Duplicate plugin IDs.').default([]);
+// A plugin id names its folder bin/plugins/<id>, so a Windows device name (`con`, `com1`) can never be one.
+const pluginIds = z.array(z.string().regex(/^[a-z][a-z0-9-]*$/).refine(id => !isDeviceName(id), 'A Windows reserved device name cannot be a plugin id.')).refine(ids => new Set(ids).size === ids.length, 'Duplicate plugin IDs.').default([]);
 const configSchema = z.strictObject({
   schemaVersion: z.literal(1).default(1),
   paths: z.strictObject({
@@ -25,10 +26,14 @@ const configSchema = z.strictObject({
 
 export async function loadConfig(options: { defaultPath: string; cwd: string; root?: string }): Promise<LoadedConfig> {
   const root = options.root !== undefined ? resolve(options.cwd, options.root) : resolve(dirname(options.defaultPath), '..');
+  // A mistyped --root or FORGE_ROOT must not read as an empty workspace with default settings.
+  const directory = await stat(root).then(info => info.isDirectory(), () => false);
+  if (!directory) throw forgeError('INVALID_ROOT', `Workspace root ${root} does not exist or is not a directory.`, { root });
   const path = resolve(root, 'bin/config.json');
   let content: unknown;
   let exists = true;
-  try { content = JSON.parse(await readFile(path, 'utf8')) as unknown; }
+  // A leading byte order mark, as Windows PowerShell 5.1 writes it, is not part of the JSON text.
+  try { content = JSON.parse((await readFile(path, 'utf8')).replace(/^\ufeff/, '')) as unknown; }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') { content = {}; exists = false; }
     else throw forgeError('INVALID_CONFIG', `Cannot read configuration ${path}: ${errorMessage(error)}`);

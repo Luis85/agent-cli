@@ -2,7 +2,7 @@
 
 [Documentation](../index.md) · How-to
 
-The Forge ships its working knowledge as [Agent Skills](https://agentskills.io/specification): folders with a `SKILL.md` whose YAML frontmatter names the skill and says what it does and when to use it. Agents load only the name and description up front and read the body when a task matches. Install them into a project so Claude Code and other agents find them.
+The Forge ships its working knowledge as [Agent Skills](https://agentskills.io/specification): folders with a `SKILL.md` whose YAML frontmatter names the skill and says what it does and when to use it. Agents load only the name and description up front and read the body when a task matches. Each `SKILL.md` stays short (at most 4 KiB) and links reference files in its `references/` folder, which agents read only when a task needs those details. Install them into a project so Claude Code and other agents find them.
 
 ## Install into both skill roots
 
@@ -12,14 +12,14 @@ node bin/forge.js skills install --dry-run
 node bin/forge.js skills install
 ```
 
-`skills install` writes every registered skill twice in the active scope:
+`skills install` writes every registered skill folder, `SKILL.md` and its reference files, twice in the active scope:
 
 | Root | Read by |
 | --- | --- |
-| `.claude/skills/<id>/SKILL.md` | Claude Code |
-| `.agents/skills/<id>/SKILL.md` | Agents that read the cross-agent `.agents/skills` root |
+| `.claude/skills/<id>/` | Claude Code |
+| `.agents/skills/<id>/` | Agents that read the cross-agent `.agents/skills` root |
 
-`setup` installs the same files at workspace scope. Existing files are never overwritten: `skills install` fails with `CONFLICT` and `setup` reports them as skipped, so edited skills stay yours. Refresh skills after upgrading the distribution by comparing the installed file with `skills show <id>` and preserving your local changes. To replace an unmodified installed skill with the packaged version, run from the workspace root with the intended project selected:
+`setup` installs the same files at workspace scope. Existing files are never overwritten: `skills install` fails with `CONFLICT` for a file whose bytes differ (a file that already holds the packaged bytes is reported `unchanged`) and `setup` reports them as skipped, so edited skills stay yours. Refresh skills after upgrading the distribution by comparing the installed file with `skills show <id>` and preserving your local changes. To replace an unmodified installed skill with the packaged version, run from the workspace root with the intended project selected:
 
 ```sh
 node bin/forge.js project current --json
@@ -28,7 +28,7 @@ node bin/forge.js write .agents/skills/forge-workflow/SKILL.md --stdin --if-matc
 node bin/forge.js write .agents/skills/forge-workflow/SKILL.md --stdin --if-match YOUR_REVISION < bin/skills/forge-workflow/SKILL.md
 ```
 
-Replace `YOUR_REVISION` with that read's `data.revision`. The shell reads the packaged source from workspace `bin/skills`, while Forge writes into the selected project's skill root. Read back the result. Repeat for `.claude/skills` using its own current revision when you maintain both roots. This preserves the selection and avoids deleting a skill before its replacement is verified.
+Replace `YOUR_REVISION` with that read's `data.revision`. The shell reads the packaged source from workspace `bin/skills`, while Forge writes into the selected project's skill root. Read back the result. Repeat for each reference file (`skills show <id>` lists them in `files`) and for `.claude/skills` using its own current revisions when you maintain both roots. This preserves the selection and avoids deleting a skill before its replacement is verified.
 
 ## Install into one root or a custom folder
 
@@ -45,7 +45,10 @@ node bin/forge.js skills install --out tools/skills
 ```sh
 node bin/forge.js skills list
 node bin/forge.js skills show forge-vault
+node bin/forge.js skills show forge-vault --file references/editing.md
 ```
+
+`skills show <id>` returns `{id, path, content, files}`: the `SKILL.md` text and `files`, every file of the skill folder. `--file <path>` returns one of those files instead; another path fails with `INVALID_OPTION_VALUE` listing `details.allowed`.
 
 | Skill | Use when |
 | --- | --- |
@@ -57,6 +60,6 @@ node bin/forge.js skills show forge-vault
 | `forge-agents` | Maintaining docker-agent definitions and generating Claude Code agents |
 | `forge-backlog` | Planning, ranking, releasing and syncing a product backlog |
 
-The authored sources live in the Forge project's `skills/<id>/SKILL.md` and are packaged into the workspace `bin/skills`. Plugins contribute skills in the same shape; a user plugin's skill ids start with `<plugin-id>-`. See [plugin contributions](../reference/plugins.md#contract) and the [CLI reference](../reference/cli.md#commands).
+The authored sources live in the Forge project's `skills/<id>/` folders and are packaged into the workspace `bin/skills`. Plugins contribute skills in the same shape, with optional reference `files`; a user plugin's skill ids start with `<plugin-id>-`. See [plugin contributions](../reference/plugins.md#contract) and the [CLI reference](../reference/cli.md#commands).
 
 To measure whether agents complete tasks with these skills, see [evaluate agents](evaluate-agents.md).

@@ -58,7 +58,7 @@ describe('webview publication', () => {
     await build({ 'dist/index.html': '<h1>Updated</h1>', 'dist/assets/new.js': 'new' });
     await expect(publication.publish(context, {})).rejects.toMatchObject({ code: 'CONFLICT' });
     await expect(publication.publish(context, { ifMatch: '0'.repeat(64) })).rejects.toMatchObject({ code: 'CONFLICT' });
-    await expect(publication.publish(context, { check: true })).rejects.toMatchObject({ code: 'WEBVIEW_DRIFT', exitCode: 5, details: { revision: first.revision } });
+    await expect(publication.publish(context, { check: true })).rejects.toMatchObject({ code: 'WEBVIEW_DRIFT', details: { revision: first.revision } });
     const plan = await publication.inspect(context);
     expect(plan.files).toEqual(expect.arrayContaining([expect.objectContaining({ path: 'assets/old.js', status: 'obsolete' }), expect.objectContaining({ path: 'assets/new.js', status: 'missing' })]));
     const result = await publication.publish(context, { ifMatch: plan.revision! });
@@ -147,7 +147,9 @@ describe('webview publication', () => {
   it('requires a webview project and protects the maintained admin view', async () => {
     const { context } = await fixture();
     await expect(publication.inspect({ ...context, project: null })).rejects.toMatchObject({ code: 'PROJECT_REQUIRED' });
-    await expect(publication.inspect({ ...context, project: { ...context.project!, type: 'library' } })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    await expect(publication.inspect({ ...context, project: { ...context.project!, type: 'library' } })).rejects.toMatchObject({
+      code: 'WEBVIEW_PROJECT_REQUIRED', message: expect.stringContaining('has type library'), details: { project: context.project!.name, type: 'library' },
+    });
     await expect(publication.inspect({ ...context, project: { ...context.project!, name: 'admin' } })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
   });
 });

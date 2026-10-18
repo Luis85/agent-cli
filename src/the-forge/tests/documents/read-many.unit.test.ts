@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { CommandContext } from '../../src/application/plugins/registry.ts';
 import { readManyCommand } from '../../src/presentation/documents/read-many-command.ts';
+import { ensureArguments } from '../../src/application/plugins/command-arguments.ts';
 import { invocationPolicy } from '../../src/presentation/cli/invocation-policy.ts';
 import { commandInputSchema, commandOutputSchema, validateCommandMetadata } from '../../src/application/plugins/command-metadata.ts';
 import { validateJsonValue } from '../../src/domain/schema/json-schema.ts';
+import { Localizer } from '../../src/presentation/localization/localization.ts';
 
 const command = readManyCommand();
 /** A workspace whose reads report `bytes` raw bytes to `beforeParse`, then record the parse that follows. */
@@ -27,10 +29,8 @@ describe('read-many contract', () => {
     const data = await command.run(['a.ts', 'b.ts'], {}, fixture.value);
     expect(validateJsonValue(commandOutputSchema(command, [])!, data, 'data').issues).toEqual([]);
   });
-  it.each([{ paths: [] }, { paths: Array.from({ length: 33 }, (_, index) => `${index}.txt`) }])('rejects invalid file count before reading: $paths.length', async ({ paths }) => {
-    const fixture = context();
-    await expect(command.run(paths, {}, fixture.value)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
-    expect(fixture.read).not.toHaveBeenCalled();
+  it.each([{ paths: [], code: 'MISSING_ARGUMENT' }, { paths: Array.from({ length: 33 }, (_, index) => `${index}.txt`), code: 'INVALID_ARGUMENT' }])('declares a file count the host rejects before the command runs: $paths.length', ({ paths, code }) => {
+    expect(() => ensureArguments(command, paths)).toThrow(expect.objectContaining({ code, details: expect.objectContaining({ minimum: 1, maximum: 32, received: paths.length }) }));
   });
   it('accepts exactly 32 paths in supplied order and preserves case-sensitive names', async () => {
     const fixture = context();
@@ -54,11 +54,22 @@ describe('read-many contract', () => {
   });
   it('refuses the file that exceeds the raw byte budget before parsing it', async () => {
     const fixture = context(3 * 1024 * 1024);
-    await expect(command.run(['a.bin', 'b.bin', 'c.bin', 'd.bin'], {}, fixture.value)).rejects.toMatchObject({
-      code: 'INVALID_ARGUMENT', details: { index: 2, path: 'c.bin', maxBytes: 8 * 1024 * 1024, bytes: 9 * 1024 * 1024 },
+    // Each file counts up to --max-bytes; with the limit at 8 MiB, every raw byte counts.
+    expect(await command.run(['a.bin', 'b.bin', 'c.bin', 'd.bin'], {}, fixture.value)).toMatchObject({ bytes: 12 * 1024 * 1024 });
+    fixture.parsed.mockClear(); fixture.read.mockClear();
+    await expect(command.run(['a.bin', 'b.bin', 'c.bin', 'd.bin'], { 'max-bytes': String(8 * 1024 * 1024) }, fixture.value)).rejects.toMatchObject({
+      code: 'INVALID_ARGUMENT', details: { argument: 'paths', index: 2, path: 'c.bin', aggregateLimit: 8 * 1024 * 1024, maxBytes: 8 * 1024 * 1024, bytes: 9 * 1024 * 1024 },
     });
     expect(fixture.parsed.mock.calls.map(([path]) => path)).toEqual(['a.bin', 'b.bin']);
     expect(fixture.read).toHaveBeenCalledTimes(3);
+  });
+  it('reports the per-file --max-bytes apart from the aggregate limit, and the location, in both languages', async () => {
+    const mebibyte = 1024 * 1024, fixture = context(mebibyte);
+    const paths = Array.from({ length: 9 }, (_, index) => `f${index + 1}.bin`);
+    const failure: unknown = await Promise.resolve(command.run(paths, { 'max-bytes': String(mebibyte) }, fixture.value)).catch((error: unknown) => error);
+    expect(failure).toMatchObject({ code: 'INVALID_ARGUMENT', details: { argument: 'paths', index: 8, path: 'f9.bin', aggregateLimit: 8 * mebibyte, maxBytes: mebibyte, bytes: 9 * mebibyte } });
+    expect(new Localizer('de').error(failure).message).toBe('Argument <paths> an Position 8: Die gelesenen Dateien umfassen 9437184 Bytes und überschreiten die Gesamtgrenze von 8388608 Bytes; senken Sie --max-bytes (derzeit 1048576) oder lesen Sie weniger Dateien.');
+    expect(new Localizer('en').error(failure).message).toMatch(/^read-many path at index 8: /);
   });
   it('names the same zero-based position in the message and details.index', async () => {
     const fixture = context();

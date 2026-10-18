@@ -30,7 +30,7 @@ function context(dryRun = false): CommandContext {
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'forge-tutorial-')); files = await NodeFiles.at(root);
   events = new EventBus(new NodeEventScope()); registerHostEvents(events);
-  flow = vi.fn(async (_request: BrowserFlowRequest) => ({ screenshots: [capture], browserVersion: 'test-browser' }));
+  flow = vi.fn(async (_request: BrowserFlowRequest) => ({ screenshots: [capture], browserVersion: 'test-browser', sandbox: 'enabled' as const }));
   tutorial = new BrowserTutorial({ flow } as unknown as BrowserRuntime, tutorialBlocks);
   await put('intent.json', JSON.stringify(plan));
 });
@@ -40,7 +40,7 @@ describe('tutorial publication', () => {
   it('validates and dry-runs without browser work or output changes', async () => {
     const preview = await tutorial.validate(context(), 'intent.json', 'docs/manual');
     expect(preview).toMatchObject({ revision: null, files: ['index.md', 'flow.json', 'screenshots/open.png'] });
-    expect(await tutorial.run(context(true), { source: 'intent.json', out: 'docs/manual' })).toMatchObject({ dryRun: true, executed: false, changes: [] });
+    expect(await tutorial.run(context(true), { source: 'intent.json', out: 'docs/manual' })).toMatchObject({ dryRun: true, executed: false, changes: [], sandbox: null });
     expect(flow).not.toHaveBeenCalled(); expect(await files.list()).toEqual(['intent.json']);
     expect(events.history.filter(event => event.id.startsWith('vault.'))).toEqual([]);
   });
@@ -57,8 +57,9 @@ describe('tutorial publication', () => {
     const commit = vi.spyOn(files, 'commit');
     const result = await tutorial.run(context(), { source: 'intent.json', out: 'docs/manual' });
     expect(commit).toHaveBeenCalledTimes(1);
-    expect(result).toMatchObject({ executed: true, dryRun: false, browserVersion: 'test-browser' });
+    expect(result).toMatchObject({ executed: true, dryRun: false, browserVersion: 'test-browser', sandbox: 'enabled' });
     expect(result.changes).toHaveLength(3);
+    expect(flow.mock.calls[0]![0]).not.toHaveProperty('disableSandbox');
     const manual = await readFile(join(root, 'docs/manual/index.md'), 'utf8');
     expect(manual).toContain('## 1. Open [page]');
     expect(manual).toContain('![Open \\[page\\]](<screenshots/open.png>)');
@@ -66,6 +67,11 @@ describe('tutorial publication', () => {
     expect(manual).not.toContain('hidden'); expect(manual).not.toContain('secret');
     expect(JSON.parse(await readFile(join(root, 'docs/manual/flow.json'), 'utf8'))).toMatchObject(plan);
     expect(events.history.filter(event => event.id === 'vault.create')).toHaveLength(6);
+  });
+  it('passes an explicit sandbox opt-out to the browser and reports the mode it ran in', async () => {
+    flow.mockResolvedValue({ screenshots: [capture], browserVersion: 'test-browser', sandbox: 'disabled-option' });
+    expect(await tutorial.run(context(), { source: 'intent.json', out: 'docs/manual', disableSandbox: true })).toMatchObject({ executed: true, sandbox: 'disabled-option' });
+    expect(flow).toHaveBeenCalledWith(expect.objectContaining({ disableSandbox: true }));
   });
   it('requires the reviewed folder revision and allows replaying generated flow.json', async () => {
     const first = await tutorial.run(context(), { source: 'intent.json', out: 'docs/manual' });
@@ -85,7 +91,7 @@ describe('tutorial publication', () => {
     const first = await tutorial.run(context(), { source: 'intent.json', out: 'docs/manual' });
     flow.mockImplementation(async () => {
       await put(which === 'source' ? 'intent.json' : 'docs/manual/index.md', which === 'source' ? JSON.stringify({ ...plan, title: 'Changed' }) : 'User edit');
-      return { screenshots: [{ ...capture, bytes: new Uint8Array([1, 2]) }], browserVersion: 'test-browser' };
+      return { screenshots: [{ ...capture, bytes: new Uint8Array([1, 2]) }], browserVersion: 'test-browser', sandbox: 'enabled' };
     });
     await expect(tutorial.run(context(), { source: 'intent.json', out: 'docs/manual', ifMatch: first.revision! })).rejects.toMatchObject({ code: 'CONFLICT' });
     expect(await readFile(join(root, 'docs/manual/screenshots/open.png'))).toEqual(Buffer.from(capture.bytes));
@@ -107,12 +113,12 @@ describe('tutorial publication', () => {
   it('removes obsolete generated screenshots inside the same guarded batch', async () => {
     const first = await tutorial.run(context(), { source: 'intent.json', out: 'docs/manual' });
     await put('intent.json', JSON.stringify({ ...plan, steps: [{ ...plan.steps[0], screenshot: false }] }));
-    flow.mockResolvedValue({ screenshots: [], browserVersion: 'test-browser' });
+    flow.mockResolvedValue({ screenshots: [], browserVersion: 'test-browser', sandbox: 'enabled' });
     const result = await tutorial.run(context(), { source: 'intent.json', out: 'docs/manual', ifMatch: first.revision! });
     expect(result.changes).toContainEqual(expect.objectContaining({ path: 'docs/manual/screenshots/open.png', operation: 'deleted' }));
   });
   it('rejects missing or mismatched captures without creating output', async () => {
-    flow.mockResolvedValue({ screenshots: [], browserVersion: 'test-browser' });
+    flow.mockResolvedValue({ screenshots: [], browserVersion: 'test-browser', sandbox: 'enabled' });
     await expect(tutorial.run(context(), { source: 'intent.json', out: 'docs/manual' })).rejects.toMatchObject({ code: 'BROWSER_FLOW_FAILED' });
     expect(await files.list()).toEqual(['intent.json']);
   });

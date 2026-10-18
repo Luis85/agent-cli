@@ -36,8 +36,9 @@ describe('claude --scope per section', () => {
     }
   });
 
-  it('keeps managed to plugins update and refuses scopes a section does not declare', async () => {
-    expect((await claude(['plugins', 'install', 'demo@market', '--scope', 'managed', '--dry-run'])).body.error).toMatchObject({ code: 'INVALID_CLAUDE_SCOPE' });
+  it('keeps managed to plugins update and refuses scopes an action does not declare', async () => {
+    expect((await claude(['plugins', 'install', 'demo@market', '--scope', 'managed', '--dry-run'])).body.error)
+      .toMatchObject({ code: 'INVALID_OPTION_VALUE', details: { option: 'scope', value: 'managed', allowed: ['project', 'local', 'user'] } });
     expect((await claude(['marketplaces', 'add', 'owner/repo', '--scope', 'managed', '--dry-run'])).body.error)
       .toMatchObject({ code: 'INVALID_OPTION_VALUE', details: { option: 'scope', value: 'managed', allowed: ['project', 'local', 'user'] } });
     expect((await claude(['agents', 'list', '--scope', 'local'])).body.error)
@@ -45,11 +46,11 @@ describe('claude --scope per section', () => {
     expect((await claude(['runtime', 'version', '--scope', 'user', '--dry-run'])).body.error).toMatchObject({ code: 'UNKNOWN_OPTION' });
   });
 
-  it('refuses --scope with INVALID_CLAUDE_OPTION on every plugins action that has no scope', async () => {
+  it('refuses --scope with UNKNOWN_OPTION on every plugins action that has no scope', async () => {
     // Authoring actions run in Forge, validate and list run the installed CLI: both report the same code.
-    for (const args of [['plugins', 'create', 'demo', '--directory', 'plugin-root'], ['plugins', 'validate', './plugin-root'], ['marketplaces', 'list']]) {
-      const refused = await claude([...args, '--scope', 'user', '--claude-bin', join(root, 'claude'), '--dry-run']);
-      expect(refused.body.error, args.join(' ')).toMatchObject({ code: 'INVALID_CLAUDE_OPTION', message: expect.stringContaining('--scope') });
+    for (const args of [['plugins', 'create', 'demo', '--stdin'], ['plugins', 'validate', './plugin-root', '--claude-bin', join(root, 'claude')], ['marketplaces', 'list']]) {
+      const refused = await claude([...args, '--scope', 'user', '--dry-run']);
+      expect(refused.body.error, args.join(' ')).toMatchObject({ code: 'UNKNOWN_OPTION', message: expect.stringContaining('--scope') });
     }
   });
 
@@ -68,10 +69,14 @@ describe('claude --scope per section', () => {
     }
   });
 
-  it('publishes the scopes of each section in its action options', async () => {
+  it('publishes the scopes of each action in its options', async () => {
     const { options, annotations } = (await fixture.cli(['schema', 'claude'])).body.data.commands[0];
     expect(options.scope).toBeUndefined();
     const scopes = Object.fromEntries(Object.entries(annotations.actions as Record<string, { options?: { scope?: { enum: string[] } } }>).map(([id, action]) => [id, action.options?.scope?.enum ?? null]));
-    expect(scopes).toEqual({ capabilities: null, agents: ['project', 'user', 'plugin'], hooks: ['project', 'local', 'user', 'plugin'], plugins: ['project', 'local', 'user', 'managed'], marketplaces: ['project', 'local', 'user'], runtime: null });
+    expect(scopes).toMatchObject({
+      capabilities: null, agents: ['project', 'user', 'plugin'], 'agents create': ['project', 'user', 'plugin'], hooks: ['project', 'local', 'user', 'plugin'], 'hooks remove': ['project', 'local', 'user', 'plugin'],
+      'plugins create': null, 'plugins list': null, 'plugins install': ['project', 'local', 'user'], 'plugins update': ['project', 'local', 'user', 'managed'],
+      'marketplaces add': ['project', 'local', 'user'], 'marketplaces list': null, 'runtime version': null,
+    });
   });
 });

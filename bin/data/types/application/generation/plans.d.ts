@@ -1,5 +1,12 @@
 import { type WriteRequest } from '../../domain/documents/file.ts';
 import type { Workspace } from '../workspace/workspace.ts';
+/** Builds the failure that reports drifted generated outputs. */
+export type DriftFailure = (message: string, details: {
+    outputs: Array<{
+        path: string;
+        status: string;
+    }>;
+}) => Error;
 /** Shared deterministic-generation review and explicit overwrite policy. */
 export declare class GenerationService {
     private readonly workspace;
@@ -30,7 +37,7 @@ export declare class GenerationService {
         outputs: ({
             currentContent?: string | undefined;
             path: string;
-            status: "changed" | "unchanged";
+            status: "unchanged" | "changed";
             revision: string;
             content: string;
         } | {
@@ -39,7 +46,11 @@ export declare class GenerationService {
             content: string;
         })[];
     }>;
-    check(writes: readonly WriteRequest[], errorCode: 'UI_DRIFT' | 'DATA_SOURCE_DRIFT' | 'GENERATION_DRIFT'): Promise<{
+    /**
+     * The plan when every output matches; otherwise the drift failure `drift` builds from the message and details
+     * (`details.outputs`): GENERATION_DRIFT for `make`, or the code of the plugin that generates the files.
+     */
+    check(writes: readonly WriteRequest[], drift?: DriftFailure): Promise<{
         manifest?: {
             preview?: {
                 path: string;
@@ -56,7 +67,7 @@ export declare class GenerationService {
         outputs: ({
             currentContent?: string | undefined;
             path: string;
-            status: "changed" | "unchanged";
+            status: "unchanged" | "changed";
             revision: string;
             content: string;
         } | {

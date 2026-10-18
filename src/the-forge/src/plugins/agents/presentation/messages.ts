@@ -1,5 +1,5 @@
 import type { Language } from '../../../application/plugins/plugin-catalog.ts';
-import type { Command } from '../../../application/plugins/registry.ts';
+import type { Command, CommandContext } from '../../../application/plugins/registry.ts';
 import { isRecord } from '../../../domain/shared/errors.ts';
 import { retranslate } from '../../../domain/shared/messages.ts';
 import { agentFragments, agentMessages, type AgentMessage } from '../domain/messages.ts';
@@ -116,6 +116,8 @@ export const germanAgentMessages: Record<AgentMessage, string> = {
   commandCollision: 'Der Befehl {label} würde .claude/skills/{name}/SKILL.md generieren, die bereits der Befehl {owner} generiert; benennen Sie einen der Befehle um.',
   commandRenamed: 'Mehrere Agenten definieren ein abweichendes /{command}; dieses wird zum Skill {name}.',
   agentCollision: 'Der Agent {name} würde .claude/agents/{claude}.md generieren, die bereits {owner} generiert.',
+  agentDeviceName: 'Der Agent {name} würde {file} generieren, einen unter Windows reservierten Gerätenamen, den keine Datei unter Windows tragen kann; benennen Sie den Agenten um.',
+  commandDeviceName: 'Der Befehl {label} würde {file} generieren, dessen Ordner einen unter Windows reservierten Gerätenamen trägt, den kein Ordner unter Windows tragen kann; benennen Sie den Befehl um.',
   mainAgent: 'Der Standardagent {agent} wird zum Hauptagenten des Projekts ("agent": "{claude}").',
   settingsAgentConflict: '.claude/settings.json setzt agent bereits auf {agent}, das Forge nicht generiert hat; entfernen Sie es, damit Forge {claude} setzen kann.',
   encoding: 'Definitionsdateien müssen gültiges UTF-8 sein.',
@@ -140,7 +142,7 @@ export function localizedDiagnostics<T>(value: T, language: Language): T {
 }
 
 /** The `agents` command with the diagnostics of its results and failures in the response language. */
-export function withLocalizedDiagnostics(command: Command): Command {
+export function withLocalizedDiagnostics<Context extends CommandContext>(command: Command<Context>): Command<Context> {
   return {
     ...command,
     async run(args, flags, context) {

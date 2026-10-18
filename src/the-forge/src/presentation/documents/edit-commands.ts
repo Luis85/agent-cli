@@ -4,11 +4,13 @@ import type { LiteralEdit } from '../../domain/documents/literal-edit.ts';
 import type { TextEditRequest } from '../../domain/documents/text-edit.ts';
 import { rangeEditModes } from '../../domain/documents/sections.ts';
 import type { Command, CommandContext } from '../../application/plugins/registry.ts';
-import { arity, integer, parseJson, value } from '../../application/plugins/command-input.ts';
+import { integer, parseJson, value } from '../../application/plugins/command-input.ts';
 import { option, type CommandFlags } from '../../application/plugins/command-metadata.ts';
 import { decodeText, editBytes, ensureEditable } from '../../application/documents/text-edit.ts';
 import { PlanRunner } from '../../application/documents/apply.ts';
-import { applyOutput, editOutput } from './output.ts';
+import { applyOutput } from './output.ts';
+import { inputWarnings } from './input-warnings.ts';
+import { changesOutput } from '../../application/plugins/output-schemas.ts';
 
 /** JSON text, `@path` (a file in the command scope) or `-` (standard input). */
 async function jsonInput(source: string, context: Pick<CommandContext, 'workspace' | 'input'>): Promise<unknown> {
@@ -46,6 +48,7 @@ async function editRequest(flags: CommandFlags, context: CommandContext): Promis
     return { kind: 'append', content: value(flags, 'content', true)! };
   }
   ensure(content === undefined, 'INVALID_INPUT', '--content requires --append or --prepend.');
+  ensure(find !== undefined || replace !== undefined, 'INVALID_INPUT', `Choose an edit mode: --find text --replace text, --edits json|@file|-, --append --content text, or --section "A > B" or --block id with ${modeUsage}.`, { modes: ['find', 'edits', 'append', 'section', 'block'] });
   return { kind: 'replace', find: value(flags, 'find', true)!, replace: value(flags, 'replace', true)! };
 }
 
@@ -56,8 +59,13 @@ const applyErrors = ['INVALID_PLAN', 'INVALID_JSON', 'INPUT_REQUIRED', 'NOT_FOUN
 export function editCommand(): Command {
   return {
     id: 'edit', description: 'Edit Markdown or UTF-8 text in place: literal replacements, an append, or a section or block edit.',
-    usage: 'edit <note.md|text-file> --if-match sha256 (--find text --replace text | --edits json|@file|- | --append --content text | (--section "A > B" [--section-line n] | --block id) (--replace text | --append --content text | --prepend --content text))',
-    scope: 'project', discovery: false, mutating: true, args: [{ name: 'path', description: 'Vault path relative to the command scope.', required: true }], errors: editErrors, output: editOutput,
+    examples: [
+      'edit notes/idea.md --find Draft --replace Final --if-match <revision>',
+      'edit notes/idea.md --section "Plan > Risks" --append --content "- Late data" --if-match <revision>',
+      'edit notes/idea.md --edits @edits.json --if-match <revision> --dry-run',
+    ],
+    usage: 'edit <note.md|text-file> --if-match sha256 (--find text --replace text | --edits json|@file|- | --append --content text | (--section "A > B" [--section-line n] | --block id) (--replace text | --append --content text | --prepend --content text)) [--project id]',
+    scope: 'project', projectOption: 'project', discovery: false, mutating: true, args: [{ name: 'path', description: 'Vault path relative to the command scope.', required: true, path: true }], errors: editErrors, output: changesOutput(),
     options: {
       'if-match': option.string('SHA-256 revision the file must still have (from read).', { required: true }),
       find: option.string('Exact literal text that must occur once.'),
@@ -69,11 +77,13 @@ export function editCommand(): Command {
       section: option.string('Markdown heading path such as "Plan > Risks"; the section runs to the next heading of the same or a higher level. Write " > " inside a heading as " \\> ".'),
       'section-line': option.string('1-based line of the --section heading, from AMBIGUOUS_SECTION details.candidates, when the path matches several headings.'),
       block: option.string('Markdown block id (^id) of a paragraph, list item or section; a list item keeps its marker and checkbox, and content added next to it must be list items.'),
+      project: option.string('Use this project instead of the selected project.'),
     },
     async run(args, flags, context) {
-      arity(args, 1); const path = args[0]!;
+      const path = args[0]!;
       const request = await editRequest(flags, context);
       ensureEditable(path, request);
+      inputWarnings(path, flags, undefined, ['content', 'replace'], context.workspace);
       return context.workspace.edit(path, value(flags, 'if-match', true)!, bytes => editBytes(path, bytes, request, context.metadata));
     },
   };
@@ -82,13 +92,14 @@ export function editCommand(): Command {
 export function applyCommand(): Command {
   return {
     id: 'apply', description: 'Run a JSON plan of writes, edits, frontmatter changes, moves and deletions as one guarded batch.', usage: 'apply <plan.json|-> [--project id]',
-    // Destructive: write, edit and delete replace or remove content. Not idempotent: an operation without ifMatch,
-    // such as an append, applies again on a repeat; only a plan whose every operation carries ifMatch fails instead.
-    scope: 'project', projectOption: 'project', discovery: false, mutating: true, destructive: true, idempotent: false, errors: applyErrors, output: applyOutput,
-    args: [{ name: 'plan', description: 'Plan file in the command scope, or - to read the plan from standard input.', required: true, schema: applyPlanSchema }],
+    examples: ['apply plan.json --dry-run', 'apply plan.json'],
+    // Destructive: write, edit and delete replace or remove content. Idempotent: every operation on a path that
+    // existed before the plan needs its ifMatch, so a repeat fails with CONFLICT (the first run changed those paths
+    // or created the others) or, when the plan changed nothing, changes nothing again.
+    scope: 'project', projectOption: 'project', discovery: false, mutating: true, destructive: true, idempotent: true, errors: applyErrors, output: applyOutput,
+    args: [{ name: 'plan', description: 'Plan file in the command scope, or - to read the plan from standard input.', required: true, schema: applyPlanSchema, path: true }],
     options: { project: option.string('Use this project instead of the selected project.') },
     async run(args, _flags, context) {
-      arity(args, 1);
       const plan = parsePlan(await jsonInput(args[0] === '-' ? '-' : `@${args[0]!}`, context));
       return new PlanRunner({ workspace: context.workspace, metadata: context.metadata, workspaceScope: context.project === null }).run(plan);
     },

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
+import { warningMessages } from '../support/warnings.ts';
 
 const fixture = portableCli();
 const commandHash = 'a'.repeat(64);
@@ -80,7 +81,7 @@ describe('the claude.lifecycle service for trusted plugins', () => {
     } });
     expect(result.body.data.plan.args.slice(0, 3)).toEqual([plugin.executableScript, 'success', '--config']);
     for (const secret of ['private-stdin', 'private-config', 'private-argument']) expect(result.stdout).not.toContain(secret);
-    expect(result.body.warnings).toContain('native-audit activated');
+    expect(warningMessages(result.body)).toContain('native-audit activated');
     expect(result.body.events.filter((event: { id: string }) => event.id === 'claude.executed')).toEqual([]);
     expect(result.body.events).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'claude.started', payload: expect.objectContaining({ dryRun: true }) }),
@@ -145,7 +146,7 @@ describe('the claude.lifecycle service for trusted plugins', () => {
   it('leaves a plugin that requires it unavailable when the claude core plugin is disabled', async () => {
     const plugin = await configuredPlugin('lifecycle-disabled', { disabled: ['claude'] });
     const result = await plugin.cli(['native-audit.run']);
-    expect(result.body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'native-audit.run', plugin: 'native-audit', reason: 'Requires service claude.lifecycle; its provider claude is disabled.' } });
+    expect(result.body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'native-audit.run', plugin: 'native-audit', reason: { code: 'PLUGIN_PROVIDER_DISABLED', message: 'Requires service claude.lifecycle; its provider claude is disabled.' } } });
     expect((await plugin.cli(['claude', 'capabilities'])).body.error.code).toBe('UNKNOWN_COMMAND');
     const events = (await plugin.cli(['events'])).body.data;
     expect(events.events.filter((id: string) => id.startsWith('claude.'))).toEqual([]);

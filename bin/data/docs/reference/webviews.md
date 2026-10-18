@@ -14,7 +14,7 @@ The `webviews` core plugin provides publication tools and the `forge-webviews` s
 | `webview publish --check` | Compare the build and installed assets without writing. Differences fail with `WEBVIEW_DRIFT` (exit 5). |
 | `server start --webview <id>` | Start or reuse the workspace localhost server and return the selected installed view's authenticated URL. |
 
-Use `node bin/forge.js webview inspect --project <id>` or `node bin/forge.js webview publish --project <id>` to target a project for one invocation without changing persistent selection. `--project` is this command's declared option; place workspace routing `--root <workspace>` before the command. Publication requires a managed project whose marker has `type: "webview"`; it uses fixed `dist/` and `bin/webviews/<project-name>/` paths. The maintained `admin` view is reserved.
+Use `node bin/forge.js webview inspect --project <id>` or `node bin/forge.js webview publish --project <id>` to target a project for one invocation without changing persistent selection. `--project` is this command's declared option; `--root <workspace>` (or `FORGE_ROOT`) selects the workspace. Publication requires a managed project whose marker has `type: "webview"`; it uses fixed `dist/` and `bin/webviews/<project-name>/` paths. The maintained `admin` view is reserved.
 
 The CLI never installs dependencies, invokes npm scripts or starts a server during creation/publication. A publication dry run performs the same validation and revision checks as the write. Project scripts and dependency installation are separate operations with their own effects. `schema project --json`, `schema webview --json` and `schema server --json` describe the installed executable's exact arguments, schemas and errors.
 
@@ -71,7 +71,8 @@ Local fixtures are the starter's default. Optional real workspace inspection use
 | Code | Recovery |
 | --- | --- |
 | `PROJECT_REQUIRED` | Select a valid managed project or pass the command's `--project <id>` option. |
-| `INVALID_ARGUMENT` | Use a `webview` project other than reserved `admin`, valid options and a SHA-256 revision when required. |
+| `WEBVIEW_PROJECT_REQUIRED` | The selected or named project has another type; `details` is `{project, type}`. Pass `--project <webview-id>` or run `project open <webview-id>`; `project list` shows each project's type. |
+| `INVALID_ARGUMENT` | Use a project other than reserved `admin`, valid options and a SHA-256 revision when required. |
 | `WEBVIEW_BUILD_REQUIRED` | Build the selected project, then inspect and retry publication. |
 | `WEBVIEW_INVALID` | Correct the reported project, manifest or asset validation problem. |
 | `WEBVIEW_DRIFT` | Inspect the comparison, rebuild if needed, and review a guarded publication; `--check` wrote nothing. |

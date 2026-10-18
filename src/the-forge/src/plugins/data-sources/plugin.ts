@@ -1,17 +1,17 @@
 import type { CorePlugin } from '../../application/plugins/core-plugins.ts';
-import type { PluginContext } from '../../application/plugins/registry.ts';
 import { DataSourceLibrary } from './application/library.ts';
 import { dataSourceSettings, dataSourcePathSettings, dataSourceSettingsSchema } from './application/settings.ts';
 import { MarkdownDataSourceDefinitions } from './infrastructure/definitions.ts';
 import { TypeScriptDataSourceRenderer } from './infrastructure/generator.ts';
 import { dataSourceGenerator, dataSourcesCommand, type DataSourceServicesFactory } from './presentation/commands.ts';
 import { dataSourcesStrings } from './presentation/strings.ts';
+import { dataSourceErrors } from './presentation/errors.ts';
 
 /** The definition library lives at workspace scope (`context.environment`), even while a project is selected. */
 const services: DataSourceServicesFactory = context => {
   const workspace = context.environment;
   return {
-    settings: dataSourceSettings((context as PluginContext).settings),
+    settings: dataSourceSettings(context.settings),
     library: new DataSourceLibrary(workspace, new MarkdownDataSourceDefinitions(workspace.codec), new TypeScriptDataSourceRenderer()),
   };
 };
@@ -43,6 +43,7 @@ export const dataSourcesPlugin: CorePlugin = {
     generators: [dataSourceGenerator(services)],
     settings: dataSourceSettingsSchema,
     pathSettings: dataSourcePathSettings,
+    errors: dataSourceErrors,
     strings: {
       de: {
         commands: { 'data-sources': 'Markdown-Datenquellen verwalten, prüfen, importieren und exportieren.' },

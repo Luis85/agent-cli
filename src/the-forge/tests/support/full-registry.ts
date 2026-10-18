@@ -7,7 +7,7 @@ import { registerHostEvents } from '../../src/application/plugins/host-events.ts
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { commands } from '../../src/presentation/cli/commands.ts';
 import { Registry } from '../../src/application/plugins/registry.ts';
-import type { WorkflowServices } from '../../src/presentation/cli/services.ts';
+import type { KernelServices } from '../../src/presentation/cli/services.ts';
 import { registerCorePlugins, registrySkills, type CorePlugin } from '../../src/application/plugins/core-plugins.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 import { basesPlugin } from '../../src/plugins/bases/plugin.ts';
@@ -29,6 +29,7 @@ import { claudePlugin } from '../../src/plugins/claude/plugin.ts';
 import { connectorPlugin } from '../../src/plugins/connector/plugin.ts';
 import { azureDevOpsPlugin } from '../../src/plugins/connector-azure-devops/plugin.ts';
 import { offlineHost, testHost } from './core-plugins.ts';
+import { forgeVersion } from './workspace.ts';
 
 /** The bundled core plugins in bundle order, as `src/main.ts` registers them. */
 export const corePlugins: readonly CorePlugin[] = [
@@ -44,8 +45,8 @@ export async function fullRegistry(): Promise<Registry> {
   const root = await mkdtemp(join(tmpdir(), 'forge-full-registry-'));
   try {
     const loaded = await loadConfig({ defaultPath: join(root, 'bin/config.json'), cwd: root });
-    const registry = new Registry(skillFrontmatter);
-    const services: WorkflowServices = {
+    const registry = new Registry(skillFrontmatter, forgeVersion);
+    const services: KernelServices = {
       loaded,
       server: { async start() { throw new Error('Catalog must not start servers'); }, async status() { throw new Error('Catalog must not inspect servers'); }, async stop() { throw new Error('Catalog must not stop servers'); } },
       get files(): never { throw new Error('The catalog registry does not access files'); },

@@ -74,13 +74,13 @@ export function unresolvedLinks(cache: MetadataCache, include: (path: string) =>
 
 /** Notes that no other file links to or embeds, except those matching `root`. */
 export function orphanNotes(cache: MetadataCache, include: (path: string) => boolean, root: (path: string) => boolean): { files: string[]; issues: MetadataIssue[] } {
-  const files = cache.files().filter(path => isNote(path) && include(path) && !root(path) && cache.backlinks(path).length === 0);
+  const files = cache.files().filter(path => include(path) && isNote(path) && !root(path) && cache.backlinks(path).length === 0);
   return { files, issues: cache.issues() };
 }
 
 /** Parsed notes without a reference to another file, resolved or not. Unparseable notes are reported as issues. */
 export function deadendNotes(cache: MetadataCache, include: (path: string) => boolean): { files: string[]; issues: MetadataIssue[] } {
-  const files = cache.files().filter(path => isNote(path) && include(path) && cache.getFileCache(path) !== null
+  const files = cache.files().filter(path => include(path) && isNote(path) && cache.getFileCache(path) !== null
     && !cache.references(path).some(reference => outbound(path, reference)));
   return { files, issues: cache.issues() };
 }

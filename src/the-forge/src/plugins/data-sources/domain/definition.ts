@@ -27,3 +27,8 @@ export interface DataSourceDefinition {
   description: string;
   sourcePath: string;
 }
+/**
+ * The files `make data-source` generates for a definition, named after its id: the adapter in the output folder and
+ * its test data in the test-data folder.
+ */
+export const dataSourceFiles = (id: string) => ({ adapter: `${id}.ts`, testData: `${id}.fixtures.json` });

@@ -9,6 +9,17 @@ const directories: string[] = [];
 // A terminated child can briefly keep its working directory open on Windows (EBUSY); rm retries those errors.
 afterEach(async () => { await Promise.all(directories.splice(0).map(directory => rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }))); });
 
+/**
+ * Whether `pid` still runs. An orphaned descendant that was killed stays a zombie until its new parent reaps it, which
+ * a container's init may never do; Linux reports that state in /proc.
+ */
+async function running(pid: number): Promise<boolean> {
+  try { process.kill(pid, 0); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false; throw error; }
+  const stat = await readFile(`/proc/${pid}/stat`, 'utf8').catch(() => undefined);
+  return stat === undefined || stat.slice(stat.lastIndexOf(')') + 2, stat.lastIndexOf(')') + 3) !== 'Z';
+}
+
 async function fixture(source: string) {
   // Children report their canonical working directory (macOS /var is /private/var).
   const cwd = await realpath(await mkdtemp(join(tmpdir(), 'forge claude runtime ')));
@@ -215,17 +226,23 @@ describe('installed Claude CLI adapter', () => {
   });
 
   // Windows has no process groups: the runtime reports terminationScope 'direct-process' and cannot stop descendants.
-  it.skipIf(process.platform === 'win32')('stops POSIX descendants that would otherwise keep writing after timeout', async () => {
+  it.skipIf(process.platform === 'win32')('stops POSIX descendants that would otherwise keep running after timeout', async () => {
+    // The descendant would run forever; the parent records its pid as soon as it starts it.
     const { runtime, script, cwd } = await fixture(`
       import { spawn } from 'node:child_process';
-      const source = "require('node:fs').writeFileSync('descendant.started', 'yes'); setTimeout(() => require('node:fs').writeFileSync('descendant.finished', 'yes'), 700);";
-      spawn(process.execPath, ['-e', source], { stdio: 'ignore' });
+      import { writeFileSync } from 'node:fs';
+      const descendant = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+      writeFileSync('descendant.pid', String(descendant.pid));
       setInterval(() => {}, 1000);
     `);
-    await expect(runtime.run([script], { cwd, timeoutMs: 500 })).rejects.toMatchObject({ code: 'CLAUDE_COMMAND_TIMEOUT' });
-    expect(await readFile(join(cwd, 'descendant.started'), 'utf8')).toBe('yes');
-    await new Promise(resolve => setTimeout(resolve, 350));
-    await expect(readFile(join(cwd, 'descendant.finished'))).rejects.toMatchObject({ code: 'ENOENT' });
+    // The budget leaves a loaded machine time to start the descendant before the timeout ends the group.
+    await expect(runtime.run([script], { cwd, timeoutMs: 2000 })).rejects.toMatchObject({ code: 'CLAUDE_COMMAND_TIMEOUT' });
+    const pid = Number(await readFile(join(cwd, 'descendant.pid'), 'utf8'));
+    try {
+      await expect.poll(() => running(pid), { timeout: 10_000, message: `descendant ${pid} still runs after the timeout` }).toBe(false);
+    } finally {
+      try { process.kill(pid, 'SIGKILL'); } catch { /* Already stopped. */ }
+    }
   });
 
   it('bounds combined stdout and stderr rather than allowing each stream a separate budget', async () => {

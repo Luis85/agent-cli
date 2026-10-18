@@ -1,8 +1,9 @@
 import { ensure } from '../../../domain/shared/errors.ts';
-import { vaultPath, ensureSeparateDirectories, type WriteRequest } from '../../../domain/documents/file.ts';
-import type { DataSourceDefinition } from '../domain/definition.ts';
+import { vaultPath, ensureSeparateDirectories, portablePathIssues, type WriteRequest } from '../../../domain/documents/file.ts';
+import { dataSourceFiles, type DataSourceDefinition } from '../domain/definition.ts';
 import type { Workspace } from '../../../application/workspace/workspace.ts';
 import { GenerationService } from '../../../application/generation/plans.ts';
+import { dataSourceError, ensureDataSource } from '../domain/errors.ts';
 
 export interface DataSourceDefinitionCodec {
   parse(bytes: Uint8Array, path: string): DataSourceDefinition;
@@ -17,11 +18,17 @@ export interface DataSourceGenerateOptions {
 export interface DataSourceRenderer {
   generate(definitions: readonly DataSourceDefinition[], options: DataSourceGenerateOptions): readonly WriteRequest[];
 }
+/**
+ * Unique ids whose generated files every filesystem can write. Ids are unique lowercase names, so generated files
+ * never differ only in letter case; an id that is a Windows device name fails with INVALID_DATA_SOURCE.
+ */
 function validateLibrary(definitions: readonly DataSourceDefinition[]) {
   const ids = new Set<string>();
   for (const definition of definitions) {
-    ensure(!ids.has(definition.id), 'DUPLICATE_DATA_SOURCE', `Duplicate data source ${definition.id}.`);
+    ensureDataSource(!ids.has(definition.id), 'DUPLICATE_DATA_SOURCE', `Duplicate data source ${definition.id}.`);
     ids.add(definition.id);
+    const files = dataSourceFiles(definition.id), issue = portablePathIssues([files.adapter, files.testData])[0];
+    if (issue?.reason === 'device-name') throw dataSourceError('INVALID_DATA_SOURCE', `Data source ${definition.id} would generate ${issue.path}, a Windows reserved device name that no file can have on Windows; choose another id.`, { source: definition.id, file: issue.path, reason: issue.reason, segment: issue.segment });
   }
 }
 function starter(directory: string, id: string, kind: DataSourceDefinition['kind']): DataSourceDefinition {
@@ -46,7 +53,7 @@ export class DataSourceLibrary {
     const sources = await this.sources(directory);
     validateLibrary(sources.map(source => source.definition));
     const source = sources.find(candidate => candidate.definition.id === id);
-    ensure(source, 'UNKNOWN_DATA_SOURCE', `No data source ${id} in ${directory}.`);
+    ensureDataSource(source, 'UNKNOWN_DATA_SOURCE', `No data source ${id} in ${directory}.`);
     return { ...source.definition, revision: source.revision };
   }
   async validate(directory: string) {
@@ -68,7 +75,7 @@ export class DataSourceLibrary {
   async import(sourceDirectory: string, directory: string) {
     ensureSeparateDirectories(sourceDirectory, directory);
     const sources = await this.sources(sourceDirectory);
-    ensure(sources.length, 'EMPTY_DATA_SOURCE_LIBRARY', `No data-source definitions in ${sourceDirectory}.`);
+    ensureDataSource(sources.length, 'EMPTY_DATA_SOURCE_LIBRARY', `No data-source definitions in ${sourceDirectory}.`);
     validateLibrary([...await this.list(directory), ...sources.map(source => source.definition)]);
     const plan = sources.map(({ definition, bytes }) => ({ path: `${directory}/${definition.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
     return { sources: sources.map(source => source.definition.id), ...await this.commit(plan) };
@@ -90,16 +97,16 @@ export class DataSourceLibrary {
   }
   async check(directory: string, options: DataSourceGenerateOptions) {
     ensure(options.revisions === undefined, 'INVALID_GENERATION_PLAN', 'Checks do not accept regeneration revisions.');
-    return new GenerationService(this.workspace).check((await this.prepare(directory, options)).writes, 'DATA_SOURCE_DRIFT');
+    return new GenerationService(this.workspace).check((await this.prepare(directory, options)).writes, (message, details) => dataSourceError('DATA_SOURCE_DRIFT', message, details));
   }
   private async prepare(directory: string, options: DataSourceGenerateOptions) {
-    ensure(this.renderer, 'DATA_SOURCE_RENDERER_UNAVAILABLE', 'No data-source renderer is configured.');
+    ensureDataSource(this.renderer, 'DATA_SOURCE_RENDERER_UNAVAILABLE', 'No data-source renderer is configured.');
     vaultPath(options.outputDirectory); vaultPath(options.testDataDirectory);
     let definitions = await this.list(directory);
-    ensure(definitions.length, 'EMPTY_DATA_SOURCE_LIBRARY', `No data-source definitions in ${directory}.`);
+    ensureDataSource(definitions.length, 'EMPTY_DATA_SOURCE_LIBRARY', `No data-source definitions in ${directory}.`);
     if (options.source) {
       definitions = definitions.filter(definition => definition.id === options.source);
-      ensure(definitions.length, 'UNKNOWN_DATA_SOURCE', `No data source ${options.source} in ${directory}.`);
+      ensureDataSource(definitions.length, 'UNKNOWN_DATA_SOURCE', `No data source ${options.source} in ${directory}.`);
     }
     return { definitions, writes: this.renderer.generate(definitions, options) };
   }

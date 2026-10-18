@@ -1,4 +1,4 @@
-import type { DataSourceDefinition, DataSourceField, DataSourceRecord, DataSourceValue } from '../domain/definition.ts';
+import { dataSourceFiles, type DataSourceDefinition, type DataSourceField, type DataSourceRecord, type DataSourceValue } from '../domain/definition.ts';
 import type { DataSourceGenerateOptions, DataSourceRenderer } from '../application/library.ts';
 import type { WriteRequest } from '../../../domain/documents/file.ts';
 import { vaultPath } from '../../../domain/documents/file.ts';
@@ -170,9 +170,12 @@ export function create${name}DataSource(options: ${name}DataSourceOptions) {
 export class TypeScriptDataSourceRenderer implements DataSourceRenderer {
   generate(definitions: readonly DataSourceDefinition[], options: DataSourceGenerateOptions): readonly WriteRequest[] {
     vaultPath(options.outputDirectory); vaultPath(options.testDataDirectory);
-    return [...definitions].sort((left, right) => compare(left.id, right.id)).flatMap(definition => [
-      { path: `${options.outputDirectory}/${definition.id}.ts`, bytes: new TextEncoder().encode(modelSource(definition) + (definition.kind === 'rest' ? restSource(definition) : jsonSource(definition))) },
-      { path: `${options.testDataDirectory}/${definition.id}.fixtures.json`, bytes: new TextEncoder().encode(canonicalJson(fixtureRecords(definition), 2) + '\n') },
-    ]);
+    return [...definitions].sort((left, right) => compare(left.id, right.id)).flatMap(definition => {
+      const files = dataSourceFiles(definition.id);
+      return [
+        { path: `${options.outputDirectory}/${files.adapter}`, bytes: new TextEncoder().encode(modelSource(definition) + (definition.kind === 'rest' ? restSource(definition) : jsonSource(definition))) },
+        { path: `${options.testDataDirectory}/${files.testData}`, bytes: new TextEncoder().encode(canonicalJson(fixtureRecords(definition), 2) + '\n') },
+      ];
+    });
   }
 }

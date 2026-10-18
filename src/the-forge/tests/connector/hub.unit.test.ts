@@ -20,7 +20,9 @@ const azure = (extra: Record<string, unknown> = {}) => ({ platform: 'azure-devop
 describe('connection profiles', () => {
   it('validates shared fields on load and platform fields on use, with platform defaults', () => {
     expect(hub({ a: { organization: 'x' } }).issues).toEqual(['plugins.settings.connector.connections.a.platform: is required']);
-    expect(hub({ a: azure({ tokenEnv: 'not valid' }) }).issues).toEqual(['plugins.settings.connector.connections.a.tokenEnv: must match ^[A-Za-z_][A-Za-z0-9_]*$']);
+    expect(hub({ a: azure({ tokenEnv: 'not valid' }) }).issues).toEqual(['plugins.settings.connector.connections.a.tokenEnv: must match ^([A-Za-z_][A-Za-z0-9_]*_)?(PAT|TOKEN)$']);
+    for (const name of ['AWS_SECRET_ACCESS_KEY', 'HOME', 'MYPAT', 'PAT_FILE']) expect(hub({ a: azure({ tokenEnv: name }) }).issues).toHaveLength(1);
+    for (const name of ['PAT', 'TOKEN', 'ADO_PAT', 'ci_build_TOKEN']) expect(hub({ a: azure({ tokenEnv: name }) }).issues).toEqual([]);
     const { instance } = hub({ contoso: azure(), fabrikam: azure({ organization: 'https://dev.azure.com/fabrikam', process: 'scrum', tokenEnv: 'FABRIKAM_PAT', linkProperty: 'ado' }) });
     expect(instance.ids()).toEqual(['contoso', 'fabrikam']);
     expect(instance.connection('contoso').connection).toMatchObject({ tokenEnv: 'AZURE_DEVOPS_EXT_PAT', linkProperty: 'azure-devops', effortProperty: 'effort', settings: { process: 'agile', descriptionFormat: 'markdown' } });
@@ -47,7 +49,7 @@ describe('connection profiles', () => {
     const warnings = (id: string) => { const { connection, connector } = instance.connection(id); return connector.describe().warnings(connection); };
     expect(warnings('cloud')).toEqual([]);
     expect(warnings('legacy')).toEqual([]);
-    expect(warnings('server')).toEqual([expect.stringContaining('organization host tfs.example.com is neither dev.azure.com nor *.visualstudio.com; the token in AZURE_DEVOPS_EXT_PAT is sent there')]);
+    expect(warnings('server')).toEqual([expect.stringContaining('organization host tfs.example.com is neither dev.azure.com nor *.visualstudio.com, so requests are refused and the token in AZURE_DEVOPS_EXT_PAT is not sent')]);
     expect(instance.connection('cloud').connection.areaProperty).toBe('area');
   });
 

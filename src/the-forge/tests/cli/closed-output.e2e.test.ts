@@ -36,7 +36,7 @@ beforeAll(async () => {
 });
 
 describe('closed standard output', () => {
-  it.each([['schema'], ['help']])('stops quietly when the reader of %s closes the pipe early', async (...args) => {
+  it.each([['schema', '--all'], ['help']])('stops quietly when the reader of %s closes the pipe early', async (...args) => {
     const result = await closedEarly(args);
     // The output is far larger than a pipe buffer, so the CLI writes into the closed pipe.
     expect(result.received).toBeGreaterThan(0);

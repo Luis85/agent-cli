@@ -1,5 +1,6 @@
 import type { CommandContext } from '../../../application/plugins/registry.ts';
-import { AppError, ensure } from '../../../domain/shared/errors.ts';
+import { ensure } from '../../../domain/shared/errors.ts';
+import { readOrMissing } from '../../../domain/shared/not-found.ts';
 import { ensureBrowser } from '../domain/errors.ts';
 import { expectedRevision, imageMarkdown, reportedUrl, screenshotOutput, validateScreenshot } from './requests.ts';
 import type { BrowserImage, BrowserRuntime, ScreenshotRequest } from './runtime.ts';
@@ -26,11 +27,8 @@ export class BrowserScreenshot {
     const path = screenshotOutput(input.out), revision = expectedRevision(input.ifMatch);
     // Check-only dry-run guards validate containment and replacement conflicts before any browser/network activity.
     await context.workspace.files.commit({ guards: [{ path, ...(revision === undefined ? {} : { expectedRevision: revision }) }] }, true);
-    const target = await context.workspace.files.stat(path).catch(error => {
-      if (error instanceof AppError && error.code === 'NOT_FOUND') return null;
-      throw error;
-    });
-    ensure(target === null || target.kind === 'file', 'INVALID_PATH', 'Screenshot output must name a regular file, not a directory.');
+    const target = await readOrMissing(() => context.workspace.files.stat(path));
+    ensure(target === undefined || target.kind === 'file', 'INVALID_PATH', 'Screenshot output must name a regular file, not a directory.');
     const plan = { requestedUrl: reportedUrl(request.url), out: path, viewport: request.viewport, fullPage: request.fullPage,
       ...(request.waitForSelector === undefined ? {} : { waitForSelector: request.waitForSelector }), timeoutMs: request.timeoutMs };
     if (context.workspace.dryRun) return { dryRun: true, captured: false, plan, changes: [] };
@@ -40,6 +38,6 @@ export class BrowserScreenshot {
     const result = await context.workspace.write([{ path, bytes: image.bytes, ...(revision === undefined ? {} : { expectedRevision: revision }) }]);
     const change = result.changes[0]!;
     return { ...result, captured: true, path, revision: change.revision, bytes: change.bytes, ...dimensions,
-      requestedUrl: plan.requestedUrl, finalUrl, capturedAt: new Date(image.capturedAt).toISOString(), markdown: imageMarkdown(path) };
+      requestedUrl: plan.requestedUrl, finalUrl, capturedAt: new Date(image.capturedAt).toISOString(), markdown: imageMarkdown(path), sandbox: image.sandbox };
   }
 }

@@ -2,11 +2,11 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { copyFile, cp, readFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
-import { committedEvents } from '../support/events.ts';
+import { committedEvents, unchangedRepeat } from '../support/events.ts';
 import { workspaceRoot } from '../support/workspace.ts';
 
 const generic = portableCli();
-const checkout = portableCli();
+const checkout = portableCli({ privateBundle: true });
 let selected: string;
 beforeAll(async () => {
   // Restore the checked-in checkout settings only in this private fixture.
@@ -54,7 +54,7 @@ describe('repository self-management defaults', () => {
     expect(written.status).toBe(0);
     expect(await readFile(join(selected, path), 'utf8')).toBe('# Managed by the repository CLI');
     await expect(readFile(join(checkout.bundle, path))).rejects.toMatchObject({ code: 'ENOENT' });
-    expect((await cli(input)).body.error.code).toBe('CONFLICT');
+    expect(unchangedRepeat(await cli(input))).toBe(true);
     const revision = written.body.data.changes[0].revision;
     expect((await cli(['write', path, '--content', '# Reviewed', '--if-match', revision])).status).toBe(0);
     expect(await readFile(join(selected, path), 'utf8')).toBe('# Reviewed');

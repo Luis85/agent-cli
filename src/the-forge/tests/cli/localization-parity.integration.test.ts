@@ -2,7 +2,12 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { Localizer } from '../../src/presentation/localization/localization.ts';
 import { germanKernelMessages } from '../../src/presentation/localization/messages.ts';
 import { germanDescriptions } from '../../src/presentation/localization/descriptions.ts';
-import { germanActions, germanCommands } from '../../src/presentation/localization/catalog.ts';
+import { germanActions, germanCommands, germanGuidance } from '../../src/presentation/localization/catalog.ts';
+import { readFile } from 'node:fs/promises';
+import { EventBus } from '../../src/application/plugins/events.ts';
+import { registerHostEvents } from '../../src/application/plugins/host-events.ts';
+import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
+import type { CommandContext } from '../../src/application/plugins/registry.ts';
 import { kernelMessages, type KernelMessageCode } from '../../src/domain/shared/kernel-messages.ts';
 import { globalOptionMetadata } from '../../src/presentation/cli/arguments.ts';
 import type { Command, Registry } from '../../src/application/plugins/registry.ts';
@@ -45,6 +50,7 @@ function described(command: Pick<Command, 'id' | 'options' | 'args' | 'actions'>
   for (const argument of command.args ?? []) add(`${command.id} <${argument.name}>`, argument);
   for (const [action, definition] of Object.entries(command.actions ?? {})) {
     for (const [name, option] of Object.entries(definition.options ?? {})) add(`${command.id} ${action} --${name}`, option);
+    for (const argument of definition.args ?? []) add(`${command.id} ${action} <${argument.name}>`, argument);
   }
   return texts;
 }
@@ -62,7 +68,7 @@ describe('German localization parity', () => {
   });
 
   it('translates every global option description', () => {
-    const german = new Localizer('de', registry.catalog).result('help', { globalOptions: globalOptionMetadata, generators: [] }) as { globalOptions: typeof globalOptionMetadata };
+    const german = new Localizer('de', registry.catalog).result(registry.commands.get('help'), { globalOptions: globalOptionMetadata, generators: [] }) as { globalOptions: typeof globalOptionMetadata };
     const texts = (options: typeof globalOptionMetadata) => new Map(Object.entries(options).map(([name, option]) => [name, option.description]));
     expect(untranslated(texts(globalOptionMetadata), texts(german.globalOptions))).toEqual([]);
   });
@@ -70,7 +76,7 @@ describe('German localization parity', () => {
   it('translates every plugin settings description that config reports', () => {
     const sections = registry.settings.sections();
     expect(sections.length).toBeGreaterThanOrEqual(9);
-    const german = new Localizer('de', registry.catalog).result('config', { sections }) as { sections: typeof sections };
+    const german = new Localizer('de', registry.catalog).result(registry.commands.get('config'), { sections }) as { sections: typeof sections };
     const texts = (entries: typeof sections) => new Map(entries.flatMap(section => [...schemaDescriptions(section.schema, section.path)]));
     expect(untranslated(texts(sections), texts(german.sections))).toEqual([]);
   });
@@ -105,6 +111,25 @@ describe('German localization parity', () => {
       const [command, action] = key.split(' ') as [string, string];
       return registry.commands.get(command)?.actions?.[action] === undefined;
     })).toEqual([]);
+  });
+
+  it('translates every guidance text of the result fields discovery commands declare as text, and keeps no stale guidance', async () => {
+    const events = new EventBus(new NodeEventScope());
+    registerHostEvents(events);
+    const context = { events } as unknown as CommandContext;
+    const strings = (value: unknown): string[] => typeof value === 'string' ? [value] : Array.isArray(value) ? value.flatMap(strings) : value !== null && typeof value === 'object' ? Object.values(value).flatMap(strings) : [];
+    const texts = new Set<string>();
+    for (const [id, args] of [['help', []], ['schema', []], ['schema', ['read']], ['formats', []], ['events', []]] as const) {
+      const command = registry.commands.get(id)!, data = await command.run([...args], {}, context) as Record<string, unknown>;
+      for (const [field, kind] of Object.entries(command.localizedOutput ?? {})) if (kind === 'text') for (const text of strings(data[field])) texts.add(text);
+    }
+    expect(texts.size).toBeGreaterThanOrEqual(7);
+    // Of the eventOutput and setup step fields, only the explanatory sentences are guidance.
+    const sentences = [...texts].filter(text => text.includes(' '));
+    expect(sentences.filter(text => !germanGuidance[text] || germanGuidance[text] === text)).toEqual([]);
+    // setup's next steps come from a run that writes files; its purposes are declared in the setup service.
+    const setup = await readFile('src/application/workspace/setup.ts', 'utf8');
+    expect(Object.keys(germanGuidance).filter(text => !texts.has(text) && !setup.includes(`purpose: '${text}'`))).toEqual([]);
   });
 
   it('gives every kernel warning and plugin state reason a German text with the same placeholders', () => {

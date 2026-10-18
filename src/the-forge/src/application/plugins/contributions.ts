@@ -2,7 +2,7 @@ import { ensure, isRecord } from '../../domain/shared/errors.ts';
 import { defaultIssues, schemaIssues, type JsonSchema } from '../../domain/schema/json-schema.ts';
 import { validateCommandMetadata } from './command-metadata.ts';
 import { errorPrefix, PluginCatalog } from './plugin-catalog.ts';
-import { skillIssues, type SkillFrontmatter } from '../../domain/skills/skill.ts';
+import { skillFileIssues, skillIssues, skillPathIssues, type SkillFrontmatter } from '../../domain/skills/skill.ts';
 
 /** Reads the YAML frontmatter of a SKILL.md; composition injects a complete YAML parser. */
 export type SkillFrontmatterReader = (content: string) => SkillFrontmatter;
@@ -37,8 +37,11 @@ export function validateContributions(plugin: Record<string, unknown>, pluginId:
   for (const generator of (plugin.generators ?? []) as Record<string, unknown>[]) validateGenerator(generator);
   for (const skill of (plugin.skills ?? []) as Record<string, unknown>[]) {
     ensure(typeof skill.content === 'string', 'INVALID_PLUGIN', 'Invalid skill.');
-    const issues = skillIssues(skill.id as string, frontmatter(skill.content));
+    const issues = [...skillIssues(skill.id as string, frontmatter(skill.content)), ...skillFileIssues(skill.id as string, skill.files)];
     ensure(issues.length === 0, 'INVALID_PLUGIN', issues.join(' '));
+    // Paths every install would refuse or merge on some filesystem fail here, naming the skill and file.
+    const paths = skillPathIssues(skill.id as string, skill.files as Record<string, string> | undefined);
+    ensure(paths.length === 0, 'INVALID_PLUGIN', paths.map(issue => issue.message).join(' '), paths[0]?.details);
   }
   ensure(plugin.provides === undefined || isRecord(plugin.provides), 'INVALID_PLUGIN', 'provides must map service ids to implementations.');
   for (const key of ['requires', 'optional']) {

@@ -25,11 +25,11 @@ beforeAll(async () => {
   await writeFile(join(fixture.project, 'bin/plugins/lister/manifest.json'), JSON.stringify({ id: 'lister', name: 'Lister', version: '1.0.0', minAppVersion: '0.1.0', description: 'List option fixture', author: 'Tests' }));
   await writeFile(join(fixture.project, 'bin/plugins/lister/main.mjs'), lister);
   await writeFile(join(fixture.project, 'bin/config.json'), JSON.stringify({ plugins: { enabled: ['lister'] } }));
-  const commands = (await cli(['schema'])).body.data.commands as Contract[];
+  const commands = (await cli(['schema', '--all'])).body.data.commands as Contract[];
   modes = commands.flatMap(command => [
     { tokens: [command.id], options: command.options },
     ...Object.entries(command.annotations.actions ?? {}).filter(([, action]) => action.options !== undefined)
-      .map(([id, action]) => ({ tokens: [command.id, id], options: { ...command.options, ...action.options } })),
+      .map(([id, action]) => ({ tokens: [command.id, ...id.split(' ')], options: { ...command.options, ...action.options } })),
   ]);
 });
 
@@ -37,31 +37,27 @@ beforeAll(async () => {
 const requiredValues = (options: Record<string, CommandOption>, omit?: string) => Object.entries(options)
   .filter(([key, schema]) => schema.required && key !== omit).flatMap(([key, schema]) => [`--${key}`, schema.enum?.[0] ?? 'value']);
 
+/** The mode whose `tokens` an expectation names, such as `make ui`. */
+const mode = (tokens: string) => modes.find(candidate => candidate.tokens.join(' ') === tokens)!;
+
+/**
+ * `option-constraints.integration.test.ts` checks every declared constraint of every mode in process; these
+ * representative invocations, a command option and an action option each, confirm the CLI applies the same checks.
+ */
 describe('declared option constraints', () => {
-  it('rejects a value outside every declared enum with INVALID_OPTION_VALUE', async () => {
-    const checked: string[] = [];
-    for (const { tokens, options } of modes) {
-      for (const [key, schema] of Object.entries(options)) {
-        if (schema.enum === undefined) continue;
-        const result = await cli([...tokens, ...requiredValues(options), `--${key}`, 'not-a-declared-value']);
-        expect(result.body.error, `${tokens.join(' ')} --${key}`).toMatchObject({ code: 'INVALID_OPTION_VALUE', details: { option: key, value: 'not-a-declared-value', allowed: schema.enum } });
-        checked.push(`${tokens.join(' ')} --${key}`);
-      }
+  it('rejects a value outside a declared enum with INVALID_OPTION_VALUE', async () => {
+    for (const [tokens, key] of [['list', 'kind'], ['make ui', 'framework']] as const) {
+      const { options } = mode(tokens);
+      const result = await cli([...tokens.split(' '), ...requiredValues(options, key), `--${key}`, 'not-a-declared-value']);
+      expect(result.body.error, `${tokens} --${key}`).toMatchObject({ code: 'INVALID_OPTION_VALUE', details: { option: key, value: 'not-a-declared-value', allowed: options[key]!.enum } });
     }
-    expect(checked).toEqual(expect.arrayContaining(['list --kind', 'create --encoding', 'make ui --framework', 'agents --mcp', 'backlog --direction', 'vault tags --sort']));
   });
 
   it('rejects an invocation without a declared required option with MISSING_ARGUMENT', async () => {
-    const checked: string[] = [];
-    for (const { tokens, options } of modes) {
-      for (const [key, schema] of Object.entries(options)) {
-        if (!schema.required) continue;
-        const result = await cli([...tokens, ...requiredValues(options, key)]);
-        expect(result.body.error, `${tokens.join(' ')} --${key}`).toMatchObject({ code: 'MISSING_ARGUMENT', message: `--${key} is required.`, details: { option: key } });
-        checked.push(`${tokens.join(' ')} --${key}`);
-      }
+    for (const [tokens, key] of [['edit', 'if-match'], ['make document', 'template']] as const) {
+      const result = await cli([...tokens.split(' '), ...requiredValues(mode(tokens).options, key)]);
+      expect(result.body.error, `${tokens} --${key}`).toMatchObject({ code: 'MISSING_ARGUMENT', message: key === 'if-match' ? expect.stringMatching(/^--if-match is required: pass the current revision, data\.revision from read or stat/) : `--${key} is required.`, details: { option: key } });
     }
-    expect(checked).toEqual(expect.arrayContaining(['edit --if-match', 'patch --pointer', 'make document --template']));
   });
 
   it('checks every item of a comma-separated list option and publishes the list as a pattern', async () => {
@@ -72,12 +68,12 @@ describe('declared option constraints', () => {
       expect(read.body.data.document.body).toBeDefined();
     }
     expect((await cli(['read', 'notes/parts.md', '--parts', 'body,nope'])).body.error)
-      .toMatchObject({ code: 'INVALID_OPTION_VALUE', details: { option: 'parts', value: 'body,nope', allowed: ['body'] } });
+      .toMatchObject({ code: 'INVALID_OPTION_VALUE', details: { option: 'parts', value: 'body,nope', allowed: ['content', 'properties', 'body'] } });
     const german = (await cli(['--lang', 'de', 'read', 'notes/parts.md', '--parts', 'body,nope'])).body.error;
-    expect(german.message).toContain('kommagetrennten Listenoption');
-    expect(german.details.localization.originalMessage).toBe('--parts must be a comma-separated list of: body.');
+    expect(german.message).toBe('--parts erlaubt "body,nope" nicht; gültige Werte (bei einer kommagetrennten Listenoption mehrere davon): content, properties, body.');
+    expect(german.details.localization.originalMessage).toBe('--parts must be a comma-separated list of: content, properties, body.');
     const contract = (await cli(['schema', 'read'])).body.data.commands[0];
-    expect(contract.options.parts).toMatchObject({ type: 'string', enum: ['body'], list: true });
+    expect(contract.options.parts).toMatchObject({ type: 'string', enum: ['content', 'properties', 'body'], list: true });
     const published = contract.inputSchema.properties.options.properties.parts as { enum?: string[]; pattern: string };
     expect(published.enum).toBeUndefined();
     expect(['body', 'body,body', 'body, body', ' body ,body '].map(value => new RegExp(published.pattern, 'u').test(value))).toEqual([true, true, true, true]);
@@ -105,7 +101,7 @@ describe('declared option constraints', () => {
 
   it('describes the constraint in the response language and leaves help available', async () => {
     const german = await cli(['--lang', 'de', 'list', '--kind', 'note']);
-    expect(german.body.error).toMatchObject({ code: 'INVALID_OPTION_VALUE', message: expect.stringContaining('Optionswert'), details: { option: 'kind', localization: { originalMessage: expect.stringContaining('--kind must be one of') } } });
+    expect(german.body.error).toMatchObject({ code: 'INVALID_OPTION_VALUE', message: expect.stringMatching(/^--kind erlaubt "note" nicht; gültige Werte .*: /), details: { option: 'kind', localization: { originalMessage: expect.stringContaining('--kind must be one of') } } });
     expect((await cli(['edit', '--help'])).status).toBe(0);
   });
 });

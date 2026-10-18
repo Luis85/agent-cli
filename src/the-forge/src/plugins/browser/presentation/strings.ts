@@ -29,8 +29,8 @@ export const browserStrings: PluginStrings = { en: { messages: englishMessages }
     'browser tutorial': 'Einen deklarierten Ablauf ausführen und Anleitung, Screenshots und wiederholbaren Plan atomar speichern.',
   },
   descriptions: {
-    'status (default), install, screenshot, validate or tutorial.': 'status (Standard), install, screenshot, validate oder tutorial.',
-    'Absolute HTTP(S) URL for screenshot, or a project-relative flow JSON, Markdown or Canvas source.': 'Absolute HTTP(S)-URL für screenshot oder projektrelative JSON-, Markdown- oder Canvas-Ablaufquelle.',
+    'Absolute HTTP(S) URL of the page.': 'Absolute HTTP(S)-URL der Seite.',
+    'Project-relative flow JSON, Markdown or Canvas source.': 'Projektrelative JSON-, Markdown- oder Canvas-Ablaufquelle.',
     'Use this project instead of the selected project.': 'Dieses Projekt statt des ausgewählten Projekts verwenden.',
     'Use this Chromium executable; otherwise use FORGE_BROWSER_EXECUTABLE or the installed managed browser.': 'Diese Chromium-Datei verwenden; sonst FORGE_BROWSER_EXECUTABLE oder den installierten verwalteten Browser verwenden.',
     'Browser operation timeout in milliseconds, from 1 to 120000.': 'Zeitlimit für Browser-Vorgänge in Millisekunden von 1 bis 120000.',
@@ -42,6 +42,7 @@ export const browserStrings: PluginStrings = { en: { messages: englishMessages }
     'Wait for this selector to become visible before capturing the page.': 'Vor der Aufnahme warten, bis dieser Selektor sichtbar ist.',
     'Optional project-relative tutorial directory whose current revision should be inspected.': 'Optionaler projektrelativer Anleitungsordner, dessen aktuelle Revision geprüft werden soll.',
     'Project-relative tutorial directory for index.md, screenshots and flow.json.': 'Projektrelativer Anleitungsordner für index.md, Screenshots und flow.json.',
+    'Run Chromium without its operating-system sandbox; only for trusted pages where the sandbox cannot start.': 'Chromium ohne seine Betriebssystem-Sandbox ausführen; nur für vertrauenswürdige Seiten, wenn die Sandbox nicht starten kann.',
   },
   errors: {
     BROWSER_UNAVAILABLE: { summary: 'Browser-Laufzeit oder ausführbare Datei fehlen.', hint: 'Prüfen Sie browser status und führen Sie browser install aus oder übergeben Sie einen installierten Chromium-Browser mit --browser-executable.' },

@@ -10,7 +10,7 @@ describe('prefix-only command bootstrap', () => {
     });
   });
 
-  it.each(['--no-dry-run', '--dry-run', '--root', '--config', '--no-plugins', '--version', '--help', '--json'])('never interprets the literal command value %s as a bootstrap option', literal => {
+  it.each(['--no-dry-run', '--dry-run', '--config', '--version', '--help', '--json'])('never interprets the command token %s after the command as a bootstrap option', literal => {
     const tail = ['create', 'note.md', '--content', literal];
     expect(parseBootstrap(['--root', '/workspace/project', ...tail])).toEqual({
       args: tail,
@@ -23,9 +23,18 @@ describe('prefix-only command bootstrap', () => {
     expect(parseBootstrap(['--dry-run', ...tail])).toEqual({ args: tail, flags: { 'dry-run': true } });
   });
 
-  it('leaves routing options after the command for complete-parse placement validation', () => {
+  it('reads routing options after the command, before --, and keeps the complete tail for the command parse', () => {
     const tail = ['read', 'note.md', '--root', '/different', '--config', 'different.json', '--no-plugins'];
-    expect(parseBootstrap(tail)).toEqual({ args: tail, flags: {} });
+    expect(parseBootstrap(tail)).toEqual({ args: tail, flags: { root: '/different', 'no-plugins': true } });
+    expect(parseBootstrap(['read', '--root=/inline', 'note.md'])).toEqual({ args: ['read', '--root=/inline', 'note.md'], flags: { root: '/inline' } });
+    expect(parseBootstrap(['write', 'a.md', '--', '--root', '/data', '--no-plugins'])).toEqual({ args: ['write', 'a.md', '--', '--root', '/data', '--no-plugins'], flags: {} });
+    expect(parseBootstrap(['--', 'read', '--root', '/data'])).toEqual({ args: ['read', '--root', '/data'], flags: {} });
+  });
+
+  it('rejects routing options after the command that repeat, miss or swallow a value', () => {
+    expect(() => parseBootstrap(['--root', '/a', 'read', 'x.md', '--root', '/b'])).toThrow(expect.objectContaining({ code: 'DUPLICATE_OPTION' }));
+    expect(() => parseBootstrap(['read', 'x.md', '--root'])).toThrow(expect.objectContaining({ code: 'MISSING_ARGUMENT' }));
+    expect(() => parseBootstrap(['read', 'x.md', '--root', '--json'])).toThrow(expect.objectContaining({ code: 'MISSING_ARGUMENT', details: { option: 'root', next: '--json' } }));
   });
 
   it('leaves plugin options and values untouched until their descriptor is loaded', () => {

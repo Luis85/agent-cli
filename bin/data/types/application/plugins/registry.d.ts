@@ -65,6 +65,8 @@ export interface Generator<Context extends CommandContext = CommandContext> exte
     review?: boolean;
     /** Failure codes the generator reports itself; `make` publishes them with its own. */
     errors?: readonly string[];
+    /** JSON Schema of a `run` generator's result; a `generate` generator without `review` returns the written batch. */
+    output?: JsonSchema;
     generate?(request: GeneratorRequest<Context>): readonly WriteRequest[] | Promise<readonly WriteRequest[]>;
     run?(request: GeneratorRequest<Context>): unknown | Promise<unknown>;
 }
@@ -74,9 +76,11 @@ export interface Generator<Context extends CommandContext = CommandContext> exte
  * the host's own review option definitions, which places them among its options without changing them.
  */
 export declare const hostGeneratorOptions: readonly ["out", "plan", "plan-out", "check", "revisions-from"];
+/** An Agent Skill: SKILL.md `content` and optional further `files` by path inside its folder (`references/x.md`). */
 export interface Skill {
     id: string;
     content: string;
+    files?: Readonly<Record<string, string>>;
 }
 /** `core: true` marks a bundled core plugin; the loader rejects it for user plugins. */
 export interface PluginManifest {
@@ -124,11 +128,16 @@ export interface PluginContributions {
 export interface Plugin extends PluginContributions {
     manifest: PluginManifest;
 }
-export declare function validatePluginManifest(value: unknown, origin?: PluginOrigin): asserts value is PluginManifest;
+/** Validates a manifest, including that its `minAppVersion` is at most `appVersion`, the running Forge version. */
+export declare function validatePluginManifest(value: unknown, appVersion: string, origin?: PluginOrigin): asserts value is PluginManifest;
 export declare class Registry {
     private readonly skillFrontmatter;
-    /** `skillFrontmatter` reads the frontmatter of contributed SKILL.md files for their specification checks. */
-    constructor(skillFrontmatter: SkillFrontmatterReader);
+    readonly appVersion: string;
+    /**
+     * `skillFrontmatter` reads the frontmatter of contributed SKILL.md files for their specification checks;
+     * `appVersion` is the running Forge version that plugin manifests' `minAppVersion` must not exceed.
+     */
+    constructor(skillFrontmatter: SkillFrontmatterReader, appVersion: string);
     readonly commands: Map<string, Command<CommandContext>>;
     readonly generators: Map<string, Generator<CommandContext>>;
     readonly skills: Map<string, Skill>;
@@ -168,7 +177,10 @@ export declare class Registry {
     recordMissing(pluginId: string, manifestPath: string, events: EventBus): void;
     /** Why a disabled core plugin contributes nothing. */
     disabledReason(pluginId: string): KernelMessage | undefined;
-    /** A registered command, including one of an unavailable plugin; any other id fails with UNKNOWN_COMMAND. */
+    /**
+     * A registered command, including one of an unavailable plugin; any other id fails with UNKNOWN_COMMAND, whose
+     * `details` `{command, suggestions}` suggest registered commands spelled alike or doing what the id names elsewhere.
+     */
     resolveCommand(commandId: string): Command;
     /**
      * Validates `plugins.settings` after registration and returns the effective sections. A plugin with an invalid
@@ -188,7 +200,8 @@ export declare class Registry {
     service<T>(id: string): T | undefined;
     /**
      * Like `service`, but a missing service fails with PLUGIN_UNAVAILABLE for `command` (`project create`), with
-     * `details` `{command, plugin, service, reason, issues}`. The provider is the plugin the service id names.
+     * `details` `{command, plugin, service, reason, issues}`. The provider is the plugin the service id names; `reason`
+     * is a host message, which the response reports as `{code, message, details?}` in its language.
      */
     requireService<T>(id: string, command: string): T;
     /** Marks every plugin unavailable whose required service has a disabled, missing or unavailable provider, transitively. */

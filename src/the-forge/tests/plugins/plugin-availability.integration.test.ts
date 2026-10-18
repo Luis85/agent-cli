@@ -6,11 +6,11 @@ import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts'
 import type { JsonSchema } from '../../src/domain/schema/json-schema.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 import { englishWarning } from '../support/events.ts';
-import { renderKernelMessage } from '../../src/domain/shared/kernel-messages.ts';
+import { forgeVersion } from '../support/workspace.ts';
 
 const manifest = (id: string): PluginManifest => ({ id, name: id, version: '1.0.0', minAppVersion: '0.1.0', description: 'Availability test', author: 'Test' });
 const setup = () => {
-  const registry = new Registry(skillFrontmatter), events = new EventBus(new NodeEventScope());
+  const registry = new Registry(skillFrontmatter, forgeVersion), events = new EventBus(new NodeEventScope());
   registerHostEvents(events);
   return { registry, events };
 };
@@ -34,7 +34,7 @@ describe('plugins with invalid settings', () => {
     expect(activated).toEqual(['notes']);
     expect(await registry.commands.get('notes.count')!.run([], {}, context)).toBe(1);
     for (const [id, plugin] of [['catalog.list', 'catalog'], ['board.show', 'board']] as const) {
-      await expect(registry.commands.get(id)!.run([], {}, context)).rejects.toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: id, plugin, reason: renderKernelMessage(registry.unavailable.get(plugin)!.reason), issues: ['plugins.settings.catalog.limit: must be at least 1'] } });
+      await expect(registry.commands.get(id)!.run([], {}, context)).rejects.toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: id, plugin, reason: registry.unavailable.get(plugin)!.reason, issues: ['plugins.settings.catalog.limit: must be at least 1'] } });
     }
     await registry.dispose(events);
   });

@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
@@ -12,21 +13,25 @@ const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 
 beforeAll(async () => {
   const project = fixture.project;
+  const notes = {
+    'Home.md': '---\nstatus: draft\ntags: [plan]\n---\n# Home\nSee [[Projects/Alpha]], [[Missing]] and ![[assets/pixel.png]].\n',
+    'Projects/Alpha.md': 'Back to [[Home]].\n',
+    'Lonely.md': 'No links here.\n',
+  };
+  const ifMatch = (path: keyof typeof notes) => createHash('sha256').update(notes[path]).digest('hex');
   for (const [path, content] of [
-    ['Home.md', '---\nstatus: draft\ntags: [plan]\n---\n# Home\nSee [[Projects/Alpha]], [[Missing]] and ![[assets/pixel.png]].\n'],
-    ['Projects/Alpha.md', 'Back to [[Home]].\n'],
-    ['Lonely.md', 'No links here.\n'],
+    ...Object.entries(notes),
     ['board.canvas', '{"nodes":[{"id":"a","type":"file","file":"Home.md","x":0,"y":0,"width":200,"height":100}],"edges":[]}\n'],
     ['tasks.base', 'views:\n  - type: table\n    name: Table\n'],
     ['src/index.ts', 'export const answer = 42;\n'],
     ['plan.json', JSON.stringify({ version: 1, operations: [
       { op: 'write', path: 'Inbox/New.md', content: '# New\n' },
-      { op: 'frontmatter', path: 'Home.md', set: { status: 'active' } },
-      { op: 'move', from: 'Projects/Alpha.md', to: 'Archive/Alpha.md' },
-      { op: 'edit', path: 'Archive/Alpha.md', edits: [{ find: 'Back', replace: 'Return' }] },
-      { op: 'delete', path: 'Lonely.md' },
+      { op: 'frontmatter', path: 'Home.md', set: { status: 'active' }, ifMatch: ifMatch('Home.md') },
+      { op: 'move', from: 'Projects/Alpha.md', to: 'Archive/Alpha.md', ifMatch: ifMatch('Projects/Alpha.md') },
+      { op: 'edit', path: 'Archive/Alpha.md', edits: [{ find: 'Back', replace: 'Return' }], ifMatch: ifMatch('Projects/Alpha.md') },
+      { op: 'delete', path: 'Lonely.md', ifMatch: ifMatch('Lonely.md') },
     ] })],
-  ] as const) {
+  ] as Array<[string, string]>) {
     await mkdir(join(project, path, '..'), { recursive: true });
     await writeFile(join(project, path), content);
   }
@@ -35,14 +40,14 @@ beforeAll(async () => {
   await writeFile(join(project, 'src/latin1.ts'), Buffer.from([0x63, 0x61, 0x66, 0xe9, 0x0a]));
   await mkdir(join(project, 'projects/demo/.forge'), { recursive: true });
   await writeFile(join(project, 'projects/demo/.forge/project.json'), JSON.stringify({ schemaVersion: 1, name: 'demo', type: 'library' }));
-  const schema = await cli(['schema']);
+  const schema = await cli(['schema', '--all']);
   expect(schema.status).toBe(0);
   document = schema.body.data;
   validator = responseValidator(document);
 });
 
 describe('the published schema contract', () => {
-  it('publishes only documents that the JSON Schema 2020-12 meta-schema accepts and that compile in strict mode', () => {
+  it('publishes only documents that the JSON Schema 2020-12 meta-schema accepts and that compile in strict mode', async () => {
     const schemas = publishedSchemas(document);
     expect(schemas.length).toBeGreaterThan(document.commands.length + 10);
     const ajv = strictAjv();
@@ -52,6 +57,11 @@ describe('the published schema contract', () => {
       expect(() => strictAjv().compile(schema), where).not.toThrow();
     }
     expect(validator.output(['schema'], document)).toEqual([]);
+    // Without a command or --all, schema is an index that the same output schema describes.
+    const index = await cli(['schema']);
+    expect(validator.output(['schema'], index.body.data)).toEqual([]);
+    expect(index.body.data.commands.map((command: { id: string }) => command.id)).toEqual(document.commands.map(command => command.id));
+    expect(index.body.data).not.toHaveProperty('errors');
   });
 
   it('derives behavior annotations for every command from its metadata', () => {
@@ -64,7 +74,7 @@ describe('the published schema contract', () => {
     expect(annotations.create).toMatchObject({ readOnlyHint: false, destructiveHint: false, idempotentHint: true });
     for (const id of ['write', 'edit', 'properties', 'patch', 'delete', 'move', 'rename']) expect(annotations[id], id).toMatchObject({ destructiveHint: true, idempotentHint: true });
     expect(annotations.make).toMatchObject({ destructiveHint: true, idempotentHint: true });
-    expect(annotations.apply).toMatchObject({ readOnlyHint: false, destructiveHint: true, idempotentHint: false });
+    expect(annotations.apply).toMatchObject({ readOnlyHint: false, destructiveHint: true, idempotentHint: true });
     expect(annotations.vault).toMatchObject({ readOnlyHint: true, destructiveHint: false, idempotentHint: true, defaultAction: 'check' });
     expect(annotations.project).toMatchObject({ mutating: true, destructiveHint: false, actions: { current: { readOnlyHint: true }, open: { destructiveHint: false, idempotentHint: true } } });
   });
@@ -78,16 +88,19 @@ describe('the published schema contract', () => {
     const expected: [string, string | undefined, boolean, boolean][] = [
       ['setup', undefined, false, true], ['project', 'create', false, true], ['project', 'component', false, true], ['create', undefined, false, true],
       ['write', undefined, true, true], ['edit', undefined, true, true], ['delete', undefined, true, true], ['move', undefined, true, true], ['rename', undefined, true, true],
-      ['apply', undefined, true, false], ['make', 'document', false, true], ['make', 'entity', false, true], ['make', 'ui', true, true], ['templates', 'install', false, true], ['skills', 'install', false, true],
+      ['apply', undefined, true, true], ['make', 'document', false, true], ['make', 'entity', false, true], ['make', 'ui', true, true], ['templates', 'install', false, true], ['skills', 'install', false, true],
       ['components', 'init', false, true], ['data-sources', 'export', false, true], ['workflows', 'sync', true, true], ['agents', 'generate', true, true],
       ['backlog', 'set', true, true], ['backlog', 'move', true, true], ['backlog', 'depend', true, true], ['backlog', 'undepend', true, true], ['backlog', 'ranks', true, true],
       // An optional --if-match does not make these repeatable: backlog init, add, iteration add and release add create
       // another note, backlog sync talks to a remote tracker, and the claude plugins, marketplaces and runtime
-      // sections run the installed CLI. tests/cli/idempotency.e2e.test.ts runs every mutating mode twice.
-      ['backlog', 'init', true, false], ['backlog', 'add', true, false], ['backlog', 'iteration', true, false], ['backlog', 'release', true, false], ['backlog', 'sync', true, false],
-      ['claude', 'plugins', true, false], ['claude', 'marketplaces', true, false], ['claude', 'runtime', true, false],
+      // actions run the installed CLI. the tests/cli/idempotency-*.e2e.test.ts families run every mutating mode twice.
+      ['backlog', 'init', true, false], ['backlog', 'add', true, false], ['backlog', 'iteration add', true, false], ['backlog', 'release add', true, false], ['backlog', 'sync', true, false],
+      ['backlog', 'iteration assign', true, true], ['backlog', 'release join', true, true], ['backlog', 'release mark-released', true, true],
+      ['claude', 'plugins install', true, false], ['claude', 'marketplaces add', true, false], ['claude', 'runtime install', true, false],
       // These require --if-match once their file exists, so a repeat fails with CONFLICT.
-      ['claude', 'hooks', true, true], ['claude', 'agents', true, true], ['agents', 'create', true, true], ['agents', 'import', true, true],
+      ['claude', 'hooks add', true, true], ['claude', 'agents create', true, true], ['claude', 'plugins write-asset', true, true], ['agents', 'create', true, true], ['agents', 'import', true, true],
+      // Reads: the bare sections list or inspect.
+      ['claude', 'agents', false, true], ['claude', 'hooks', false, true], ['backlog', 'sync status', false, true],
     ];
     for (const [id, action, destructive, idempotent] of expected) expect(hints(id, action), `${id} ${action ?? ''}`).toEqual([destructive, idempotent]);
     for (const id of ['backlog', 'claude']) expect(hints(id), id).toEqual([true, false]);
@@ -101,7 +114,7 @@ describe('the published schema contract', () => {
     expect(one.body.data.commands.map((command: { id: string }) => command.id)).toEqual(['read']);
     expect(one.body.data.commands[0]).toEqual(document.commands.find(command => command.id === 'read'));
     const codes = one.body.data.errors.map((entry: { code: string }) => entry.code);
-    expect(codes).toEqual(expect.arrayContaining(['NOT_FOUND', 'INVALID_FRONTMATTER', 'UNKNOWN_OPTION', 'WORKSPACE_BUSY']));
+    expect(codes).toEqual(expect.arrayContaining(['NOT_FOUND', 'INVALID_CANVAS', 'UNKNOWN_OPTION', 'WORKSPACE_BUSY']));
     expect(codes).not.toContain('CLAUDE_NOT_INSTALLED');
     const unknown = await cli(['schema', 'nonsense']);
     expect(unknown.body.error.code).toBe('UNKNOWN_COMMAND');

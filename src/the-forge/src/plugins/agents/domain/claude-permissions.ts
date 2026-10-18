@@ -21,13 +21,37 @@ const permissionTools: Readonly<Record<string, string>> = {
 const unmappedTools = ['create_directory', 'remove_directory', 'next_task', 'delete_task', 'add_dependency', 'remove_dependency', 'think'];
 const knownTools = [...Object.keys(permissionTools), ...unmappedTools];
 
+/** Programs that run whatever command or code follows them, so a wildcard after them approves any command. */
+const wrappers = new Set(['env', 'xargs', 'sudo', 'doas', 'su', 'eval', 'exec', 'nohup', 'time', 'timeout', 'nice', 'command', 'builtin', 'npx', 'bunx', 'pnpx']);
+/** Shells and interpreters: broad with a wildcard after the program or its options (`sh -c *`), not after a script. */
+const interpreters = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish', 'csh', 'tcsh', 'pwsh', 'powershell', 'cmd',
+  'node', 'deno', 'bun', 'python', 'perl', 'ruby', 'php', 'osascript']);
+
 /**
- * Claude rules that auto-approve a whole tool: every command, every file edit, any URL or every tool of an MCP
- * server. They are written to `permissions.allow` only with `--allow-broad-permissions`.
+ * Whether a `Bash(...)` pattern approves arbitrary commands: an empty pattern, a wildcard with no command before it
+ * (`*`, `:*`), or a wildcard after a wrapper (`env *`) or after a shell or interpreter and only its options
+ * (`bash:*`, `sh -c *`, `node -e *`). A wildcard after an ordinary command (`git *`) or a script stays narrow.
+ */
+function broadCommand(pattern: string): boolean {
+  if (pattern.trim() === '') return true;
+  const wildcard = pattern.indexOf('*');
+  if (wildcard === -1) return false;
+  const words = pattern.slice(0, wildcard).trim().replace(/:$/, '').split(/\s+/).filter(Boolean);
+  if (words.length === 0) return true;
+  const program = words[0]!.split(/[\\/]/).pop()!.toLowerCase().replace(/\.exe$/, '').replace(/[\d.]+$/, '');
+  if (wrappers.has(program)) return true;
+  return interpreters.has(program) && words.slice(1).every(word => word.startsWith('-'));
+}
+
+/**
+ * Claude rules that auto-approve a whole tool: every command (also through a shell, interpreter or wrapper), every
+ * file edit, any URL or every tool of an MCP server. They are written to `permissions.allow` only with
+ * `--allow-broad-permissions`.
  */
 export function isBroadRule(rule: string): boolean {
   if (['Bash', 'Edit', 'Write', 'NotebookEdit', 'WebFetch'].includes(rule)) return true;
-  if (/^Bash\([\s*]*\)$/.test(rule)) return true;
+  const bash = /^Bash\((.*)\)$/s.exec(rule);
+  if (bash) return broadCommand(bash[1]!);
   return /^mcp__[^_]+(?:_[^_]+)*(?:__\*)?$/.test(rule);
 }
 

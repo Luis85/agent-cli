@@ -1,6 +1,7 @@
 import type { Workspace } from '../../../application/workspace/workspace.ts';
 import type { FileChange, WriteRequest } from '../../../domain/documents/file.ts';
 import { AppError } from '../../../domain/shared/errors.ts';
+import { readOrMissing } from '../../../domain/shared/not-found.ts';
 import { emptyState, parseState, renameEntries, serializeState, statePath, type SyncEntry, type SyncState } from '../domain/sync-state.ts';
 
 const encoder = new TextEncoder(), decoder = new TextDecoder();
@@ -11,14 +12,10 @@ const SAVE_ATTEMPTS = 3;
 interface StoredState { state: SyncState; revision: string | null; text: string | null }
 
 async function readState(workspace: Workspace, connection: string): Promise<StoredState> {
-  try {
-    const snapshot = await workspace.files.read(statePath(connection));
-    const text = decoder.decode(snapshot.bytes);
-    return { state: parseState(text, connection), revision: snapshot.revision, text };
-  } catch (error) {
-    if (error instanceof AppError && error.code === 'NOT_FOUND') return { state: emptyState(connection), revision: null, text: null };
-    throw error;
-  }
+  const snapshot = await readOrMissing(() => workspace.files.read(statePath(connection)));
+  if (!snapshot) return { state: emptyState(connection), revision: null, text: null };
+  const text = decoder.decode(snapshot.bytes);
+  return { state: parseState(text, connection), revision: snapshot.revision, text };
 }
 
 /** The guarded write of a changed state file, or null when its text is unchanged (an empty state is not created). */

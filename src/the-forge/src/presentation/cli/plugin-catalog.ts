@@ -15,7 +15,8 @@ import { Localizer } from '../localization/localization.ts';
  *   `--no-plugins`; it lists only `id`, `core`, `state`, `reason` and `contributions`.
  * - `rejected`: an installed user plugin whose id a bundled core plugin owns, enabled or disabled; it never loads
  *   and is listed separately from the core entry.
- * Every state but `enabled` carries a `reason` sentence. Plugins whose code never ran list `contributions: null`.
+ * Every state but `enabled` carries a `reason` `{code, message, details?}`, shaped like a warning: a stable code to
+ * match and the sentence in the response language. Plugins whose code never ran list `contributions: null`.
  * `localizer` renders reasons and, where plugins translate them, names and descriptions in the response language.
  */
 export function pluginCatalog(registry: Registry, installed: readonly InstalledPlugin[], localizer: Localizer = new Localizer('en', registry.catalog)) {

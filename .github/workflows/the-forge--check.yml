@@ -80,9 +80,24 @@ jobs:
           npm --version
           tar --version | sed -n 1p
       - run: npm ci
+      # The browser download is keyed on the locked playwright-core version; the system packages install every run.
+      - name: Read the locked Playwright version
+        id: playwright
+        if: runner.os == 'Linux' && matrix.node == 24
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright-core'].version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Chromium
+        if: runner.os == 'Linux' && matrix.node == 24
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ steps.playwright.outputs.version }}
       - name: Install Chromium for native browser acceptance
         if: runner.os == 'Linux' && matrix.node == 24
         run: npx playwright-core install chromium --no-shell --with-deps
+      # Ubuntu 24.04 restricts the unprivileged user namespaces that Chromium's sandbox needs; the browser tests keep it on.
+      - name: Allow Chromium's sandbox
+        if: runner.os == 'Linux' && matrix.node == 24
+        run: if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0; fi
       - name: Full quality gate
         env:
           FORGE_BROWSER_TESTS: ${{ runner.os == 'Linux' && matrix.node == 24 && '1' || '0' }}
@@ -102,11 +117,38 @@ jobs:
         run: |
           git -C "$GITHUB_WORKSPACE" diff --exit-code -- bin
           test -z "$(git -C "$GITHUB_WORKSPACE" ls-files --others --exclude-standard bin)"
+      # The archive is platform-independent and reproducible: one leg builds it for the installation jobs.
       - name: Build release archive
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.node == 24
         run: node scripts/release.mjs
-      - if: runner.os == 'Linux'
+      - if: runner.os == 'Linux' && matrix.node == 24
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: forge-${{ matrix.os }}-node-${{ matrix.node }}
+          name: forge-release-candidate
           path: ${{ env.FORGE_PROJECT_PATH }}/release/*
+          if-no-files-found: error
+          retention-days: 7
+  install:
+    name: Fresh installation (${{ matrix.os }}, Node ${{ matrix.node }})
+    needs: check
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+        node: [ '22.12.0', 24 ]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: forge-release-candidate
+          path: ${{ env.FORGE_PROJECT_PATH }}/release
+      # This uses only Node and the runner's tar, without npm or source dependencies.
+      - name: Install and use the release archive in a fresh workspace
+        run: node scripts/release-smoke.mjs release

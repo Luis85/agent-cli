@@ -1,6 +1,6 @@
 import type { MetadataCache, MetadataIndex } from '../../../application/metadata/ports.ts';
 import type { FileRepository } from '../../../application/workspace/ports.ts';
-import { AppError } from '../../../domain/shared/errors.ts';
+import { readOrMissing } from '../../../domain/shared/not-found.ts';
 import type { CachedMetadata } from '../../../domain/metadata/cache.ts';
 import { typeRegistry, type TypeRegistry } from '../domain/property-types.ts';
 
@@ -25,11 +25,8 @@ export function scopeSources(files: FileRepository, metadata: MetadataIndex, bas
   return {
     cache: () => metadata.load(),
     async text(path) {
-      try { return new TextDecoder().decode((await files.read(path)).bytes); }
-      catch (error) {
-        if (error instanceof AppError && error.code === 'NOT_FOUND') return null;
-        throw error;
-      }
+      const file = await readOrMissing(() => files.read(path));
+      return file ? new TextDecoder().decode(file.bytes) : null;
     },
     size,
     bases,

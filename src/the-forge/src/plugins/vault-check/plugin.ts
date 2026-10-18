@@ -37,15 +37,14 @@ export const vaultCheckPlugin: CorePlugin = {
   create: host => ({
     optional: [basesValidation],
     commands: [vaultCommand(context => {
-      const plugin = context as PluginContext;
-      const bases = plugin.services.has(basesValidation) ? plugin.services.get<BasesValidationService>(basesValidation) : null;
+      const bases = context.services.has(basesValidation) ? context.services.get<BasesValidationService>(basesValidation) : null;
       // Sizes come from one status call per file: the repository's `stat` would read and hash every attachment.
       const dates = host.fileDates(context.root);
       return {
-        sources: scopeSources(context.workspace.files, context.metadata, bases && { validate: path => bases.validate(plugin, path) }, async path => (await dates(path)).size),
-        rules: (plugin.settings?.rules ?? {}) as Record<string, RuleSetting>,
-        ignore: (plugin.settings?.ignore ?? []) as string[],
-        t: key => plugin.t(key),
+        sources: scopeSources(context.workspace.files, context.metadata, bases && { validate: path => bases.validate(context, path) }, async path => (await dates(path)).size),
+        rules: (context.settings?.rules ?? {}) as Record<string, RuleSetting>,
+        ignore: (context.settings?.ignore ?? []) as string[],
+        t: key => context.t(key),
       };
     })],
     settings: {

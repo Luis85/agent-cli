@@ -1,6 +1,7 @@
 import type { CommandContext } from '../../../application/plugins/registry.ts';
 import type { MetadataCache } from '../../../application/metadata/ports.ts';
 import { AppError, isRecord } from '../../../domain/shared/errors.ts';
+import { isNotFound } from '../../../domain/shared/not-found.ts';
 import { backlogError } from '../domain/errors.ts';
 import { ownValue, readString, type CivilDate, type Frontmatter } from '../domain/fields.ts';
 import type { NoteSource } from '../domain/items.ts';
@@ -86,7 +87,7 @@ async function selectView(context: CommandContext, cache: MetadataCache, selecti
   let base: BaseFile;
   try { base = await readBase(context, selection.base); }
   catch (error) {
-    if (error instanceof AppError && error.code === 'NOT_FOUND') throw backlogError('BACKLOG_NOT_FOUND', `The base ${selection.base} does not exist.`, { base: selection.base });
+    if (isNotFound(error)) throw backlogError('BACKLOG_NOT_FOUND', `The base ${selection.base} does not exist.`, { base: selection.base });
     throw error;
   }
   const backlogViews = base.views.filter(view => view.type === BACKLOG_VIEW);

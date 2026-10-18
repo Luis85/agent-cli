@@ -1,24 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import type { NoteSource } from '../../src/plugins/backlog/domain/items.ts';
 import { buildModel } from '../../src/plugins/backlog/domain/model.ts';
 import { membershipTarget, releaseIndex, scopeRows, type ReleaseRow } from '../../src/plugins/backlog/domain/releases.ts';
 import { resolveReleaseSettings, resolveSettings, type ViewOptions } from '../../src/plugins/backlog/domain/settings-resolve.ts';
+import { noteSource } from '../support/backlog.ts';
 
 /** An in-memory vault: frontmatter by path, wikilinks resolved by basename. */
-function vault(notes: Record<string, Record<string, unknown>>): NoteSource {
-  return {
-    frontmatter: path => notes[path],
-    frontmatterLinks: () => [],
-    resolve: linkpath => Object.keys(notes).find(path => path.slice(path.lastIndexOf('/') + 1, -3) === linkpath) ?? null,
-  };
-}
 const today = { year: 2026, month: 10, day: 5 };
 const releaseOptions = {
   membershipProperty: 'note.release', versionProperty: 'note.version', targetDateProperty: 'note.target', releasedDateProperty: 'note.released',
   releaseStatusProperty: 'note.status', descriptionProperty: 'note.description',
 };
 function index(notes: Record<string, Record<string, unknown>>, plan: ViewOptions = { stateProperty: 'note.status' }, release: ViewOptions = releaseOptions, results = Object.keys(notes)) {
-  const source = vault(notes), settings = resolveSettings({ releaseProperty: 'note.release', ...plan });
+  const source = noteSource(notes), settings = resolveSettings({ releaseProperty: 'note.release', ...plan });
   return releaseIndex(source, buildModel(source, results, settings, path => path in notes), resolveReleaseSettings(release), settings, today);
 }
 const figure = (value: unknown, invalid = false) => ({ value, invalid, unconfigured: false });
@@ -106,7 +99,7 @@ describe('release membership', () => {
   };
 
   it('names the one Release an item links, null without a link, and unresolved otherwise', () => {
-    const source = vault(notes), settings = resolveSettings({});
+    const source = noteSource(notes), settings = resolveSettings({});
     const model = buildModel(source, Object.keys(notes), settings, path => path in notes);
     const releases = new Set(model.releases.map(item => item.path));
     const target = (options: ViewOptions) => Object.fromEntries(model.items.filter(item => item.path.startsWith('w/') || item.path.startsWith('m/') || item.path.startsWith('i/') || item.path === 'r/Nested.md' || item.path === 't/Suite.md')
@@ -127,7 +120,7 @@ describe('release scope tree', () => {
       'Gate.md': { type: 'Milestone' }, 'Under gate.md': { type: 'PBI', parent: '[[Gate]]' }, 'Hidden.md': { type: 'Epic' }, 'Below hidden.md': { type: 'PBI', parent: '[[Hidden]]' },
       'Out.md': { type: 'PBI', parent: '[[Epic]]' }, 'Other.md': { type: 'Epic' },
     };
-    const source = vault(notes), settings = resolveSettings({});
+    const source = noteSource(notes), settings = resolveSettings({});
     const model = buildModel(source, Object.keys(notes).filter(path => path !== 'Hidden.md'), settings, path => path in notes);
     const members = new Set(['Story.md', 'Under gate.md', 'Below hidden.md', 'Hidden.md']);
     expect(scopeRows(model, item => members.has(item.path)).map(row => [row.item.title, row.depth, row.context])).toEqual([

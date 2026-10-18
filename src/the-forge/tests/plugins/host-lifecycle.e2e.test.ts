@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { EventRecord } from '../../src/application/plugins/events.ts';
 import { portableCli } from '../support/portable-cli.ts';
 import { bundledCorePlugins } from '../support/core-plugins.ts';
+import { warningMessages } from '../support/warnings.ts';
 
 const fixture = portableCli();
 
@@ -48,8 +49,8 @@ describe('portable host lifecycle observation', () => {
     ]);
     expect(result.body.events.find((event: EventRecord) => event.id === 'operation.started')?.payload).toMatchObject({ root: configured.root, paths: ['result.md'], dryRun: false });
     expect(JSON.stringify(result.body.events)).not.toMatch(/private body|private-argument/);
-    expect(result.body.warnings).toContain('cleanup observed');
-    expect(result.body.warnings).toContain('Plugin cleanup: Operation failed with an unreadable error.');
+    expect(warningMessages(result.body)).toContain('cleanup observed');
+    expect(result.body.warnings).toContainEqual({ code: 'PLUGIN_CLEANUP_FAILED', message: 'Plugin cleanup: Operation failed with an unreadable error.', details: { diagnostic: 'Operation failed with an unreadable error.' } });
   });
 
   it('reports invalid results before unloading and retains the committed file evidence', async () => {
@@ -59,7 +60,7 @@ describe('portable host lifecycle observation', () => {
     expect(result.body.events).toContainEqual(expect.objectContaining({ id: 'vault.create' }));
     expect(result.body.events).toContainEqual(expect.objectContaining({ id: 'command.failed', payload: expect.objectContaining({ error: { code: 'INVALID_RESULT', exitCode: 1 } }) }));
     expect(result.body.events.some((event: EventRecord) => event.id === 'command.succeeded')).toBe(false);
-    expect(result.body.warnings).toContain('failure observed: INVALID_RESULT');
-    expect(result.body.warnings).toContain('cleanup observed');
+    expect(warningMessages(result.body)).toContain('failure observed: INVALID_RESULT');
+    expect(warningMessages(result.body)).toContain('cleanup observed');
   });
 });

@@ -1,4 +1,5 @@
 import { type KernelMessage } from '../../domain/shared/kernel-messages.ts';
+import { type Warning } from '../../domain/shared/warnings.ts';
 export interface EventDefinition<T = unknown> {
     id: string;
     description?: string;
@@ -28,7 +29,12 @@ export interface EventChannel {
     onAny(listener: (record: EventRecord) => void | Promise<void>): () => void;
     replay(listener: (record: EventRecord) => void | Promise<void>): Promise<void>;
     emit(id: string, payload: unknown): Promise<void>;
-    warn(message: string): void;
+    /**
+     * Records a nonfatal warning for the response: text, or `{code, message, details?}` with the plugin's own
+     * UPPER_SNAKE_CASE code, which starts with its id's prefix (`QUALITY_` for `quality`); text without a code, or a
+     * code outside that namespace, reports as PLUGIN_WARNING. Host code passes kernel messages.
+     */
+    warn(message: string | KernelMessage | Warning): void;
     /** Like Obsidian's `workspace.onLayoutReady`: runs now when plugins are active, otherwise once they are. */
     onLayoutReady(callback: Callback): void;
     /** A best-effort task that runs after `workspace.quit`, before plugins unload. */
@@ -47,9 +53,9 @@ export declare class EventBus implements EventChannel {
     private readonly quitTasks;
     private readonly settling;
     readonly history: EventRecord[];
-    /** Warnings in order: plugin text as written, host messages by code for rendering in the response language. */
-    readonly warningRecords: Array<string | KernelMessage>;
-    /** The warnings in English. */
+    /** Warnings in order: host messages by code for rendering in the response language, plugin warnings as captured. */
+    readonly warningRecords: Array<KernelMessage | Warning>;
+    /** The warning messages in English. */
     get warnings(): string[];
     constructor(delivery: EventDeliveryScope);
     nextOperationId(): number;
@@ -67,8 +73,11 @@ export declare class EventBus implements EventChannel {
     private subscribe;
     once<T = unknown>(id: string, listener: (payload: T) => void | Promise<void>): () => void;
     emit(id: string, payload: unknown): Promise<void>;
-    /** Records a warning: a host message by code, anything else as text (see warningText), so no value can break the response. */
-    warn(message: string | KernelMessage): void;
+    /**
+     * Records a warning: a host message by code, a plugin warning as captured, and any other value as a plugin warning
+     * (see pluginWarning) without a plugin, which keeps no code of its own, so no value can break the response.
+     */
+    warn(message: unknown): void;
     onLayoutReady(callback: Callback): void;
     onQuit(task: Callback): void;
     /** Host: plugins are active. Queued layout callbacks run in registration order; failures become warnings. */

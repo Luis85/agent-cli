@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { SystemSnapshot } from '../../application/server/contracts.ts';
 import { hasUnsafePathCharacters, readAsset, type WebviewAsset } from './assets.ts';
+import { viewToken } from './tokens.ts';
 
 export interface HttpServerOptions {
   port: number;
@@ -28,7 +29,7 @@ function failure(response: ServerResponse, status: number, code: string, message
   json(response, status, { ok: false, error: { code, message } });
 }
 
-function authorized(request: IncomingMessage, token: string): boolean {
+function bearer(request: IncomingMessage, token: string): boolean {
   const supplied = Buffer.from(request.headers.authorization ?? '');
   const expected = Buffer.from(`Bearer ${token}`);
   return supplied.length === expected.length && timingSafeEqual(supplied, expected);
@@ -58,6 +59,9 @@ export async function startHttpServer(options: HttpServerOptions): Promise<Runni
     ids.add(asset.id);
   }
   const startedAt = new Date().toISOString();
+  const viewTokens = options.assets.map(asset => viewToken(options.token, asset.id));
+  // The server token (the CLI's) reaches every endpoint; a mounted view's token only the read-only ones.
+  const access = (request: IncomingMessage) => bearer(request, options.token) ? 'server' : viewTokens.some(token => bearer(request, token)) ? 'view' : null;
   let port = options.port;
   const handle = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     response.setHeader('X-Content-Type-Options', 'nosniff');
@@ -72,7 +76,8 @@ export async function startHttpServer(options: HttpServerOptions): Promise<Runni
     const pathname = requestPath(request);
     if (pathname === undefined) { failure(response, 400, 'SERVER_BAD_REQUEST', 'Invalid request path.'); return; }
     if (pathname.startsWith('/api/')) {
-      if (!authorized(request, options.token)) {
+      const granted = access(request);
+      if (!granted) {
         response.setHeader('WWW-Authenticate', 'Bearer');
         failure(response, 401, 'SERVER_UNAUTHORIZED', 'A valid server access token is required.');
         return;
@@ -83,6 +88,10 @@ export async function startHttpServer(options: HttpServerOptions): Promise<Runni
       if (request.method !== method) {
         response.setHeader('Allow', method);
         failure(response, 405, 'SERVER_METHOD_NOT_ALLOWED', 'The endpoint does not accept this method.');
+        return;
+      }
+      if (pathname === '/api/shutdown' && granted !== 'server') {
+        failure(response, 403, 'SERVER_FORBIDDEN', 'Only the CLI can stop the server; run server stop.');
         return;
       }
       if (pathname === '/api/health') json(response, 200, { ok: true, data: { schemaVersion: 1, instanceId: options.instanceId, pid: process.pid, startedAt } });

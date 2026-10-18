@@ -1,18 +1,19 @@
 import type { CorePlugin } from '../../application/plugins/core-plugins.ts';
-import type { PluginContext } from '../../application/plugins/registry.ts';
 import type { UiRenderer } from './application/components/library.ts';
 import { UiLibrary } from './application/components/library.ts';
 import { InteractionLibrary } from './application/interactions/library.ts';
 import { uiSettings, uiPathSettings, uiSettingsSchema } from './application/settings.ts';
 import { MarkdownUiDefinitions } from './infrastructure/components/definitions.ts';
 import { standardUiCatalog } from './infrastructure/components/catalog.ts';
-import { componentArtifact, renderUiComponents } from './infrastructure/components/renderers.ts';
+import { renderUiComponents } from './infrastructure/components/renderers.ts';
+import { componentArtifact } from './infrastructure/components/rendering.ts';
 import { renderUiStories } from './infrastructure/components/stories.ts';
 import { MarkdownInteractionDefinitions } from './infrastructure/interactions/definitions.ts';
 import { componentsCommand, type UiServicesFactory } from './presentation/components.ts';
 import { interactionsCommand } from './presentation/interactions.ts';
 import { uiGenerators } from './presentation/generators.ts';
 import { de, uiStrings } from './presentation/strings.ts';
+import { uiErrors } from './presentation/errors.ts';
 
 /** Framework components and Storybook stories for the seven UI targets. */
 const renderer: UiRenderer = {
@@ -25,9 +26,9 @@ const renderer: UiRenderer = {
 
 /** The libraries live at workspace scope (`context.environment`), even while a project is selected. */
 const services: UiServicesFactory = context => {
-  const settings = uiSettings((context as PluginContext).settings), workspace = context.environment;
+  const settings = uiSettings(context.settings), workspace = context.environment;
   const interactions = new InteractionLibrary(workspace, new MarkdownInteractionDefinitions(workspace.codec));
-  const components = new UiLibrary(workspace, new MarkdownUiDefinitions(workspace.codec), standardUiCatalog, renderer, interactions, settings.interactions);
+  const components = new UiLibrary(workspace, new MarkdownUiDefinitions(workspace.codec), standardUiCatalog, renderer, interactions, settings.interactions, settings.framework);
   return { settings, components, interactions };
 };
 
@@ -48,6 +49,7 @@ export const uiPlugin: CorePlugin = {
     generators: uiGenerators(services),
     settings: uiSettingsSchema,
     pathSettings: uiPathSettings,
+    errors: uiErrors,
     strings: { de },
   }),
 };

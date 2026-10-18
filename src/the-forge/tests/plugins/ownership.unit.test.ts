@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { registerHostEvents, hostEventNamespaces } from '../../src/application/plugins/host-events.ts';
-import { pluginEvents } from '../../src/application/plugins/ownership.ts';
+import { ownsWarningCode, pluginEvents } from '../../src/application/plugins/ownership.ts';
 import { Registry, validatePluginManifest, type CommandContext, type Plugin } from '../../src/application/plugins/registry.ts';
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { errorCatalog } from '../../src/domain/shared/error-catalog.ts';
 import { germanErrors } from '../../src/presentation/localization/errors.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
+import { forgeVersion } from '../support/workspace.ts';
 
 const manifest = (id: string) => ({ id, name: id, version: '1.0.0', minAppVersion: '0.1.0', description: 'Ownership test', author: 'Test' });
 const plugin = (id: string, extra: Partial<Plugin> = {}): Plugin => ({ manifest: manifest(id), ...extra });
@@ -47,7 +48,7 @@ describe('event ownership', () => {
   });
 
   it('gives plugin commands and lifecycle hooks the owned channel, while host contexts keep the bus', async () => {
-    const bus = create(), registry = new Registry(skillFrontmatter), outcomes: string[] = [];
+    const bus = create(), registry = new Registry(skillFrontmatter, forgeVersion), outcomes: string[] = [];
     const attempt = async (events: CommandContext['events'], label: string) => {
       try { await events.emit('vault.create', { path: 'x.md', kind: 'file', operation: 'created', revision: 'r', bytes: 1 }); outcomes.push(`${label}:emitted`); }
       catch (error) { outcomes.push(`${label}:${(error as { code: string }).code}`); }
@@ -64,15 +65,39 @@ describe('event ownership', () => {
     expect(bus.history.filter(record => record.id === 'vault.create')).toHaveLength(1);
   });
 
+  it('keeps only warning codes in the plugin\'s namespace, as for user plugin error codes', () => {
+    const registered = ['quality', 'quality-gate', 'backlog'];
+    expect(ownsWarningCode('quality', 'QUALITY_STALE', registered)).toBe(true);
+    expect(ownsWarningCode('quality-gate', 'QUALITY_GATE_STALE', registered)).toBe(true);
+    // A longer registered prefix claims the code, another plugin's prefix never matches, and the prefix needs its `_`.
+    for (const code of ['QUALITY_GATE_STALE', 'BACKLOG_SYNC_LOCK_LEFT', 'QUALITYSTALE', 'STALE']) expect(ownsWarningCode('quality', code, registered), code).toBe(false);
+    expect(ownsWarningCode('quality', 'QUALITY_GATE_STALE', ['quality'])).toBe(true);
+    const bus = create(), events = pluginEvents(bus, 'quality', () => registered);
+    events.warn({ code: 'QUALITY_STALE', message: 'Stale' });
+    events.warn({ code: 'QUALITY_GATE_STALE', message: 'Gate' });
+    expect(bus.warningRecords).toEqual([
+      { code: 'QUALITY_STALE', message: 'Stale', details: { plugin: 'quality' } },
+      { code: 'PLUGIN_WARNING', message: 'Gate', details: { requestedCode: 'QUALITY_GATE_STALE', plugin: 'quality' } },
+    ]);
+  });
+
   it('reserves every host namespace that a plugin id could spell', () => {
     for (const id of hostEventNamespaces.filter(namespace => /^[a-z][a-z0-9-]*$/.test(namespace))) {
-      expect(() => validatePluginManifest(manifest(id))).toThrowError(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
+      expect(() => validatePluginManifest(manifest(id), forgeVersion)).toThrowError(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
     }
-    expect(() => validatePluginManifest(manifest('vaults'))).not.toThrow();
+    expect(() => validatePluginManifest(manifest('vaults'), forgeVersion)).not.toThrow();
     // The recovery hints list every reserved namespace.
     for (const hint of [errorCatalog.PLUGIN_NAMESPACE.hint, germanErrors.PLUGIN_NAMESPACE.hint]) {
       expect(hint.match(/\(([^)]*)\)/)![1]!.split(', ')).toEqual([...hostEventNamespaces]);
     }
+  });
+
+  it('checks minAppVersion against the Forge version the registry was given', () => {
+    const requiring = (minAppVersion: string) => ({ ...manifest('future'), minAppVersion });
+    for (const minimum of ['1.4.9', '2.0.0', '1.10.0']) expect(() => validatePluginManifest(requiring(minimum), '2.0.0'), minimum).not.toThrow();
+    expect(() => validatePluginManifest(requiring('2.0.1'), '2.0.0')).toThrowError(expect.objectContaining({ code: 'INCOMPATIBLE_PLUGIN', message: 'Plugin future requires The Forge 2.0.1 or newer; this is 2.0.0.' }));
+    expect(() => new Registry(skillFrontmatter, '0.9.0').register({ manifest: requiring('0.10.0') }, new EventBus(new NodeEventScope()))).toThrowError(expect.objectContaining({ code: 'INCOMPATIBLE_PLUGIN' }));
+    expect(() => new Registry(skillFrontmatter, '0.10.0').register({ manifest: requiring('0.10.0') }, new EventBus(new NodeEventScope()))).not.toThrow();
   });
 
   it('accepts camelCase event segments such as metadataCache.changed but keeps lowercase leading characters', () => {

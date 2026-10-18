@@ -1,8 +1,10 @@
 import type { PluginStrings } from '../../../application/plugins/plugin-catalog.ts';
+import { germanDataSourceErrors } from './errors.ts';
 
 /** The data-sources plugin's German manifest and option and settings descriptions, available while it is disabled. */
 export const dataSourcesStrings: PluginStrings = {
   de: {
+    errors: germanDataSourceErrors,
     manifest: { name: 'Datenquellen', description: 'Markdown-Definitionen für REST- und lokale JSON-Datenquellen mit typisierten Adaptern und deterministischen Testdaten.' },
     descriptions: {
       'Data-source kind for create.': 'Art der Datenquelle für create.',

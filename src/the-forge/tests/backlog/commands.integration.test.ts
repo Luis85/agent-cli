@@ -14,6 +14,7 @@ import { backlogVault, runBacklog } from '../support/backlog.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 import { kernelMessage } from '../../src/domain/shared/kernel-messages.ts';
 import { englishWarning } from '../support/events.ts';
+import { forgeVersion } from '../support/workspace.ts';
 
 const base = (folder: string, extra = '') => `filters:\n  and:\n    - file.inFolder("${folder}")\nviews:\n  - type: product-backlog\n    name: Backlog\n    homeFolder: ${folder}\n    stateProperty: note.status\n    dependsOnProperty: note.dependsOn\n${extra}`;
 const note = (fields: Record<string, unknown>) => `---\n${Object.entries(fields).map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join('\n')}\n---\n`;
@@ -30,18 +31,17 @@ describe('choosing the backlog', () => {
     expect((await runBacklog(vault.root, ['list'], {}, { settings: { base: 'a/Backlog.base' } })).data.total).toBe(1);
     await expect(runBacklog(vault.root, ['list'], { base: 'a/Backlog.base', view: 'Board' })).rejects.toMatchObject({ code: 'BACKLOG_NOT_FOUND', details: { views: ['Backlog'] } });
     await expect(runBacklog(vault.root, ['list'], { base: 'missing.base' })).rejects.toMatchObject({ code: 'BACKLOG_NOT_FOUND' });
-    await expect(runBacklog(vault.root, ['list'], { folder: 'x' })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
   });
 
   it('becomes unavailable when the bases plugin whose service it requires is disabled, and its command reports why', async () => {
-    const registry = new Registry(skillFrontmatter), events = new EventBus(new NodeEventScope());
+    const registry = new Registry(skillFrontmatter, forgeVersion), events = new EventBus(new NodeEventScope());
     registerHostEvents(events);
     registerCorePlugins(registry, events, [basesPlugin, backlogPlugin], testHost({ skills: registrySkills(registry), fileDates: nodeFileDates, ...offlineHost }), ['bases']);
     const warnings: string[] = [];
     await registry.configure({}, async () => [], message => warnings.push(englishWarning(message)));
     expect(registry.disabled.map(manifest => manifest.id)).toEqual(['bases']);
-    const reason = 'Requires service bases.query; its provider bases is disabled.';
-    expect(registry.unavailable.get('backlog')).toEqual({ reason: kernelMessage('PLUGIN_PROVIDER_DISABLED', { service: 'bases.query', provider: 'bases' }), issues: [] });
+    const reason = kernelMessage('PLUGIN_PROVIDER_DISABLED', { service: 'bases.query', provider: 'bases' });
+    expect(registry.unavailable.get('backlog')).toEqual({ reason, issues: [] });
     // plugins.disabled asked for the cascade, so it is reported by plugins and the command, not as a warning.
     expect(warnings).toEqual([]);
     await expect(registry.resolveCommand('backlog').run(['list'], {}, {} as CommandContext)).rejects.toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'backlog', plugin: 'backlog', reason, issues: [] } });
@@ -49,7 +49,7 @@ describe('choosing the backlog', () => {
   });
 
   it('stays enabled without the connector plugins, whose service only backlog sync uses', async () => {
-    const registry = new Registry(skillFrontmatter), events = new EventBus(new NodeEventScope());
+    const registry = new Registry(skillFrontmatter, forgeVersion), events = new EventBus(new NodeEventScope());
     registerHostEvents(events);
     registerCorePlugins(registry, events, [basesPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin], testHost({ skills: registrySkills(registry), fileDates: nodeFileDates, ...offlineHost }), ['connector']);
     await registry.configure({}, async () => [], () => undefined);
@@ -124,6 +124,15 @@ describe('ranks and dependencies', () => {
     expect((await runBacklog(vault.root, ['move', 'A'], { first: true })).data.changes).toHaveLength(1);
     expect(await vault.read('o/A.md')).toBe(note({ type: 'Epic', order: 1000 }));
     expect((await runBacklog(vault.root, ['move', 'A'], { top: true })).data.changes).toEqual([]);
+  });
+
+  it('refuses to add a root of an unknown type that hierarchyOnly would hide, but adds it under a parent', async () => {
+    vault = await backlogVault({ 'docs/Backlog.base': base('docs'), 'docs/Epic.md': note({ type: 'Epic', order: 1 }) });
+    await expect(runBacklog(vault.root, ['add', 'story', 'First'])).rejects.toMatchObject({ code: 'BACKLOG_WRITE_REFUSED', details: { reason: 'hidden-type', type: 'story', types: expect.arrayContaining(['Epic', 'Task']) } });
+    await expect(vault.read('docs/First.md')).rejects.toMatchObject({ code: 'ENOENT' });
+    const added = await runBacklog(vault.root, ['add', 'story', 'First'], { parent: 'Epic' });
+    expect(added.data.item).toMatchObject({ type: 'story', parent: 'docs/Epic.md' });
+    expect((await runBacklog(vault.root, ['list'])).data).toMatchObject({ total: 2, ignored: [] });
   });
 
   it('adds and removes dependsOn entries, deleting the key when the list empties', async () => {

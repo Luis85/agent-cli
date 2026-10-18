@@ -586,7 +586,7 @@ The command's derived annotations, and the operations its plan argument accepts 
     "mutating": true,
     "readOnlyHint": false,
     "destructiveHint": true,
-    "idempotentHint": false
+    "idempotentHint": true
   },
   "operations": [
     "write: create or replace a file",
@@ -620,16 +620,24 @@ node bin/forge.js help backlog --lang de
 | `tree` | Die Hierarchie in Geschwister-Rangfolge, einschließlich Kontext-Vorfahren. |
 | `board` | Board-Spalten nach Status mit WIP-Limits und der Spalte ohne Status. |
 | `show` | Einen Eintrag mit Vorfahren, Kindern, Voraussetzungen und abhängigen Einträgen. |
+| `check` | Eltern- und Abhängigkeitszyklen, defekte Links, unaufgelöste Zugehörigkeiten, Konfigurations- und Feldprobleme sowie Rang-Gleichstände melden. |
 | `add` | Eine Eintragsnotiz genau wie das Plugin anlegen: bereinigter Name, Typ-Ordner, pbl-id, Schlüsselreihenfolge und Rang am Ende der Geschwister. |
 | `move` | Einen Eintrag mit der Rang-Arithmetik des Plugins umhängen oder neu einreihen; schreibt nur parent und order. |
 | `ranks` | seed (Baum-Präordnung) oder respace (aktuelle Rangfolge) vergibt Ränge im Abstand von 1000. |
 | `set` | Status (mit started/finished-Stempeln), Horizont, Priorität, Risiko, Daten, Zuständige oder Typ setzen; ein leerer Wert löscht. |
 | `depend` | Einen dependsOn-Link hinzufügen, sofern er keine Abhängigkeitsschleife schließt. |
 | `undepend` | Einen dependsOn-Eintrag entfernen; der Schlüssel entfällt, wenn die Liste leer wird. |
-| `iteration` | add legt eine Iteration mit den Namens- und Datumsvorgaben des Plugins an, assign <item> <iteration> plant einen Eintrag ein. |
-| `release` | add, join <item> <release>, mark-released, readiness, notes (generierte Release Notes) oder list für Releases. |
-| `check` | Eltern- und Abhängigkeitszyklen, defekte Links, unaufgelöste Zugehörigkeiten, Konfigurations- und Feldprobleme sowie Rang-Gleichstände melden. |
-| `sync` | Jede an eine Verbindung gebundene Ansicht (Ansichtsoption connection: <id>) in beide Richtungen mit ausdrücklichen Konflikten abgleichen; status liest beide Seiten ohne zu schreiben, resolve löst einen Konflikt. |
+| `iteration add` | Eine Iteration mit den Namens- und Datumsvorgaben des Plugins anlegen. |
+| `iteration assign` | Einen Eintrag in einer Iteration einplanen. |
+| `release add` | Eine Release-Notiz anlegen. |
+| `release join` | Einen Eintrag in einem Release einplanen. |
+| `release mark-released` | Ein Release als veröffentlicht markieren. |
+| `release readiness` | Melden, wie bereit ein Release ist. |
+| `release notes` | Die generierten Release Notes eines Releases schreiben; eine unveränderte Wiederholung schreibt nichts. |
+| `release list` | Die Releases auflisten. |
+| `sync` | Jede an eine Verbindung gebundene Ansicht (Ansichtsoption connection: <id>) in beide Richtungen mit ausdrücklichen Konflikten abgleichen. |
+| `sync status` | Beide Seiten jeder gebundenen Ansicht lesen, ohne zu schreiben. |
+| `sync resolve` | Einen Abgleichskonflikt eines Eintrags mit dem lokalen oder dem entfernten Wert lösen. |
 
 ### Localhost admin inspection
 

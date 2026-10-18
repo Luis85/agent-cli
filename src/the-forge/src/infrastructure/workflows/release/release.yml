@@ -1,7 +1,17 @@
 name: Release The Forge
+# Pull requests run this workflow only when they change the release process; the check workflow builds the release
+# archive and tests fresh installations of it for every other change.
 on:
   pull_request:
-    paths: ['**', '/bin/**', '/README.md', '/.gitattributes']
+    paths:
+      - scripts/release.mjs
+      - scripts/release-smoke.mjs
+      - scripts/install-forge.mjs
+      - scripts/package.mjs
+      - configs/distribution-policy.json
+      - docs/releases/**
+      - package.json
+      - src/infrastructure/workflows/release/**
   push:
     tags: ['v*']
   workflow_dispatch:
@@ -43,8 +53,19 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       - run: npm ci
+      - name: Read the locked Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright-core'].version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Chromium
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ steps.playwright.outputs.version }}
       - name: Install native browser acceptance runtime
         run: npx playwright-core install chromium --no-shell --with-deps
+      # Ubuntu 24.04 restricts the unprivileged user namespaces that Chromium's sandbox needs; the browser tests keep it on.
+      - name: Allow Chromium's sandbox
+        run: if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0; fi
       - name: Check and package the release
         env:
           FORGE_BROWSER_TESTS: '1'

@@ -17,7 +17,8 @@ describe('lean agent responses', () => {
     const lean = (await cli(['read', 'note.md'])).body;
     expect(lean.data.document).toEqual({ kind: 'markdown', content: '---\nstatus: draft\n---\n# Note\n', properties: { status: 'draft' } });
     expect(lean.events).toEqual([]);
-    expect((await cli(['read', 'note.md', '--parts', 'body'])).body.data.document.body).toBe('# Note\n');
+    // --parts selects exactly the requested parts.
+    expect((await cli(['read', 'note.md', '--parts', 'body'])).body.data.document).toEqual({ kind: 'markdown', body: '# Note\n' });
     const invalid = await cli(['read', 'note.md', '--parts', 'outline']);
     expect(invalid.status).toBe(2);
     expect(invalid.body.error.code).toBe('INVALID_OPTION_VALUE');
@@ -39,7 +40,7 @@ describe('lean agent responses', () => {
     // An invalid event level is reported in the requested language wherever both options appear.
     const german = await cli(['--events', 'verbose', '--lang', 'de', 'read', 'note.md']);
     expect(german.status).toBe(2);
-    expect(german.body.error).toMatchObject({ code: 'INVALID_OPTION_VALUE', message: 'Der Optionswert oder ein Element einer kommagetrennten Listenoption gehört nicht zu den Werten, die der Befehl angibt.' });
+    expect(german.body.error).toMatchObject({ code: 'INVALID_OPTION_VALUE', message: '--events erlaubt "verbose" nicht; gültige Werte (bei einer kommagetrennten Listenoption mehrere davon): none, changes, all.' });
     const workspace = await mkdtemp(join(tmpdir(), 'forge-event-settings-'));
     try {
       await mkdir(join(workspace, 'bin'));

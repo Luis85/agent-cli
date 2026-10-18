@@ -7,7 +7,7 @@ import { ITEM_ID_KEY, newItemFrontmatter, nextItemId, uniqueNotePath } from '../
 import { dropPlacement, rankablePeers, spreadAround, unchangedPlacement, type DropTarget, type RankResult } from '../domain/ranks.ts';
 import { folderForType, isDoneValue, isStartedValue, workflowKey, workflowOf, workflowValues, type Workflow } from '../domain/settings.ts';
 import {
-  ABSENCE_TYPE, RELEASE_TYPE, RESOURCE_TYPE, canonicalType, isMarkerType, isReleaseType, keepsProjection, ladderFor, mayHoldField, sameType,
+  ABSENCE_TYPE, ALL_TYPES, RELEASE_TYPE, RESOURCE_TYPE, canonicalType, isMarkerType, isReleaseType, keepsProjection, ladderFor, mayHoldField, sameType,
 } from '../domain/vocabulary.ts';
 import { announce, createNotes, ensureWritable, newNoteText, writeItems, type WriteResult } from './writer.ts';
 import { findItem, pathTaken, typeOf, wikilink, type BacklogSession } from './session.ts';
@@ -62,6 +62,10 @@ export async function addItem(session: BacklogSession, request: AddRequest): Pro
   if ([RESOURCE_TYPE, ABSENCE_TYPE].some(type => sameType(typeName, type))) throw refused('reserved-type', `${typeName} notes are not backlog items.`, { type: typeName });
   if (isReleaseType(typeName)) throw refused('use-release-add', 'Create releases with backlog release add.', { type: RELEASE_TYPE });
   const parent = request.parent === undefined ? null : findItem(session, request.parent);
+  // hierarchyOnly prunes roots of other types, so such a note would exist but never show in the backlog.
+  if (settings.hierarchyOnly && parent === null && !ALL_TYPES.some(type => sameType(typeName, type))) {
+    throw refused('hidden-type', `The backlog hides ${typeName} notes without a parent (hierarchyOnly); use one of ${ALL_TYPES.join(', ')}, or pass --parent.`, { type: typeName, types: [...ALL_TYPES] });
+  }
   if (parent && isMarkerType(parent.typeName)) throw refused('marker', `${parent.title} is a ${parent.typeName}; markers take no children.`, { parent: parent.path });
   const order = endOfSiblings(session, parent);
   const folder = folderFor(session, typeName, parent, request.folder);

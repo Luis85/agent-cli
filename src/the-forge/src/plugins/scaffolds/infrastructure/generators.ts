@@ -11,6 +11,26 @@ function names(name: string, directory: string) {
   vaultPath(directory);
   return { name, directory, file: name.replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2').replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase() };
 }
+/**
+ * A user plugin's entry module. Its read-only command declares the metadata that drives invocation policy, help and
+ * schema (scope, `mutating: false`, options and error codes) and a German string stub to translate.
+ */
+const pluginSource = (id: string) => `let ready = false;
+
+export default {
+  commands: [{
+    id: '${id}.hello', description: 'Describe this plugin', usage: '${id}.hello',
+    scope: 'workspace', mutating: false, options: {}, errors: [],
+    run() { return { plugin: '${id}', ready }; },
+  }],
+  strings: {
+    de: { commands: { '${id}.hello': 'Dieses Plugin beschreiben' } },
+  },
+
+  onload() { ready = true; },
+  onunload() { ready = false; },
+};
+`;
 /** `make form|entity|value-object|use-case|event|plugin`: TypeScript scaffolds in the selected project, and user plugin folders. */
 export const scaffoldGenerators: Generator[] = [
   { id: 'form', description: 'Typed form definition with Zod validation and HTML preview in a Forge project.', directory: 'src/presentation/forms', async generate({ name: input, directory: dir, context }) {
@@ -34,7 +54,7 @@ export const scaffoldGenerators: Generator[] = [
     const { name, directory, file } = names(input, dir);
     return [{ path: `${directory}/${file}.ts`, bytes: encodeText(`export class ${name} {\n  private constructor(readonly value: string) { globalThis.Object.freeze(this); }\n\n  static from(value: string): ${name} {\n    if (!value.trim()) throw new globalThis.Error('${name} cannot be empty');\n    return new ${name}(value);\n  }\n\n  equals(other: ${name}): boolean { return this.value === other.value; }\n}\n`) }];
   } },
-  { id: 'use-case', description: 'Application use case with an injected repository port.', generate({ name: input, directory: dir }) {
+  { id: 'use-case', description: 'Application use case with an injected repository port.', directory: 'src/application', generate({ name: input, directory: dir }) {
     const { name, directory, file } = names(input, dir);
     return [{ path: `${directory}/${file}.ts`, bytes: encodeText(`export interface ${name}Input { readonly id: string }\nexport interface ${name}Repository { exists(id: string): globalThis.Promise<boolean> }\n\nexport class ${name} {\n  constructor(private readonly repository: ${name}Repository) {}\n\n  async execute(input: ${name}Input): globalThis.Promise<{ exists: boolean }> {\n    if (!input.id.trim()) throw new globalThis.Error('Identity is required');\n    return { exists: await this.repository.exists(input.id) };\n  }\n}\n`) }];
   } },
@@ -50,7 +70,7 @@ export const scaffoldGenerators: Generator[] = [
     };
     return [
       { path: `${directory}/${file}/manifest.json`, bytes: encodeText(JSON.stringify(manifest, null, 2) + '\n') },
-      { path: `${directory}/${file}/main.mjs`, bytes: encodeText(`let ready = false;\n\nexport default {\n  commands: [{\n    id: '${file}.hello', description: 'Describe this plugin', usage: '${file}.hello',\n    run() { return { plugin: '${file}', ready }; },\n  }],\n\n  onload() { ready = true; },\n  onunload() { ready = false; },\n};\n`) },
+      { path: `${directory}/${file}/main.mjs`, bytes: encodeText(pluginSource(file)) },
     ];
   } },
 ];

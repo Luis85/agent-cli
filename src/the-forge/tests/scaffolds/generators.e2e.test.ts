@@ -1,6 +1,6 @@
-import { committedEvents } from '../support/events.ts';
+import { committedEvents, unchangedRepeat } from '../support/events.ts';
 import { beforeAll, expect, it } from 'vitest';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
 
@@ -14,6 +14,8 @@ it('previews generation without side effects and refuses generator overwrite', a
     expect(preview.body.data.preview[0].content).toContain('class Task'); expect(committedEvents(preview.body.events)).toEqual([]);
     await expect(readFile(join(project, 'domain/task.ts'))).rejects.toThrow();
     expect((await cli(['make', 'entity', 'Task', '--out', 'domain'])).status).toBe(0);
+    expect(unchangedRepeat(await cli(['make', 'entity', 'Task', '--out', 'domain']))).toBe(true);
+    await writeFile(join(project, 'domain/task.ts'), '// edited\n');
     expect((await cli(['make', 'entity', 'Task', '--out', 'domain'])).body.error.code).toBe('CONFLICT');
     expect((await cli(['make', 'entity', '../Task'])).body.error.code).toBe('INVALID_NAME');
   });

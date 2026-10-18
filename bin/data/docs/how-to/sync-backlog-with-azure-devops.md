@@ -71,7 +71,7 @@ The note body becomes the work item's description, including embeds and wikilink
 
 ## 5. Keep in sync
 
-Run `backlog sync` whenever you want both sides aligned; `backlog sync status` shows what would change without writing. Use `--direction push` or `--direction pull` to sync one way only, and `--view` to sync one view. Only one sync of a connection runs at a time, in any scope: a second one fails with `WORKSPACE_BUSY` naming `.forge/sync/contoso.lock` at the workspace root. Ctrl-C stops a sync at its next safe point with `SYNC_INTERRUPTED` and releases the lock; a sync that was killed leaves its lock behind, and the next sync removes it with a warning once its process no longer runs. Read `skipped` in the result: every entry has a `code` that says why a note or field was left alone.
+Run `backlog sync` whenever you want both sides aligned; `backlog sync status` shows what would change without writing. Use `--direction push` or `--direction pull` to sync one way only, and `--view` to sync one view. Only one sync of a connection runs at a time, in any scope: a second one fails with `WORKSPACE_BUSY` naming `.forge/sync/contoso.lock` at the workspace root, unless the global `--wait <ms>` lets it wait for the lock. Ctrl-C stops a sync at its next safe point with `SYNC_INTERRUPTED` and releases the lock; a sync that was killed leaves its lock behind, and the next sync removes it with a warning once its process no longer runs. Read `skipped` in the result: every entry has a `code` that says why a note or field was left alone.
 
 When the same field changed in the note and in Azure DevOps, the sync reports it under `conflicts` with both values and leaves both sides alone. Settle it:
 

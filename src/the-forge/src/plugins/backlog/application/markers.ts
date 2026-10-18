@@ -1,4 +1,5 @@
 import { ensure } from '../../../domain/shared/errors.ts';
+import { readOrMissing } from '../../../domain/shared/not-found.ts';
 import { backlogError, refused } from '../domain/errors.ts';
 import { addDays, formatCivil, ownValue, readDate, readSoleDate, readString, reversedSpan, sameValue, setOwn, type CivilDate } from '../domain/fields.ts';
 import {
@@ -148,9 +149,8 @@ export async function releaseNotes(session: BacklogSession, bases: BasesQuerySer
   const content = releaseNotesContent(row.name, members(session, context, row.path), source);
   const path = releaseNotesPath(settings.notesFolder, row.name);
   const { workspace } = session.context;
-  let existing: { text: string; revision: string } | null = null;
-  try { const file = await workspace.files.read(path); existing = { text: new TextDecoder().decode(file.bytes), revision: file.revision }; }
-  catch (error) { if (!(error instanceof Error && 'code' in error && error.code === 'NOT_FOUND')) throw error; }
+  const file = await readOrMissing(() => workspace.files.read(path));
+  const existing = file ? { text: new TextDecoder().decode(file.bytes), revision: file.revision } : null;
   if (existing === null) return { ...(await createNotes(session, [{ path, text: content }])), path, outcome: 'created', content };
   if (existing.text === content) return { dryRun: workspace.dryRun, changes: [], path, outcome: 'unchanged', content };
   const owner = generatedSource(existing.text);

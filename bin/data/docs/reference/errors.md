@@ -2,18 +2,18 @@
 
 [Documentation](../index.md) · Reference
 
-Every built-in failure has a stable `code` from this catalog. The catalog is the single source of exit statuses, categories, retryability and recovery hints. `node bin/forge.js schema --json` lists it at `data.errors` as `{code, exitCode, category, retryable, summary}`, so agents can discover it from the installed executable. A test fails when Forge source throws a code missing here, or when a catalogued code is no longer thrown.
+Every built-in failure has a stable `code` from this catalog. The catalog is the single source of exit statuses, categories, retryability and recovery hints. `node bin/forge.js schema --all --json` lists it at `data.errors` as `{code, exitCode, category, retryable, summary}`, and `schema <command> --json` lists the codes that command can report, so agents can discover it from the installed executable. A test fails when Forge source throws a code missing here, or when a catalogued code is no longer thrown.
 
 ## Failure envelope
 
 ```json
-{"ok":false,"error":{"code":"NO_MATCH","message":"The find text does not occur in the file. Read it again and copy the exact current text.","hint":"Read the file again and copy the exact current text into --find, including whitespace and line endings.","retryable":false,"details":{"find":"Draft","matches":0}},"events":[],"warnings":[]}
+{"ok":false,"error":{"code":"NO_MATCH","message":"The find text does not occur in the file. Read it again and copy the exact current text.","hint":"Read the file again and copy the exact current text into --find, including whitespace and line endings; error.details.lineEndings names the file's line endings and error.details.nearMatch a line that matches when whitespace and case are ignored.","retryable":false,"details":{"find":"Draft","matches":0,"lineEndings":"lf"}},"events":[],"warnings":[]}
 ```
 
 | Field | Meaning |
 | --- | --- |
 | `code` | Stable machine identifier. Match on it, never on `message` |
-| `message` | The original diagnostic in English, or the translated summary with `--lang de` |
+| `message` | The original diagnostic in English; with `--lang de` a German sentence with the concrete values from `details` (path, command, option, revisions) for the codes [CLI language](language.md) lists, otherwise the code's German summary |
 | `hint` | The next step to take. Present for every catalogued code |
 | `retryable` | `true` when repeating the unchanged invocation later can succeed. The catalog gives each code's default; an occurrence may override it, as `WORKSPACE_BUSY` does with `false` for a lock whose holder Forge cannot verify. Built-in `WORKSPACE_BUSY`, `SERVER_BUSY` and `SERVER_STOP_FAILED` may be retryable; inspect lifecycle state with `server status` before repeating a failed stop |
 | `details` | Optional structured data, documented per code below |
@@ -29,16 +29,28 @@ Plugins can register their own codes with a category, summary, hint and retryabi
 | `external` | 1 | Claude Code could not run or failed |
 | `input` | 2 | Invalid arguments, definitions or edit requests |
 | `conflict` | 2 | The target exists or changed since it was read |
-| `not-found` | 3 | A file, project or selected project is missing |
+| `not-found` | 3 | A file, project, selected project or the workspace root is missing |
 | `busy` | 4 | Another Forge writer holds the workspace lock, or another command holds the server lifecycle lock |
-| `drift` | 5 | Generated UI, data-source or workflow output differs from its sources |
-| `interrupted` | 130 | Claude Code was interrupted by SIGINT; SIGTERM reports 143 |
+| `drift` | 5 | Generated UI, data-source, generator, workflow, webview or agent output differs from its sources |
+| `interrupted` | 130 | A signal stopped a Claude Code command or a `backlog sync` (SIGINT; SIGTERM reports 143) |
+
+## Recovering commands and arguments
+
+Each failure's `hint` names the invoked command where the catalog hint says `help <command>`, for example `run help read for usage`.
+
+**`UNKNOWN_COMMAND`** (exit 2): `details` is `{command, suggestions}`. `suggestions` lists registered commands spelled alike or doing what the id names in shells and other CLIs (`ls` → `list`, `cat` → `read`, `grep` and `find` → `search`, `mv` → `move`, `rm` → `delete`, `cp` → `read` then `create`, `version` → `--version`), and the hint starts with `Did you mean …?`.
+
+**`UNKNOWN_OPTION`** (exit 2): the message names the option and the command, and `details` is `{option, command, suggestions}`; `command` is absent for an option before the command. `suggestions` lists only options the invocation accepts: the command's own, the selected action's and the global options that may follow a command, never `--version` (`--preview` → `--dry-run`). `--force`, `-f`, `--yes`, `-y` and `--overwrite` suggest `--if-match` where the command takes it, and the hint explains the revision guard.
+
+**`UNKNOWN_GENERATOR`**, and **`INVALID_ARGUMENT`** for an unknown action of a command that declares its actions (`server`, `vault`, `webview`, `browser`, `update`): the message lists the declared generators or actions, and `details` is `{generator|action, allowed, suggestions}`.
+
+**`MISSING_ARGUMENT`** for too few and **`INVALID_ARGUMENT`** for too many positional arguments. The host counts them against the declared arguments of the command or the selected action before the command runs, so the counts match the `minItems` and `maxItems` that `schema` publishes. The message names the missing arguments (`Missing <path>.`) or quotes the surplus values (`Unexpected "b.md".`), says how many the invocation expects and received, and ends with the usage of the command or the action. `details` is `{command, action?, minimum, maximum?, received}` (the counts include the action words; `maximum` is absent for an unbounded variadic argument), plus `argument` (the first missing argument) and `missing`, or `unexpected` with the surplus values. A word after an action that takes no arguments of its own but has sub-actions is an unknown action instead (`backlog sync stats`).
 
 ## Recovering edits and guarded writes
 
-**`NO_MATCH`** (exit 2): the `edit --find` text does not occur in the file. `details` is `{find, matches: 0}`. Read the file again, because it may have changed, and copy the exact current text, including whitespace and line endings. Nothing was written.
+**`NO_MATCH`** (exit 2): the `edit --find` text does not occur in the file. `details` is `{find, matches: 0, lineEndings}` with the file's line endings (`lf`, `crlf`, `mixed` or `none` for a single line), plus `nearMatch: {line, text}` when a line contains the first nonblank line of `--find` once whitespace runs and letter case are ignored; the message also says when the file has CRLF line endings but `--find` has LF. Read the file again, because it may have changed, and copy the exact current text, including whitespace and line endings. Nothing was written.
 
-**`AMBIGUOUS_EDIT`** (exit 2): the `--find` text occurs more than once, counting overlapping occurrences. `details.matches` is the total count, and `details.lines` lists the 1-based line of each match start, at most 20. Add surrounding text until the match is unique. Nothing was written. An empty `--find` fails with `INVALID_INPUT`.
+**`AMBIGUOUS_EDIT`** (exit 2): the `--find` text occurs more than once, counting overlapping occurrences. `details.matches` is the total count, and `details.lines` lists the 1-based line of each match start, at most 20, and `details.snippets` each of those lines once as `{line, text}`, cut to 80 characters. Add surrounding text until the match is unique. Nothing was written. An empty `--find` fails with `INVALID_INPUT`.
 
 **`SECTION_NOT_FOUND`** (exit 2): `edit --section` names no heading, or `edit --block` no block. For a section, `details` is `{section, headings}`, where `headings` lists up to 50 headings of the note as `{section, line}` with the full heading path and its 1-based line; for a block it is `{block, blocks}` with the note's block ids in document order. With `--section-line` (or `sectionLine`), no heading the path matches starts on that line: `details` adds `line`, and `headings` lists the headings the path matches. Copy an existing path, line or id. Nothing was written.
 
@@ -46,7 +58,7 @@ Plugins can register their own codes with a category, summary, hint and retryabi
 
 **Multi-edits and plans**: an `edit --edits` list fails with the code of its failing replacement (`NO_MATCH`, `AMBIGUOUS_EDIT`) and adds `details.edit`, the 0-based position of that replacement; the message starts with `Edit <n>:`. A failing `apply` plan operation keeps its own code and details and adds `details.operation`, the 0-based position of the operation, and its message starts with `Operation <n> (<op>):`. Schema violations of a plan fail with `INVALID_PLAN` and `details.issues` (`plan.operations[<n>].<field>: <problem>`); an invalid `--edits` list fails with `INVALID_INPUT` and the same `issues`. In every case nothing was written.
 
-**`CONFLICT`** (exit 2): the `--if-match` revision does not match the stored file, or a write would replace a file without its revision. Dry runs report the same conflict as the real write. `details` is:
+**`CONFLICT`** (exit 2): the `--if-match` revision does not match the stored file, the revision guards a file that does not exist, or a write would replace a file without its revision; the message names which, with its next step. Dry runs report the same conflict as the real write. `details` is:
 
 | Field | Meaning |
 | --- | --- |
@@ -54,10 +66,11 @@ Plugins can register their own codes with a category, summary, hint and retryabi
 | `expectedRevision` | The revision the request supplied, or `null` when it supplied none |
 | `currentRevision` | The stored file's revision, or `null` when the file does not exist |
 | `conflicts` | Multi-file batches only: `{path, expectedRevision, currentRevision}` for every conflicting path |
+| `alreadyApplied` | `edit`, `properties` and `patch` only, when `true`: the request changes nothing in the current content, so the requested change is already present |
 
-`currentRevision` equals what a fresh `read` returns. Do not resend the old request with that revision unchanged: read the file, reapply the change to its current content, then retry through the command's revision guard: `--if-match` for file commands, or a reviewed `--plan-out` plan and `--revisions-from` for generation. `create` has no guard and only adds new paths; replace an existing file with `write --if-match`. `write`, `edit`, `properties`, `patch`, `create` over an existing file and native Claude settings updates report these details; an `apply` plan reports them for the operation in `details.operation`, both when an operation's `ifMatch` is stale and when a file changed between planning and committing. Generation commands such as `make ui` keep the details and replace the message with planning guidance.
+`currentRevision` equals what a fresh `read` returns. Do not resend the old request with that revision unchanged: read the file, reapply the change to its current content, then retry through the command's revision guard: `--if-match` for file commands, or a reviewed `--plan-out` plan and `--revisions-from` for generation. `create` has no guard and only adds new paths; replace an existing file with `write --if-match`. A `create` or `write` whose bytes the file already holds succeeds instead, reporting the change as `unchanged` with `alreadyApplied: true` (see [retries](cli.md#retries-and-unchanged-writes)). `write`, `edit`, `properties`, `patch`, `create` over an existing file and native Claude settings updates report these details; an `apply` plan reports them for the operation in `details.operation`, both when an operation's `ifMatch` is stale and when a file changed between planning and committing. Generation commands such as `make ui` keep the details and replace the message with planning guidance.
 
-**`WORKSPACE_BUSY`** (exit 4, retryable while the holder runs): see the [write contract](cli.md#write-contract) for `details.lock`, `details.stale` and `details.path`. A lock whose holder provably no longer runs is broken automatically with a warning, so this error means the holder runs or another running writer is removing the stale lock (`stale: "active"`, `retryable: true`), the holder cannot be verified (`stale: "unknown"`, `retryable: false`: check the holder, then delete the file in `details.path`), or the holder provably no longer runs but this writer's own removal failed (`stale: "stale"`, `retryable: false`: confirm no Forge process uses it, then delete the file in `details.path`). A live `backlog sync` holds `.forge/sync/<connection>.lock` at the workspace root for its whole run, whichever scope syncs; the message names the lock file, and `details.lock.command` is `backlog sync`.
+**`WORKSPACE_BUSY`** (exit 4, retryable while the holder runs): see the [write contract](cli.md#write-contract) for `details.lock`, `details.stale`, `details.path`, `details.retryAfterMs` and, after `--wait <ms>`, `details.waitedMs`. Its `hint` is chosen by `details.nestedWriter`, then `details.stale`, so it names the next step for that lock state; the catalog row below gives the hint for an occurrence without it. A lock whose holder provably no longer runs is broken automatically with a warning, so this error means the holder runs or another running writer is removing the stale lock (`stale: "active"`, `retryable: true`), the holder cannot be verified (`stale: "unknown"`, `retryable: false`: check the holder, then delete the file in `details.path`), or the holder provably no longer runs but this writer's own removal failed (`stale: "stale"`, `retryable: false`: confirm no Forge process uses it, then delete the file in `details.path`). A live `backlog sync` holds `.forge/sync/<connection>.lock` at the workspace root for its whole run, whichever scope syncs; the message names the lock file, and `details.lock.command` is `backlog sync`.
 
 ## Recovering moves and deletions
 
@@ -69,7 +82,11 @@ Plugins can register their own codes with a category, summary, hint and retryabi
 
 **`INVALID_MOVE`** (exit 2): the destination equals the source, lies inside the moved folder, or a `rename` name contains `/`.
 
-A stale `--if-match` for the moved or deleted path, or a referring file that changed while links were planned, fails with `CONFLICT`; reread with `read` (files) or `delete --dry-run`/`move --dry-run` and retry.
+A stale `--if-match` for the moved or deleted path, or a referring file that changed while links were planned, fails with `CONFLICT`; reread with `read` (files) or `delete --dry-run`/`move --dry-run` and retry. The referring file's case carries `details.reason: "changed-while-planning"` with `details.path` naming that file, and nothing was written, so the same move can simply be rerun. An empty revision, such as `--if-match ""` or an empty `ifMatch`, guards nothing: `move`, `delete`, `write` and an `apply` plan fail with `CONFLICT`, `details.reason: "revision-required"`, the empty `details.expectedRevision` and the file's `details.currentRevision`, and write nothing.
+
+**`INVALID_PLUGIN`** for a skill path (exit 2): registration refuses a plugin skill that no `setup` or `skills install` could write on every platform. `details` is `{skill, reason, file?, segment?, duplicateOf?}`: `reason` is `device-name` (the skill id or the `segment` of `file` is a Windows device name), `case-duplicate` (`file` names the same file as `duplicateOf` once letter case and trailing dots are ignored) or `folder-conflict` (`file` is also the folder of `duplicateOf`); the message lists every such path. Rename the file or skill in the plugin, or disable the plugin with `--no-plugins`.
+
+**`INVALID_UI`** and **`INVALID_DATA_SOURCE`** for a generated file name (exit 2): a component or data-source ID that names a generated file after a Windows device name fails wherever its library is read (`list`, `inspect`, `validate`, `import`, `export` and generation) before anything is written. `details` is `{component | source, file, reason: "device-name", segment}`; `file` is the component file of the requested UI target (of `plugins.settings.ui.framework` outside generation, such as `con.js`) or the data-source adapter (`nul.ts`). Choose another ID.
 
 ## Codes
 
@@ -96,10 +113,10 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 | `OPERATION_FAILED` | 1 | runtime | no | An unexpected runtime or I/O error occurred. | Read the message, check the workspace state and reread affected files before retrying. |
 | `INVALID_PATH` | 2 | input | no | The path is not a valid workspace-relative path. | Use a relative path inside the selected workspace or project, with forward slashes and no `..` segments. |
 | `UNSAFE_PATH` | 2 | input | no | The path leaves the workspace or crosses a symbolic link. | Use a path inside the workspace that does not traverse symbolic links. |
-| `NOT_FOUND` | 3 | not-found | no | The file or resource does not exist. | Check the path and the selected project (project current); run list to find files. |
-| `CONFLICT` | 2 | conflict | no | The file already exists or its revision changed since it was read. | Reread the file and reconcile your change with the current content (`error.details.currentRevision`), then retry with the command's revision guard (`--if-match` or `--revisions-from`); `create` only adds new paths. |
-| `NO_MATCH` | 2 | input | no | The `--find` text does not occur in the file. | Read the file again and copy the exact current text into `--find`, including whitespace and line endings. |
-| `AMBIGUOUS_EDIT` | 2 | input | no | The `--find` text occurs more than once, counting overlapping matches. | Extend `--find` with surrounding text so it matches exactly once; `error.details.lines` lists the matching lines. |
+| `NOT_FOUND` | 3 | not-found | no | The file or resource does not exist. | Check the path and the selected project (project current); run list to find files. `error.details.alreadyDeleted` true means a delete already moved the file to `error.details.trashPath`. |
+| `CONFLICT` | 2 | conflict | no | The file already exists or its revision changed since it was read. | The message names the case. An existing file (`error.details.expectedRevision` null): replace it with `write --if-match` or change it with `edit`. A missing file (`error.details.currentRevision` null): check the path, or drop the guard to create it. A changed file: reread it, reconcile your change with the current content and retry with `error.details.currentRevision` through the command's revision guard (`--if-match`, `ifMatch` in a plan, or `--revisions-from`). `error.details.alreadyApplied` true means the file already holds the requested change, so no retry is needed. |
+| `NO_MATCH` | 2 | input | no | The `--find` text does not occur in the file. | Read the file again and copy the exact current text into `--find`, including whitespace and line endings; `error.details.lineEndings` names the file's line endings and `error.details.nearMatch` a line that matches when whitespace and case are ignored. |
+| `AMBIGUOUS_EDIT` | 2 | input | no | The `--find` text occurs more than once, counting overlapping matches. | Extend `--find` with surrounding text so it matches exactly once; `error.details.lines` lists the matching lines and `error.details.snippets` their text. |
 | `UNSUPPORTED_EDIT` | 2 | input | no | This edit is not supported for the file kind. | Use edit for Markdown and text, properties for frontmatter, patch for Canvas and Bases, and write for attachments. |
 | `SECTION_NOT_FOUND` | 2 | input | no | No heading matches the `--section` path, or no block has the `--block` id. | Read the note and copy a heading path from `error.details.headings` (segments joined with " > ") or a block id from `error.details.blocks`. |
 | `AMBIGUOUS_SECTION` | 2 | input | no | The `--section` path matches several headings, or the `--block` id occurs more than once. | Add ancestor headings to the path (Parent > Heading) until one of `error.details.candidates` remains, or pass a candidate's line as `--section-line` (`sectionLine` in an apply plan); give each block a unique id. |
@@ -115,13 +132,7 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 | `INVALID_CANVAS` | 2 | input | no | The Canvas structure is invalid. | Fix the nodes, edges or ids named in the message; run `validate <file.canvas>`. |
 | `INVALID_BASE` | 2 | input | no | The Base structure is invalid. | Fix the Base definition named in the message; run `validate <file.base>`. |
 | `INVALID_POINTER` | 2 | input | no | The JSON Pointer is invalid or does not address a valid location. | Read the document and use an existing pointer path; `/-` appends only to an existing array. |
-| `INVALID_BASE_QUERY` | 2 | input | no | The Bases query is invalid. | Check the view, context and expressions named in the message. |
-| `INVALID_BASE_EXPRESSION` | 2 | input | no | A Bases expression cannot be parsed. | Fix the expression named in the message. |
-| `BASE_EVALUATION_ERROR` | 2 | input | no | A Bases expression failed while evaluating a file. | Check the view, file and expression named in the message. |
-| `BASE_VIEW_NOT_FOUND` | 2 | input | no | The requested Bases view does not exist. | Run `bases inspect <file.base>` and pass an existing `--view`. |
-| `BASE_CONTEXT_NOT_FOUND` | 2 | input | no | The context file is not an indexed vault file. | Pass an existing vault file to `--context`. |
-| `INVALID_BASE_PROPERTY_TYPES` | 2 | input | no | The Obsidian property type registry is invalid. | Fix `.obsidian/types.json` so it is a JSON object of property types. |
-| `UNSUPPORTED_BASE_PROPERTY_TYPE` | 2 | input | no | An Obsidian property type is not supported. | Use a supported type in `.obsidian/types.json`. |
+| `INVALID_ROOT` | 3 | not-found | no | The workspace root does not exist or is not a directory. | Pass --root (or set FORGE_ROOT) to the existing workspace directory that contains bin/; --root wins over FORGE_ROOT. |
 | `INVALID_CONFIG` | 2 | input | no | The configuration is invalid or unreadable. | Fix `bin/config.json` at the location named in the message, then run config. |
 | `INVALID_SETUP` | 2 | input | no | Setup cannot complete with the current distribution files. | Repair the bin path named in the message, then run setup again. |
 | `INVALID_PROJECT` | 2 | input | no | The project metadata is invalid. | Fix `.forge/project.json` in the project directory. |
@@ -132,36 +143,12 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 | `PROJECT_NOT_FOUND` | 3 | not-found | no | The project does not exist. | Run project list and open an existing project. |
 | `PROJECT_REQUIRED` | 2 | input | no | This command needs a selected project. | Run `project open <name>` first. |
 | `STALE_PROJECT_CONTEXT` | 3 | not-found | no | The selected project is missing or no longer matches the configuration. | Run `project open <name>` to select a valid project, or project close. |
-| `INVALID_TEMPLATE` | 2 | input | no | The Markdown template is invalid. | Fix the template frontmatter or placeholders named in the message. |
-| `INVALID_TEMPLATE_DATE` | 2 | input | no | A template date or date format is invalid. | Use an ISO date and a supported date format. |
-| `INVALID_TEMPLATE_PACK` | 2 | input | no | The template pack is invalid. | Use unique template ids and destinations. |
-| `INVALID_TEMPLATE_VALUES` | 2 | input | no | Template values are missing or have the wrong type. | Run `templates inspect <template.md>` and supply its required values. |
-| `UNKNOWN_TEMPLATE_VARIABLE` | 2 | input | no | The template uses an undeclared variable. | Declare the variable in the template or remove the placeholder; run `templates inspect <template.md>`. |
 | `UNKNOWN_GENERATOR` | 2 | input | no | The generator is not registered. | Run make to list generators. |
 | `INVALID_GENERATION_PLAN` | 2 | input | no | The generation plan has overlapping outputs or invalid options. | Use separate output and manifest paths, and do not combine planning with `--revisions-from`. |
 | `INVALID_GENERATION_REVISIONS` | 2 | input | no | The revision approval does not match the reviewed plan. | Create a new plan with `--plan-out` and pass that file to `--revisions-from`. |
-| `UI_DRIFT` | 5 | drift | no | Generated UI files are missing or differ from their definitions. | Run the same command with `--plan` to review, then regenerate. |
-| `DATA_SOURCE_DRIFT` | 5 | drift | no | Generated data-source files are missing or differ from their definitions. | Run the same command with `--plan` to review, then regenerate. |
 | `GENERATION_DRIFT` | 5 | drift | no | Generated files are missing or differ from what the generator produces. | Run the same make command with `--plan` to review, then regenerate. |
 | `INVALID_WORKFLOW` | 2 | input | no | An authored project workflow is invalid or two workflows generate the same file. | Fix or rename the workflow under `src/infrastructure/workflows/<concern>/` named in the message, then run `workflows sync`. |
 | `WORKFLOW_DRIFT` | 5 | drift | no | Generated GitHub workflows are missing, changed or stale. | Run `workflows sync`, review the changes in `.github/workflows` and commit them with their sources. |
-| `INVALID_UI` | 2 | input | no | A component definition is invalid. | Fix the definition named in the message; run components validate. |
-| `INVALID_UI_LIBRARY` | 2 | input | no | The component library is invalid. | Run components validate and fix the reported definitions. |
-| `INVALID_UI_FRAMEWORK` | 2 | input | no | The UI target is not supported. | Use html, htmx, vanilla, vue, svelte, react or angular. |
-| `EMPTY_UI_LIBRARY` | 2 | input | no | The component library has no definitions. | Run components init or add a Markdown definition. |
-| `DUPLICATE_UI_COMPONENT` | 2 | input | no | Two component definitions share an id. | Give each component a unique id. |
-| `UNKNOWN_UI_COMPONENT` | 2 | input | no | The component is not defined. | Run components list and use an existing id. |
-| `CYCLIC_UI_COMPONENT` | 2 | input | no | Component references form a cycle. | Remove the cyclic reference named in the message. |
-| `UI_RENDERER_UNAVAILABLE` | 2 | input | no | No renderer is available for this UI target. | Choose a supported `--framework`. |
-| `INVALID_INTERACTION` | 2 | input | no | An interaction definition is invalid. | Fix the event, actions or bindings named in the message; run interactions validate. |
-| `DUPLICATE_INTERACTION` | 2 | input | no | Two interaction definitions share an id. | Give each interaction a unique id. |
-| `EMPTY_INTERACTION_LIBRARY` | 2 | input | no | The interaction library has no definitions. | Run interactions init or add a Markdown definition. |
-| `UNKNOWN_INTERACTION` | 2 | input | no | The interaction is not defined. | Run interactions list and check the component's interaction references. |
-| `INVALID_DATA_SOURCE` | 2 | input | no | A data-source definition is invalid. | Fix the fields named in the message; run data-sources validate. |
-| `DUPLICATE_DATA_SOURCE` | 2 | input | no | Two data-source definitions share an id. | Give each data source a unique id. |
-| `EMPTY_DATA_SOURCE_LIBRARY` | 2 | input | no | The data-source library has no definitions. | Run data-sources init or add a Markdown definition. |
-| `UNKNOWN_DATA_SOURCE` | 2 | input | no | The data source is not defined. | Run data-sources list and use an existing id. |
-| `DATA_SOURCE_RENDERER_UNAVAILABLE` | 2 | input | no | No generator is available for this data source. | Use a supported data-source kind; run help make for data-source generation. |
 | `INVALID_PLUGIN` | 2 | input | no | A plugin manifest or implementation is invalid. | Fix the plugin named in the message, or disable it with `--no-plugins`. |
 | `INVALID_PLUGIN_CONFIG` | 2 | input | no | The plugin configuration is invalid. | List unique lowercase kebab-case ids of installed user plugins in `plugins.enabled` in `bin/config.json`; run plugins to list them. |
 | `INCOMPATIBLE_PLUGIN` | 2 | input | no | The plugin requires a newer Forge version. | Update The Forge or disable the plugin. |
@@ -172,7 +159,6 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 | `PLUGIN_SERVICE_CYCLE` | 2 | input | no | Plugin service requirements form a cycle. | Break the cycle named in `error.details.plugins` so that one plugin no longer requires a service of another. |
 | `PLUGIN_LIFECYCLE` | 2 | input | no | A plugin used the host outside its lifecycle. | Register contributions before activation and stop using the host after disposal. |
 | `DUPLICATE_OR_INVALID_ID` | 2 | input | no | A contribution id is invalid or already registered. | Use a unique lowercase dotted id. |
-| `UNKNOWN_SKILL` | 2 | input | no | The skill is not registered. | Run skills list. |
 | `INVALID_EVENT` | 2 | input | no | An event definition or event state is invalid. | Define events with a dotted id and validator before disposal. |
 | `INVALID_EVENT_LISTENER` | 2 | input | no | An event listener is not a function. | Pass a function as the listener. |
 | `INVALID_EVENT_PAYLOAD` | 2 | input | no | The event payload does not match its contract. | Run events and emit a payload that matches the contract. |
@@ -182,25 +168,7 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 | `EVENT_OWNERSHIP` | 2 | input | no | A plugin tried to emit an event it does not own. | Emit only events in your plugin's own namespace; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`) are emitted by the host and another plugin's events by that plugin. |
 | `INVALID_CLAUDE_AGENT` | 2 | input | no | The Claude agent definition is invalid. | Fix the field named in the message, then rerun the command. |
 | `INVALID_CLAUDE_HOOKS` | 2 | input | no | The Claude hook configuration is invalid. | Fix the field named in the message, then rerun the command. |
-| `INVALID_CLAUDE_PLUGIN` | 2 | input | no | The Claude plugin manifest or a plugin file is invalid. | Fix the field named in the message, then rerun the command. |
 | `INVALID_CLAUDE_SETTINGS` | 2 | input | no | The Claude settings file is invalid. | Fix the JSON structure of the settings file named in the message. When it names the generation manifest `.claude/forge-generated.json`, an older Forge wrote it: delete `.claude/forge-generated.json` and run `agents generate` again; the rules it listed stay in `.claude/settings.json` until you remove them. |
-| `INVALID_CLAUDE_COMMAND` | 2 | input | no | The Claude command is not supported. | Run claude capabilities. |
-| `INVALID_CLAUDE_ARGUMENT` | 2 | input | no | A Claude command argument is invalid. | Correct the arguments named in the message; run `help <command>` for usage. |
-| `INVALID_CLAUDE_OPTION` | 2 | input | no | The option is not allowed for this Claude command. | Run help claude and remove the option. |
-| `INVALID_CLAUDE_SCOPE` | 2 | input | no | The Claude scope is invalid. | Run help claude and pass a `--scope` value supported by that action. |
-| `INVALID_CLAUDE_INPUT` | 2 | input | no | The Claude input is invalid or too large. | Pass valid input within the size limit. |
-| `INVALID_CLAUDE_OUTPUT` | 2 | input | no | The Claude output format is invalid. | Use text, json or json-last-line. |
-| `INVALID_CLAUDE_OUTPUT_LIMIT` | 2 | input | no | The Claude output limit is invalid. | Use a positive integer number of bytes. |
-| `INVALID_CLAUDE_TIMEOUT` | 2 | input | no | The Claude timeout is invalid. | Pass the timeout in milliseconds within the range named in the message. |
-| `INVALID_CLAUDE_EXECUTABLE` | 2 | input | no | The Claude executable path is invalid. | Pass an executable path to `--claude-bin`. |
-| `CLAUDE_NOT_INSTALLED` | 1 | external | no | The Claude Code executable was not found. | Install Claude Code and put claude on PATH, or pass `--claude-bin`. |
-| `CLAUDE_WORKING_DIRECTORY_UNAVAILABLE` | 1 | external | no | The Claude working directory is unavailable. | Check that the selected project or workspace root exists and is a directory. |
-| `CLAUDE_COMMAND_FAILED` | 1 | external | no | Claude Code could not be started or stopped unexpectedly. | Read error.details, inspect external state, then retry deliberately. |
-| `CLAUDE_COMMAND_TIMEOUT` | 1 | external | no | The Claude command exceeded its timeout. | Inspect external state; retry with a larger `--timeout` only if the work did not complete. |
-| `CLAUDE_OUTPUT_LIMIT` | 1 | external | no | Claude output exceeded the size limit. | Inspect external state; retry with a larger output limit only if needed. |
-| `CLAUDE_COMMAND_INTERRUPTED` | 130 | interrupted | no | The Claude command was interrupted by a signal (exit 130 for SIGINT, 143 for SIGTERM). | Inspect external state before running the command again. |
-| `CLAUDE_RUNTIME_FAILED` | 1 | external | no | Claude Code exited with a nonzero status. | Inspect error.details (native status, output and parsed result) and external state before retrying. |
-| `CLAUDE_INVALID_OUTPUT` | 1 | external | no | Claude Code succeeded but did not return the requested JSON. | Inspect stdout and external state before retrying. |
 
 ## Core plugin codes
 
@@ -210,6 +178,7 @@ Bundled [core plugins](plugins.md#core-and-user-plugins) register their own code
 | --- | --- | --- | --- | --- | --- |
 | `WEBVIEW_INVALID` | `webviews` | 2 | input | no | The built view fails manifest or static-asset validation, or changes an installed asset between a file and a directory. Inspect `dist` and its matching project-ID manifest; use regular supported assets and a new path for file/directory changes; see [webviews](webviews.md) |
 | `WEBVIEW_BUILD_REQUIRED` | `webviews` | 2 | input | no | The selected webview project has no build output. Run `npm run build` in that project, then `webview inspect` before publication |
+| `WEBVIEW_PROJECT_REQUIRED` | `webviews` | 2 | input | no | The selected or named project is not a webview project; `details` is `{project, type}`. Pass `--project <webview-id>`, or run `project open <webview-id>`; `project list` shows each project's type |
 | `WEBVIEW_DRIFT` | `webviews` | 5 | drift | no | `webview publish --check` found differences between `dist` and the installed view. Inspect the comparison and publish the reviewed build; replacing changed installed output requires its folder revision with `--if-match` |
 | `BROWSER_UNAVAILABLE` | `browser` | 1 | runtime | no | The browser runtime or executable is unavailable. Run `browser status`, then `browser install`, or supply an installed Chromium executable with `--browser-executable`; see [browser](browser.md) |
 | `BROWSER_CAPTURE_FAILED` | `browser` | 1 | runtime | no | The webpage could not be captured. Check the URL, browser availability, readiness selector and timeout; no screenshot was written |
@@ -235,6 +204,82 @@ Bundled [core plugins](plugins.md#core-and-user-plugins) register their own code
 | `SYNC_CONFLICT` | `backlog` | 2 | conflict | yes | The remote item changed between reading and writing it (its revision moved), or its links changed on the other end while an update changed them (then its `parent` and `dependencies` are reported as conflicts by the next sync wherever the sides differ). `backlog sync resolve` fails with it; `backlog sync` reports it per note in `failed` and continues. Run `backlog sync status` and repeat; see [sync](backlog.md#sync-with-external-trackers) |
 | `SYNC_INTERRUPTED` | `backlog` | 130 | interrupted | no | SIGINT or SIGTERM stopped a live `backlog sync` at a safe point, before its next remote write or vault commit (exit 130, or 143 for SIGTERM); `details.signal` names it. Its locks are released and every remote item it created is recorded in the sync state. Run `backlog sync` again to finish; a second signal terminates at once, and the next sync then recovers the lock |
 | `CONNECTOR_NOT_FOUND` | `connector` | 3 | not-found | no | No connection with that id in `plugins.settings.connector.connections` (`details.connections` lists them), or its platform has no enabled connector (`details.platforms`). See [connectors](connectors.md) |
-| `CONNECTION_INVALID` | `connector` | 2 | input | no | A connection profile fails its platform schema or names unknown mapping fields; `details.issues` names each path |
+| `CONNECTION_INVALID` | `connector` | 2 | input | no | A connection profile fails its platform schema or names unknown mapping fields, or its organization host is not trusted (`details.host`; list it in `FORGE_CONNECTOR_ALLOWED_HOSTS`), in which case no request was sent; `details.issues` names each path |
 | `CONNECTOR_AUTH_FAILED` | `connector` | 1 | external | no | The token variable named in `details.tokenEnv` is unset, or the service refused it (`details.status` 401, 403, 203 or a sign-in redirect). Set the variable to a valid token; the token itself never appears in output. A sync sends no further request after the refusal; items it created before are already recorded in the sync state, so the next sync does not create them again |
 | `CONNECTOR_REQUEST_FAILED` | `connector` | 1 | external | yes | A request failed: `details.status` (null when the service was unreachable or timed out), `method` and `url`; `details.reason: "stale-revision"` marks a revision guard, `"relations-changed"` an update that was applied but whose link changes could not be confirmed. Throttled requests (429, 503) were already retried |
+| `INVALID_BASE_QUERY` | `bases` | 2 | input | no | The Bases query is invalid. Check the view, context and expressions named in the message |
+| `INVALID_BASE_EXPRESSION` | `bases` | 2 | input | no | A Bases expression cannot be parsed. Fix the expression named in the message |
+| `BASE_EVALUATION_ERROR` | `bases` | 2 | input | no | A Bases expression failed while evaluating a file. Check the view, file and expression named in the message |
+| `BASE_TIMEOUT` | `bases` | 2 | input | no | A Bases query exceeded its 30-second expression evaluation budget over all files (`details.path`, `details.timeoutMs`); no partial result is returned. Simplify the expressions of the .base file named in the message (avoid nested regular-expression quantifiers such as (a+)+) or narrow its filters |
+| `BASE_VIEW_NOT_FOUND` | `bases` | 2 | input | no | The requested Bases view does not exist. Run `bases inspect <file.base>` and pass an existing `--view` |
+| `BASE_CONTEXT_NOT_FOUND` | `bases` | 2 | input | no | The context file is not an indexed vault file. Pass an existing vault file to `--context` |
+| `INVALID_BASE_PROPERTY_TYPES` | `bases` | 2 | input | no | The Obsidian property type registry is invalid. Fix `.obsidian/types.json` so it is a JSON object of property types |
+| `UNSUPPORTED_BASE_PROPERTY_TYPE` | `bases` | 2 | input | no | An Obsidian property type is not supported. Use a supported type in `.obsidian/types.json` |
+| `INVALID_TEMPLATE` | `templates` | 2 | input | no | The Markdown template is invalid. Fix the template frontmatter or placeholders named in the message |
+| `INVALID_TEMPLATE_DATE` | `templates` | 2 | input | no | A template date or date format is invalid. Use an ISO date and a supported date format |
+| `INVALID_TEMPLATE_PACK` | `templates` | 2 | input | no | The template pack is invalid. Use unique template ids and destinations |
+| `INVALID_TEMPLATE_VALUES` | `templates` | 2 | input | no | Template values are missing or have the wrong type. Run `templates inspect <template.md>` and supply its required values |
+| `UNKNOWN_TEMPLATE_VARIABLE` | `templates` | 2 | input | no | The template uses an undeclared variable. Declare the variable in the template or remove the placeholder; run `templates inspect <template.md>` |
+| `UI_DRIFT` | `ui` | 5 | drift | no | Generated UI files are missing or differ from their definitions. Run the same command with `--plan` to review, then regenerate |
+| `INVALID_UI` | `ui` | 2 | input | no | A component definition is invalid. Fix the definition named in the message; run components validate |
+| `INVALID_UI_LIBRARY` | `ui` | 2 | input | no | The component library is invalid. Run components validate and fix the reported definitions |
+| `INVALID_UI_FRAMEWORK` | `ui` | 2 | input | no | The UI target is not supported. Use html, htmx, vanilla, vue, svelte, react or angular |
+| `EMPTY_UI_LIBRARY` | `ui` | 2 | input | no | The component library has no definitions. Run components init or add a Markdown definition |
+| `DUPLICATE_UI_COMPONENT` | `ui` | 2 | input | no | Two component definitions share an id. Give each component a unique id |
+| `UNKNOWN_UI_COMPONENT` | `ui` | 2 | input | no | The component is not defined. Run components list and use an existing id |
+| `CYCLIC_UI_COMPONENT` | `ui` | 2 | input | no | Component references form a cycle. Remove the cyclic reference named in the message |
+| `UI_RENDERER_UNAVAILABLE` | `ui` | 2 | input | no | No renderer is available for this UI target. Choose a supported `--framework` |
+| `INVALID_INTERACTION` | `ui` | 2 | input | no | An interaction definition is invalid. Fix the event, actions or bindings named in the message; run interactions validate |
+| `DUPLICATE_INTERACTION` | `ui` | 2 | input | no | Two interaction definitions share an id. Give each interaction a unique id |
+| `EMPTY_INTERACTION_LIBRARY` | `ui` | 2 | input | no | The interaction library has no definitions. Run interactions init or add a Markdown definition |
+| `UNKNOWN_INTERACTION` | `ui` | 2 | input | no | The interaction is not defined. Run interactions list and check the component's interaction references |
+| `DATA_SOURCE_DRIFT` | `data-sources` | 5 | drift | no | Generated data-source files are missing or differ from their definitions. Run the same command with `--plan` to review, then regenerate |
+| `INVALID_DATA_SOURCE` | `data-sources` | 2 | input | no | A data-source definition is invalid. Fix the fields named in the message; run data-sources validate |
+| `DUPLICATE_DATA_SOURCE` | `data-sources` | 2 | input | no | Two data-source definitions share an id. Give each data source a unique id |
+| `EMPTY_DATA_SOURCE_LIBRARY` | `data-sources` | 2 | input | no | The data-source library has no definitions. Run data-sources init or add a Markdown definition |
+| `UNKNOWN_DATA_SOURCE` | `data-sources` | 2 | input | no | The data source is not defined. Run data-sources list and use an existing id |
+| `DATA_SOURCE_RENDERER_UNAVAILABLE` | `data-sources` | 2 | input | no | No generator is available for this data source. Use a supported data-source kind; run help make for data-source generation |
+| `INVALID_CLAUDE_PLUGIN` | `claude` | 2 | input | no | The Claude plugin manifest or a plugin file is invalid. Fix the field named in the message, then rerun the command |
+| `INVALID_CLAUDE_COMMAND` | `claude` | 2 | input | no | The Claude command is not supported. Run claude capabilities |
+| `INVALID_CLAUDE_ARGUMENT` | `claude` | 2 | input | no | A Claude command argument is invalid. Correct the arguments named in the message; run `help <command>` for usage |
+| `INVALID_CLAUDE_OPTION` | `claude` | 2 | input | no | A Claude option has an invalid value or combination. Run help claude and correct the option the message names |
+| `INVALID_CLAUDE_SCOPE` | `claude` | 2 | input | no | The Claude scope is invalid. Run help claude and pass a `--scope` value supported by that action |
+| `INVALID_CLAUDE_INPUT` | `claude` | 2 | input | no | The Claude input is invalid or too large. Pass valid input within the size limit |
+| `INVALID_CLAUDE_OUTPUT` | `claude` | 2 | input | no | The Claude output format is invalid. Use text, json or json-last-line |
+| `INVALID_CLAUDE_OUTPUT_LIMIT` | `claude` | 2 | input | no | The Claude output limit is invalid. Use a positive integer number of bytes |
+| `INVALID_CLAUDE_TIMEOUT` | `claude` | 2 | input | no | The Claude timeout is invalid. Pass the timeout in milliseconds within the range named in the message |
+| `INVALID_CLAUDE_EXECUTABLE` | `claude` | 2 | input | no | The Claude executable path is invalid. Pass an executable path to `--claude-bin` |
+| `CLAUDE_NOT_INSTALLED` | `claude` | 1 | external | no | The Claude Code executable was not found. Install Claude Code and put claude on PATH, or pass `--claude-bin` |
+| `CLAUDE_WORKING_DIRECTORY_UNAVAILABLE` | `claude` | 1 | external | no | The Claude working directory is unavailable. Check that the selected project or workspace root exists and is a directory |
+| `CLAUDE_COMMAND_FAILED` | `claude` | 1 | external | no | Claude Code could not be started or stopped unexpectedly. Read error.details, inspect external state, then retry deliberately |
+| `CLAUDE_COMMAND_TIMEOUT` | `claude` | 1 | external | no | The Claude command exceeded its timeout. Inspect external state; retry with a larger `--timeout` only if the work did not complete |
+| `CLAUDE_OUTPUT_LIMIT` | `claude` | 1 | external | no | Claude output exceeded the size limit. Inspect external state; retry with a larger output limit only if needed |
+| `CLAUDE_COMMAND_INTERRUPTED` | `claude` | 130 | interrupted | no | The Claude command was interrupted by a signal (exit 130 for SIGINT, 143 for SIGTERM). Inspect external state before running the command again |
+| `CLAUDE_RUNTIME_FAILED` | `claude` | 1 | external | no | Claude Code exited with a nonzero status. Inspect error.details (native status, output and parsed result) and external state before retrying |
+| `CLAUDE_INVALID_OUTPUT` | `claude` | 1 | external | no | Claude Code succeeded but did not return the requested JSON. Inspect stdout and external state before retrying |
+| `UNKNOWN_SKILL` | `skills` | 2 | input | no | The skill is not registered. Run skills list |
+
+## Warnings
+
+A nonfatal problem never changes `ok` or the exit status; it is one entry of the envelope's `warnings`: `{code, message, details?}`. Match `code`, never the `message`, which follows `--lang`. `details` holds the values the message names, as given; a value that is itself a message, such as a reason, is a nested `{code, message, details?}`. A plugin warning keeps the code its plugin gave it (`context.events.warn({code, message, details})`), or reads `PLUGIN_WARNING` when the plugin passed text; `details.plugin` names the plugin when it warned through its own `context.events`. A plugin warning code is namespaced like a user plugin error code: it starts with the plugin id in UPPER_SNAKE_CASE and `_` (`backlog` → `BACKLOG_`, `quality-gate` → `QUALITY_GATE_`), and a code under a longer prefix of another registered plugin belongs to that plugin, so no plugin can raise a host code or another plugin's code. A `{code, message, details?}` record whose code is a host code, is outside the plugin's namespace or is not UPPER_SNAKE_CASE, or whose `details` is not a JSON object, reads `PLUGIN_WARNING` with the plugin's `message`, the rejected code in `details.requestedCode` and only valid details; so does a coded record handed to the host's warning sink past `context.events`, since no plugin is known for it. Unlike error codes, which a core plugin may choose freely outside the built-in catalog, core plugin warning codes follow the same namespace.
+
+Reads and filters an agent could misread:
+
+- `PATH_MATCHED_NOTHING`: a `--path` filter selected no file (`details.option`, `details.pattern`).
+- `READ_TRUNCATED`, `READ_BYTES_TRUNCATED`: `read` or `read-many` returned only part of a file (`details.path`, `start`, `end`, `total`, `returned`, `bytes`, `next`).
+- `READ_LINE_TRUNCATED`: the first selected line alone exceeds `--max-bytes`, so only its prefix was returned and `--lines` cannot continue past it; `details.lineBytes` is that line's size, the `--max-bytes` that reads it whole (`details.path`, `start`, `total`, `returned`, `bytes`).
+- `CWD_OUTSIDE_WORKSPACE`: the working directory lies outside the workspace, so relative paths do not resolve against it (`details.cwd`, `details.workspaceRoot`).
+
+Writes that succeed but probably differ from what was meant:
+
+- `LITERAL_NEWLINE`: `--content` or `--replace` holds `\n` as two characters and no line break (`details.option`).
+- `EMPTY_STDIN`: `--stdin` read no bytes, so the file is written empty (`details.path`).
+- `EXTENSION_DROPPED`: a move, also inside an `apply` plan, gives a file an extensionless destination (`details.from`, `details.to`, `details.extension`).
+
+Failures after a committed write or in lifecycle callbacks, which never undo the result: `POST_COMMIT_FAILED`, `VAULT_NOTIFICATION_FAILED`, `REMOVAL_TEMPORARY_LEFT`, `REMOVAL_SYNC_FAILED`, `METADATA_CACHE_UNSAVED`, `EVENT_HISTORY_FULL`, `EVENT_LISTENER_FAILED`, `EVENT_REPLAY_FAILED`, `HOST_NOTIFICATION_FAILED`, `LAYOUT_CALLBACK_FAILED`, `QUIT_TASK_FAILED`, `PLUGIN_CLEANUP_FAILED`; `details.diagnostic` keeps the original, untranslated failure message.
+
+Locks: `LOCK_RECOVERED` (a stale writer or sync lock was removed; `details` has `path`, `pid`, `host` and `since`, `details.reason` is the nested warning `LOCK_STALE_DEAD_PROCESS`, `LOCK_STALE_REUSED_PID` or `LOCK_STALE_REBOOTED`, and `details.command` the nested `LOCK_HOLDER_COMMAND` with the holder's command, or empty), `LOCK_LEFT_FOREIGN`, `LOCK_REMOVED_BY_OTHER` and `LOCK_UNREMOVABLE`.
+
+Configuration and plugins: `PLUGIN_UNAVAILABLE`, `PLUGIN_MISSING_WARNING`, `SETTINGS_UNDECLARED`, `SETTINGS_UNKNOWN_PLUGIN`, `DISABLED_UNKNOWN_PLUGIN`, `PLUGIN_DIRECTORY_IGNORED`, `PLUGIN_STATE_IGNORED`, `PLUGIN_STATE_UNSAVED` and `SETUP_TEMPLATES_UNAVAILABLE`. Their nested `details.reason`, the `reason` that `plugins` reports for each plugin and `error.details.reason` of the `PLUGIN_UNAVAILABLE` failure are each `{code, message, details?}` in the response language, and `code` is one of `PLUGIN_LISTED_DISABLED`, `PLUGIN_NOT_ENABLED`, `PLUGIN_SKIPPED`, `PLUGIN_ID_RESERVED`, `PLUGIN_SETTINGS_INVALID`, `PLUGIN_PROVIDER_UNAVAILABLE`, `PLUGIN_PROVIDER_DISABLED`, `PLUGIN_PROVIDER_MISSING` or `PLUGIN_MISSING`.
+
+Core plugins: `BACKLOG_SYNC_LOCK_LEFT` (`backlog`: a sync lock no longer carried this run's token and was left in place; `details.lock`) and `CLAUDE_NOTIFICATION_FAILED` (`claude`: a `claude.*` lifecycle event could not be emitted; `details.event`, `details.diagnostic`).

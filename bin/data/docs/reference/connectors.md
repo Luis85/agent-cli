@@ -43,7 +43,7 @@ Connection ids are lowercase kebab-case; a view binds to one with the view optio
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `platform` | required | The connector platform, for example `azure-devops` |
-| `tokenEnv` | the platform's (`AZURE_DEVOPS_EXT_PAT`) | The environment variable that holds the access token. Forge sends that variable's value to the profile's organization, so treat both as trusted configuration (see below) |
+| `tokenEnv` | the platform's (`AZURE_DEVOPS_EXT_PAT`) | The environment variable that holds the access token: `PAT`, `TOKEN` or a name ending in `_PAT` or `_TOKEN`, so a profile cannot pick an unrelated secret such as `AWS_SECRET_ACCESS_KEY`. Forge sends that variable's value to the profile's organization, so treat both as trusted configuration (see below) |
 | `linkProperty` | the platform's (`azure-devops`) | The frontmatter key that holds the remote item's URL. Give each connection its own key when one note can sync on several connections |
 | `effortProperty` | `effort` | The frontmatter key of the effort or story points (a number) |
 | `areaProperty` | `area` | The frontmatter key of the area path; a note without it is in the connection's default area |
@@ -54,7 +54,7 @@ Connection ids are lowercase kebab-case; a view binds to one with the view optio
 
 Shared fields are validated when the configuration loads (`INVALID_CONFIG`); platform fields when the connection is used (`CONNECTION_INVALID` with `details.issues`). Secrets are never stored in configuration or notes: the token is read from the variable only when a request needs it, sent only in the request's `Authorization` header and removed from every error message.
 
-Connection profiles are trusted configuration: whoever can edit `bin/config.json` decides which environment variable is read and which host receives it. A profile could name any variable (a cloud credential, another service's token) and an organization URL on any host. Review `tokenEnv` and `organization` in shared or downloaded configuration before running a sync; `connectors list` warns about organization hosts a platform does not expect (`warnings`).
+Connection profiles are trusted configuration: whoever can edit `bin/config.json` decides which environment variable is read and which host receives it. So a connector sends a token only to the hosts its platform expects. For Azure DevOps these are `dev.azure.com`, `*.visualstudio.com` and loopback (`localhost`, `127.0.0.1`, `[::1]`). Any other organization host, such as an Azure DevOps Server, must be listed in the environment variable `FORGE_CONNECTOR_ALLOWED_HOSTS` (comma-separated host names, case-insensitive) of the user who runs Forge, outside the shared configuration. Until then `connectors test`, `backlog sync` and every other request fail with `CONNECTION_INVALID` (`details.host`, `details.issues`) before any request is sent, and `connectors list` warns about the host (`warnings`). Still review `tokenEnv` and `organization` in shared or downloaded configuration before running a sync.
 
 ## The `connectors` command
 
@@ -99,7 +99,7 @@ interface BacklogConnector {
 - `RemoteDraft` and `RemotePatch` carry the same neutral fields (`parentId`, `dependencies`, …); `null` clears a field (an iteration or area falls back to the connection's default).
 - `create` returns the item as stored, so the sync engine takes defaults and rules the platform applied from it. A platform that creates items in an initial state follows up with an update to the drafted state; if that fails, `create` still returns the created item rather than failing, so its id is never lost.
 - `update` must apply the patch only while the item is still at `expectedRev` and otherwise fail with `details.reason: "stale-revision"`. When it cannot confirm that its link changes landed as planned (links changed on the other end without a new revision), it fails with `details.reason: "relations-changed"` although the patch was applied; the backlog then treats the item's `parent` and `dependencies` as unconfirmed.
-- Errors carry the codes `CONNECTOR_AUTH_FAILED` (with `details.tokenEnv`) and `CONNECTOR_REQUEST_FAILED` (with `details.status`) and never the token.
+- Errors carry the codes `CONNECTOR_AUTH_FAILED` (with `details.tokenEnv`) and `CONNECTOR_REQUEST_FAILED` (with `details.status`) and never the token. A connector refuses a host its platform does not expect, unless the user allow-listed it, with `CONNECTION_INVALID` before reading the token.
 - Core connectors use the kernel `HttpClient` port: global `fetch` with a per-attempt timeout (30 s) and up to three retries of 429 and 503 responses, waiting for `Retry-After` (seconds or an HTTP date, capped at 60 s) or backing off from one second. Only repeatable requests are retried: `GET`, and requests the connector marks `retry: true` (a read-only `POST` or a `PATCH` guarded by the item's revision); a create is never retried, so throttling cannot create a duplicate. Redirects are not followed, so the token only reaches the configured host.
 
 The neutral fields are `title`, `type`, `state`, `parent`, `dependencies`, `iteration`, `area`, `priority`, `effort`, `tags` and `description`, plus `property:<key>` for mapped properties. How the backlog compares and writes them is described in [sync](backlog.md#fields-and-the-three-way-comparison).

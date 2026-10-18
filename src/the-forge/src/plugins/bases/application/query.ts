@@ -1,5 +1,6 @@
 import { ensure } from '../../../domain/shared/errors.ts';
 import { vaultPath } from '../../../domain/documents/file.ts';
+import { ensureBases } from '../domain/errors.ts';
 
 export interface BasesQueryOptions { view?: string; context?: string; limit?: number }
 /**
@@ -19,7 +20,6 @@ export interface BasesQueryResult {
   total: number;
   /** Indexing warnings over every file of the scope, in vault path order. */
   warnings: BaseIndexWarning[];
-  compatibility: Record<string, unknown>;
 }
 export interface BasesQueryEngine {
   query(path: string, options: BasesQueryOptions): Promise<BasesQueryResult>;
@@ -31,8 +31,8 @@ export class Bases {
   async query(path: string, options: BasesQueryOptions = {}): Promise<BasesQueryResult> {
     path = vaultPath(path);
     ensure(path.endsWith('.base'), 'INVALID_BASE', 'A repository definition must be a native .base file.');
-    ensure(options.limit === undefined || (Number.isSafeInteger(options.limit) && options.limit >= 0), 'INVALID_BASE_QUERY', 'Query limit must be a nonnegative safe integer.');
-    ensure(options.view === undefined || options.view.trim().length > 0, 'INVALID_BASE_QUERY', 'View name cannot be empty.');
+    ensureBases(options.limit === undefined || (Number.isSafeInteger(options.limit) && options.limit >= 0), 'INVALID_BASE_QUERY', 'Query limit must be a nonnegative safe integer.');
+    ensureBases(options.view === undefined || options.view.trim().length > 0, 'INVALID_BASE_QUERY', 'View name cannot be empty.');
     const context = options.context === undefined ? path : vaultPath(options.context);
     return this.engine.query(path, { ...options, context });
   }

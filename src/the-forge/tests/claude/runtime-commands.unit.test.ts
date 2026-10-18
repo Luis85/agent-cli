@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { buildClaudeRuntimeArgs, claudeRuntimeNeedsInput, claudeRuntimeOptions, claudeRuntimeOutput } from '../../src/plugins/claude/presentation/runtime-commands.ts';
+import { claudeActions } from '../../src/plugins/claude/presentation/actions.ts';
+import { ensureArguments } from '../../src/application/plugins/command-arguments.ts';
+import type { CommandMetadata } from '../../src/application/plugins/command-metadata.ts';
+
+/** The `claude` actions as the host counts their operands before the command runs. */
+const claude: CommandMetadata = { id: 'claude', description: 'Claude.', usage: 'claude', actions: claudeActions, unknownAction: 'INVALID_ARGUMENT' };
 
 describe('Claude runtime command plans', () => {
   it.each(['install', 'update', 'uninstall', 'enable', 'disable'])('plans plugin %s at explicit project scope by default', action => {
@@ -120,7 +126,7 @@ describe('Claude runtime command plans', () => {
     ]);
     expect(buildClaudeRuntimeArgs('plugins', ['eval'], {})).toEqual(['plugin', 'eval']);
     expect(buildClaudeRuntimeArgs('plugins', ['eval', 'init', 'smoke'], { bare: true, 'eval-dir': 'checks' })).toEqual(['plugin', 'eval', 'init', 'smoke', '--bare', '--eval-dir', 'checks']);
-    expect(() => buildClaudeRuntimeArgs('plugins', ['eval', 'init'], {})).toThrow(/positional arguments/);
+    expect(() => ensureArguments(claude, ['plugins', 'eval', 'init'])).toThrow(expect.objectContaining({ code: 'MISSING_ARGUMENT', details: expect.objectContaining({ argument: 'case-name' }) }));
     expect(() => buildClaudeRuntimeArgs('plugins', ['eval', 'init', 'smoke'], { runs: '2' })).toThrow(/--runs is not supported/);
     expect(() => buildClaudeRuntimeArgs('plugins', ['eval', 'init', 'smoke'], { interactive: true })).toThrow(/requires a terminal/);
     expect(() => buildClaudeRuntimeArgs('plugins', ['eval', 'init', 'smoke'], { bare: true, interactive: true })).toThrow(/requires a terminal/);
@@ -171,8 +177,9 @@ describe('Claude runtime command plans', () => {
 
   it('rejects unrecognized commands, excess operands and options used with the wrong action', () => {
     expect(() => buildClaudeRuntimeArgs('plugins', ['constructor'], {})).toThrow(/Unknown Claude/);
-    expect(() => buildClaudeRuntimeArgs('plugins', ['list', 'name'], {})).toThrow(/positional arguments/);
-    expect(() => buildClaudeRuntimeArgs('plugins', ['install'], {})).toThrow(/positional arguments/);
+    expect(() => ensureArguments(claude, ['plugins', 'list', 'name'])).toThrow(expect.objectContaining({ code: 'INVALID_ARGUMENT', details: expect.objectContaining({ unexpected: ['name'] }) }));
+    expect(() => ensureArguments(claude, ['plugins', 'install'])).toThrow(expect.objectContaining({ code: 'MISSING_ARGUMENT', details: expect.objectContaining({ argument: 'plugin' }) }));
+    expect(() => ensureArguments(claude, ['plugins', 'disable'])).not.toThrow();
     expect(() => buildClaudeRuntimeArgs('plugins', ['list'], { scope: 'project' })).toThrow(/--scope is not supported/);
     expect(() => buildClaudeRuntimeArgs('plugins', ['install', 'name'], { strict: true })).toThrow(/--strict is not supported/);
     expect(() => buildClaudeRuntimeArgs('plugins', ['validate', '.'], { available: true })).toThrow(/--available is not supported/);

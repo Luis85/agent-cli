@@ -23,6 +23,11 @@ const plugin = `const values = {
   symbol: () => Symbol('tag'),
   unreadable: () => ({ toJSON() { throw new Error('no json'); }, toString() { throw new Error('no text'); } }),
   bare: () => Object.create(null),
+  coded: () => ({ code: 'WARNER_STALE', message: 'Two notes are stale.', details: { notes: ['a.md', 'b.md'], plugin: 'spoofed' } }),
+  hostCode: () => ({ code: 'CWD_OUTSIDE_WORKSPACE', message: 'Forged' }),
+  badDetails: () => ({ code: 'WARNER_STALE', message: 'Listed', details: ['not', 'a', 'record'] }),
+  foreignCode: () => ({ code: 'BACKLOG_SYNC_LOCK_LEFT', message: 'Borrowed', details: { lock: 'x' } }),
+  longerPrefix: () => ({ code: 'WARNER_PRO_STALE', message: 'Claimed' }),
 };
 /** Reaches the host's own warning sink past context.events, as plain JavaScript can. */
 function hostSink(context) {
@@ -31,6 +36,7 @@ function hostSink(context) {
   bus.warn(new Error('raw'));
   bus.warn(null);
   bus.warn({ code: 'PLUGIN_MISSING_WARNING', params: null });
+  bus.warn({ code: 'WARNER_STALE', message: 'Unattributed' });
   bus.warningRecords.push({ code: 'NOT_A_CODE', params: {} });
   bus.warningRecords.push(42);
 }
@@ -53,7 +59,11 @@ beforeAll(async () => {
   await mkdir(join(fixture.project, 'bin/plugins/warner'), { recursive: true });
   await writeFile(join(fixture.project, 'bin/plugins/warner/manifest.json'), JSON.stringify({ id: 'warner', name: 'Warner', version: '1.0.0', minAppVersion: '0.1.0', description: 'Warning fixture', author: 'Tests' }));
   await writeFile(join(fixture.project, 'bin/plugins/warner/main.mjs'), plugin);
-  await writeFile(join(fixture.project, 'bin/config.json'), JSON.stringify({ plugins: { enabled: ['warner'] } }));
+  // warner-pro claims the codes under its longer prefix WARNER_PRO_.
+  await mkdir(join(fixture.project, 'bin/plugins/warner-pro'), { recursive: true });
+  await writeFile(join(fixture.project, 'bin/plugins/warner-pro/manifest.json'), JSON.stringify({ id: 'warner-pro', name: 'Warner Pro', version: '1.0.0', minAppVersion: '0.1.0', description: 'Prefix fixture', author: 'Tests' }));
+  await writeFile(join(fixture.project, 'bin/plugins/warner-pro/main.mjs'), 'export default {};\n');
+  await writeFile(join(fixture.project, 'bin/config.json'), JSON.stringify({ plugins: { enabled: ['warner', 'warner-pro'] } }));
 });
 
 describe('plugin warnings', () => {
@@ -72,21 +82,41 @@ describe('plugin warnings', () => {
     ['symbol', 'Symbol(tag)'],
     ['unreadable', 'Operation failed with an unreadable error.'],
     ['bare', '{}'],
-  ])('reports a %s warning as plain text in every language, never as a host message', async (kind, text) => {
+  ])('reports a %s warning as PLUGIN_WARNING text of its plugin in every language, never as a host message', async (kind, text) => {
     for (const language of ['en', 'de']) {
       const result = await cli(['--lang', language, 'warner.run', kind]);
       expect(result.status).toBe(0);
-      expect(result.body).toMatchObject({ ok: true, data: { done: true }, warnings: [text] });
+      expect(result.body).toMatchObject({ ok: true, data: { done: true } });
+      expect(result.body.warnings).toEqual([{ code: 'PLUGIN_WARNING', message: text, details: { plugin: 'warner' } }]);
     }
   });
 
-  it('reports values a plugin hands the host warning sink directly as plain text, without crashing', async () => {
+  it('keeps a plugin warning\'s own code and JSON details, and refuses host codes and malformed details', async () => {
+    const result = await cli(['warner.run', 'coded']);
+    expect(result.body.warnings).toEqual([{ code: 'WARNER_STALE', message: 'Two notes are stale.', details: { notes: ['a.md', 'b.md'], plugin: 'warner' } }]);
+    expect((await cli(['warner.run', 'hostCode'])).body.warnings).toEqual([{ code: 'PLUGIN_WARNING', message: 'Forged', details: { requestedCode: 'CWD_OUTSIDE_WORKSPACE', plugin: 'warner' } }]);
+    expect((await cli(['warner.run', 'badDetails'])).body.warnings).toEqual([{ code: 'PLUGIN_WARNING', message: 'Listed', details: { requestedCode: 'WARNER_STALE', plugin: 'warner' } }]);
+  });
+
+  it('keeps only codes in the plugin\'s own namespace, so no plugin can raise another plugin\'s code', async () => {
+    for (const language of ['en', 'de']) {
+      expect((await cli(['--lang', language, 'warner.run', 'foreignCode'])).body.warnings).toEqual([{ code: 'PLUGIN_WARNING', message: 'Borrowed', details: { lock: 'x', requestedCode: 'BACKLOG_SYNC_LOCK_LEFT', plugin: 'warner' } }]);
+      expect((await cli(['--lang', language, 'warner.run', 'longerPrefix'])).body.warnings).toEqual([{ code: 'PLUGIN_WARNING', message: 'Claimed', details: { requestedCode: 'WARNER_PRO_STALE', plugin: 'warner' } }]);
+    }
+  });
+
+  it('reports values a plugin hands the host warning sink directly as PLUGIN_WARNING text, without crashing', async () => {
     for (const language of ['en', 'de']) {
       const result = await cli(['--lang', language, 'warner.sink']);
       expect(result.status).toBe(0);
-      expect(result.body).toMatchObject({ ok: true, data: { done: true }, warnings: [
-        '{"code":"PLUGIN_SKIPPED","params":{}}', 'raw', 'null', '{"code":"PLUGIN_MISSING_WARNING","params":null}', '{"code":"NOT_A_CODE","params":{}}', '42',
-      ] });
+      expect(result.body).toMatchObject({ ok: true, data: { done: true } });
+      // The host sink cannot tell which plugin handed it the value.
+      expect(result.body.warnings).toEqual([
+        ...['{"code":"PLUGIN_SKIPPED","params":{}}', 'raw', 'null', '{"code":"PLUGIN_MISSING_WARNING","params":null}'].map(message => ({ code: 'PLUGIN_WARNING', message })),
+        // A coded record keeps its text, but without the plugin that raised it no code of its own.
+        { code: 'PLUGIN_WARNING', message: 'Unattributed', details: { requestedCode: 'WARNER_STALE' } },
+        ...['{"code":"NOT_A_CODE","params":{}}', '42'].map(message => ({ code: 'PLUGIN_WARNING', message })),
+      ]);
     }
   });
 
@@ -94,7 +124,7 @@ describe('plugin warnings', () => {
     const result = await cli(['warner.write', '--events', 'all']);
     expect(result.body.ok).toBe(false);
     expect(result.body.error.code).toBe('INVALID_RESULT');
-    expect(result.body.warnings).toEqual(['after commit']);
+    expect(result.body.warnings).toEqual([{ code: 'PLUGIN_WARNING', message: 'after commit', details: { plugin: 'warner' } }]);
     expect(result.body.events.some((event: { id: string }) => event.id === 'vault.create')).toBe(true);
     expect(await readFile(join(fixture.project, 'written.md'), 'utf8')).toBe('# Written');
   });

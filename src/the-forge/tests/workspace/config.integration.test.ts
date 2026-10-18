@@ -36,11 +36,18 @@ describe('Forge configuration', () => {
   });
   it('uses defaults for an explicitly selected environment without importing the source config', async () => {
     await writeFile(configPath(), JSON.stringify({ paths: { projects: 'source-projects' }, settings: { dryRun: true } }));
+    await mkdir(join(root, 'fresh-environment'));
     const result = await load({ root: 'fresh-environment' });
     expect(result.root).toBe(join(root, 'fresh-environment'));
     expect(result.path).toBeNull();
     expect(result.config.paths).toEqual({ projects: 'projects' });
     expect(result.config.settings.dryRun).toBe(false);
+  });
+  it('rejects a selected root that does not exist or is not a directory with INVALID_ROOT', async () => {
+    await writeFile(join(root, 'note.md'), 'text');
+    for (const selected of ['missing-environment', 'note.md']) {
+      await expect(load({ root: selected })).rejects.toMatchObject({ code: 'INVALID_ROOT', exitCode: 3, details: { root: join(root, selected) } });
+    }
   });
   it('does not fall back to source defaults when the selected environment config is invalid', async () => {
     const target = join(root, 'invalid-environment');
@@ -69,6 +76,11 @@ describe('Forge configuration', () => {
   it('rejects the moved ui section', async () => {
     await writeFile(configPath(), JSON.stringify({ ui: { framework: 'react' } }));
     await expect(load()).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
+  });
+  // A device-named plugin folder is no vault path: enabling one used to fail every command, --no-plugins too, with INVALID_PATH.
+  it.each(['con', 'nul', 'com1', 'lpt9'])('rejects the Windows device name %s as an enabled plugin id', async id => {
+    await writeFile(configPath(), JSON.stringify({ plugins: { enabled: ['quality', id] } }));
+    await expect(load()).rejects.toMatchObject({ code: 'INVALID_CONFIG', message: 'plugins.enabled.1: A Windows reserved device name cannot be a plugin id.' });
   });
   it('reports malformed JSON as configuration failure', async () => {
     await writeFile(configPath(), '{oops'); await expect(load()).rejects.toMatchObject({ code: 'INVALID_CONFIG' });

@@ -47,18 +47,31 @@ describe('literal find/replace outcomes', () => {
     expect(failure('First line\r\nSecond line', 'First line\nSecond line')).toMatchObject({ code: 'NO_MATCH' });
   });
 
+  it('names the line endings and the closest line of a missing find text', () => {
+    const crlf = failure('# Plan\r\n  Ship  IT soon\r\n', 'ship it soon\nlater') as unknown as Error & { details: unknown };
+    expect(crlf.details).toEqual({ find: 'ship it soon\nlater', matches: 0, lineEndings: 'crlf', nearMatch: { line: 2, text: '  Ship  IT soon' } });
+    expect(crlf.message).toContain('The file has CRLF line endings, but the find text has LF.');
+    expect(failure('a\nb\r\n', 'zzz').details).toEqual({ find: 'zzz', matches: 0, lineEndings: 'mixed' });
+    expect(failure('one line', 'other').details).toMatchObject({ lineEndings: 'none' });
+    expect(failure(`${'x'.repeat(100)} target\n`, 'TARGET!').details).toMatchObject({ lineEndings: 'lf' });
+    expect(failure(`target ${'x'.repeat(100)}\n`, ' Target ').details).toMatchObject({ nearMatch: { line: 1, text: `target ${'x'.repeat(72)}…` } });
+  });
+
   it('reports several matches as AMBIGUOUS_EDIT with the 1-based line of each match start', () => {
     expect(failure('banana', 'ana')).toMatchObject({ code: 'AMBIGUOUS_EDIT', exitCode: 2, details: { matches: 2, lines: [1, 1] } });
     expect(failure('one\r\ntodo\nthree\n\ntodo todo', 'todo')).toMatchObject({ details: { matches: 3, lines: [2, 5, 5] } });
     // A match starting with a line feed starts on the line that the line feed ends.
     expect(failure('a\nb\na\nb\na', '\na')).toMatchObject({ details: { matches: 2, lines: [2, 4] } });
     expect(failure('x\nx\n', 'x\n')).toMatchObject({ details: { matches: 2, lines: [1, 2] } });
+    // Each matching line appears once among the snippets, without its line ending.
+    expect(failure('one\r\ntodo\nthree\n\ntodo todo', 'todo').details).toMatchObject({ snippets: [{ line: 2, text: 'todo' }, { line: 5, text: 'todo todo' }] });
   });
 
   it('caps reported lines while counting every match', () => {
     const text = Array.from({ length: 30 }, () => 'item').join('\n');
     const error = failure(text, 'item');
-    expect(error.details).toEqual({ matches: 30, lines: Array.from({ length: reportedMatchLines }, (_, index) => index + 1) });
+    const lines = Array.from({ length: reportedMatchLines }, (_, index) => index + 1);
+    expect(error.details).toEqual({ matches: 30, lines, snippets: lines.map(line => ({ line, text: 'item' })) });
   });
 
   it('counts a line feed at the very start of the text', () => {

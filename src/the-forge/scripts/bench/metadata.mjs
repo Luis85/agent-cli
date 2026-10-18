@@ -75,6 +75,7 @@ function run(forge, root, args) {
   const result = spawnSync(process.execPath, ['--require', join(root, 'bin', 'cpu-probe.cjs'), forge, '--root', root, ...args, '--json'], { encoding: 'utf8', maxBuffer: 1 << 30 });
   const ms = Number(process.hrtime.bigint() - start) / 1e6;
   const cpuMs = Number(/forge-bench-cpu (\d+)/.exec(result.stderr)?.[1] ?? Number.NaN);
+  /** @type {{ ok: true, warnings: number } | { ok: false, error: string }} */
   let outcome;
   try {
     const body = JSON.parse(result.stdout);
@@ -125,7 +126,7 @@ function main() {
         command: args.join(' '), coldMs: cold.ms, coldCpuMs: cold.cpuMs, warmMs: warm.map(item => item.ms), warmMedianMs: median(warm.map(item => item.ms)),
         warmCpuMs: warm.map(item => item.cpuMs), warmMedianCpuMs: median(warm.map(item => item.cpuMs)),
         warmCacheRewrites: rewrites, ok: cold.ok && warm.every(item => item.ok) && rewrites === 0,
-        ...(cold.ok ? { warnings: cold.warnings } : { error: cold.error }),
+        ...('warnings' in cold ? { warnings: cold.warnings } : { error: cold.error }),
         ...(rewrites > 0 ? { error: `${rewrites} warm run(s) rewrote the metadata cache, so they were not warm.` } : {}),
       };
     });

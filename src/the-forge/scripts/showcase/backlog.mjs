@@ -51,7 +51,10 @@ views:
     releaseNotesFolder: backlog/release-notes
 `;
 
-/** Items in creation order: type, title and parent. Each lands in its type folder at the end of its siblings. */
+/**
+ * Items in creation order: type, title and parent. Each lands in its type folder at the end of its siblings.
+ * @type {Array<[type: string, title: string, parent?: string]>}
+ */
 const items = [
   ['Epic', 'Trip planning'],
   ['Epic', 'Group sharing'],

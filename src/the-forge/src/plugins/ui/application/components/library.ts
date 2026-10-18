@@ -1,4 +1,5 @@
-import { forgeError, AppError, ensure } from '../../../../domain/shared/errors.ts';
+import { ensure } from '../../../../domain/shared/errors.ts';
+import { isNotFound } from '../../../../domain/shared/not-found.ts';
 import { vaultPath, ensureSeparateDirectories, type WriteRequest } from '../../../../domain/documents/file.ts';
 import { uiFrameworks, type UiDefinition, type UiFramework } from '../../domain/components/definition.ts';
 import type { InteractionDefinition } from '../../domain/interactions/definition.ts';
@@ -7,6 +8,7 @@ import { uiVoidTags } from '../../domain/components/syntax.ts';
 import { selectUiComponents, validateUiLibrary } from '../../domain/components/library.ts';
 import type { Workspace } from '../../../../application/workspace/workspace.ts';
 import { GenerationService } from '../../../../application/generation/plans.ts';
+import { ensureUi, uiError } from '../../domain/errors.ts';
 
 export interface UiDefinitionCodec {
   parse(bytes: Uint8Array, path: string): UiDefinition;
@@ -20,9 +22,12 @@ export interface UiRenderer {
   componentPaths?(definitions: readonly UiDefinition[], options: UiRenderOptions): readonly string[];
 }
 
-/** All writes, including imports and generated artifacts, use workspace revision policy. */
+/**
+ * All writes, including imports and generated artifacts, use workspace revision policy. Commands that do not generate
+ * validate the files that `framework`, the default UI target, would generate.
+ */
 export class UiLibrary {
-  constructor(private readonly workspace: Workspace, private readonly codec: UiDefinitionCodec, private readonly catalog: readonly UiDefinition[], private readonly renderer?: UiRenderer, private readonly interactionSource?: InteractionSource, private readonly interactionDirectory = 'interactions') {}
+  constructor(private readonly workspace: Workspace, private readonly codec: UiDefinitionCodec, private readonly catalog: readonly UiDefinition[], private readonly renderer?: UiRenderer, private readonly interactionSource?: InteractionSource, private readonly interactionDirectory = 'interactions', private readonly framework: UiFramework = 'html') {}
 
   async list(directory: string, interactionDirectory?: string): Promise<UiDefinition[]> {
     const definitions = await this.discover(directory); await this.validateDefinitions(definitions, interactionDirectory); return definitions;
@@ -31,7 +36,7 @@ export class UiLibrary {
     const sources = await this.sources(directory);
     await this.validateDefinitions(sources.map(source => source.definition), interactionDirectory);
     const source = sources.find(candidate => candidate.definition.id === id);
-    ensure(source, 'UNKNOWN_UI_COMPONENT', `No component ${id} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
+    ensureUi(source, 'UNKNOWN_UI_COMPONENT', `No component ${id} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
     return { ...source.definition, revision: source.revision, bytes: source.bytes.length };
   }
   async validate(directory: string, interactionDirectory?: string) {
@@ -58,7 +63,7 @@ export class UiLibrary {
     vaultPath(sourceDirectory); vaultPath(directory);
     ensureSeparateDirectories(sourceDirectory, directory);
     const sources = await this.sources(sourceDirectory), imported = sources.map(source => source.definition), existing = await this.discover(directory);
-    ensure(imported.length, 'EMPTY_UI_LIBRARY', `No component definitions in ${sourceDirectory}.`);
+    ensureUi(imported.length, 'EMPTY_UI_LIBRARY', `No component definitions in ${sourceDirectory}.`);
     await this.validateDefinitions([...existing, ...imported], interactionDirectory);
     const plan = sources.map(({ definition, bytes }) => ({ path: `${directory}/${definition.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
     return { components: imported.map(definition => definition.id), ...await this.commit(plan) };
@@ -68,9 +73,9 @@ export class UiLibrary {
     ensureSeparateDirectories(directory, outputDirectory);
     const sources = await this.sources(directory), definitions = sources.map(source => source.definition);
     const interactions = await this.interactions(interactionDirectory);
-    validateUiLibrary(definitions, interactions);
+    validateUiLibrary(definitions, interactions, this.framework);
     // Export into a library only when the combined destination graph remains valid.
-    validateUiLibrary([...await this.discover(outputDirectory), ...definitions], interactions);
+    validateUiLibrary([...await this.discover(outputDirectory), ...definitions], interactions, this.framework);
     const plan = sources.map(({ definition, bytes }) => ({ path: `${outputDirectory}/${definition.sourcePath.slice(directory.length + 1)}`, bytes }));
     return { components: definitions.map(definition => definition.id), ...await this.commit(plan) };
   }
@@ -83,28 +88,28 @@ export class UiLibrary {
   }
   async check(directory: string, options: UiGenerateOptions) {
     ensure(options.revisions === undefined, 'INVALID_GENERATION_PLAN', 'Checks do not accept regeneration revisions.');
-    return { framework: options.framework, ...await new GenerationService(this.workspace).check(await this.render(directory, options), 'UI_DRIFT') };
+    return { framework: options.framework, ...await new GenerationService(this.workspace).check(await this.render(directory, options), (message, details) => uiError('UI_DRIFT', message, details)) };
   }
 
   private async render(directory: string, options: UiGenerateOptions): Promise<readonly WriteRequest[]> {
-    ensure(this.renderer, 'UI_RENDERER_UNAVAILABLE', 'No UI renderer is configured.');
-    ensure(uiFrameworks.includes(options.framework), 'INVALID_UI_FRAMEWORK', `Unknown framework ${options.framework}.`);
+    ensureUi(this.renderer, 'UI_RENDERER_UNAVAILABLE', 'No UI renderer is configured.');
+    ensureUi(uiFrameworks.includes(options.framework), 'INVALID_UI_FRAMEWORK', `Unknown framework ${options.framework}.`);
     vaultPath(options.outputDirectory); if (options.storiesDirectory) vaultPath(options.storiesDirectory);
-    ensure(!(options.storybook || options.storiesOnly) || options.storiesDirectory, 'INVALID_UI', 'Storybook generation requires a stories directory.');
+    ensureUi(!(options.storybook || options.storiesOnly) || options.storiesDirectory, 'INVALID_UI', 'Storybook generation requires a stories directory.');
     const interactions = await this.interactions(options.interactionDirectory);
     let definitions = await this.discover(directory);
-    validateUiLibrary(definitions, interactions);
-    ensure(definitions.length, 'EMPTY_UI_LIBRARY', `No component definitions in ${directory}. Run components init --library ${directory}, or add a Markdown component definition.`);
-    if (options.component) ensure(definitions.some(definition => definition.id === options.component), 'UNKNOWN_UI_COMPONENT', `No component ${options.component} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
+    validateUiLibrary(definitions, interactions, options.framework);
+    ensureUi(definitions.length, 'EMPTY_UI_LIBRARY', `No component definitions in ${directory}. Run components init --library ${directory}, or add a Markdown component definition.`);
+    if (options.component) ensureUi(definitions.some(definition => definition.id === options.component), 'UNKNOWN_UI_COMPONENT', `No component ${options.component} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
     if (options.component) definitions = selectUiComponents(definitions, options.component);
     for (const definition of definitions) if ((options.storybook || options.storiesOnly) && definition.storybook?.extension) {
       try { await this.workspace.files.read(definition.storybook.extension); }
-      catch (error) { if (error instanceof AppError && error.code === 'NOT_FOUND') throw forgeError('INVALID_UI', `Missing Storybook extension ${definition.storybook.extension}.`); throw error; }
+      catch (error) { if (isNotFound(error)) throw uiError('INVALID_UI', `Missing Storybook extension ${definition.storybook.extension}.`); throw error; }
     }
     const ids = new Set(definitions.flatMap(componentInteractionIds));
     const renderOptions: UiRenderOptions = { ...options, interactions: interactions.filter(interaction => ids.has(interaction.id)) };
     if (options.storiesOnly) {
-      ensure(this.renderer.componentPaths, 'UI_RENDERER_UNAVAILABLE', 'Standalone stories require a renderer with component artifact paths.');
+      ensureUi(this.renderer.componentPaths, 'UI_RENDERER_UNAVAILABLE', 'Standalone stories require a renderer with component artifact paths.');
       for (const path of this.renderer.componentPaths(definitions, renderOptions)) await this.workspace.files.read(path);
     }
     return this.renderer.generate(definitions, renderOptions);
@@ -114,7 +119,7 @@ export class UiLibrary {
     return this.interactionSource ? this.interactionSource.list(directory) : [];
   }
   private async validateDefinitions(definitions: readonly UiDefinition[], interactionDirectory?: string): Promise<void> {
-    validateUiLibrary(definitions, await this.interactions(interactionDirectory));
+    validateUiLibrary(definitions, await this.interactions(interactionDirectory), this.framework);
   }
   private async discover(directory: string): Promise<UiDefinition[]> {
     return (await this.sources(directory)).map(source => source.definition);

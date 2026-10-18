@@ -7,6 +7,7 @@ import { validateBaseFile } from './application/validation.ts';
 import { baseDefinitionIssues } from './infrastructure/validation.ts';
 import { basesStrings } from './presentation/strings.ts';
 import { localizedQuery } from './presentation/messages.ts';
+import { basesErrors } from './presentation/errors.ts';
 
 /**
  * The `bases` core plugin: native Obsidian `.base` views evaluated as file repositories over the command scope's
@@ -32,6 +33,7 @@ export const basesPlugin: CorePlugin = {
         'bases.query': { query: async (context: CommandContext, path: string, options: { view?: string }) => localizedQuery(await bases(context).query(path, options), context.language) },
         'bases.validation': { validate: (context: CommandContext, path: string) => validateBaseFile(context.workspace.files, context.workspace.codec, baseDefinitionIssues, path) },
       },
+      errors: basesErrors,
       strings: {
         de: {
           commands: { bases: 'Native Obsidian-Bases-Ansichten ohne laufendes Obsidian als Datei-Repositories abfragen.' },

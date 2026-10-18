@@ -1,19 +1,92 @@
 import { ensure } from '../shared/errors.ts';
 
-/** Reserved names also cover case-insensitive filesystems and Windows trailing-dot/space aliases. */
+/** The workspace writer lock's file name at a workspace (or nested) root. */
+export const writerLockName = '.agent-cli.lock';
+/** The prefix of Forge's temporary files: staged writes, parked removals, lock records and break guards. */
+export const temporaryPrefix = '.agent-cli-tmp-';
+/** Code points HFS+ ignores in names: zero-width and directional marks, word joiners and the byte order mark. */
+const ignorable = /[\u200b-\u200f\u202a-\u202e\u2060-\u2063\ufeff]/g;
+/** A name as case-insensitive filesystems, Windows trailing-dot/space aliases and HFS+ ignorable code points resolve it. */
+const canonicalName = (segment: string) => segment.replace(ignorable, '').toLowerCase().replace(/[. ]+$/, '');
+/**
+ * Whether `canonical` has the shape of a Windows 8.3 short name of `name`: its first six name characters without
+ * dots or spaces, `~` and a number, and any extension (`GIT~1` for `.git`, `AGENT-~1.LOC` for the lock).
+ */
+function shortAlias(canonical: string, name: string): boolean {
+  const long = name.replace(/^\.+/, ''), dot = long.lastIndexOf('.');
+  const base = (dot > 0 ? long.slice(0, dot) : long).replace(/[. ]/g, '').slice(0, 6);
+  const tilde = canonical.lastIndexOf('~'), extension = canonical.indexOf('.', tilde);
+  const number = canonical.slice(tilde + 1, extension < 0 ? undefined : extension);
+  return tilde > 0 && canonical.slice(0, tilde) === base && /^\d+$/.test(number);
+}
+/**
+ * Whether `segment` names `name` (lower case) on some filesystem: in another letter case, with trailing dots or
+ * spaces (Windows), with ignorable code points (HFS+), or as a Windows 8.3 short name.
+ */
+export function aliasesName(segment: string, name: string): boolean {
+  const canonical = canonicalName(segment);
+  return canonical === name || shortAlias(canonical, name);
+}
+
+/** Reserved names also cover case-insensitive filesystems, Windows trailing-dot/space and short-name aliases and HFS+ ignorable code points. */
 export function reservedPathSegment(segment: string): 'git' | 'internal' | undefined {
-  const name = segment.toLowerCase().replace(/[. ]+$/, '');
-  if (name === '.git') return 'git';
-  if (name === '.agent-cli.lock' || name.startsWith('.agent-cli-tmp-')) return 'internal';
+  if (aliasesName(segment, '.git')) return 'git';
+  // Temporary names share the lock's short name shape (`AGENT-~N`).
+  if (aliasesName(segment, writerLockName) || canonicalName(segment).startsWith(temporaryPrefix)) return 'internal';
   return undefined;
+}
+
+/**
+ * Windows device names: a file named like one, with any extension, opens the device instead on Windows. Windows also
+ * reserves COM and LPT with the superscript digits ¹, ² and ³, and the console devices CONIN$ and CONOUT$.
+ */
+const deviceNames = /^(?:con|prn|aux|nul|conin\$|conout\$|com[1-9¹²³]|lpt[1-9¹²³])$/;
+/**
+ * Whether `segment` is a Windows reserved device name in any letter case, alone or with an extension, and with
+ * trailing dots or spaces before or after the extension (`con`, `NUL.md`, `Com1 .txt`, `lpt9.tar.gz.`).
+ */
+export function isDeviceName(segment: string): boolean {
+  const base = segment.replace(ignorable, '').split('.')[0]!;
+  return deviceNames.test(base.toLowerCase().replace(/ +$/, ''));
+}
+
+/** A path as case-insensitive filesystems and Windows resolve it. */
+export const canonicalPath = (path: string) => path.split('/').map(canonicalName).join('/');
+
+/**
+ * A relative path that one operation writes and some filesystem cannot: a segment is a Windows device name
+ * (`device-name`, with that `segment`), or the path names the same file as the earlier `duplicateOf` where letter
+ * case and trailing dots are ignored, as on Windows and macOS (`case-duplicate`).
+ */
+export type PortablePathIssue =
+  | { path: string; reason: 'device-name'; segment: string }
+  | { path: string; reason: 'case-duplicate'; duplicateOf: string };
+
+/**
+ * Problems of the relative paths one operation writes, in their given order, so definitions that generate files
+ * fail where they are validated instead of in the write. A path with a problem is not compared with later paths.
+ */
+export function portablePathIssues(paths: readonly string[]): PortablePathIssue[] {
+  const issues: PortablePathIssue[] = [], written = new Map<string, string>();
+  for (const path of paths) {
+    const segment = path.split('/').find(isDeviceName), same = written.get(canonicalPath(path));
+    if (segment !== undefined) issues.push({ path, reason: 'device-name', segment });
+    else if (same !== undefined) issues.push({ path, reason: 'case-duplicate', duplicateOf: same });
+    else written.set(canonicalPath(path), path);
+  }
+  return issues;
 }
 
 export function vaultPath(input: string): string {
   // oxlint-disable-next-line no-control-regex -- Vault paths must reject ASCII control characters.
   ensure(typeof input === 'string' && input.length > 0 && !/[\x00-\x1f\x7f\\:]/.test(input), 'INVALID_PATH', 'Use a nonempty, relative POSIX path.');
   const parts = input.split('/');
-  ensure(parts.every(p => p && p !== '.' && p !== '..'), 'INVALID_PATH', 'Absolute paths, empty segments and traversal are forbidden.');
+  // A segment of only dots, spaces and ignorable code points is empty, `.` or `..` on Windows or HFS+.
+  ensure(parts.every(p => canonicalName(p) !== ''), 'INVALID_PATH', 'Absolute paths, empty segments and traversal are forbidden.');
   ensure(!parts.some(p => reservedPathSegment(p) !== undefined), 'INVALID_PATH', 'Reserved workspace path.');
+  // Rejected on every platform, so a vault stays usable when it is synced to or opened on Windows.
+  const device = parts.find(isDeviceName);
+  ensure(device === undefined, 'INVALID_PATH', `${device} is a Windows reserved device name (CON, PRN, AUX, NUL, CONIN$, CONOUT$, COM1-COM9, COM¹-COM³, LPT1-LPT9 or LPT¹-LPT³, with any extension); rename the file or folder.`, { segment: device });
   return input;
 }
 
@@ -69,7 +142,12 @@ export interface FileSnapshot { path: string; bytes: Uint8Array; revision: strin
 /** A check-only file or folder condition; an omitted revision requires the path to be absent. */
 export interface GuardRequest { path: string; expectedRevision?: string }
 export interface WriteRequest { path: string; bytes: Uint8Array; expectedRevision?: string }
-export interface FileChange { path: string; revision: string; operation: 'created' | 'updated' | 'deleted'; bytes: number }
+/**
+ * One file change in batch order. `unchanged` is a write whose bytes equal the stored file: nothing is written or
+ * published. `alreadyApplied` marks such a write whose revision guard did not match (an existing file for a create,
+ * or a stale revision): the file already holds exactly the requested bytes, as after a retried request.
+ */
+export interface FileChange { path: string; revision: string; operation: 'created' | 'updated' | 'deleted' | 'unchanged'; bytes: number; alreadyApplied?: true }
 /** A guarded move of a file or folder. A folder's `expectedRevision` is its folder revision (see `FileStat`). */
 export interface RenameRequest { from: string; to: string; expectedRevision: string }
 /** A guarded removal of a file or, recursively, a folder. A folder's `expectedRevision` is its folder revision. */

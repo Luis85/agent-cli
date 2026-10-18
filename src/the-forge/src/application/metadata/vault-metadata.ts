@@ -1,4 +1,5 @@
 import { AppError, errorMessage } from '../../domain/shared/errors.ts';
+import { isNotFound } from '../../domain/shared/not-found.ts';
 import type { CachedMetadata } from '../../domain/metadata/cache.ts';
 import { closestDestination, fileToLinktext, linkIndex, resolveLinkpath, type LinkIndex } from '../../domain/metadata/link-resolution.ts';
 import type { FileSnapshot } from '../../domain/documents/file.ts';
@@ -24,7 +25,6 @@ export function vaultMember(path: string, workspaceRoot: boolean): boolean {
   const segments = path.split('/');
   return !segments.some(part => part.startsWith('.')) && !(workspaceRoot && segments.length > 1 && segments[0]!.toLowerCase() === workspaceDistribution);
 }
-const missing = (error: unknown) => error instanceof AppError && error.code === 'NOT_FOUND';
 const counts = (): Record<string, number> => Object.create(null) as Record<string, number>;
 const vaultOrder = (paths: Iterable<string>) => [...paths].sort();
 
@@ -257,7 +257,7 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
     const contents = new Map<string, FileSnapshot>();
     await eachConcurrently([...touched].filter(this.member), pendingFileReads, async path => {
       try { contents.set(path, await this.repository.read(path)); }
-      catch (error) { if (!missing(error)) throw error; removed.add(path); }
+      catch (error) { if (!isNotFound(error)) throw error; removed.add(path); }
     });
     const changed: string[] = [], deleted: string[] = [];
     const prevCaches = Object.create(null) as Record<string, CachedMetadata | null>;

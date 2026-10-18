@@ -5,6 +5,7 @@ import { EventBus } from '../../src/application/plugins/events.ts';
 import { registerHostEvents } from '../../src/application/plugins/host-events.ts';
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
+import { forgeVersion } from '../support/workspace.ts';
 
 it('infers plugin context for contributed commands and both generator forms, as the runtime supplies it', async () => {
   // No callback annotations or casts: the public SDK must infer settings, services and translations.
@@ -30,7 +31,7 @@ it('infers plugin context for contributed commands and both generator forms, as 
   const generator: Generator<PluginContext> = plugin.generators[0]!;
   expect(command.id).toBe('quality.status');
   expect(generator.id).toBe('quality.report');
-  const registry = new Registry(skillFrontmatter), events = new EventBus(new NodeEventScope());
+  const registry = new Registry(skillFrontmatter, forgeVersion), events = new EventBus(new NodeEventScope());
   registerHostEvents(events);
   registry.register({ ...plugin, manifest: { id: 'quality', name: 'Quality', version: '1.0.0', minAppVersion: '0.1.0', description: 'Test', author: 'Test' } }, events);
   await registry.configure({}, async () => [], message => events.warn(message));

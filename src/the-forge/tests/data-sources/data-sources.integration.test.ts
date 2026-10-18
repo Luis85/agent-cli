@@ -64,6 +64,18 @@ describe('workspace data-source library lifecycle', () => {
     await expect(library().import('empty', 'fresh')).rejects.toMatchObject({ code: 'EMPTY_DATA_SOURCE_LIBRARY' });
     await expect(library().create('../outside', 'escape')).rejects.toMatchObject({ code: 'INVALID_PATH' });
   });
+  it('rejects an id whose generated adapter would be a Windows device name wherever the library is read', async () => {
+    const definition = (id: string) => encodeText(`---\nschemaVersion: 1\nid: ${id}\nkind: json\nmodel:\n  name: Item\n  fields:\n    id:\n      type: string\njson:\n  path: data/items.json\n---\n# ${id}\n`);
+    await files.writeBatch([{ path: 'incoming/console.md', bytes: definition('nul') }, { path: 'incoming/items.md', bytes: definition('items') }], false);
+    const before = await files.list(), generate = vi.fn<DataSourceRenderer['generate']>(() => []);
+    const failure = { code: 'INVALID_DATA_SOURCE', message: 'Data source nul would generate nul.ts, a Windows reserved device name that no file can have on Windows; choose another id.', details: { source: 'nul', file: 'nul.ts', reason: 'device-name', segment: 'nul.ts' } };
+    for (const run of [() => library().validate('incoming'), () => library().list('incoming'), () => library().inspect('incoming', 'items'), () => library().import('incoming', 'library'),
+      () => library().export('incoming', 'outgoing'), () => library(false, { generate }).plan('incoming', { source: 'items', outputDirectory: 'src', testDataDirectory: 'fixtures' })]) {
+      await expect(run()).rejects.toMatchObject(failure);
+    }
+    expect(generate).not.toHaveBeenCalled();
+    expect(await files.list()).toEqual(before);
+  });
   it('plans selected sources with independently configured adapter/fixture paths and dry-run previews', async () => {
     await library().create('sources', 'products'); await library().create('sources', 'inventory', 'json');
     const generate = vi.fn<DataSourceRenderer['generate']>((definitions, options) => [
@@ -97,6 +109,8 @@ describe('workspace data-source library lifecycle', () => {
     const revisions = { 'src/products.ts': adapter.revision, 'fixtures/products.json': fixture.revision };
     await library(false, renderer).generate('sources', { ...options, revisions });
     expect(new TextDecoder().decode((await files.read('src/products.ts')).bytes)).toBe(content);
+    expect((await library(false, renderer).generate('sources', { ...options, revisions })).changes.map(change => change.operation)).toEqual(['unchanged', 'unchanged']);
+    content = 'export const version = 3;\n';
     await expect(library(false, renderer).generate('sources', { ...options, revisions })).rejects.toMatchObject({ code: 'CONFLICT' });
     expect(await files.read('fixtures/products.json')).toEqual(fixture);
   });

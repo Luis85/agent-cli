@@ -18,14 +18,14 @@ describe('the bases core plugin', () => {
     await configure({ plugins: { disabled: ['bases'] } });
     try {
       expect(ids((await fixture.cli(['schema'])).body.data.commands)).not.toContain('bases');
-      expect(ids((await fixture.cli(['help'])).body.data.commands)).not.toContain('bases');
+      expect(Object.keys((await fixture.cli(['help'])).body.data.commands)).not.toContain('bases');
       expect((await fixture.cli(['help', 'bases'])).body.error.code).toBe('UNKNOWN_COMMAND');
       const dispatched = await fixture.cli(['bases', 'list']);
       expect(dispatched.status).toBe(2);
       expect(dispatched.body.error.code).toBe('UNKNOWN_COMMAND');
       const plugins = (await fixture.cli(['plugins'])).body.data.plugins;
-      expect(plugins).toContainEqual(expect.objectContaining({ id: 'bases', core: true, state: 'disabled', reason: 'Listed in plugins.disabled.', contributions: null }));
-      const reason = 'Requires service bases.query; its provider bases is disabled.';
+      expect(plugins).toContainEqual(expect.objectContaining({ id: 'bases', core: true, state: 'disabled', reason: { code: 'PLUGIN_LISTED_DISABLED', message: 'Listed in plugins.disabled.' }, contributions: null }));
+      const reason = { code: 'PLUGIN_PROVIDER_DISABLED', message: 'Requires service bases.query; its provider bases is disabled.', details: { service: 'bases.query', provider: 'bases' } };
       // backlog requires bases.query: it stays registered and listed, but is unavailable and its command reports why.
       expect(plugins).toContainEqual(expect.objectContaining({ id: 'backlog', core: true, state: 'unavailable', reason, contributions: expect.objectContaining({ commands: ['backlog'] }) }));
       expect((await fixture.cli(['help', 'backlog'])).body.data.id).toBe('backlog');

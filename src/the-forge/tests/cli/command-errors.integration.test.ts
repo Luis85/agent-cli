@@ -104,12 +104,12 @@ describe('declared command errors', async () => {
   it('resolves every plugin failure code statically', () => {
     expect(inventory.unresolved, 'error codes must resolve statically; see tests/support/error-codes.ts').toEqual([]);
     // The scan is not vacuous: each plugin family's helper and the host's built-in codes are found.
-    for (const [pluginId, code] of [['backlog', 'SYNC_INTERRUPTED'], ['agents', 'AGENT_DRIFT'], ['search', 'SEARCH_TIMEOUT'], ['connector-azure-devops', 'CONNECTOR_AUTH_FAILED'], ['claude', 'CLAUDE_OUTPUT_LIMIT'], ['ui', 'UI_DRIFT']] as const) {
+    for (const [pluginId, code] of [['backlog', 'SYNC_INTERRUPTED'], ['agents', 'AGENT_DRIFT'], ['search', 'SEARCH_TIMEOUT'], ['connector-azure-devops', 'CONNECTOR_AUTH_FAILED'], ['claude', 'CLAUDE_OUTPUT_LIMIT'], ['ui', 'UI_DRIFT'], ['webviews', 'WEBVIEW_DRIFT'], ['browser', 'BROWSER_FLOW_FAILED'], ['updates', 'UPDATE_DOWNLOAD_FAILED'], ['vault-check', 'VAULT_CHECK_FAILED']] as const) {
       expect(raisedIn(pluginId), pluginId).toContain(code);
     }
   });
 
-  it.each(['templates', 'scaffolds', 'ui', 'data-sources', 'claude', 'bases', 'skills', 'search', 'links', 'vault-check', 'agents', 'connector', 'connector-azure-devops', 'backlog', 'webviews', 'browser'])(
+  it.each(['templates', 'scaffolds', 'ui', 'data-sources', 'claude', 'bases', 'skills', 'search', 'links', 'vault-check', 'agents', 'connector', 'connector-azure-devops', 'backlog', 'webviews', 'browser', 'updates'])(
     'declares every code the %s plugin raises on the commands that report it', pluginId => {
       expect(pluginIds).toContain(pluginId);
       const own = pluginErrors(registry, pluginId);
@@ -157,7 +157,7 @@ describe('declared command errors', async () => {
 
   it('publishes the project routing codes on every command or action that declares a projectOption', async () => {
     const routed = [...registry.commands.values()].filter(command => command.projectOption !== undefined || Object.values(command.actions ?? {}).some(action => action.projectOption !== undefined));
-    expect(routed.map(command => command.id)).toEqual(expect.arrayContaining(['read', 'read-many', 'stat', 'apply', 'make', 'webview', 'browser']));
+    expect(routed.map(command => command.id)).toEqual(expect.arrayContaining(['list', 'read', 'read-many', 'stat', 'validate', 'create', 'write', 'edit', 'properties', 'patch', 'apply', 'move', 'rename', 'delete', 'search', 'links', 'vault', 'make', 'webview', 'browser']));
     const context = {} as CommandContext;
     const contract = async (id: string) => await registry.commands.get('schema')!.run([id], {}, context) as { commands: Array<{ errors: string[] }>; errors: Array<{ code: string }> };
     for (const command of routed) {
@@ -169,12 +169,12 @@ describe('declared command errors', async () => {
       expect(new Set(help.errors).size, `${command.id} lists each code once`).toBe(help.errors.length);
     }
     // A command without a project option publishes only its own codes.
-    expect((await contract('write')).commands[0]!.errors).toEqual(registry.commands.get('write')!.errors);
+    expect((await contract('help')).commands[0]!.errors).toEqual(registry.commands.get('help')!.errors);
   });
 
   it('declares no code by hand that commonErrors or the project routing codes already publish', () => {
     const derived = new Set<string>([...commonErrors, ...projectOptionErrors]);
-    for (const id of ['read', 'read-many', 'stat', 'apply']) {
+    for (const id of ['list', 'read', 'read-many', 'stat', 'validate', 'create', 'write', 'edit', 'properties', 'patch', 'apply', 'move', 'rename', 'delete', 'search', 'links', 'vault']) {
       expect((registry.commands.get(id)!.errors ?? []).filter(code => derived.has(code)), id).toEqual([]);
     }
   });

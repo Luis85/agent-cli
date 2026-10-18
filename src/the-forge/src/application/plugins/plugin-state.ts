@@ -1,4 +1,5 @@
 import { AppError, ensure, errorMessage, isRecord } from '../../domain/shared/errors.ts';
+import { readOrMissing } from '../../domain/shared/not-found.ts';
 import type { Workspace } from '../workspace/workspace.ts';
 import { kernelMessage, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
 
@@ -37,15 +38,10 @@ export class WorkspacePluginState implements PluginStateStore {
   ) {}
   settingsRevision(pluginId: string): Promise<string | null> { return this.settings(pluginId); }
   async load(): Promise<PluginStates> {
-    let text: string;
-    try {
-      const snapshot = await this.workspace.files.read(pluginStatePath);
-      this.revision = snapshot.revision;
-      text = new TextDecoder('utf-8').decode(snapshot.bytes);
-    } catch (error) {
-      if (error instanceof AppError && error.code === 'NOT_FOUND') return {};
-      throw error;
-    }
+    const snapshot = await readOrMissing(() => this.workspace.files.read(pluginStatePath));
+    if (!snapshot) return {};
+    this.revision = snapshot.revision;
+    const text = new TextDecoder('utf-8').decode(snapshot.bytes);
     try {
       const value: unknown = JSON.parse(text);
       ensure(isRecord(value) && value.schemaVersion === 1 && isRecord(value.plugins), 'INVALID_PLUGIN', 'Unexpected plugin state shape.');

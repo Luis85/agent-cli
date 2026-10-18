@@ -26,12 +26,16 @@ export function publishedSchemas(document: SchemaDocument): Array<[string, objec
   ];
 }
 
-/** The output schema that applies to `command args…`: the selected action's own, else the command's. */
+/**
+ * The output schema that applies to `command args…`: the selected action's own, else the command's. The action is
+ * the longest action id the arguments after the command spell (`backlog iteration add`), else the default action.
+ */
 function outputSchemaFor(document: SchemaDocument, args: readonly string[]): object | undefined {
   const command = document.commands.find(entry => entry.id === args[0]);
   if (!command) throw new Error(`schema does not describe ${args[0]}`);
   const actions = command.annotations.actions ?? {};
-  const action = args[1] !== undefined && Object.hasOwn(actions, args[1]) ? args[1] : command.annotations.defaultAction;
+  const spelled = Object.keys(actions).filter(id => id.split(' ').every((word, index) => args[index + 1] === word)).sort((left, right) => right.length - left.length)[0];
+  const action = spelled ?? command.annotations.defaultAction;
   return (action === undefined ? undefined : actions[action]?.outputSchema) ?? command.outputSchema;
 }
 

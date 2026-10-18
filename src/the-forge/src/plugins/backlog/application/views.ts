@@ -4,7 +4,7 @@ import { checkBacklog, type CheckProblem } from '../domain/check.ts';
 import { displayType, type BacklogItem } from '../domain/model.ts';
 import { membershipTarget } from '../domain/releases.ts';
 import { configProblems } from '../domain/settings.ts';
-import { membershipCollision, releaseNoteProblems } from '../domain/settings-resolve.ts';
+import { membershipCollision, releaseNoteProblems, vaultFolder } from '../domain/settings-resolve.ts';
 import { inCatalog } from '../domain/vocabulary.ts';
 import { findItem, typeOf, type BacklogSession } from './session.ts';
 
@@ -89,9 +89,12 @@ export function check(session: BacklogSession) {
   const memberships = release
     ? session.model.items.filter(item => !item.outsideFilter && membershipTarget(session.source, item, releasePaths, release.settings) === 'unresolved').map(item => item.path)
     : [];
+  // Generated release notes are untyped roots by design, so hierarchyOnly hides them without a warning.
+  const notes = release ? vaultFolder(release.settings.notesFolder) : '';
+  const ignored = session.model.ignored.filter(path => notes === '' || !path.startsWith(`${notes}/`));
   const releaseProblems = release ? [...releaseNoteProblems(release.settings), ...[membershipCollision(release.settings, session.settings)].filter((problem): problem is string => problem !== null)] : [];
   const problems = [
-    ...checkBacklog({ model: session.model, settings: session.settings, releaseProblems, unresolvedMemberships: memberships, typeOf: path => typeOf(session, path) }),
+    ...checkBacklog({ model: session.model, settings: session.settings, releaseProblems, unresolvedMemberships: memberships, ignored, typeOf: path => typeOf(session, path) }),
     ...indexProblems(session),
   ];
   return {

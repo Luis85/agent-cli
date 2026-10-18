@@ -5,8 +5,8 @@ import { devNull, tmpdir } from 'node:os';
 import { lstat, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ReleaseSource } from '../application/update.ts';
-import { distributionFiles, releaseVersion, requireUpdate, updateError, type DistributionPolicy } from '../domain/release.ts';
-import { AppError } from '../../../domain/shared/errors.ts';
+import { distributionFiles, releaseVersion, requireArchiveListing, requireUpdate, updateError, type DistributionPolicy } from '../domain/release.ts';
+import { isCodedFailure } from '../../../domain/shared/plugin-failure.ts';
 
 const execute = promisify(execFile);
 export type ReleaseTool = (file: string, args: string[], options: { timeout?: number; maxBuffer?: number; cwd?: string }) => Promise<{ stdout: string }>;
@@ -25,7 +25,7 @@ export function githubReleases(policy: DistributionPolicy, run: ReleaseTool = ru
         requireUpdate(version, 'GitHub did not return a stable Forge release.');
         return releaseVersion(version);
       } catch (error) {
-        if (error instanceof AppError) throw error;
+        if (isCodedFailure(error)) throw error;
         throw updateError('UPDATE_DOWNLOAD_FAILED', 'Could not check GitHub Releases. Check network access and curl, then retry.');
       }
     },
@@ -40,7 +40,7 @@ export function githubReleases(policy: DistributionPolicy, run: ReleaseTool = ru
         const { stdout: listing } = await run('tar', ['-tzf', name], { cwd: staging, maxBuffer: 8 * 1024 * 1024 });
         requireUpdate(listing.trim().split(/\r?\n/).every(path => path.startsWith('bin/') && !path.includes('\\') && !path.includes(':') && !path.split('/').some(part => part === '.' || part === '..')), 'Release archive contains an unsafe path.');
         const { stdout: detailed } = await run('tar', ['-tvzf', name], { cwd: staging, maxBuffer: 8 * 1024 * 1024 });
-        requireUpdate(detailed.trim().split(/\r?\n/).every(line => ['-', 'd'].includes(line[0]!)), 'Release archive contains a link or special file.');
+        requireArchiveListing(detailed);
         await run('tar', ['-xzf', name, '--no-same-owner', '--no-same-permissions'], { cwd: staging });
         const root = join(staging, 'bin');
         const pkg: unknown = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
@@ -57,7 +57,7 @@ export function githubReleases(policy: DistributionPolicy, run: ReleaseTool = ru
         }
         return { version, checksum, files };
       } catch (error) {
-        if (error instanceof AppError) throw error;
+        if (isCodedFailure(error)) throw error;
         throw updateError('UPDATE_DOWNLOAD_FAILED', 'Could not download or unpack the release. Check network access, curl, tar and available disk space; existing app files were preserved.');
       } finally { await rm(staging, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); }
     },

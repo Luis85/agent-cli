@@ -14,6 +14,8 @@ export interface AgentDiagnostic {
   fidelity?: Fidelity;
   /** 1-based position of the pointed value in the YAML source, when known. */
   line?: number; column?: number;
+  /** The generated file a `device-name` diagnostic is about. */
+  file?: string;
 }
 
 export const isObject = (value: unknown): value is Record<string, unknown> =>

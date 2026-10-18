@@ -50,6 +50,8 @@ describe('portable native Bases repositories', () => {
     expect(all.body.data).toMatchObject({ path: 'queries/tasks.base', view: 'All open', context: 'queries/tasks.base',
       files: ['Notes/B.md', 'Notes/A.md', 'Notes/C.md'], total: 3, scope: root,
       repository: { path: 'queries/tasks.base', view: 'All open' } });
+    // The static compatibility profile is published once by bases capabilities, not with every query.
+    expect(all.body.data).not.toHaveProperty('compatibility');
     const named = await cli(['query', 'queries/tasks.base', '--view', 'For context', '--context', 'Projects/Context.md', '--limit', '1']);
     expect(named.status).toBe(0);
     expect(named.body.data).toMatchObject({ view: 'For context', context: 'Projects/Context.md', files: ['Notes/A.md'], total: 2 });
@@ -81,7 +83,7 @@ describe('portable native Bases repositories', () => {
       { args: ['query', '../tasks.base'], code: 'INVALID_PATH' },
       { args: ['query', 'tasks.base', '--context', '../Note.md'], code: 'INVALID_PATH' },
       { args: ['inspect', 'Note.md'], code: 'INVALID_BASE' },
-      { args: ['list', '--view', 'All open'], code: 'INVALID_ARGUMENT' },
+      { args: ['list', '--view', 'All open'], code: 'UNKNOWN_OPTION' },
       { args: ['query', 'absent.base'], code: 'NOT_FOUND' },
     ];
     for (const { args, code } of errors) {

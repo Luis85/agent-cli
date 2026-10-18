@@ -6,7 +6,7 @@ import type { WorkflowSync } from '../../application/workflows/workflows.ts';
 import type { InstalledPlugin } from '../../application/plugins/core-plugins.ts';
 import type { SettingsSection } from '../../application/plugins/plugin-settings.ts';
 
-export interface WorkflowServices {
+export interface KernelServices {
   loaded: LoadedConfig;
   files: FileRepository;
   projects: ProjectService;

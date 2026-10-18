@@ -1,6 +1,6 @@
 import type { Command } from '../../../application/plugins/registry.ts';
 import { option } from '../../../application/plugins/command-metadata.ts';
-import { arity, value } from '../../../application/plugins/command-input.ts';
+import { value } from '../../../application/plugins/command-input.ts';
 import { ensure } from '../../../domain/shared/errors.ts';
 import type { JsonSchema } from '../../../domain/schema/json-schema.ts';
 import type { WebviewPublication } from '../application/publish.ts';
@@ -27,18 +27,16 @@ export function webviewCommand(publication: WebviewPublication): Command {
     usage: 'webview [inspect | publish [--if-match <revision>] [--check]] [--project <id>]',
     scope: 'project', projectOption: 'project', discovery: false, mutating: false, defaultAction: 'inspect', unknownAction: 'INVALID_ARGUMENT',
     options: { project: option.string('Inspect or publish this project instead of the selected one.') },
-    args: [{ name: 'action', description: 'inspect (default) or publish.', enum: ['inspect', 'publish'] }],
     actions: {
-      inspect: { description: 'Compare dist with the installed webview and return its current folder revision.', output: report },
-      publish: { description: 'Publish dist with revision guards, or check drift without writing with --check.', mutating: true, destructive: true, idempotent: true, output: report,
+      inspect: { description: 'Compare dist with the installed webview and return its current folder revision.', args: [], output: report },
+      publish: { description: 'Publish dist with revision guards, or check drift without writing with --check.', mutating: true, destructive: true, idempotent: true, output: report, args: [],
         options: {
           'if-match': option.string('The installed folder revision from webview inspect; required to replace a changed view.'),
           check: option.boolean('Check publication drift without writing; fail with WEBVIEW_DRIFT when assets differ.'),
         } },
     },
-    errors: ['PROJECT_REQUIRED', 'INVALID_ARGUMENT', 'WEBVIEW_INVALID', 'WEBVIEW_BUILD_REQUIRED', 'WEBVIEW_DRIFT', 'CONFLICT', 'UNSAFE_PATH', 'INVALID_PATH', 'NOT_FOUND'],
+    errors: ['PROJECT_REQUIRED', 'INVALID_ARGUMENT', 'WEBVIEW_INVALID', 'WEBVIEW_BUILD_REQUIRED', 'WEBVIEW_PROJECT_REQUIRED', 'WEBVIEW_DRIFT', 'CONFLICT', 'UNSAFE_PATH', 'INVALID_PATH', 'NOT_FOUND'],
     async run(args, flags, context) {
-      arity(args, 0, 1);
       if ((args[0] ?? 'inspect') === 'inspect') return publication.inspect(context);
       const ifMatch = value(flags, 'if-match');
       ensure(!(flags.check && ifMatch !== undefined), 'INVALID_ARGUMENT', '--check does not accept --if-match.');

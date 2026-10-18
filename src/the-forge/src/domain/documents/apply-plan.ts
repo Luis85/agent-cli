@@ -66,7 +66,7 @@ export const applyPlanSchema: JsonSchema = {
             unset: { type: 'array', items: { type: 'string', minLength: 1 }, description: 'Property names to remove.' },
           }),
           operation('move', 'move: move or rename and rewrite links', ['from', 'to'], {
-            from: path('File or folder to move.'), to: path('New path; it must not exist.'),
+            from: path('File or folder to move.'), to: path('New path that must not exist, or a folder to move into: one ending with / or one that exists.'),
             updateLinks: { type: 'boolean', default: true, description: 'Rewrite links to the moved files.' },
           }),
           operation('delete', 'delete: move to .trash', ['path'], {

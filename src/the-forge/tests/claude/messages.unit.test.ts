@@ -34,14 +34,15 @@ describe('claude result texts', () => {
   });
 
   it('render the warning for a lifecycle notification that cannot be emitted in the response language', async () => {
-    const warnings: string[] = [];
-    const events = { ids: () => ['claude.executed'], emit: async () => { throw new Error('emit failed'); }, warn: (message: string) => warnings.push(message) } as unknown as EventChannel;
+    const warnings: unknown[] = [];
+    const events = { ids: () => ['claude.executed'], emit: async () => { throw new Error('emit failed'); }, warn: (message: unknown) => warnings.push(message) } as unknown as EventChannel;
     const payload = { executable: 'claude', cwd: '/vault', exitCode: 0 };
     await notifyClaude(events, 'claude.executed', payload);
     await notifyClaude(events, 'claude.executed', payload, claudeText('de'));
     // The diagnostic is a parameter, never parsed back from English text, so it may contain the template's own words.
     await notifyClaude({ ...events, emit: async () => { throw new Error('fetch failed: claude.executed: denied'); } }, 'claude.executed', payload, claudeText('de'));
-    expect(warnings).toEqual(['Claude notification claude.executed failed: emit failed', 'Die Claude-Benachrichtigung claude.executed ist fehlgeschlagen: emit failed',
-      'Die Claude-Benachrichtigung claude.executed ist fehlgeschlagen: fetch failed: claude.executed: denied']);
+    const warning = (message: string, diagnostic: string) => ({ code: 'CLAUDE_NOTIFICATION_FAILED', message, details: { event: 'claude.executed', diagnostic } });
+    expect(warnings).toEqual([warning('Claude notification claude.executed failed: emit failed', 'emit failed'), warning('Die Claude-Benachrichtigung claude.executed ist fehlgeschlagen: emit failed', 'emit failed'),
+      warning('Die Claude-Benachrichtigung claude.executed ist fehlgeschlagen: fetch failed: claude.executed: denied', 'fetch failed: claude.executed: denied')]);
   });
 });

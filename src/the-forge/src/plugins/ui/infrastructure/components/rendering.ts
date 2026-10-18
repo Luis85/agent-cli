@@ -1,4 +1,4 @@
-import type { UiDefinition, UiFramework, UiValue } from '../../domain/components/definition.ts';
+import { uiArtifactExtensions, type UiDefinition, type UiFramework, type UiValue } from '../../domain/components/definition.ts';
 import { uiBindingParts as pieces } from '../../domain/components/syntax.ts';
 
 export const ordered = <T>(object: Record<string, T>) => Object.entries(object).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
@@ -9,8 +9,7 @@ export const defaults = (definition: UiDefinition): Record<string, UiValue> => O
 
 /** The importable artifact used by UI composition and Storybook. */
 export function componentArtifact(definition: UiDefinition, framework: UiFramework) {
-  const extension = { html: 'js', htmx: 'js', vanilla: 'js', react: 'tsx', vue: 'vue', svelte: 'svelte', angular: 'ts' }[framework];
-  return { fileName: `${definition.id}.${extension}`, exportName: framework === 'angular' ? `${className(definition)}Component` : ['html', 'htmx', 'vanilla'].includes(framework) ? `create${className(definition)}` : className(definition), namedExport: framework === 'angular' };
+  return { fileName: `${definition.id}.${uiArtifactExtensions[framework]}`, exportName: framework === 'angular' ? `${className(definition)}Component` : ['html', 'htmx', 'vanilla'].includes(framework) ? `create${className(definition)}` : className(definition), namedExport: framework === 'angular' };
 }
 
 export function expression(value: UiValue, scope = 'props', stateScope = '_uiState'): string {

@@ -13,7 +13,7 @@ const cli = (args: string[]) => fixture.cli(args, undefined, { root });
 describe('portable stat workflows', () => {
   it('gets a malformed document revision for guarded repair and discovers the metadata contract', async () => {
     await writeFile(join(root, 'bad.md'), '---\nvalue: [\n---\n');
-    expect((await cli(['read', 'bad.md'])).body.error.code).toBe('INVALID_YAML');
+    expect((await cli(['read', 'bad.md'])).body.data.document).toMatchObject({ properties: null, issue: { code: 'INVALID_YAML' } });
     const result = await cli(['stat', 'bad.md']);
     expect(result.status).toBe(0);
     expect(validateJsonValue(statOutput, result.body.data, 'data').issues).toEqual([]);
@@ -22,13 +22,15 @@ describe('portable stat workflows', () => {
     expect((await cli([...write, '--dry-run'])).status).toBe(0);
     expect((await cli(write)).status).toBe(0);
     expect((await cli(['read', 'bad.md'])).body.data.document.content).toBe('# Repaired\n');
-    expect((await cli(write)).body.error.code).toBe('CONFLICT');
+    // The retried repair finds its bytes in place; other content with the old revision conflicts.
+    expect((await cli(write)).body.data.changes[0]).toMatchObject({ operation: 'unchanged', alreadyApplied: true });
+    expect((await cli(['write', 'bad.md', '--content', '# Other\n', '--if-match', result.body.data.revision])).body.error.code).toBe('CONFLICT');
     const help = (await cli(['help', 'stat'])).body.data;
     expect(help).toMatchObject({ id: 'stat', usage: 'stat <path> [--project id]', annotations: { scope: 'project', mutating: false } });
     expect(help.options.project.type).toBe('string');
     const schema = (await cli(['schema', 'stat'])).body.data;
     expect(schema.commands[0].outputSchema).toEqual({ $schema: 'https://json-schema.org/draft/2020-12/schema', title: 'stat output', ...statOutput });
-    expect(schema.commands[0].errors).toEqual(['NOT_FOUND', 'INVALID_PROJECT_NAME', 'PROJECT_NOT_FOUND', 'INVALID_PROJECT']);
+    expect(schema.commands[0].errors).toEqual(['NOT_FOUND', 'CONFLICT', 'INVALID_PROJECT_NAME', 'PROJECT_NOT_FOUND', 'INVALID_PROJECT']);
     expect(schema.commonErrors).toEqual(expect.arrayContaining(['INVALID_PROJECT_CONTEXT', 'STALE_PROJECT_CONTEXT']));
     expect(schema.errors.map((error: { code: string }) => error.code)).toEqual(expect.arrayContaining(['PROJECT_NOT_FOUND', 'INVALID_PROJECT_NAME', 'INVALID_PROJECT', 'INVALID_PROJECT_CONTEXT']));
     const german = (await cli(['--lang', 'de', 'help', 'stat'])).body.data;

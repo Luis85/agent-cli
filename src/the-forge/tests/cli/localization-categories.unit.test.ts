@@ -5,10 +5,13 @@ import { kernelMessage } from '../../src/domain/shared/kernel-messages.ts';
 import { fill, retranslate } from '../../src/domain/shared/messages.ts';
 import { globalOptionMetadata } from '../../src/presentation/cli/arguments.ts';
 import { option } from '../../src/application/plugins/command-metadata.ts';
+import { builtinCommands } from '../support/builtin-commands.ts';
+
+const { commands } = builtinCommands();
 
 const read = {
   id: 'read', description: 'Read a document.', usage: 'read <path>',
-  options: { parts: option.string('Comma-separated optional parts of a Markdown read.', { enum: ['body'] }) },
+  options: { parts: option.string('Comma-separated parts of a Markdown read; content and properties by default.', { enum: ['body'] }) },
   args: [{ name: 'path', description: 'Vault path relative to the command scope.', required: true }],
 };
 const owned = { commands: ['quality'], actions: [], generators: [], events: [] };
@@ -23,13 +26,13 @@ function pluginCatalog() {
 describe('German output by category', () => {
   it('translates option and argument descriptions and keeps names, types and enums', () => {
     const german = new Localizer('de').command(read);
-    expect(german.options.parts).toEqual({ type: 'string', enum: ['body'], description: 'Kommagetrennte optionale Teile eines Markdown-Lesevorgangs.' });
+    expect(german.options.parts).toEqual({ type: 'string', enum: ['body'], description: 'Kommagetrennte Teile eines Markdown-Lesevorgangs; standardmäßig content und properties.' });
     expect(german.args).toEqual([{ name: 'path', required: true, description: 'Vault-Pfad relativ zum Geltungsbereich des Befehls.' }]);
     expect(new Localizer('en').command(read)).toBe(read);
   });
 
   it('translates global option descriptions in help and schema', () => {
-    const help = new Localizer('de').result('help', { globalOptions: globalOptionMetadata }) as { globalOptions: typeof globalOptionMetadata };
+    const help = new Localizer('de').result(commands.get('help'), { globalOptions: globalOptionMetadata }) as { globalOptions: typeof globalOptionMetadata };
     expect(help.globalOptions.lang).toEqual({ ...globalOptionMetadata.lang, description: 'Antwortsprache für Beschreibungen, Hinweise und Zusammenfassungen.' });
   });
 
@@ -38,25 +41,42 @@ describe('German output by category', () => {
     const command = localizer.command({ id: 'quality', description: 'Check quality.', options: { failing: option.boolean('Only failing checks.') } });
     expect(command.options.failing.description).toBe('Nur fehlgeschlagene Prüfungen.');
     const sections = [{ plugin: 'quality', path: 'plugins.settings.quality', schema: { type: 'object', properties: { failing: { type: 'boolean', description: 'Only failing checks.' }, other: { type: 'string', description: 'Untranslated.' } } } }];
-    expect(localizer.result('config', { sections })).toEqual({ sections: [{ ...sections[0], schema: { type: 'object', properties: { failing: { type: 'boolean', description: 'Nur fehlgeschlagene Prüfungen.' }, other: { type: 'string', description: 'Untranslated.' } } } }] });
+    expect(localizer.result(commands.get('config'), { sections })).toEqual({ sections: [{ ...sections[0], schema: { type: 'object', properties: { failing: { type: 'boolean', description: 'Nur fehlgeschlagene Prüfungen.' }, other: { type: 'string', description: 'Untranslated.' } } } }] });
   });
 
   it('renders host warnings and plugin state reasons in the response language, keeping plugin warnings', () => {
     const warning = kernelMessage('PLUGIN_UNAVAILABLE', { plugin: 'backlog', reason: kernelMessage('PLUGIN_PROVIDER_DISABLED', { service: 'bases.query', provider: 'bases' }) });
-    expect(new Localizer('en').warning(warning)).toBe('Plugin backlog is unavailable in this invocation: Requires service bases.query; its provider bases is disabled. Its commands and generators fail with PLUGIN_UNAVAILABLE; fix bin/config.json and run config.');
-    expect(new Localizer('de').warning(warning)).toBe('Das Plugin backlog ist in diesem Aufruf nicht verfügbar: Benötigt den Dienst bases.query; sein Anbieter bases ist deaktiviert. Seine Befehle und Generatoren schlagen mit PLUGIN_UNAVAILABLE fehl; korrigieren Sie bin/config.json und führen Sie config aus.');
-    expect(new Localizer('de').warning(kernelMessage('EVENT_LISTENER_FAILED', { event: 'vault.create', diagnostic: 'boom' }))).toBe('Der Listener für vault.create ist fehlgeschlagen: boom');
-    expect(new Localizer('de').warning('Plugin-owned text')).toBe('Plugin-owned text');
+    expect(new Localizer('en').warning(warning).message).toBe('Plugin backlog is unavailable in this invocation: Requires service bases.query; its provider bases is disabled. Its commands and generators fail with PLUGIN_UNAVAILABLE; fix bin/config.json and run config.');
+    expect(new Localizer('de').warning(warning).message).toBe('Das Plugin backlog ist in diesem Aufruf nicht verfügbar: Benötigt den Dienst bases.query; sein Anbieter bases ist deaktiviert. Seine Befehle und Generatoren schlagen mit PLUGIN_UNAVAILABLE fehl; korrigieren Sie bin/config.json und führen Sie config aus.');
+    expect(new Localizer('de').warning(kernelMessage('EVENT_LISTENER_FAILED', { event: 'vault.create', diagnostic: 'boom' })).message).toBe('Der Listener für vault.create ist fehlgeschlagen: boom');
+    expect(new Localizer('de').warning('Plugin-owned text')).toEqual({ code: 'PLUGIN_WARNING', message: 'Plugin-owned text' });
+    expect(new Localizer('de').warning(warning)).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { plugin: 'backlog', reason: { code: 'PLUGIN_PROVIDER_DISABLED', message: expect.stringContaining('deaktiviert'), details: { service: 'bases.query', provider: 'bases' } } } });
   });
 
   it('renders only messages the host created from its catalog, and any other record as text', () => {
     const german = new Localizer('de');
-    expect(german.warning(kernelMessage('PLUGIN_SKIPPED'))).toBe('Durch --no-plugins übersprungen.');
-    expect(german.warning({ code: 'PLUGIN_SKIPPED', params: {} })).toBe('{"code":"PLUGIN_SKIPPED","params":{}}');
-    expect(german.warning(kernelMessage('PLUGIN_MISSING_WARNING', { reason: { code: 'PLUGIN_SKIPPED', params: {} } as never }))).toBe('{"code":"PLUGIN_SKIPPED","params":{}} Seine Befehle sind in diesem Aufruf nicht verfügbar.');
+    expect(german.warning(kernelMessage('PLUGIN_SKIPPED')).message).toBe('Durch --no-plugins übersprungen.');
+    expect(german.warning({ code: 'PLUGIN_SKIPPED', params: {} }).message).toBe('{"code":"PLUGIN_SKIPPED","params":{}}');
+    expect(german.warning(kernelMessage('PLUGIN_MISSING_WARNING', { reason: { code: 'PLUGIN_SKIPPED', params: {} } as never })).message).toBe('{"code":"PLUGIN_SKIPPED","params":{}} Seine Befehle sind in diesem Aufruf nicht verfügbar.');
     for (const record of [new Error('raw'), null, undefined, { code: 'PLUGIN_MISSING_WARNING', params: null }, 42]) expect(() => german.warning(record)).not.toThrow();
     const message = kernelMessage('EVENT_LISTENER_FAILED', { event: 'vault.create', diagnostic: 'boom' });
     expect(() => Object.assign(message.params, { event: null })).toThrow(TypeError);
+  });
+
+  it('words a plugin failure by its reason where the plugin translates it, else by the code summary', () => {
+    const errors = [{ code: 'QUALITY_INVALID', category: 'input' as const, summary: 'A check is invalid.', hint: 'Fix the check.' }];
+    const strings = { de: { errors: { QUALITY_INVALID: { summary: 'Eine Prüfung ist ungültig.', hint: 'Korrigieren Sie die Prüfung.', reasons: { 'device-name': 'Die Prüfung {check} würde {file} schreiben.' } } } } };
+    PluginCatalog.validate('quality', strings, errors, owned, 'QUALITY_');
+    const catalog = new PluginCatalog();
+    catalog.add('quality', strings, errors, 'QUALITY_');
+    const failure = (details: Record<string, unknown>) => catalog.normalize(Object.assign(new Error('Check con would write con.md.'), { code: 'QUALITY_INVALID', details }), 'quality');
+    const german = new Localizer('de', catalog);
+    expect(german.error(failure({ check: 'con', file: 'con.md', reason: 'device-name' }))).toMatchObject({ message: 'Die Prüfung con würde con.md schreiben.', details: { localization: { originalMessage: 'Check con would write con.md.' } } });
+    for (const details of [{ check: 'con', reason: 'device-name' }, { check: 'con', file: 'con.md', reason: 'other' }, { check: 'con', file: 'con.md' }]) expect(german.error(failure(details)).message).toBe('Eine Prüfung ist ungültig.');
+    expect(new Localizer('en', catalog).error(failure({ check: 'con', file: 'con.md', reason: 'device-name' })).message).toBe('Check con would write con.md.');
+    for (const reasons of [[], { 'device-name': '' }, { 'device-name': 7 }]) {
+      expect(() => PluginCatalog.validate('quality', { de: { errors: { QUALITY_INVALID: { ...strings.de.errors.QUALITY_INVALID, reasons } } } }, errors, owned, 'QUALITY_')).toThrowError(expect.objectContaining({ code: 'INVALID_PLUGIN', message: 'strings.de.errors.QUALITY_INVALID.reasons must map reasons to nonempty messages.' }));
+    }
   });
 
   it('lists plugin names and descriptions in the response language', () => {

@@ -1,38 +1,37 @@
 import type { Command, CommandContext } from '../../application/plugins/registry.ts';
-import { arity } from '../../application/plugins/command-input.ts';
 import { option } from '../../application/plugins/command-metadata.ts';
 import { vaultPath } from '../../domain/documents/file.ts';
-import { AppError, ensure, errorMessage, forgeError, isRecord, locatedError } from '../../domain/shared/errors.ts';
+import { AppError, ensure, errorMessage, forgeError, locatedError } from '../../domain/shared/errors.ts';
+import { maxBytes as maxBytesFlag, maxBytesOption } from './read-command.ts';
+import { readView } from './read-view.ts';
 import { readManyOutput } from './read-many-output.ts';
 
 const maxFiles = 32, maxBytes = 8 * 1024 * 1024;
-/** Locates a failure by the path's zero-based argument position, in both the message and `details.index`. */
+/** Locates a failure by the path's zero-based argument position, in the message and in `details.argument` and `details.index`. */
 function atPath(error: unknown, index: number, path: string): AppError {
   const failure = error instanceof AppError ? error : forgeError('OPERATION_FAILED', errorMessage(error));
-  return locatedError(failure, `read-many path at index ${index}: `, { index, path });
+  return locatedError(failure, `read-many path at index ${index}: `, { argument: 'paths', index, path });
 }
 
 /**
- * Preserve the default single-read representation; Markdown body is an opt-in single-read part. `beforeParse`
+ * The default single-read representation, truncated at `maxBytes` per field as `read` truncates it. `beforeParse`
  * sees the raw byte count before the file is parsed.
  */
-async function readFile(context: CommandContext, path: string, beforeParse: (bytes: number) => void) {
-  const result = await context.workspace.read(path, { beforeParse });
-  if (!isRecord(result.document) || result.document.kind !== 'markdown') return result;
-  const { body: _body, ...document } = result.document;
-  return { ...result, document };
+async function readFile(context: CommandContext, path: string, maxBytes: number, beforeParse: (bytes: number) => void) {
+  return readView(await context.workspace.read(path, { beforeParse }), { maxBytes }, message => context.events.warn(message));
 }
 
 export function readManyCommand(): Command {
   return {
-    id: 'read-many', description: 'Read up to 32 files sequentially with revisions and an 8 MiB aggregate raw-byte limit.',
-    usage: 'read-many <paths...> [--project id]', scope: 'project', projectOption: 'project', discovery: false, mutating: false,
-    args: [{ name: 'paths', description: 'Vault path relative to the command scope.', required: true, variadic: true }],
-    options: { project: option.string('Use this project instead of the selected project.') },
+    id: 'read-many', description: 'Read up to 32 files sequentially with revisions; each file contributes at most --max-bytes to an 8 MiB aggregate limit.',
+    examples: ['read-many notes/a.md notes/b.md'],
+    usage: 'read-many <paths...> [--max-bytes count] [--project id]', scope: 'project', projectOption: 'project', discovery: false, mutating: false,
+    args: [{ name: 'paths', description: 'Vault path relative to the command scope.', required: true, variadic: true, maximum: maxFiles, path: true }],
+    options: { 'max-bytes': maxBytesOption, project: option.string('Use this project instead of the selected project.') },
     output: readManyOutput,
     errors: ['NOT_FOUND', 'INVALID_FRONTMATTER', 'INVALID_YAML', 'INVALID_CANVAS', 'INVALID_BASE', 'INVALID_ENCODING'],
-    async run(args, _flags, context) {
-      arity(args, 1, maxFiles);
+    async run(args, flags, context) {
+      const limit = maxBytesFlag(flags);
       // Validate the entire path list before reading; vaultPath accepts only canonical relative POSIX paths.
       const paths = new Set<string>();
       for (const [index, input] of args.entries()) {
@@ -43,14 +42,16 @@ export function readManyCommand(): Command {
         } catch (error) { throw atPath(error, index, input); }
       }
       const files: Awaited<ReturnType<typeof readFile>>[] = [];
-      let bytes = 0;
-      // The budget counts raw bytes before each file is parsed, so the file that exceeds it is never parsed.
+      let bytes = 0, counted = 0;
+      // The budget counts each file's raw bytes, up to the per-file limit, before the file is parsed, so the file that
+      // exceeds it is never parsed. With the default limit, 32 files fit exactly.
       const budget = (size: number) => {
-        bytes += size;
-        ensure(bytes <= maxBytes, 'INVALID_ARGUMENT', 'read-many exceeds the 8 MiB aggregate raw-byte limit.', { maxBytes, bytes });
+        bytes += size; counted += Math.min(size, limit);
+        // `maxBytes` is the per-file --max-bytes, as for read; `aggregateLimit` is the fixed budget of the whole bundle.
+        ensure(counted <= maxBytes, 'INVALID_ARGUMENT', 'read-many exceeds its 8 MiB aggregate limit; lower --max-bytes or read fewer files.', { aggregateLimit: maxBytes, maxBytes: limit, bytes: counted });
       };
       for (const [index, path] of [...paths].entries()) {
-        try { files.push(await readFile(context, path, budget)); }
+        try { files.push(await readFile(context, path, limit, budget)); }
         catch (error) { throw atPath(error, index, path); }
       }
       return { files, bytes };

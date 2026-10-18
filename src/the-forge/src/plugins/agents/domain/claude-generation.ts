@@ -1,4 +1,5 @@
 import { validateClaudeAgent } from '../../../domain/claude/agents.ts';
+import { isDeviceName } from '../../../domain/documents/file.ts';
 import { agentEntries, defaultAgent, diagnostic, pointer, type AgentConfigDocument, type AgentDiagnostic } from './config.ts';
 import { claudeName } from './claude-vocabulary.ts';
 import { claudeAgent, type ClaudeAgentDraft } from './claude-agent.ts';
@@ -47,6 +48,21 @@ export interface ClaudeGeneration {
   /** Project settings to merge (`settings`). */
   settings?: GeneratedSettings;
   diagnostics: GenerationDiagnostic[];
+}
+
+/** The Claude agent and skill files generated for a Claude name. */
+const agentFile = (name: string) => `.claude/agents/${name}.md`;
+const skillFile = (name: string) => `.claude/skills/${name}/SKILL.md`;
+
+/**
+ * Agents whose generated `.claude/agents/<name>.md` is a Windows device name, as `device-name` errors that definition
+ * validation reports before any generation. Command skills are checked when `--commands` generates them.
+ */
+export function agentFileDiagnostics(config: AgentConfigDocument): AgentDiagnostic[] {
+  return agentEntries(config).flatMap(([name]) => {
+    const claude = claudeName(name), file = agentFile(claude);
+    return isDeviceName(claude) ? [{ ...diagnostic('error', 'device-name', pointer('agents', name), say('agentDeviceName', { name, file })), file }] : [];
+  });
 }
 
 const frontmatterOrder = ['name', 'description', 'tools', 'disallowedTools', 'model', 'effort', 'maxTurns', 'skills', 'memory', 'mcpServers', 'hooks', 'x-forge-source'];
@@ -119,6 +135,10 @@ function uniqueSkills(skills: Array<CommandSkill & { source: DefinitionSource }>
     return (identical ? [group[0]!] : group).flatMap(skill => {
       const name = identical ? skill.name : claudeName(`${skill.agent}-${skill.command}`), at = pointer('agents', skill.agent, 'commands', skill.command);
       const owner = owners.get(name), label = say('commandLabel', { command: skill.command, agent: skill.agent });
+      if (isDeviceName(name)) {
+        diagnostics.push({ ...diagnostic('error', 'device-name', at, say('commandDeviceName', { label, file: skillFile(name) })), file: skillFile(name), path: skill.source.path });
+        return [];
+      }
       if (owner !== undefined) {
         diagnostics.push({ ...diagnostic('error', 'command-name-collision', at, say('commandCollision', { label, name, owner })), path: skill.source.path });
         return [];
@@ -126,7 +146,7 @@ function uniqueSkills(skills: Array<CommandSkill & { source: DefinitionSource }>
       owners.set(name, label);
       if (!identical) diagnostics.push({ ...diagnostic('warning', 'command-renamed', at, say('commandRenamed', { command: skill.command, name }), 'A'), path: skill.source.path });
       const metadata = { ...skill.metadata, name, 'x-forge-source': { path: skill.source.path, agent: skill.agent, command: skill.command, sourceHash: skill.source.sourceHash } };
-      return [{ path: `.claude/skills/${name}/SKILL.md`, metadata, body: skill.body }];
+      return [{ path: skillFile(name), metadata, body: skill.body }];
     });
   });
 }
@@ -154,7 +174,7 @@ export function generateClaude(sources: readonly DefinitionSource[], options: Cl
     for (const draft of generated.drafts) {
       const metadata = ordered({ ...completeAgent(draft, options, generated.diagnostics), 'x-forge-source': { path: source.path, agent: draft.agent, sourceHash: source.sourceHash, ...(options.optionsHash ? { optionsHash: options.optionsHash } : {}) } });
       validateClaudeAgent(metadata, draft.prompt);
-      output.agents.push({ path: `.claude/agents/${draft.name}.md`, name: draft.name, agent: draft.agent, source: source.path, metadata, body: draft.prompt });
+      output.agents.push({ path: agentFile(draft.name), name: draft.name, agent: draft.agent, source: source.path, metadata, body: draft.prompt });
     }
     skills.push(...generated.skills.map(skill => ({ ...skill, source })));
     if (options.settings) {

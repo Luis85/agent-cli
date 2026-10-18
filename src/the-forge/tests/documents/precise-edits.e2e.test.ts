@@ -49,7 +49,7 @@ describe('precise edits through the portable CLI', () => {
   });
 
   it('refuses literal edits that would put NUL characters into a text file', async () => {
-    const { cli, revision, text } = await vault('nul');
+    const { cli, revision, text } = await vault('nul-bytes');
     expect((await cli(['write', 'notes/list.txt', '--content', 'one\ntwo\n'])).body.ok).toBe(true);
     const nul = await cli(['edit', 'notes/list.txt', '--edits', '-', '--if-match', await revision('notes/list.txt')], JSON.stringify([{ find: 'two', replace: 'tw\u0000o' }]));
     expect(nul.status).toBe(2);
@@ -60,10 +60,11 @@ describe('precise edits through the portable CLI', () => {
 
   it('applies a mixed plan from a file or standard input in one guarded batch', async () => {
     const { root, cli, revision, text } = await vault('apply');
+    const planRevision = await revision('notes/Plan.md');
     const plan = { version: 1, operations: [
-      { op: 'edit', path: 'notes/Plan.md', section: 'Goals', append: 'Ship v2 later.', ifMatch: await revision('notes/Plan.md') },
-      { op: 'frontmatter', path: 'notes/Plan.md', set: { status: 'active' }, unset: [] },
-      { op: 'move', from: 'notes/Plan.md', to: 'specs/Roadmap.md' },
+      { op: 'edit', path: 'notes/Plan.md', section: 'Goals', append: 'Ship v2 later.', ifMatch: planRevision },
+      { op: 'frontmatter', path: 'notes/Plan.md', set: { status: 'active' }, unset: [], ifMatch: planRevision },
+      { op: 'move', from: 'notes/Plan.md', to: 'specs/Roadmap.md', ifMatch: planRevision },
       { op: 'write', path: 'specs/README.md', content: 'Specs live here; start at [[Roadmap]].\n' },
       { op: 'delete', path: 'notes/Scratch.md', ifMatch: await revision('notes/Scratch.md') },
     ] };
@@ -102,7 +103,7 @@ describe('precise edits through the portable CLI', () => {
     const help = await fixture.cli(['help', 'apply']);
     expect(help.body.data).toMatchObject({ id: 'apply', usage: 'apply <plan.json|-> [--project id]', annotations: { mutating: true, scope: 'project' } });
     expect(help.body.data.args[0].schema).toMatchObject({ $schema: 'https://json-schema.org/draft/2020-12/schema', title: 'Forge apply plan', required: ['version', 'operations'] });
-    const schema = (await fixture.cli(['schema'])).body.data;
+    const schema = (await fixture.cli(['schema', '--all'])).body.data;
     const edit = schema.commands.find((command: { id: string }) => command.id === 'edit');
     expect(edit.options.edits.schema).toMatchObject({ type: 'array', minItems: 1 });
     expect(edit.errors).toEqual(expect.arrayContaining(['SECTION_NOT_FOUND', 'AMBIGUOUS_SECTION']));

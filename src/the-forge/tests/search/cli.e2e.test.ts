@@ -72,10 +72,10 @@ describe('the search core plugin through the portable CLI', () => {
     for (const args of [['--context', '51'], ['--limit', '0'], ['--property', '=x'], ['--cursor', 'bogus']]) {
       expect((await cli(['search', 'plan', ...args])).body.error.code, args.join(' ')).toBe('INVALID_ARGUMENT');
     }
-    const schema = (await cli(['schema'])).body.data;
+    const schema = (await cli(['schema', '--all'])).body.data;
     expect(schema.errors).toContainEqual(expect.objectContaining({ code: 'SEARCH_TIMEOUT', plugin: 'search', exitCode: 2 }));
     expect(schema.commands.find((command: { id: string }) => command.id === 'search')).toMatchObject({
-      annotations: { scope: 'project', mutating: false, readOnlyHint: true }, outputSchema: { required: ['hits', 'total'] },
+      annotations: { scope: 'project', mutating: false, readOnlyHint: true }, outputSchema: { oneOf: expect.arrayContaining([expect.objectContaining({ required: ['hits', 'total'] })]) },
     });
     expect((await cli(['--lang', 'de', 'help', 'search'])).body.data.description).toContain('Textdateien');
   });

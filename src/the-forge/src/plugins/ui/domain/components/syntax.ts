@@ -1,9 +1,30 @@
-import { ensure } from '../../../../domain/shared/errors.ts';
 import type { UiDefinition, UiProp, UiState, UiValue } from './definition.ts';
+import { ensureUi } from '../errors.ts';
 
 /** HTML semantics and prop syntax shared by validation and every target renderer. */
 export const uiVoidTags: ReadonlySet<string> = new Set('area base br col embed hr img input link meta param source track wbr'.split(' '));
 export const uiBooleanAttributes: ReadonlySet<string> = new Set('allowfullscreen async autofocus autoplay checked controls default defer disabled formnovalidate hidden inert ismap itemscope loop multiple muted nomodule novalidate open playsinline readonly required reversed selected'.split(' '));
+/** Elements that run scripts, embed other documents or rebase every URL; portable definitions refuse them. */
+export const uiUnsafeTags: ReadonlySet<string> = new Set('applet base embed frame frameset iframe object script'.split(' '));
+/** Attributes that embed a whole document; portable definitions refuse them. */
+export const uiUnsafeAttributes: ReadonlySet<string> = new Set(['srcdoc']);
+/** Attributes whose value the browser loads or navigates to; bound values pass a runtime URL guard. */
+export const uiUrlAttributes: ReadonlySet<string> = new Set('action formaction href poster src'.split(' '));
+/** URL schemes a link or resource may use; relative references have none. */
+export const uiSafeUrlSchemes: readonly string[] = ['http', 'https', 'mailto', 'tel'];
+
+/**
+ * Whether a URL attribute value runs no code when followed: a relative reference or an http(s), mailto or tel URL,
+ * never `javascript:`, `data:` or another scheme. Leading spaces and control characters and embedded tabs and line
+ * breaks are ignored as browsers ignore them. Generated components carry the same check for bound values.
+ */
+export function uiSafeUrl(value: string): boolean {
+  let start = 0;
+  while (start < value.length && value.charCodeAt(start) <= 32) start++;
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(value.slice(start).replace(/[\t\n\r]/g, ''))?.[1]?.toLowerCase();
+  return scheme === undefined || uiSafeUrlSchemes.includes(scheme);
+}
+
 export type UiBindingPart = { literal: string } | { prop: string };
 
 export function uiBindingParts(value: string): UiBindingPart[] {
@@ -40,6 +61,6 @@ export function uiBindingSource(definition: UiDefinition, name: string): UiProp 
 
 /** Bindings are references to declared scalar fields, never executable expressions. */
 export function validateUiBindings(definition: UiDefinition, value: UiValue): void {
-  for (const name of uiBindings(value)) ensure(uiBindingSource(definition, name), 'INVALID_UI', `${definition.id} binds unknown field ${name}.`);
-  ensure(!uiHasMalformedBinding(value), 'INVALID_UI', `${definition.id} contains a malformed binding.`);
+  for (const name of uiBindings(value)) ensureUi(uiBindingSource(definition, name), 'INVALID_UI', `${definition.id} binds unknown field ${name}.`);
+  ensureUi(!uiHasMalformedBinding(value), 'INVALID_UI', `${definition.id} contains a malformed binding.`);
 }

@@ -1,14 +1,17 @@
 import type { FileRepository } from '../../../application/workspace/ports.ts';
 import { vaultPath } from '../../../domain/documents/file.ts';
-import { AppError, ensure, errorMessage } from '../../../domain/shared/errors.ts';
+import { ensure, errorMessage } from '../../../domain/shared/errors.ts';
+import { isNotFound } from '../../../domain/shared/not-found.ts';
 import {
   agentEntries, defaultAgent, diagnostic, hasErrors, instructionFiles, isObject, localPath, normalizedDocument, pointer, record,
   type AgentConfigDocument, type AgentDiagnostic,
 } from '../domain/config.ts';
 import { semanticDiagnostics } from '../domain/semantics.ts';
+import { agentFileDiagnostics } from '../domain/claude-generation.ts';
 import { agentError } from '../domain/errors.ts';
 import type { AgentPorts, ParsedDefinition } from './ports.ts';
 import { say } from '../domain/messages.ts';
+import { decodeUtf8 } from '../../../domain/shared/utf8.ts';
 
 /** One definition file read from the scope: the document when it parses, and every diagnostic in source order. */
 export interface LoadedDefinition {
@@ -20,7 +23,6 @@ export interface LoadedDefinition {
 }
 
 const definitionFile = /\.ya?ml$/;
-const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: false });
 const byPosition = (left: AgentDiagnostic, right: AgentDiagnostic) => (left.line ?? 0) - (right.line ?? 0) || (left.column ?? 0) - (right.column ?? 0);
 
 /** The parent directory of a scope path, with a trailing slash, or '' at the root. */
@@ -57,14 +59,17 @@ export class AgentDefinitions {
     return path;
   }
 
-  /** Parse, schema and semantic diagnostics for definition text; positions come from the YAML source. */
+  /**
+   * Parse, schema and semantic diagnostics for definition text, and agents whose generated Claude file no Windows
+   * system can write; positions come from the YAML source.
+   */
   check(text: string): { config?: AgentConfigDocument; diagnostics: AgentDiagnostic[]; locate: ParsedDefinition['locate'] } {
     const parsed = this.ports.codec.parse(text);
     if (parsed.value === undefined) return { diagnostics: parsed.diagnostics, locate: parsed.locate };
     const value = normalizedDocument(parsed.value);
     const schema = this.ports.schema.validate(value);
     const config = isObject(value) ? value : undefined;
-    const semantic = config ? semanticDiagnostics(config, this.ports.schema.configVersion) : [];
+    const semantic = config ? [...semanticDiagnostics(config, this.ports.schema.configVersion), ...agentFileDiagnostics(config)] : [];
     const diagnostics = [...schema, ...semantic].map(entry => ({ ...entry, ...parsed.locate(entry.pointer) }));
     return { ...(config ? { config } : {}), diagnostics: diagnostics.sort(byPosition), locate: parsed.locate };
   }
@@ -72,7 +77,7 @@ export class AgentDefinitions {
   async load(path: string): Promise<LoadedDefinition> {
     const snapshot = await this.files.read(path);
     let text: string;
-    try { text = decoder.decode(snapshot.bytes); }
+    try { text = decodeUtf8(snapshot.bytes); }
     catch { return { path, revision: snapshot.revision, text: '', diagnostics: [diagnostic('error', 'encoding', '', say('encoding'))], instructions: {} }; }
     const checked = this.check(text);
     const instructions: Record<string, string> = {}, missing: AgentDiagnostic[] = [];
@@ -83,9 +88,9 @@ export class AgentDefinitions {
         const parts: string[] = [];
         for (const [index, file] of files.entries()) {
           const at = typeof agent.instruction_file === 'string' ? pointer('agents', name, 'instruction_file') : pointer('agents', name, 'instruction_file', index);
-          try { parts.push(decoder.decode((await this.files.read(vaultPath(`${parent(path)}${localPath(file)!}`))).bytes)); }
+          try { parts.push(decodeUtf8((await this.files.read(vaultPath(`${parent(path)}${localPath(file)!}`))).bytes)); }
           catch (error) {
-            const reason = error instanceof AppError && error.code === 'NOT_FOUND' ? 'does not exist' : `cannot be read: ${errorMessage(error).replace(/\.$/, '')}`;
+            const reason = isNotFound(error) ? 'does not exist' : `cannot be read: ${errorMessage(error).replace(/\.$/, '')}`;
             missing.push({ ...diagnostic('error', 'instruction-file-missing', at, `instruction_file "${file}" ${reason}.`), ...checked.locate(at) });
           }
         }

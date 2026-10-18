@@ -2,10 +2,14 @@ import { ensure } from '../../../domain/shared/errors.ts';
 import { vaultPath } from '../../../domain/documents/file.ts';
 import type { ScreenshotRequest } from './runtime.ts';
 
-/** Keep credentials out of invocation plans and reports; URL fragments can carry localhost launch tokens. */
+/**
+ * Keep credentials out of invocation plans, reports and tutorials: URL fragments can carry localhost launch tokens
+ * and query strings OAuth codes or access tokens after redirects.
+ */
 export function reportedUrl(input: string): string {
   const url = new URL(input);
   url.hash = '';
+  url.search = '';
   url.username = '';
   url.password = '';
   return url.href;

@@ -35,9 +35,9 @@ describe('the packaged quality example plugin', () => {
     const revision = (await run('read', 'notes/Spec.md')).body.data.revision;
     const moved = await run('rename', 'notes/Spec.md', 'Requirements', '--if-match', revision);
     expect(moved.status, moved.stdout).toBe(0);
-    expect(moved.body.warnings).toEqual(['Quality noticed notes/Spec.md moved to notes/Requirements.md; review notes that describe it.']);
+    expect(moved.body.warnings).toEqual([{ code: 'QUALITY_NOTE_MOVED', message: 'Quality noticed notes/Spec.md moved to notes/Requirements.md; review notes that describe it.', details: { from: 'notes/Spec.md', to: 'notes/Requirements.md', plugin: 'quality' } }]);
     const back = await run('--lang', 'de', 'rename', 'notes/Requirements.md', 'Spec', '--if-match', revision);
-    expect(back.body.warnings).toEqual(['Quality hat bemerkt, dass notes/Requirements.md nach notes/Spec.md verschoben wurde; prüfen Sie Notizen, die es beschreiben.']);
+    expect(back.body.warnings.map((warning: { message: string }) => warning.message)).toEqual(['Quality hat bemerkt, dass notes/Requirements.md nach notes/Spec.md verschoben wurde; prüfen Sie Notizen, die es beschreiben.']);
   });
 
   it('contributes a validated config section shown by config, with defaults and change notifications', async () => {
@@ -52,11 +52,11 @@ describe('the packaged quality example plugin', () => {
     // An invalid section disables only the plugin for the invocation: config still reports it, its commands fail.
     const invalid = await run('config');
     expect(invalid.status).toBe(0);
-    expect(invalid.body.warnings).toEqual([expect.stringContaining('plugins.settings.quality.ownerProperty: must have at least 1 characters')]);
+    expect(invalid.body.warnings).toEqual([{ code: 'PLUGIN_UNAVAILABLE', message: expect.stringContaining('plugins.settings.quality.ownerProperty: must have at least 1 characters'), details: expect.objectContaining({ plugin: 'quality' }) }]);
     expect((await run('quality.check')).body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'quality.check', plugin: 'quality', issues: ['plugins.settings.quality.ownerProperty: must have at least 1 characters'] } });
     await configure({ ownerProperty: 'maintainer' });
     const changed = await run('quality.check');
-    expect(changed.body.warnings).toEqual(['Quality settings changed; owner property is now maintainer.']);
+    expect(changed.body.warnings).toEqual([{ code: 'PLUGIN_WARNING', message: 'Quality settings changed; owner property is now maintainer.', details: { plugin: 'quality' } }]);
     expect((await run('quality.check')).body.warnings).toEqual([]);
   });
 
@@ -75,7 +75,7 @@ describe('the packaged quality example plugin', () => {
 
   it('describes its commands in German and lists its contributions and error codes', async () => {
     expect((await run('--lang', 'de', 'help', 'quality.owners')).body.data).toMatchObject({ description: 'Notizen ohne Verantwortliche finden', errors: ['QUALITY_UNOWNED', 'PLUGIN_UNAVAILABLE'], annotations: { mutating: false } });
-    const schema = (await run('schema')).body.data;
+    const schema = (await run('schema', '--all')).body.data;
     expect(schema.errors).toContainEqual({ code: 'QUALITY_UNOWNED', exitCode: 5, category: 'drift', retryable: false, summary: 'Some notes have no owner.', plugin: 'quality' });
     const plugins = (await run('plugins')).body.data.plugins;
     expect(plugins.map((plugin: { id: string; core: boolean; state: string }) => [plugin.id, plugin.core, plugin.state])).toEqual([...bundledCorePlugins.map(id => [id, true, 'enabled']), ['quality', false, 'enabled']]);

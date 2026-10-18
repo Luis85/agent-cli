@@ -47,7 +47,7 @@ describe('the ui core plugin', () => {
       await configure({ plugins: { settings: { ui: { componentExports: '../escape' } } } });
       expect((await fixture.cli(['interactions'])).body.error.details).toMatchObject({
         issues: ['plugins.settings.ui.componentExports: must be a contained workspace-relative path'],
-        reason: 'plugins.settings.ui is invalid: plugins.settings.ui.componentExports: must be a contained workspace-relative path.',
+        reason: { code: 'PLUGIN_SETTINGS_INVALID', message: 'plugins.settings.ui is invalid: plugins.settings.ui.componentExports: must be a contained workspace-relative path.', details: { plugin: 'ui', issues: 'plugins.settings.ui.componentExports: must be a contained workspace-relative path' } },
       });
       // Former kernel keys are rejected; the settings moved without aliases.
       await configure({ paths: { components: 'library' } });
@@ -71,7 +71,7 @@ describe('the ui core plugin', () => {
         expect((await fixture.cli(['make', generator, 'page'])).body.error.code).toBe('UNKNOWN_GENERATOR');
         expect((await fixture.cli(['make', generator, 'page', '--framework', 'react', '--plan'])).body.error.code).toBe('UNKNOWN_GENERATOR');
       }
-      expect((await fixture.cli(['plugins'])).body.data.plugins).toContainEqual(expect.objectContaining({ id: 'ui', core: true, state: 'disabled', reason: 'Listed in plugins.disabled.', contributions: null }));
+      expect((await fixture.cli(['plugins'])).body.data.plugins).toContainEqual(expect.objectContaining({ id: 'ui', core: true, state: 'disabled', reason: { code: 'PLUGIN_LISTED_DISABLED', message: 'Listed in plugins.disabled.' }, contributions: null }));
       expect((await fixture.cli(['config'])).body.data.config.plugins.settings).not.toHaveProperty('ui');
     } finally { await reset(); }
     expect(ids((await fixture.cli(['schema'])).body.data.commands)).toEqual(expect.arrayContaining(['components', 'interactions']));

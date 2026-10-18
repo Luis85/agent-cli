@@ -1,0 +1,11 @@
+import { describe, expect, it } from 'vitest';
+import { __FORGE_COMPONENT__ } from '../src/domain/__FORGE_COMPONENT_FILE__.ts';
+
+describe('__FORGE_COMPONENT__', () => {
+  it.each(['', '   '])('rejects an empty identity: %j', id => {
+    expect(() => __FORGE_COMPONENT__.create(id)).toThrow('Identity is required');
+  });
+  it('retains a valid identity', () => {
+    expect(__FORGE_COMPONENT__.create('item-1').id).toBe('item-1');
+  });
+});

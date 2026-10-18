@@ -1,5 +1,5 @@
 import type { Command } from '../../application/plugins/registry.ts';
-import { arity, integer, value } from '../../application/plugins/command-input.ts';
+import { integer, value } from '../../application/plugins/command-input.ts';
 import { option } from '../../application/plugins/command-metadata.ts';
 import type { ServerController } from '../../application/server/contracts.ts';
 import type { JsonSchema } from '../../domain/schema/json-schema.ts';
@@ -35,23 +35,21 @@ export function serverCommands(controller: ServerController): Command[] {
     id: 'server', description: 'Manage the workspace localhost server and discover its installed webviews.',
     usage: 'server [status | start [--port 0..65535] [--webview <id>] [--dry-run] | stop [--dry-run]]',
     scope: 'workspace', discovery: true, mutating: false, defaultAction: 'status', unknownAction: 'INVALID_ARGUMENT',
-    args: [{ name: 'action', description: 'status (default), start or stop.', enum: ['status', 'start', 'stop'] }],
     output: statusOutput,
     actions: {
-      status: { description: 'Inspect the workspace server and discover installed webviews, including while stopped.', mutating: false },
+      status: { description: 'Inspect the workspace server and discover installed webviews, including while stopped.', mutating: false, args: [] },
       start: {
         description: 'Start or reuse the localhost server and return its authenticated URL; no browser opens.',
-        mutating: true, destructive: false, idempotent: true, output: lifecycleOutput,
+        mutating: true, destructive: false, idempotent: true, output: lifecycleOutput, args: [],
         options: {
           port: option.string('TCP port from 0 to 65535; 0 chooses an available port. A running server keeps its current port.', { default: '0' }),
           webview: option.string('Installed webview id to include in the launch URL, such as admin.'),
         },
       },
-      stop: { description: 'Stop the verified workspace server; repeated stops have no further effect.', mutating: true, destructive: false, idempotent: true, output: lifecycleOutput },
+      stop: { description: 'Stop the verified workspace server; repeated stops have no further effect.', args: [], mutating: true, destructive: false, idempotent: true, output: lifecycleOutput },
     },
     errors: ['SERVER_START_FAILED', 'SERVER_STOP_FAILED', 'SERVER_STATE_INVALID', 'SERVER_BUSY'],
     async run(args, flags, context) {
-      arity(args, 0, 1);
       const action = args[0] ?? 'status';
       ensure(action === 'start' || action === 'stop' || action === 'status', 'INVALID_ARGUMENT', 'Use server status, server start or server stop.');
       ensure(action === 'start' || (flags.port === undefined && flags.webview === undefined), 'INVALID_ARGUMENT', '--port and --webview require server start.');

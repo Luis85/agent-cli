@@ -1,6 +1,6 @@
-import { committedEvents, committedFileEvents } from '../support/events.ts';
+import { committedEvents, committedFileEvents, unchangedRepeat } from '../support/events.ts';
 import { describe, expect, it } from 'vitest';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
 
@@ -58,7 +58,7 @@ describe('portable Markdown component library and deterministic UI generation', 
     const generated = await cli(args);
     expect(generated.status, generated.stdout).toBe(0);
     expect(committedFileEvents(generated.body.events)).toHaveLength(paths.length);
-    expect((await cli(args)).body.error.code).toBe('CONFLICT');
+    expect(unchangedRepeat(await cli(args))).toBe(true);
   });
 
   it('generates stories separately without overwriting existing component code', async () => {
@@ -89,6 +89,10 @@ describe('portable Markdown component library and deterministic UI generation', 
     expect(committedEvents(updated.body.events).map(event => event.id)).toEqual(updated.body.data.changes.map(() => 'vault.modify'));
     expect(committedEvents(updated.body.events).length).toBeGreaterThan(0);
     expect(await readFile(join(fixture.project, 'maintained-ui/greeting.tsx'), 'utf8')).toContain('Updated');
+    // The repeat finds its output in place; a changed definition then meets the stale revisions.
+    expect(unchangedRepeat(await cli(guarded))).toBe(true);
+    const edited = (await cli(['read', 'custom-library/nested/greeting.md'])).body.data;
+    expect((await cli(['edit', 'custom-library/nested/greeting.md', '--if-match', edited.revision, '--find', 'Updated', '--replace', 'Changed'])).status).toBe(0);
     const stale = await cli(guarded);
     expect(stale.body.error.code).toBe('CONFLICT');
     expect(committedEvents(stale.body.events)).toEqual([]);
@@ -121,7 +125,7 @@ describe('portable Markdown component library and deterministic UI generation', 
     expect(committedFileEvents(planned.body.events)).toHaveLength(1);
     expect(await readFile(join(fixture.project, 'review-ui/greeting.tsx'), 'utf8')).toBe('// User customization\n');
     expect(JSON.parse(await readFile(join(fixture.project, 'reviews/reviewed.json'), 'utf8'))).toEqual(planned.body.data.revisions);
-    expect((await cli([...args, '--plan-out', 'reviews/reviewed.json'])).body.error.code).toBe('CONFLICT');
+    expect(unchangedRepeat(await cli([...args, '--plan-out', 'reviews/reviewed.json']))).toBe(true);
     expect((await cli([...args, '--revisions-from', 'reviews/reviewed.json'])).status).toBe(0);
     expect((await cli([...args, '--check'])).body.data.matches).toBe(true);
     for (const options of [['--check', '--plan'], ['--check', '--plan-out', 'reviews/invalid.json'], ['--plan', '--revisions-from', 'reviews/reviewed.json']]) {
@@ -183,5 +187,33 @@ describe('portable Markdown component library and deterministic UI generation', 
       expect(result.status, result.stdout).not.toBe(0);
       expect(committedEvents(result.body.events)).toEqual([]);
     }
+  });
+
+  it('refuses a component id that is a Windows device name in validation, before any generation writes', async () => {
+    await mkdir(join(fixture.project, 'device-library'), { recursive: true });
+    await writeFile(join(fixture.project, 'device-library/console.md'), definition('con'));
+    // Validation names the file of the configured default target; generation the file of the requested one.
+    const config = join(fixture.project, 'bin/config.json'), previous = await readFile(config, 'utf8').catch(() => undefined);
+    await writeFile(config, JSON.stringify({ plugins: { settings: { ui: { framework: 'svelte' } } } }));
+    const message = (file: string) => `Component con would generate ${file}, a Windows reserved device name that no file can have on Windows; choose another id.`;
+    const details = (file: string) => ({ component: 'con', file, reason: 'device-name', segment: file });
+    try {
+      for (const [args, file] of [
+        [['components', 'validate'], 'con.svelte'], [['components', 'list'], 'con.svelte'], [['components', 'export', '--out', 'device-export'], 'con.svelte'],
+        [['make', 'ui', 'con', '--framework', 'vue', '--out', 'device-out', '--plan'], 'con.vue'],
+        [['make', 'ui', 'con', '--framework', 'html', '--out', 'device-out', '--stories', '--stories-out', 'device-stories'], 'con.js'],
+      ] as const) {
+        const failed = await cli([...args, '--library', 'device-library']);
+        expect(failed.body.error, args.join(' ')).toMatchObject({ code: 'INVALID_UI', message: message(file), details: details(file) });
+        expect(committedEvents(failed.body.events)).toEqual([]);
+      }
+    } finally { await (previous === undefined ? rm(config, { force: true }) : writeFile(config, previous)); }
+    const german = await cli(['--lang', 'de', 'make', 'ui', 'con', '--framework', 'vue', '--library', 'device-library', '--out', 'device-out']);
+    expect(german.body.error).toMatchObject({
+      code: 'INVALID_UI', message: 'Die Komponente con würde con.vue generieren, einen unter Windows reservierten Gerätenamen, den keine Datei unter Windows tragen kann; wählen Sie eine andere ID.',
+      details: { ...details('con.vue'), localization: { originalMessage: message('con.vue') } },
+    });
+    expect((await cli(['--lang', 'de', 'components', 'validate', '--library', 'device-library'])).body.error).toMatchObject({ code: 'INVALID_UI', message: expect.stringContaining('Die Komponente con würde con.') });
+    for (const folder of ['device-out', 'device-stories', 'device-export']) await expect(readdir(join(fixture.project, folder))).rejects.toThrow();
   });
 });
