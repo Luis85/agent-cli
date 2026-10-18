@@ -44,7 +44,7 @@ Each failure's `hint` names the invoked command where the catalog hint says `hel
 
 **`UNKNOWN_GENERATOR`**, and **`INVALID_ARGUMENT`** for an unknown action of a command that declares its actions (`server`, `vault`, `webview`, `browser`, `update`): the message lists the declared generators or actions, and `details` is `{generator|action, allowed, suggestions}`.
 
-**`INVALID_ARGUMENT`** for a wrong number of positional arguments: the message says how many the command expects and received, names the missing arguments (`Missing <path>.`) and ends with the usage of the command or the selected action. `details` is `{minimum, maximum, received}`, plus `missing` with the missing argument names of a command without actions.
+**`MISSING_ARGUMENT`** for too few and **`INVALID_ARGUMENT`** for too many positional arguments. The host counts them against the declared arguments of the command or the selected action before the command runs, so the counts match the `minItems` and `maxItems` that `schema` publishes. The message names the missing arguments (`Missing <path>.`) or quotes the surplus values (`Unexpected "b.md".`), says how many the invocation expects and received, and ends with the usage of the command or the action. `details` is `{command, action?, minimum, maximum?, received}` (the counts include the action words; `maximum` is absent for an unbounded variadic argument), plus `argument` (the first missing argument) and `missing`, or `unexpected` with the surplus values. A word after an action that takes no arguments of its own but has sub-actions is an unknown action instead (`backlog sync stats`).
 
 ## Recovering edits and guarded writes
 

@@ -342,12 +342,12 @@ function fill(template, params = {}) {
   return template.replace(placeholder, (match, name2) => Object.hasOwn(params, name2) ? String(params[name2]) : match);
 }
 const escape$3 = (text2) => text2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-function source$1(template, english, fragments, greedy, capture) {
+function source$2(template, english, fragments, greedy, capture) {
   const free = greedy ? "[\\s\\S]*" : "[\\s\\S]*?", seen = /* @__PURE__ */ new Set();
   return template.split(placeholder).map((part, index2) => {
     if (index2 % 2 === 0) return escape$3(part);
     const keys = fragments[part];
-    const value2 = keys ? `(?:${keys.map((key) => source$1(english[key], english, {}, greedy, false)).join("|")})` : free;
+    const value2 = keys ? `(?:${keys.map((key) => source$2(english[key], english, {}, greedy, false)).join("|")})` : free;
     if (!capture) return value2;
     if (seen.has(part)) return `\\k<${part}>`;
     seen.add(part);
@@ -360,7 +360,7 @@ function pattern$1(key, english, fragments) {
   const id2 = `${template}\0${JSON.stringify(Object.entries(declared).map(([name2, keys]) => [name2, keys.map((fragment) => english[fragment])]))}`;
   let compiled2 = patterns.get(id2);
   if (!compiled2) {
-    const anchored = (greedy) => new RegExp(`^${source$1(template, english, declared, greedy, true)}$`);
+    const anchored = (greedy) => new RegExp(`^${source$2(template, english, declared, greedy, true)}$`);
     compiled2 = { lazy: anchored(false), greedy: anchored(true) };
     patterns.set(id2, compiled2);
   }
@@ -462,15 +462,15 @@ function warningText(value2) {
     if (typeof value2 !== "object" || value2 === null) return String(value2);
     if (value2 instanceof Error) return value2.message;
     const ancestors = [];
-    return JSON.stringify(value2, function replacer(_key, item) {
-      if (typeof item === "bigint") return `${item}n`;
-      if (typeof item === "function") return "[function]";
-      if (typeof item === "symbol") return item.toString();
-      if (typeof item !== "object" || item === null) return item;
+    return JSON.stringify(value2, function replacer(_key, item2) {
+      if (typeof item2 === "bigint") return `${item2}n`;
+      if (typeof item2 === "function") return "[function]";
+      if (typeof item2 === "symbol") return item2.toString();
+      if (typeof item2 !== "object" || item2 === null) return item2;
       while (ancestors.length > 0 && ancestors.at(-1) !== this) ancestors.pop();
-      if (ancestors.includes(item)) return "[circular]";
-      ancestors.push(item);
-      return item;
+      if (ancestors.includes(item2)) return "[circular]";
+      ancestors.push(item2);
+      return item2;
     }) ?? String(value2);
   } catch {
     return "Operation failed with an unreadable error.";
@@ -1173,7 +1173,7 @@ function isJsonValue(value2, ancestors = /* @__PURE__ */ new Set()) {
   if (!array2 && Object.getPrototypeOf(value2) !== Object.prototype && Object.getPrototypeOf(value2) !== null) return false;
   if (array2 && (Object.keys(value2).length !== value2.length || Object.keys(value2).some((key, index2) => key !== String(index2)))) return false;
   ancestors.add(value2);
-  const valid2 = Object.values(value2).every((item) => isJsonValue(item, ancestors));
+  const valid2 = Object.values(value2).every((item2) => isJsonValue(item2, ancestors));
   ancestors.delete(value2);
   return valid2;
 }
@@ -1360,7 +1360,7 @@ const operation$3 = (value2) => count$4(value2.operationId) && Number(value2.ope
 const error$3 = (value2) => isRecord$1(value2) && text$m(value2.code) && status$1(value2.exitCode);
 const command = (value2) => operation$3(value2) && text$m(value2.command) && text$m(value2.root) && text$m(value2.workspaceRoot);
 const workspace = (value2) => operation$3(value2) && ["read", "write", "edit", "remove", "move", "delete", "apply"].includes(String(value2.operation)) && (value2.root === null || text$m(value2.root)) && Array.isArray(value2.paths) && value2.paths.every(text$m);
-const plugin = (value2) => text$m(value2.pluginId);
+const plugin$1 = (value2) => text$m(value2.pluginId);
 const changeOperations = ["created", "updated", "deleted"];
 const change = (value2) => isRecord$1(value2) && text$m(value2.path) && text$m(value2.revision) && count$4(value2.bytes) && changeOperations.includes(String(value2.operation));
 const summarizedChange = (value2) => isRecord$1(value2) && (change(value2) || text$m(value2.path) && text$m(value2.revision) && count$4(value2.bytes) && value2.operation === "unchanged") && (value2.alreadyApplied === void 0 || value2.alreadyApplied === true);
@@ -1391,13 +1391,13 @@ const hostEventDefinitions = [
   definition$2("workspace.layout-ready", "Plugins are active and the command is about to run.", empty$1),
   definition$2("workspace.quit", "The invocation is ending; best-effort quit tasks follow before plugins unload.", empty$1),
   definition$2("workspace.project-change", "project open or project close committed a different project selection.", (value2) => project$2(value2.from) && project$2(value2.to) && value2.from !== value2.to && Object.keys(value2).length === 2),
-  definition$2("plugin.registered", "A plugin passed atomic contribution registration.", plugin),
-  definition$2("plugin.activating", "A registered plugin is about to run its activation hook.", plugin),
-  definition$2("plugin.activated", "A plugin activation hook completed successfully.", plugin),
-  definition$2("plugin.activation-failed", "A plugin activation failed; captured cleanup remains scheduled.", (value2) => plugin(value2) && error$3(value2.error)),
-  definition$2("plugin.unloading", "A started plugin is about to release its invocation resources.", plugin),
-  definition$2("plugin.unloaded", "A plugin cleanup completed successfully.", plugin),
-  definition$2("plugin.unload-failed", "A plugin cleanup failed; remaining cleanup still proceeds.", (value2) => plugin(value2) && error$3(value2.error))
+  definition$2("plugin.registered", "A plugin passed atomic contribution registration.", plugin$1),
+  definition$2("plugin.activating", "A registered plugin is about to run its activation hook.", plugin$1),
+  definition$2("plugin.activated", "A plugin activation hook completed successfully.", plugin$1),
+  definition$2("plugin.activation-failed", "A plugin activation failed; captured cleanup remains scheduled.", (value2) => plugin$1(value2) && error$3(value2.error)),
+  definition$2("plugin.unloading", "A started plugin is about to release its invocation resources.", plugin$1),
+  definition$2("plugin.unloaded", "A plugin cleanup completed successfully.", plugin$1),
+  definition$2("plugin.unload-failed", "A plugin cleanup failed; remaining cleanup still proceeds.", (value2) => plugin$1(value2) && error$3(value2.error))
 ];
 function registerHostEvents(events2) {
   events2.defineAll(hostEventDefinitions);
@@ -1967,8 +1967,8 @@ class ScopedFiles {
   unprefixed(value2, depth2 = 0) {
     if (typeof value2 === "string") return value2.startsWith(this.prefix) ? value2.slice(this.prefix.length) : value2;
     if (depth2 > 3) return value2;
-    if (Array.isArray(value2)) return value2.map((item) => this.unprefixed(item, depth2 + 1));
-    return isRecord$1(value2) ? Object.fromEntries(Object.entries(value2).map(([key, item]) => [key, this.unprefixed(item, depth2 + 1)])) : value2;
+    if (Array.isArray(value2)) return value2.map((item2) => this.unprefixed(item2, depth2 + 1));
+    return isRecord$1(value2) ? Object.fromEntries(Object.entries(value2).map(([key, item2]) => [key, this.unprefixed(item2, depth2 + 1)])) : value2;
   }
   relative(path2) {
     ensure(path2.startsWith(this.prefix), "INVALID_PATH", "Repository returned a path outside the selected project.");
@@ -2167,7 +2167,7 @@ const keywords = {
   description: (value2, path2) => typeof value2 === "string" ? [] : [`${path2}.description must be a string`],
   type: (value2, path2) => types$2.includes(value2) ? [] : [`${path2}.type must be one of ${types$2.join(", ")}`],
   properties: (value2, path2) => record$5(value2) ? Object.entries(value2).flatMap(([key, schema2]) => schemaIssues(schema2, `${path2}.properties.${key}`)) : [`${path2}.properties must be an object`],
-  required: (value2, path2) => Array.isArray(value2) && value2.every((item) => typeof item === "string") && new Set(value2).size === value2.length ? [] : [`${path2}.required must list unique property names`],
+  required: (value2, path2) => Array.isArray(value2) && value2.every((item2) => typeof item2 === "string") && new Set(value2).size === value2.length ? [] : [`${path2}.required must list unique property names`],
   additionalProperties: (value2, path2) => typeof value2 === "boolean" ? [] : schemaIssues(value2, `${path2}.additionalProperties`),
   items: (value2, path2) => schemaIssues(value2, `${path2}.items`),
   prefixItems: (value2, path2) => Array.isArray(value2) ? value2.flatMap((schema2, index2) => schemaIssues(schema2, `${path2}.prefixItems[${index2}]`)) : [`${path2}.prefixItems must be an array`],
@@ -2241,7 +2241,7 @@ function validateJsonValue(schema2, value2, path2) {
       issues2.push(`${at}: must be ${node2.type}`);
       return current;
     }
-    if (node2.enum !== void 0 && !node2.enum.some((item) => same$4(item, current))) issues2.push(`${at}: must be one of ${node2.enum.map((item) => JSON.stringify(item)).join(", ")}`);
+    if (node2.enum !== void 0 && !node2.enum.some((item2) => same$4(item2, current))) issues2.push(`${at}: must be one of ${node2.enum.map((item2) => JSON.stringify(item2)).join(", ")}`);
     if (Object.hasOwn(node2, "const") && !same$4(node2.const, current)) issues2.push(`${at}: must equal ${JSON.stringify(node2.const)}`);
     if (typeof current === "string") {
       if (node2.minLength !== void 0 && current.length < node2.minLength) issues2.push(`${at}: must have at least ${node2.minLength} characters`);
@@ -2255,9 +2255,9 @@ function validateJsonValue(schema2, value2, path2) {
     if (Array.isArray(current)) {
       if (node2.minItems !== void 0 && current.length < node2.minItems) issues2.push(`${at}: must have at least ${node2.minItems} items`);
       if (node2.maxItems !== void 0 && current.length > node2.maxItems) issues2.push(`${at}: must have at most ${node2.maxItems} items`);
-      return current.map((item, index2) => {
+      return current.map((item2, index2) => {
         const itemSchema = node2.prefixItems?.[index2] ?? node2.items;
-        return itemSchema ? visit2(itemSchema, item, `${at}[${index2}]`) : item;
+        return itemSchema ? visit2(itemSchema, item2, `${at}[${index2}]`) : item2;
       });
     }
     if (!record$5(current)) return current;
@@ -2267,10 +2267,10 @@ function validateJsonValue(schema2, value2, path2) {
       if (Object.hasOwn(current, key)) result[key] = visit2(child, current[key], `${at}.${key}`);
       else if (child.default !== void 0) result[key] = copy$1(child.default);
     }
-    for (const [key, item] of Object.entries(current)) {
+    for (const [key, item2] of Object.entries(current)) {
       if (node2.properties && Object.hasOwn(node2.properties, key)) continue;
       if (node2.additionalProperties === false) issues2.push(`${at}.${key}: is not allowed`);
-      else result[key] = typeof node2.additionalProperties === "object" ? visit2(node2.additionalProperties, item, `${at}.${key}`) : item;
+      else result[key] = typeof node2.additionalProperties === "object" ? visit2(node2.additionalProperties, item2, `${at}.${key}`) : item2;
     }
     return result;
   };
@@ -2385,6 +2385,17 @@ function selectedAction(command2, args) {
 function commandOptions(command2, args) {
   return { ...command2.options, ...selectedAction(command2, args)?.options };
 }
+function declaredArguments(command2, args) {
+  const action2 = args.length === 0 ? void 0 : actionId(command2, args);
+  const declared = action2 === void 0 ? command2.args : command2.actions?.[action2]?.args;
+  if (declared === void 0) return void 0;
+  return action2 === void 0 ? { words: 0, args: declared } : { action: action2, words: actionWords(action2).length, args: declared };
+}
+function argumentBounds({ words, args }) {
+  const last = args.at(-1), minimum = words + args.filter((arg) => arg.required).length;
+  if (last?.variadic !== true) return { minimum, maximum: words + args.length };
+  return last.maximum === void 0 ? { minimum } : { minimum, maximum: words + args.length - 1 + last.maximum };
+}
 function hasActionOptions(command2) {
   return command2.unknownAction !== void 0 || Object.values(command2.actions ?? {}).some((action2) => Object.keys(action2.options ?? {}).length > 0);
 }
@@ -2397,8 +2408,14 @@ function anyActionOptions(command2) {
 }
 function ensureKnownAction(command2, args) {
   const action2 = args[0];
-  if (command2.unknownAction === void 0 || action2 === void 0 || action2.startsWith("-") || actionId(command2, args) !== void 0) return;
-  const group = Object.keys(command2.actions ?? {}).some((id2) => id2.startsWith(`${action2} `)) && args[1] !== void 0 && !args[1].startsWith("-");
+  if (command2.unknownAction === void 0 || action2 === void 0 || action2.startsWith("-")) return;
+  const id2 = actionId(command2, args);
+  if (id2 !== void 0) {
+    const next = args[actionWords(id2).length];
+    if (next !== void 0 && command2.actions?.[id2]?.args?.length === 0 && nextWords(command2, actionWords(id2)).length > 0) unknownAction(command2.unknownAction, command2, `${id2} ${next}`);
+    return;
+  }
+  const group = Object.keys(command2.actions ?? {}).some((id22) => id22.startsWith(`${action2} `)) && args[1] !== void 0 && !args[1].startsWith("-");
   unknownAction(command2.unknownAction, command2, group ? `${action2} ${args[1]}` : action2);
 }
 function unknownAction(code2, command2, action2) {
@@ -2415,10 +2432,10 @@ function documentContent(schema2) {
   return { contentMediaType: "application/json", contentSchema: document2 };
 }
 function listOptionItems(value2) {
-  return value2.split(",").map((item) => item.trim());
+  return value2.split(",").map((item2) => item2.trim());
 }
 function listPattern(values2) {
-  const value2 = `\\s*(?:${values2.map((item) => item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\s*`;
+  const value2 = `\\s*(?:${values2.map((item2) => item2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\s*`;
   return `^${value2}(?:,${value2})*$`;
 }
 function optionSchema$1(schema2) {
@@ -2433,17 +2450,13 @@ function optionSchema$1(schema2) {
 }
 const positionalSchema = (arg) => ({ type: "string", description: arg.description, ...arg.enum ? { enum: [...arg.enum] } : {}, ...documentContent(arg.schema) });
 const exceptWords = (words) => `^(?!(?:${words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})$)`;
-function invocationSchema(usage, args, options2, action2, extended2 = []) {
+function invocationSchema(usage, declared, options2, action2, excluded = []) {
   const required2 = Object.entries(options2).filter(([, schema2]) => schema2.required).map(([key]) => key);
-  const variadic = args.at(-1)?.variadic === true;
-  const positional = args.map(positionalSchema), rest = variadic ? positional.at(-1) : { type: "string" };
-  const words = action2 === void 0 || args.length === 0 ? [] : actionWords(action2);
-  words.forEach((word, index2) => {
-    positional[index2] = { type: "string", const: word, description: (args[index2] ?? args.at(-1)).description };
-  });
-  if (extended2.length > 0) positional[words.length] = { ...positional[words.length] ?? rest, pattern: exceptWords(extended2) };
-  const minimum = Math.max(args.filter((arg) => arg.required).length, words.length);
-  const maximum = variadic ? void 0 : Math.max(args.length, words.length);
+  const words = action2 === void 0 ? [] : actionWords(action2), args = declared?.args ?? [];
+  const positional = [...words.map((word) => ({ type: "string", const: word })), ...args.map(positionalSchema)];
+  const rest = args.at(-1)?.variadic ? positional.at(-1) : { type: "string" };
+  const bounds = declared === void 0 ? { minimum: words.length } : argumentBounds(declared);
+  if (excluded.length > 0 && (bounds.maximum === void 0 || bounds.maximum > words.length)) positional[words.length] = { ...positional[words.length] ?? rest, pattern: exceptWords(excluded) };
   return {
     type: "object",
     additionalProperties: false,
@@ -2454,8 +2467,8 @@ function invocationSchema(usage, args, options2, action2, extended2 = []) {
         description: usage,
         items: rest,
         ...positional.length > 0 ? { prefixItems: positional } : {},
-        minItems: minimum,
-        ...maximum === void 0 ? {} : { maxItems: maximum }
+        minItems: bounds.minimum,
+        ...bounds.maximum === void 0 ? {} : { maxItems: bounds.maximum }
       },
       options: {
         type: "object",
@@ -2466,26 +2479,34 @@ function invocationSchema(usage, args, options2, action2, extended2 = []) {
     }
   };
 }
+function nextWords(command2, prefix) {
+  const extending = Object.keys(command2.actions ?? {}).map(actionWords).filter((words) => words.length > prefix.length && prefix.every((word, index2) => words[index2] === word));
+  return [...new Set(extending.map((words) => words[prefix.length]))];
+}
+function actionUsage(command2, id2) {
+  const action2 = command2.actions?.[id2];
+  if (action2?.usage !== void 0 || action2?.args === void 0) return action2?.usage ?? command2.usage;
+  const args = action2.args.map((arg) => `${arg.required ? "<" : "["}${arg.name}${arg.variadic ? "..." : ""}${arg.required ? ">" : "]"}`);
+  const options2 = Object.entries(action2.options ?? {}).map(([key, schema2]) => {
+    const flag2 = `--${key}${schema2.type === "string" ? ` ${schema2.enum?.join("|") ?? "value"}` : ""}`;
+    return schema2.required ? flag2 : `[${flag2}]`;
+  });
+  return [command2.id, id2, ...args, ...options2].join(" ");
+}
 function commandInputSchema(command2) {
   const head = { $schema: jsonSchemaDialect, title: command2.id, description: command2.description };
-  const args = command2.args ?? [];
-  if (!command2.actions || args.length === 0) return { ...head, ...invocationSchema(command2.usage, args, command2.options ?? {}) };
-  const ids = Object.keys(command2.actions);
+  const own2 = command2.args && { words: 0, args: command2.args };
+  if (!command2.actions) return { ...head, ...invocationSchema(command2.usage, own2, command2.options ?? {}) };
   const branches = Object.entries(command2.actions).map(([id2, action2]) => ({
     title: `${command2.id} ${id2}`,
     description: action2.description,
-    ...invocationSchema(
-      action2.usage ?? command2.usage,
-      args,
-      { ...command2.options, ...action2.options },
-      id2,
-      [...new Set(ids.filter((other) => other.startsWith(`${id2} `)).map((other) => actionWords(other)[actionWords(id2).length]))]
-    )
+    ...invocationSchema(actionUsage(command2, id2), action2.args && { words: actionWords(id2).length, args: action2.args }, { ...command2.options, ...action2.options }, id2, nextWords(command2, actionWords(id2)))
   }));
-  const omitted = args[0].required ? [] : [{
+  const bare = command2.unknownAction !== void 0;
+  const omitted = bare && command2.args?.some((arg) => arg.required) ? [] : [{
     title: command2.defaultAction === void 0 ? command2.id : `${command2.id} (${command2.defaultAction})`,
     description: command2.defaultAction === void 0 ? command2.description : command2.actions[command2.defaultAction].description,
-    ...invocationSchema(command2.usage, [], commandOptions(command2, []))
+    ...invocationSchema(command2.usage, bare ? { words: 0, args: [] } : own2, commandOptions(command2, []), void 0, bare ? [] : nextWords(command2, []))
   }];
   return { ...head, type: "object", required: ["args", "options"], oneOf: [...omitted, ...branches] };
 }
@@ -2522,7 +2543,8 @@ function commandAnnotations(command2) {
       const words = actionWords(id2), mode = commandMode(command2, words);
       return [id2, {
         description: action2.description,
-        ...action2.usage ? { usage: action2.usage } : {},
+        ...action2.usage !== void 0 || action2.args !== void 0 ? { usage: actionUsage(command2, id2) } : {},
+        ...action2.args ? { args: action2.args } : {},
         scope: mode.scope,
         discovery: mode.discovery,
         mutating: mode.mutating,
@@ -2541,8 +2563,8 @@ function validateOptions(options2, shared = {}) {
   for (const [key, schema2] of Object.entries(options2)) {
     ensure(flag$1.test(key) && !reservedOptions.includes(key) && !Object.hasOwn(shared, key), "INVALID_PLUGIN", `Invalid command option ${key}.`);
     ensure(isRecord$1(schema2) && (schema2.type === "string" || schema2.type === "boolean") && text$k(schema2.description), "INVALID_PLUGIN", `Command option ${key} requires type string or boolean and a description.`);
-    ensure(schema2.enum === void 0 || Array.isArray(schema2.enum) && schema2.enum.length > 0 && schema2.enum.every((item) => typeof item === "string"), "INVALID_PLUGIN", `Command option ${key} enum must list strings.`);
-    ensure(schema2.list === void 0 || typeof schema2.list === "boolean" && (!schema2.list || schema2.type === "string" && schema2.enum !== void 0 && schema2.enum.every((item) => item.length > 0 && !item.includes(","))), "INVALID_PLUGIN", `Command option ${key} list must be a boolean, and a list option needs an enum of values without commas.`);
+    ensure(schema2.enum === void 0 || Array.isArray(schema2.enum) && schema2.enum.length > 0 && schema2.enum.every((item2) => typeof item2 === "string"), "INVALID_PLUGIN", `Command option ${key} enum must list strings.`);
+    ensure(schema2.list === void 0 || typeof schema2.list === "boolean" && (!schema2.list || schema2.type === "string" && schema2.enum !== void 0 && schema2.enum.every((item2) => item2.length > 0 && !item2.includes(","))), "INVALID_PLUGIN", `Command option ${key} list must be a boolean, and a list option needs an enum of values without commas.`);
     ensure(schema2.default === void 0 || typeof schema2.default === schema2.type, "INVALID_PLUGIN", `Command option ${key} default must match its type.`);
     ensure(schema2.required === void 0 || typeof schema2.required === "boolean", "INVALID_PLUGIN", `Command option ${key} required must be a boolean.`);
     ensure(documentSchema(schema2.schema) && (schema2.schema === void 0 || schema2.type === "string"), "INVALID_PLUGIN", `Command option ${key} schema must be a supported JSON Schema on a string option.`);
@@ -2555,6 +2577,21 @@ function validateMode(mode, where2, options2) {
   ensure(mode.output === void 0 || schemaIssues(mode.output).length === 0, "INVALID_PLUGIN", `${where2} output must be a supported JSON Schema: ${schemaIssues(mode.output).join("; ")}`);
   ensure(mode.projectOption === void 0 || typeof mode.projectOption === "string" && options2?.[mode.projectOption]?.type === "string", "INVALID_PLUGIN", `${where2} projectOption must name a declared string option.`);
 }
+function validArgument(arg, last) {
+  if (!isRecord$1(arg) || !text$k(arg.name) || !text$k(arg.description)) return false;
+  const flags = ["required", "variadic", "path"].every((key) => arg[key] === void 0 || typeof arg[key] === "boolean");
+  const values2 = arg.enum === void 0 || Array.isArray(arg.enum) && arg.enum.length > 0 && arg.enum.every((item2) => typeof item2 === "string");
+  const variadic = arg.variadic !== true || last;
+  const maximum = arg.maximum === void 0 || arg.variadic === true && typeof arg.maximum === "number" && Number.isSafeInteger(arg.maximum) && arg.maximum >= 1;
+  return flags && values2 && variadic && maximum && documentSchema(arg.schema);
+}
+function validateArguments(args, where2) {
+  ensure(
+    args === void 0 || Array.isArray(args) && args.every((arg, index2) => validArgument(arg, index2 === args.length - 1)) && args.every((arg, index2) => !arg.required || args.slice(0, index2).every((before) => before.required)),
+    "INVALID_PLUGIN",
+    `${where2} args must list named, described arguments with boolean required, variadic and path flags, string enums and supported schemas; required arguments come first, and only the last may be variadic, with a positive integer maximum.`
+  );
+}
 function validateCommandMetadata(command2) {
   const where2 = `Command ${String(command2.id)}`;
   ensure(text$k(command2.description) && text$k(command2.usage), "INVALID_PLUGIN", `${where2} requires a description and usage.`);
@@ -2562,13 +2599,14 @@ function validateCommandMetadata(command2) {
   const options2 = command2.options ?? {};
   validateOptions(options2);
   validateMode(command2, where2, options2);
-  ensure(command2.args === void 0 || Array.isArray(command2.args) && command2.args.every((arg, index2, all2) => isRecord$1(arg) && text$k(arg.name) && text$k(arg.description) && (arg.variadic === void 0 || arg.variadic === true && index2 === all2.length - 1) && documentSchema(arg.schema) && (arg.path === void 0 || typeof arg.path === "boolean")), "INVALID_PLUGIN", `${where2} args must list named, described arguments with supported schemas and boolean path flags; only the last may be variadic.`);
+  validateArguments(command2.args, where2);
   ensure(command2.actions === void 0 || isRecord$1(command2.actions), "INVALID_PLUGIN", `${where2} actions must be an object.`);
   for (const [id2, action2] of Object.entries(command2.actions ?? {})) {
     ensure(isRecord$1(action2) && text$k(action2.description) && (action2.usage === void 0 || text$k(action2.usage)), "INVALID_PLUGIN", `${where2} action ${id2} requires a description.`);
     ensure(action2.options === void 0 || isRecord$1(action2.options), "INVALID_PLUGIN", `${where2} action ${id2} options must be an object.`);
     validateOptions(action2.options ?? {}, options2);
     validateMode(action2, `${where2} action ${id2}`, { ...options2, ...action2.options });
+    validateArguments(action2.args, `${where2} action ${id2}`);
   }
   ensure(command2.defaultAction === void 0 || typeof command2.defaultAction === "string" && isRecord$1(command2.actions) && Object.hasOwn(command2.actions, command2.defaultAction), "INVALID_PLUGIN", `${where2} defaultAction must name a declared action.`);
   ensure(command2.unknownAction === void 0 || unknownActionCodes.includes(command2.unknownAction) && isRecord$1(command2.actions), "INVALID_PLUGIN", `${where2} unknownAction must be ${unknownActionCodes.join(" or ")} for a command with actions.`);
@@ -2687,7 +2725,7 @@ function validateContributions(plugin2, pluginId, origin, frontmatter) {
   ensure(plugin2.settings === void 0 || isRecord$1(plugin2.settings) && plugin2.settings.type === "object" && schemaIssues(plugin2.settings).length === 0, "INVALID_PLUGIN", `settings must be a supported JSON Schema of type object: ${schemaIssues(plugin2.settings).join("; ")}`);
   const defaults2 = plugin2.settings === void 0 ? [] : defaultIssues(plugin2.settings, "settings");
   ensure(defaults2.length === 0, "INVALID_PLUGIN", `settings defaults must satisfy their own schemas: ${defaults2.join("; ")}`);
-  const owned = (key) => (plugin2[key] ?? []).map((item) => item.id);
+  const owned = (key) => (plugin2[key] ?? []).map((item2) => item2.id);
   const actions2 = (plugin2.commands ?? []).flatMap((command2) => Object.keys(command2.actions ?? {}).map((action2) => `${command2.id} ${action2}`));
   PluginCatalog.validate(pluginId, plugin2.strings, plugin2.errors, { commands: owned("commands"), actions: actions2, generators: owned("generators"), events: owned("events") }, origin === "core" ? null : errorPrefix(pluginId));
 }
@@ -2909,10 +2947,6 @@ function waitBudget(flags) {
   ensure(wait <= maximumWaitMs, "INVALID_ARGUMENT", `--wait must be at most ${maximumWaitMs} milliseconds.`);
   return wait;
 }
-function arity(args, min, max = min) {
-  const expected = `${min === max ? min : `${min}–${max}`} positional argument${max === 1 ? "" : "s"}`;
-  ensure(args.length >= min && args.length <= max, "INVALID_ARGUMENT", `Expected ${expected}, got ${args.length}.`, { minimum: min, maximum: max, received: args.length });
-}
 async function readInputBytes(flags, context, message2) {
   const from = value$2(flags, "from"), content2 = value$2(flags, "content");
   ensure([from !== void 0, content2 !== void 0, flags.stdin === true].filter(Boolean).length === 1, "INVALID_INPUT", message2);
@@ -3006,9 +3040,9 @@ class Registry {
   cleanups = [];
   published = /* @__PURE__ */ new Set();
   state = "registering";
-  add(map2, item) {
-    ensure(/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*$/.test(item.id) && !map2.has(item.id), "DUPLICATE_OR_INVALID_ID", item.id);
-    map2.set(item.id, item);
+  add(map2, item2) {
+    ensure(/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*$/.test(item2.id) && !map2.has(item2.id), "DUPLICATE_OR_INVALID_ID", item2.id);
+    map2.set(item2.id, item2);
   }
   register(plugin2, events2, origin = "user") {
     ensure(this.state === "registering", "PLUGIN_LIFECYCLE", "Plugins must register before activation.");
@@ -3946,8 +3980,8 @@ function requireAlias() {
       return anchor2 ? anchor2.count * anchor2.aliasCount : 0;
     } else if (identity2.isCollection(node2)) {
       let count2 = 0;
-      for (const item of node2.items) {
-        const c = getAliasCount(doc, item, anchors3);
+      for (const item2 of node2.items) {
+        const c = getAliasCount(doc, item2, anchors3);
         if (c > count2)
           count2 = c;
       }
@@ -4583,22 +4617,22 @@ ${indent2}${body}`;
     return `|${header2}
 ${indent2}${start2}${value2}${end2}`;
   }
-  function plainString(item, ctx, onComment, onChompKeep) {
-    const { type: type2, value: value2 } = item;
+  function plainString(item2, ctx, onComment, onChompKeep) {
+    const { type: type2, value: value2 } = item2;
     const { actualString, implicitKey, indent: indent2, indentStep, inFlow } = ctx;
     if (implicitKey && value2.includes("\n") || inFlow && /[[\]{},]/.test(value2)) {
       return quotedString(value2, ctx);
     }
     if (/^[\n\t ,[\]{}#&*!|>'"%@`]|^[?-]$|^[?-][ \t]|[\n:][ \t]|[ \t]\n|[\n\t ]#|[\n\t :]$/.test(value2)) {
-      return implicitKey || inFlow || !value2.includes("\n") ? quotedString(value2, ctx) : blockString(item, ctx, onComment, onChompKeep);
+      return implicitKey || inFlow || !value2.includes("\n") ? quotedString(value2, ctx) : blockString(item2, ctx, onComment, onChompKeep);
     }
     if (!implicitKey && !inFlow && type2 !== Scalar2.Scalar.PLAIN && value2.includes("\n")) {
-      return blockString(item, ctx, onComment, onChompKeep);
+      return blockString(item2, ctx, onComment, onChompKeep);
     }
     if (containsDocumentMarker(value2)) {
       if (indent2 === "") {
         ctx.forceBlockIndent = true;
-        return blockString(item, ctx, onComment, onChompKeep);
+        return blockString(item2, ctx, onComment, onChompKeep);
       } else if (implicitKey && indent2 === indentStep) {
         return quotedString(value2, ctx);
       }
@@ -4613,10 +4647,10 @@ ${indent2}`);
     }
     return implicitKey ? str : foldFlowLines2.foldFlowLines(str, indent2, foldFlowLines2.FOLD_FLOW, getFoldOptions(ctx, false));
   }
-  function stringifyString$1(item, ctx, onComment, onChompKeep) {
+  function stringifyString$1(item2, ctx, onComment, onChompKeep) {
     const { implicitKey, inFlow } = ctx;
-    const ss = typeof item.value === "string" ? item : Object.assign({}, item, { value: String(item.value) });
-    let { type: type2 } = item;
+    const ss = typeof item2.value === "string" ? item2 : Object.assign({}, item2, { value: String(item2.value) });
+    let { type: type2 } = item2;
     if (type2 !== Scalar2.Scalar.QUOTE_DOUBLE) {
       if (/[\x00-\x08\x0b-\x1f\x7f-\x9f\u{D800}-\u{DFFF}]/u.test(ss.value))
         type2 = Scalar2.Scalar.QUOTE_DOUBLE;
@@ -4699,25 +4733,25 @@ function requireStringify() {
       options: opt
     };
   }
-  function getTagObject(tags2, item) {
-    if (item.tag) {
-      const match = tags2.filter((t) => t.tag === item.tag);
+  function getTagObject(tags2, item2) {
+    if (item2.tag) {
+      const match = tags2.filter((t) => t.tag === item2.tag);
       if (match.length > 0)
-        return match.find((t) => t.format === item.format) ?? match[0];
+        return match.find((t) => t.format === item2.format) ?? match[0];
     }
     let tagObj = void 0;
     let obj;
-    if (identity2.isScalar(item)) {
-      obj = item.value;
+    if (identity2.isScalar(item2)) {
+      obj = item2.value;
       let match = tags2.filter((t) => t.identify?.(obj));
       if (match.length > 1) {
         const testMatch = match.filter((t) => t.test);
         if (testMatch.length > 0)
           match = testMatch;
       }
-      tagObj = match.find((t) => t.format === item.format) ?? match.find((t) => !t.format);
+      tagObj = match.find((t) => t.format === item2.format) ?? match.find((t) => !t.format);
     } else {
-      obj = item;
+      obj = item2;
       tagObj = tags2.find((t) => t.nodeClass && obj instanceof t.nodeClass);
     }
     if (!tagObj) {
@@ -4740,24 +4774,24 @@ function requireStringify() {
       props.push(doc.directives.tagString(tag));
     return props.join(" ");
   }
-  function stringify$1(item, ctx, onComment, onChompKeep) {
-    if (identity2.isPair(item))
-      return item.toString(ctx, onComment, onChompKeep);
-    if (identity2.isAlias(item)) {
+  function stringify$1(item2, ctx, onComment, onChompKeep) {
+    if (identity2.isPair(item2))
+      return item2.toString(ctx, onComment, onChompKeep);
+    if (identity2.isAlias(item2)) {
       if (ctx.doc.directives)
-        return item.toString(ctx);
-      if (ctx.resolvedAliases?.has(item)) {
+        return item2.toString(ctx);
+      if (ctx.resolvedAliases?.has(item2)) {
         throw new TypeError(`Cannot stringify circular structure without alias nodes`);
       } else {
         if (ctx.resolvedAliases)
-          ctx.resolvedAliases.add(item);
+          ctx.resolvedAliases.add(item2);
         else
-          ctx.resolvedAliases = /* @__PURE__ */ new Set([item]);
-        item = item.resolve(ctx.doc);
+          ctx.resolvedAliases = /* @__PURE__ */ new Set([item2]);
+        item2 = item2.resolve(ctx.doc);
       }
     }
     let tagObj = void 0;
-    const node2 = identity2.isNode(item) ? item : ctx.doc.createNode(item, { onTagObj: (o) => tagObj = o });
+    const node2 = identity2.isNode(item2) ? item2 : ctx.doc.createNode(item2, { onTagObj: (o) => tagObj = o });
     tagObj ?? (tagObj = getTagObject(ctx.doc.schema.tags, node2));
     const props = stringifyProps(node2, tagObj, ctx);
     if (props.length > 0)
@@ -5111,16 +5145,16 @@ function requireStringifyCollection() {
     let chompKeep = false;
     const lines2 = [];
     for (let i = 0; i < items2.length; ++i) {
-      const item = items2[i];
+      const item2 = items2[i];
       let comment2 = null;
-      if (identity2.isNode(item)) {
-        if (!chompKeep && item.spaceBefore)
+      if (identity2.isNode(item2)) {
+        if (!chompKeep && item2.spaceBefore)
           lines2.push("");
-        addCommentBefore(ctx, lines2, item.commentBefore, chompKeep);
-        if (item.comment)
-          comment2 = item.comment;
-      } else if (identity2.isPair(item)) {
-        const ik = identity2.isNode(item.key) ? item.key : null;
+        addCommentBefore(ctx, lines2, item2.commentBefore, chompKeep);
+        if (item2.comment)
+          comment2 = item2.comment;
+      } else if (identity2.isPair(item2)) {
+        const ik = identity2.isNode(item2.key) ? item2.key : null;
         if (ik) {
           if (!chompKeep && ik.spaceBefore)
             lines2.push("");
@@ -5128,7 +5162,7 @@ function requireStringifyCollection() {
         }
       }
       chompKeep = false;
-      let str2 = stringify2.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
+      let str2 = stringify2.stringify(item2, itemCtx, () => comment2 = null, () => chompKeep = true);
       if (comment2)
         str2 += stringifyComment2.lineComment(str2, itemIndent, commentString(comment2));
       if (chompKeep && comment2)
@@ -5166,16 +5200,16 @@ ${indent2}${line}` : "\n";
     let linesAtValue = 0;
     const lines2 = [];
     for (let i = 0; i < items2.length; ++i) {
-      const item = items2[i];
+      const item2 = items2[i];
       let comment = null;
-      if (identity2.isNode(item)) {
-        if (item.spaceBefore)
+      if (identity2.isNode(item2)) {
+        if (item2.spaceBefore)
           lines2.push("");
-        addCommentBefore(ctx, lines2, item.commentBefore, false);
-        if (item.comment)
-          comment = item.comment;
-      } else if (identity2.isPair(item)) {
-        const ik = identity2.isNode(item.key) ? item.key : null;
+        addCommentBefore(ctx, lines2, item2.commentBefore, false);
+        if (item2.comment)
+          comment = item2.comment;
+      } else if (identity2.isPair(item2)) {
+        const ik = identity2.isNode(item2.key) ? item2.key : null;
         if (ik) {
           if (ik.spaceBefore)
             lines2.push("");
@@ -5183,19 +5217,19 @@ ${indent2}${line}` : "\n";
           if (ik.comment)
             reqNewline = true;
         }
-        const iv = identity2.isNode(item.value) ? item.value : null;
+        const iv = identity2.isNode(item2.value) ? item2.value : null;
         if (iv) {
           if (iv.comment)
             comment = iv.comment;
           if (iv.commentBefore)
             reqNewline = true;
-        } else if (item.value == null && ik?.comment) {
+        } else if (item2.value == null && ik?.comment) {
           comment = ik.comment;
         }
       }
       if (comment)
         reqNewline = true;
-      let str = stringify2.stringify(item, itemCtx, () => comment = null);
+      let str = stringify2.stringify(item2, itemCtx, () => comment = null);
       reqNewline || (reqNewline = lines2.length > linesAtValue || str.includes("\n"));
       if (i < items2.length - 1) {
         str += ",";
@@ -5324,7 +5358,7 @@ function requireYAMLMap() {
         else
           prev.value = _pair.value;
       } else if (sortEntries) {
-        const i = this.items.findIndex((item) => sortEntries(_pair, item) < 0);
+        const i = this.items.findIndex((item2) => sortEntries(_pair, item2) < 0);
         if (i === -1)
           this.items.push(_pair);
         else
@@ -5360,16 +5394,16 @@ function requireYAMLMap() {
       const map2 = Type ? new Type() : ctx?.mapAsMap ? /* @__PURE__ */ new Map() : {};
       if (ctx?.onCreate)
         ctx.onCreate(map2);
-      for (const item of this.items)
-        addPairToJSMap2.addPairToJSMap(ctx, map2, item);
+      for (const item2 of this.items)
+        addPairToJSMap2.addPairToJSMap(ctx, map2, item2);
       return map2;
     }
     toString(ctx, onComment, onChompKeep) {
       if (!ctx)
         return JSON.stringify(this);
-      for (const item of this.items) {
-        if (!identity2.isPair(item))
-          throw new Error(`Map items must all be pairs; found ${JSON.stringify(item)} instead`);
+      for (const item2 of this.items) {
+        if (!identity2.isPair(item2))
+          throw new Error(`Map items must all be pairs; found ${JSON.stringify(item2)} instead`);
       }
       if (!ctx.allNullValues && this.hasAllNullValues(false))
         ctx = Object.assign({}, ctx, { allNullValues: true });
@@ -5484,8 +5518,8 @@ function requireYAMLSeq() {
       if (ctx?.onCreate)
         ctx.onCreate(seq2);
       let i = 0;
-      for (const item of this.items)
-        seq2.push(toJS2.toJS(item, String(i++), ctx));
+      for (const item2 of this.items)
+        seq2.push(toJS2.toJS(item2, String(i++), ctx));
       return seq2;
     }
     toString(ctx, onComment, onChompKeep) {
@@ -5556,9 +5590,9 @@ function requireString() {
     default: true,
     tag: "tag:yaml.org,2002:str",
     resolve: (str) => str,
-    stringify(item, ctx, onComment, onChompKeep) {
+    stringify(item2, ctx, onComment, onChompKeep) {
       ctx = Object.assign({ actualString: true }, ctx);
-      return stringifyString2.stringifyString(item, ctx, onComment, onChompKeep);
+      return stringifyString2.stringifyString(item2, ctx, onComment, onChompKeep);
     }
   };
   string$4.string = string2;
@@ -5899,24 +5933,24 @@ function requirePairs() {
   function resolvePairs(seq2, onError) {
     if (identity2.isSeq(seq2)) {
       for (let i = 0; i < seq2.items.length; ++i) {
-        let item = seq2.items[i];
-        if (identity2.isPair(item))
+        let item2 = seq2.items[i];
+        if (identity2.isPair(item2))
           continue;
-        else if (identity2.isMap(item)) {
-          if (item.items.length > 1)
+        else if (identity2.isMap(item2)) {
+          if (item2.items.length > 1)
             onError("Each pair must have its own sequence indicator");
-          const pair = item.items[0] || new Pair2.Pair(new Scalar2.Scalar(null));
-          if (item.commentBefore)
-            pair.key.commentBefore = pair.key.commentBefore ? `${item.commentBefore}
-${pair.key.commentBefore}` : item.commentBefore;
-          if (item.comment) {
+          const pair = item2.items[0] || new Pair2.Pair(new Scalar2.Scalar(null));
+          if (item2.commentBefore)
+            pair.key.commentBefore = pair.key.commentBefore ? `${item2.commentBefore}
+${pair.key.commentBefore}` : item2.commentBefore;
+          if (item2.comment) {
             const cn = pair.value ?? pair.key;
-            cn.comment = cn.comment ? `${item.comment}
-${cn.comment}` : item.comment;
+            cn.comment = cn.comment ? `${item2.comment}
+${cn.comment}` : item2.comment;
           }
-          item = pair;
+          item2 = pair;
         }
-        seq2.items[i] = identity2.isPair(item) ? item : new Pair2.Pair(item);
+        seq2.items[i] = identity2.isPair(item2) ? item2 : new Pair2.Pair(item2);
       }
     } else
       onError("Expected a sequence for this tag");
@@ -8745,14 +8779,14 @@ function requireCstStringify() {
       case "block-map":
       case "block-seq": {
         let res = "";
-        for (const item of token.items)
-          res += stringifyItem(item);
+        for (const item2 of token.items)
+          res += stringifyItem(item2);
         return res;
       }
       case "flow-collection": {
         let res = token.start.source;
-        for (const item of token.items)
-          res += stringifyItem(item);
+        for (const item2 of token.items)
+          res += stringifyItem(item2);
         for (const st of token.end)
           res += st.source;
         return res;
@@ -8806,15 +8840,15 @@ function requireCstVisit() {
   visit2.SKIP = SKIP;
   visit2.REMOVE = REMOVE;
   visit2.itemAtPath = (cst2, path2) => {
-    let item = cst2;
+    let item2 = cst2;
     for (const [field2, index2] of path2) {
-      const tok = item?.[field2];
+      const tok = item2?.[field2];
       if (tok && "items" in tok) {
-        item = tok.items[index2];
+        item2 = tok.items[index2];
       } else
         return void 0;
     }
-    return item;
+    return item2;
   };
   visit2.parentCollection = (cst2, path2) => {
     const parent2 = visit2.itemAtPath(cst2, path2.slice(0, -1));
@@ -8824,12 +8858,12 @@ function requireCstVisit() {
       return coll;
     throw new Error("Parent collection not found");
   };
-  function _visit(path2, item, visitor) {
-    let ctrl = visitor(item, path2);
+  function _visit(path2, item2, visitor) {
+    let ctrl = visitor(item2, path2);
     if (typeof ctrl === "symbol")
       return ctrl;
     for (const field2 of ["key", "value"]) {
-      const token = item[field2];
+      const token = item2[field2];
       if (token && "items" in token) {
         for (let i = 0; i < token.items.length; ++i) {
           const ci = _visit(Object.freeze(path2.concat([[field2, i]])), token.items[i], visitor);
@@ -8843,10 +8877,10 @@ function requireCstVisit() {
           }
         }
         if (typeof ctrl === "function" && field2 === "key")
-          ctrl = ctrl(item, path2);
+          ctrl = ctrl(item2, path2);
       }
     }
-    return typeof ctrl === "function" ? ctrl(item, path2) : ctrl;
+    return typeof ctrl === "function" ? ctrl(item2, path2) : ctrl;
   }
   cstVisit.visit = visit2;
   return cstVisit;
@@ -11017,7 +11051,7 @@ class ScopedWorkflow {
   triggers() {
     const on = this.root.get("on", true);
     if (distExports.isMap(on)) return on;
-    const events2 = distExports.isScalar(on) && typeof on.value === "string" ? [on.value] : distExports.isSeq(on) && on.items.every((item) => distExports.isScalar(item) && typeof item.value === "string") ? on.items.map((item) => item.value) : this.invalid("on must name events as a string, list or mapping.");
+    const events2 = distExports.isScalar(on) && typeof on.value === "string" ? [on.value] : distExports.isSeq(on) && on.items.every((item2) => distExports.isScalar(item2) && typeof item2.value === "string") ? on.items.map((item2) => item2.value) : this.invalid("on must name events as a string, list or mapping.");
     const map2 = new distExports.YAMLMap();
     for (const event of events2) map2.set(event, this.document.createNode(null));
     this.root.set("on", map2);
@@ -11035,8 +11069,8 @@ class ScopedWorkflow {
     return created;
   }
   patterns(node2, name2) {
-    if (!distExports.isSeq(node2) || !node2.items.every((item) => distExports.isScalar(item) && typeof item.value === "string")) this.invalid(`${name2} must be a list of path patterns.`);
-    return node2.items.map((item) => item.value);
+    if (!distExports.isSeq(node2) || !node2.items.every((item2) => distExports.isScalar(item2) && typeof item2.value === "string")) this.invalid(`${name2} must be a list of path patterns.`);
+    return node2.items.map((item2) => item2.value);
   }
 }
 const yamlWorkflowRenderer = {
@@ -11128,7 +11162,7 @@ class Transaction {
     const removes = await this.planRemoves(conflicts2);
     const [conflict2] = conflicts2, steps = renames.length + writes.length + removes.length;
     if (conflict2 !== void 0) {
-      const message2 = steps === 1 && removes.length === 1 && conflict2.reason === void 0 ? `File changed; read again before removing: ${conflict2.path}` : conflictMessage(conflict2) + (conflicts2.length > 1 ? ` Conflicting paths: ${conflicts2.map((item) => item.path).join(", ")}.` : "");
+      const message2 = steps === 1 && removes.length === 1 && conflict2.reason === void 0 ? `File changed; read again before removing: ${conflict2.path}` : conflictMessage(conflict2) + (conflicts2.length > 1 ? ` Conflicting paths: ${conflicts2.map((item2) => item2.path).join(", ")}.` : "");
       throw forgeError("CONFLICT", message2, { ...conflict2, ...steps > 1 ? { conflicts: conflicts2 } : {} });
     }
     const pending = writes.filter((plan) => !plan.unchanged);
@@ -11152,7 +11186,7 @@ class Transaction {
       if (current !== guard2.expectedRevision) conflicts2.push(revisionConflict(guard2.path, guard2.expectedRevision, current));
     }
     const [conflict2] = conflicts2;
-    ensure(!conflict2, "CONFLICT", `Guarded paths changed; read again before modifying: ${conflicts2.map((item) => item.path).join(", ")}`, conflict2 && { ...conflict2, ...conflicts2.length > 1 ? { conflicts: conflicts2 } : {} });
+    ensure(!conflict2, "CONFLICT", `Guarded paths changed; read again before modifying: ${conflicts2.map((item2) => item2.path).join(", ")}`, conflict2 && { ...conflict2, ...conflicts2.length > 1 ? { conflicts: conflicts2 } : {} });
   }
   async entry(path2, protectGit = true) {
     const target2 = await this.host.resolvePath(path2, true);
@@ -11227,7 +11261,7 @@ class Transaction {
       const entry2 = await this.entry(request.path);
       if (!entry2) throw forgeError("NOT_FOUND", `File not found: ${request.path}`, { path: request.path });
       const special = entry2.kind === "folder" ? entry2.snapshot.special : [];
-      ensure(special.length === 0, "PROTECTED_PATH", `Folder ${request.path} contains symlinks, node_modules or special files; Forge permanently removes only regular files and folders. Move it to the trash instead, or remove those entries first.`, { path: request.path, entries: special.slice(0, 20).map((item) => ({ path: `${request.path}/${item.path}`, kind: item.kind })) });
+      ensure(special.length === 0, "PROTECTED_PATH", `Folder ${request.path} contains symlinks, node_modules or special files; Forge permanently removes only regular files and folders. Move it to the trash instead, or remove those entries first.`, { path: request.path, entries: special.slice(0, 20).map((item2) => ({ path: `${request.path}/${item2.path}`, kind: item2.kind })) });
       const current = entryRevision(entry2);
       ensure(request.expectedRevision.length > 0, "CONFLICT", `Removing a file requires its current --if-match revision: ${request.path}`, revisionConflict(request.path, request.expectedRevision, current));
       if (current !== request.expectedRevision) conflicts2.push(revisionConflict(request.path, request.expectedRevision, current));
@@ -11903,7 +11937,7 @@ function stringScalars(document2) {
         const name2 = String(distExports.isScalar(pair.key) ? pair.key.value : pair.key);
         walk2(pair.value, key ? `${key}.${name2}` : name2, [...path2, name2]);
       }
-    } else if (distExports.isSeq(node2)) node2.items.forEach((item, index2) => walk2(item, key ? `${key}.${index2}` : String(index2), [...path2, index2]));
+    } else if (distExports.isSeq(node2)) node2.items.forEach((item2, index2) => walk2(item2, key ? `${key}.${index2}` : String(index2), [...path2, index2]));
     else if (distExports.isAlias(node2)) {
       const anchored = node2.resolve(document2);
       if (distExports.isScalar(anchored)) found.get(anchored)?.keys.push(key);
@@ -15679,8 +15713,8 @@ function requireMoment() {
       function isNumberOrStringArray(input2) {
         var arrayTest = isArray(input2), dataTypeTest = false;
         if (arrayTest) {
-          dataTypeTest = input2.filter(function(item) {
-            return !isNumber2(item) && isString(input2);
+          dataTypeTest = input2.filter(function(item2) {
+            return !isNumber2(item2) && isString(input2);
           }).length === 0;
         }
         return arrayTest && dataTypeTest;
@@ -17186,11 +17220,11 @@ function fromJs(value2, typeHint) {
   if (typeof value2 === "string")
     return stringValue$1(value2);
   if (Array.isArray(value2))
-    return listValue$1(value2.map((item) => fromJs(item)));
+    return listValue$1(value2.map((item2) => fromJs(item2)));
   if (typeof value2 === "object") {
     const out2 = {};
-    for (const [key, item] of Object.entries(value2)) {
-      out2[key] = fromJs(item);
+    for (const [key, item2] of Object.entries(value2)) {
+      out2[key] = fromJs(item2);
     }
     return objectValue(out2);
   }
@@ -17212,7 +17246,7 @@ function toPlain(value2) {
     case "List":
       return value2.value.map(toPlain);
     case "Object":
-      return Object.fromEntries(Object.entries(value2.value).map(([key, item]) => [key, toPlain(item)]));
+      return Object.fromEntries(Object.entries(value2.value).map(([key, item2]) => [key, toPlain(item2)]));
     case "File":
       return value2.value.path;
     case "Link":
@@ -17396,7 +17430,7 @@ function normalizeFrontmatterValue(value2, type2, linkResolutions = {}) {
   if (type2 !== "link")
     return value2;
   if (Array.isArray(value2))
-    return value2.map((item) => normalizeFrontmatterValue(item, type2, linkResolutions));
+    return value2.map((item2) => normalizeFrontmatterValue(item2, type2, linkResolutions));
   if (isRuntimeValue(value2))
     return value2;
   if (typeof value2 !== "string")
@@ -17519,8 +17553,8 @@ class Evaluator {
     const objects = this.context.objects ?? {};
     if (Object.prototype.hasOwnProperty.call(objects, name2))
       return fromJs(objects[name2]);
-    const note = this.context.note ?? {};
-    if (Object.prototype.hasOwnProperty.call(note, name2))
+    const note2 = this.context.note ?? {};
+    if (Object.prototype.hasOwnProperty.call(note2, name2))
       return this.noteProperty(name2);
     return nullValue();
   }
@@ -17992,7 +18026,7 @@ class Evaluator {
   }
   fileObject(file) {
     const path2 = file?.path ?? "";
-    const registered = this.context.files?.find((item) => item.path === path2);
+    const registered = this.context.files?.find((item2) => item2.path === path2);
     return fileValue({
       ...registered,
       ...file,
@@ -18502,9 +18536,9 @@ class BaseRowContexts {
   }
   context(file, current, files2, linkResolutions) {
     const propertyTypes2 = this.propertyTypes(file);
-    const note = normalizeFrontmatterProperties(file.properties ?? {}, { linkResolutions, propertyTypes: propertyTypes2 });
+    const note2 = normalizeFrontmatterProperties(file.properties ?? {}, { linkResolutions, propertyTypes: propertyTypes2 });
     const { formulas, objects, now } = this.shared;
-    return { note, file: current, files: files2, linkResolutions: this.table, objects, thisFile: this.thisFile, formulas, propertyTypes: propertyTypes2, now };
+    return { note: note2, file: current, files: files2, linkResolutions: this.table, objects, thisFile: this.thisFile, formulas, propertyTypes: propertyTypes2, now };
   }
   // Date types apply only where the row has a value, so empty dates evaluate as null rather than invalid dates.
   propertyTypes(file) {
@@ -18527,7 +18561,7 @@ function defaultDisplayText(link2) {
 }
 function stringList$1(value2, split) {
   if (typeof value2 === "string") return value2.split(split);
-  return Array.isArray(value2) ? value2.filter((item) => typeof item === "string") : [];
+  return Array.isArray(value2) ? value2.filter((item2) => typeof item2 === "string") : [];
 }
 function frontmatterTags(frontmatter) {
   const value2 = frontmatter?.tags ?? frontmatter?.tag;
@@ -18539,7 +18573,7 @@ function frontmatterAliases(frontmatter) {
 }
 function allTags(cache) {
   if (!cache) return [];
-  return [.../* @__PURE__ */ new Set([...(cache.tags ?? []).map((item) => item.tag), ...frontmatterTags(cache.frontmatter)])];
+  return [.../* @__PURE__ */ new Set([...(cache.tags ?? []).map((item2) => item2.tag), ...frontmatterTags(cache.frontmatter)])];
 }
 const external = (target2) => /^[a-z][a-z\d+.-]*:|^\/\//i.test(target2);
 const isExternalLink = external;
@@ -18662,8 +18696,8 @@ function typedLinks(value2, source2, cache) {
     const [target2, display] = match[1].split("|");
     return frontmatterLink(target2, display, cache.getClosestLinkpathDest(target2, source2));
   }
-  if (Array.isArray(value2)) return value2.map((item) => typedLinks(item, source2, cache));
-  if (isRecord$1(value2)) return Object.fromEntries(Object.entries(value2).map(([key, item]) => [key, typedLinks(item, source2, cache)]));
+  if (Array.isArray(value2)) return value2.map((item2) => typedLinks(item2, source2, cache));
+  if (isRecord$1(value2)) return Object.fromEntries(Object.entries(value2).map(([key, item2]) => [key, typedLinks(item2, source2, cache)]));
   return value2;
 }
 function baseLink({ reference, resolution }, source2, warnings) {
@@ -18697,7 +18731,7 @@ async function mapInOrder(items2, limit, map2) {
   if (failures.size > 0) throw failures.get(Math.min(...failures.keys()));
   return results;
 }
-function baseFile(path2, cache, problems, warnings) {
+function baseFile$1(path2, cache, problems, warnings) {
   const bare = { path: path2, properties: {}, links: [], embeds: [], tags: [], backlinks: [] };
   if (!isMarkdown(path2)) return bare;
   const problem = problems.get(path2);
@@ -18706,17 +18740,17 @@ function baseFile(path2, cache, problems, warnings) {
     return bare;
   }
   const references2 = cache.references(path2), metadata2 = cache.getFileCache(path2);
-  const links2 = references2.map((item) => baseLink(item, path2, warnings));
+  const links2 = references2.map((item2) => baseLink(item2, path2, warnings));
   const embeds2 = links2.filter((_, position2) => {
-    const item = references2[position2];
-    return item.kind === "embed" || item.kind === "frontmatter" && item.reference.embed === true;
+    const item2 = references2[position2];
+    return item2.kind === "embed" || item2.kind === "frontmatter" && item2.reference.embed === true;
   });
   return { path: path2, properties: typedLinks(metadata2?.frontmatter ?? {}, path2, cache), links: links2, embeds: embeds2, tags: allTags(metadata2), backlinks: [] };
 }
 async function indexBaseFiles(cache, dates) {
   const problems = new Map(cache.issues().map((issue2) => [issue2.path, issue2.message]));
   const warnings = [];
-  const indexed2 = cache.files().map((path2) => baseFile(path2, cache, problems, warnings));
+  const indexed2 = cache.files().map((path2) => baseFile$1(path2, cache, problems, warnings));
   const files2 = await mapInOrder(indexed2, pendingFileReads$1, async (file) => {
     const { size, ctime, mtime } = await dates(file.path);
     return { ...file, size, ctime, mtime };
@@ -18765,11 +18799,11 @@ const internalTag = "__forge_base_tag";
 const internalGuard = "__forge_base_guard";
 function guarded$1(expression2, callee = false) {
   let value2 = expression2;
-  if (value2.type === "Call") value2 = { ...value2, callee: guarded$1(value2.callee, true), args: value2.args.map((item) => guarded$1(item)) };
+  if (value2.type === "Call") value2 = { ...value2, callee: guarded$1(value2.callee, true), args: value2.args.map((item2) => guarded$1(item2)) };
   else if (value2.type === "Member") value2 = { ...value2, object: guarded$1(value2.object), property: typeof value2.property === "string" ? value2.property : guarded$1(value2.property) };
   else if (value2.type === "Binary") value2 = { ...value2, left: guarded$1(value2.left), right: guarded$1(value2.right) };
   else if (value2.type === "Unary") value2 = { ...value2, argument: guarded$1(value2.argument) };
-  else if (value2.type === "Array") value2 = { ...value2, elements: value2.elements.map((item) => guarded$1(item)) };
+  else if (value2.type === "Array") value2 = { ...value2, elements: value2.elements.map((item2) => guarded$1(item2)) };
   if (callee || ["Literal", "Identifier", "Regex"].includes(value2.type)) return value2;
   return { type: "Call", callee: { type: "Identifier", name: internalGuard, span: value2.span }, args: [value2], span: value2.span };
 }
@@ -18804,7 +18838,7 @@ function adapt(expression2) {
 }
 function baseExpression(source2) {
   const parsed2 = compileExpression(source2);
-  ensureBases(parsed2.valid && parsed2.ast, "INVALID_BASE_EXPRESSION", parsed2.diagnostics.map((item) => item.message).join("; ") || "Invalid Bases expression.");
+  ensureBases(parsed2.valid && parsed2.ast, "INVALID_BASE_EXPRESSION", parsed2.diagnostics.map((item2) => item2.message).join("; ") || "Invalid Bases expression.");
   const nativeNumericMember = (node2) => {
     if (!isRecord$1(node2)) return;
     if (node2.type === "Member" && isRecord$1(node2.object) && node2.object.type === "Literal" && typeof node2.object.value === "number" && isRecord$1(node2.object.span)) {
@@ -18831,8 +18865,8 @@ function baseFilter(value2) {
   return (context) => operator === "and" ? filters.every((filter) => filter(context)) : operator === "or" ? filters.some((filter) => filter(context)) : !filters.some((filter) => filter(context));
 }
 function diagnostics(items2, label2) {
-  const failures = items2.filter((item) => item.severity === "error" || item.code === "circular-formula");
-  ensureBases(failures.length === 0, "INVALID_BASE_EXPRESSION", `${label2}: ${failures.map((item) => item.message).join("; ")}`);
+  const failures = items2.filter((item2) => item2.severity === "error" || item2.code === "circular-formula");
+  ensureBases(failures.length === 0, "INVALID_BASE_EXPRESSION", `${label2}: ${failures.map((item2) => item2.message).join("; ")}`);
 }
 function ordering(value2) {
   ensureBases(isRecord$1(value2) && typeof value2.property === "string" && value2.property.length > 0, "INVALID_BASE_QUERY", "Sort and groupBy entries need a property name.");
@@ -18931,7 +18965,7 @@ class NodeBasesQueryEngine {
     const views2 = base2.views ?? [];
     ensureBases(views2.length > 0, "BASE_VIEW_NOT_FOUND", `No views are defined in ${path2}.`);
     ensureBases(new Set(views2.map((view2) => view2.name)).size === views2.length, "INVALID_BASE_QUERY", "Base view names must be unique.");
-    const view = options2.view === void 0 ? views2[0] : views2.find((item) => item.name === options2.view);
+    const view = options2.view === void 0 ? views2[0] : views2.find((item2) => item2.name === options2.view);
     ensureBases(view, "BASE_VIEW_NOT_FOUND", `View ${options2.view ?? ""} is not defined in ${path2}.`);
     const formulas = base2.formulas ?? {};
     const formulaAsts = Object.fromEntries(Object.entries(formulas).map(([name2, source2]) => [name2, baseExpression(source2).ast]));
@@ -18988,7 +19022,7 @@ class NodeBasesQueryEngine {
             const group = grouping?.expression.evaluateValue(context, strict);
             const groupIndex = groupPositions && (groupPositions.size === 0 ? -1 : groupPositions.get(groupIdentity(group && toPlain(group))) ?? -1);
             if (groupIndex === -1) return void 0;
-            const sort = sorts.map((item) => item.expression.evaluateValue(context, strict));
+            const sort = sorts.map((item2) => item2.expression.evaluateValue(context, strict));
             ensureBases(evaluationError === void 0, "BASE_EVALUATION_ERROR", evaluationError ?? "Expression evaluation failed.");
             return { path: file.path, sort, group, groupIndex };
           } catch (error2) {
@@ -19021,6 +19055,7 @@ function localizedQuery(result, language2) {
   if (language2 === "en") return result;
   return { ...result, warnings: result.warnings.map((warning2) => ({ ...warning2, message: retranslate(warning2.message, indexMessages, germanIndexMessages) })) };
 }
+const baseFile = { name: "path", description: "The .base file.", required: true };
 function basesCommand(service) {
   return {
     id: "bases",
@@ -19032,36 +19067,28 @@ function basesCommand(service) {
     defaultAction: "list",
     unknownAction: "INVALID_ARGUMENT",
     actions: {
-      list: { description: "List visible .base files in the command scope.", usage: "bases [list]" },
-      inspect: { description: "Return a .base definition and its views.", usage: "bases inspect <path.base>" },
+      list: { description: "List visible .base files in the command scope.", usage: "bases [list]", args: [] },
+      inspect: { description: "Return a .base definition and its views.", usage: "bases inspect <path.base>", args: [baseFile] },
       query: {
         description: "Evaluate a view and return its matching files.",
         usage: "bases query <path.base> [--view name] [--context note.md] [--limit count]",
+        args: [baseFile],
         options: {
           view: option$1.string("View name for query; the first view when omitted."),
           context: option$1.string("Note used as this file in query expressions."),
           limit: option$1.string("Maximum number of rows for query.")
         }
       },
-      capabilities: { description: "Describe the standalone Bases compatibility profile.", usage: "bases capabilities" }
+      capabilities: { description: "Describe the standalone Bases compatibility profile.", usage: "bases capabilities", args: [] }
     },
-    args: [
-      { name: "action", description: "list (default), inspect, query or capabilities.", enum: ["list", "inspect", "query", "capabilities"] },
-      { name: "path", description: "The .base file for inspect and query." }
-    ],
     errors: ["NOT_FOUND", "INVALID_BASE", "INVALID_BASE_QUERY", "INVALID_BASE_EXPRESSION", "BASE_EVALUATION_ERROR", "BASE_TIMEOUT", "BASE_VIEW_NOT_FOUND", "BASE_CONTEXT_NOT_FOUND", "INVALID_BASE_PROPERTY_TYPES", "UNSUPPORTED_BASE_PROPERTY_TYPE"],
     async run(args, flags, context) {
       const action2 = args[0] ?? "list";
       if (action2 === "list") {
-        arity(args, 0, 1);
         return { files: (await context.metadata.vaultFiles()).filter((path22) => path22.endsWith(".base")), scope: context.root };
       }
-      if (action2 === "capabilities") {
-        arity(args, 1);
-        return service(context).capabilities();
-      }
+      if (action2 === "capabilities") return service(context).capabilities();
       ensure(action2 === "inspect" || action2 === "query", "INVALID_ARGUMENT", "Use bases list, inspect, query, or capabilities.");
-      arity(args, 2);
       const path2 = args[1];
       ensure(path2.endsWith(".base"), "INVALID_BASE", "Use a native .base file as the repository definition.");
       if (action2 === "inspect") {
@@ -19145,8 +19172,7 @@ const basesStrings = {
       "View name for query; the first view when omitted.": "Ansichtsname für query; ohne Angabe die erste Ansicht.",
       "Note used as this file in query expressions.": "Notiz, die in Abfrageausdrücken als this file dient.",
       "Maximum number of rows for query.": "Höchstzahl der Zeilen für query.",
-      "list (default), inspect, query or capabilities.": "list (Standard), inspect, query oder capabilities.",
-      "The .base file for inspect and query.": "Die .base-Datei für inspect und query."
+      "The .base file.": "Die .base-Datei."
     }
   }
 };
@@ -19197,7 +19223,7 @@ const __vite_glob_0_2 = '# Editing vault files\n\nRead this for precise edits, a
 const __vite_glob_0_3 = '# Finding and checking vault files\n\nRead this for bounded reads, search and list paging, link reports and vault checks.\n\n## Reads\n- Markdown `read` returns `content` and `properties`; `--parts properties` returns only the frontmatter and `--parts body` only the body.\n- Text and attachment content beyond 256 KiB (`--max-bytes`) is cut with `truncated: true`, `lines: {start, end, total}` and a warning. `--lines <start>-<end>` (1-based, inclusive; also `<start>-` or `<start>`) reads a range; `search` hits report the line numbers. When one line alone exceeds the limit (warning `READ_LINE_TRUNCATED`), `--lines` returns the same prefix again: raise `--max-bytes` to `details.lineBytes`.\n- `read-many <paths…>` reads 1-32 paths in order, each counting at most `--max-bytes` toward an 8 MiB total. Any failure rejects the whole bundle, with `details.index` and `details.path`. It is not an atomic snapshot.\n- `stat <path>` returns a file\'s revision and byte count, or a folder\'s revision and counts, without parsing. It also works when `read` fails on malformed frontmatter.\n\n## Search and list\n- `search "release plan"` returns `data.hits` (`path`, 1-based `line` and `column`, `match`, `snippet`, `revision`) in path, line and column order, with `total`. A hit\'s `revision` is the `--if-match` for an `edit` of that file.\n- Narrow with `--path notes` (a folder path selects everything below it; globs such as `notes/**/*.md` work too), `--kind markdown`, `--tag project`, `--property status=active`, `--in body`, `--skip-code` and `--context 2`.\n- `--exclude "**/{dist,coverage}/**"` skips files before they are read and wins over `--path`. Search ignores `.gitignore`.\n- Matching ignores case unless `--case-sensitive`; `--regex` takes a JavaScript regular expression per line. `SEARCH_TIMEOUT` means the expression backtracks too much.\n- `--files-only` returns `files: [{path, revision, hits}]` and `--count` only `total` and `fileCount`.\n- `list --path notes --kind markdown` lists files; `list --tag` and `--property` find notes without a pattern. `.trash` is hidden unless `--include-trash`.\n- Pages hold 500 files or 100 hits: repeat the same command with `--cursor <nextCursor>` until it is absent. A `--path` that matches nothing adds a warning.\n\n## Links\n- `links back <note>` lists every file that links to it (`source`, `line`, `column`, `original`); `links out <note>` lists its links with `status` and `target`.\n- `links unresolved --path "notes/**"` reports broken links with `reason` `missing`, or `ambiguous` with `candidates`: use a longer link path.\n- `links orphans` lists notes nothing links to and `links deadends` notes that link nowhere; list intended entry notes in `plugins.settings.links.roots`.\n- Every report has `issues`: files whose metadata could not be parsed. Fix those first.\n\n## Vault check\n- `vault check` returns `data.findings` (`rule`, `severity`, `path`, `line`, `column`, `message`, `hint`, and `suggestion` for a missing target) and `summary` counts.\n- Rules: `unresolved-link`, `unresolved-embed`, `ambiguous-link`, `unresolved-anchor`, `invalid-frontmatter`, `invalid-canvas`, `invalid-base`, `property-type-mismatch`, `duplicate-block-id`, `empty-file`, `orphan-attachment`.\n- Narrow with `--path "notes/**"` and `--rule unresolved-link,invalid-frontmatter`.\n- `vault check --strict` fails with `VAULT_CHECK_FAILED` (exit 2) while an `error` finding remains, listed in `error.details.findings`.\n- `vault tags --sort count` lists tags with their files; `vault properties --name <property>` shows a property\'s types. Severities and ignore globs live in `plugins.settings.vault-check`.\n';
 const __vite_glob_0_4 = '# Moving, deleting and the writer lock\n\nRead this before restructuring notes, and when a write fails with `WORKSPACE_BUSY` or `ROLLBACK_FAILED`.\n\n## Move and rename\n- Always use the link-aware commands, never a copy plus delete.\n- `move notes/plan.md specs/plan.md --dry-run`, or `rename notes/plan.md Roadmap --dry-run` (a file keeps its extension), returns `data.revision` and a `diff` for every file whose links change.\n- Wikilinks and embeds keep `#Heading`, `#^block` and `|display` text; relative Markdown links are recomputed; frontmatter links and Canvas `file` nodes follow.\n- Review `data.links.unrewritten`, then repeat without `--dry-run` and with `--if-match <revision>`. One batch commits the move and every rewritten file.\n- A `<to>` that ends with `/` or names an existing folder moves the source into it under its own name. Moving a file with an extension to an extensionless name adds a warning.\n- `DESTINATION_EXISTS`: Forge never overwrites the target.\n- A folder moves the same way; its `--if-match` is the folder revision the dry run reports.\n- A repeated move whose source is gone and whose destination holds the revision succeeds with `alreadyApplied: true`.\n\n## Delete\n- `delete notes/scratch.md --if-match <revision>` moves the file to `.trash/` (numbered ` 1`, ` 2`… when taken). A folder needs `--recursive`; `--permanent` removes instead of trashing.\n- `HAS_BACKLINKS` lists the linking files in `details.backlinks`: rewrite or remove those links first, or move the note instead. Pass `--allow-broken-links` only when broken links are intended.\n- `PROTECTED_PATH`: `.obsidian`, `.forge` and, at workspace scope, `bin` are protected in any letter case. `--permanent` also refuses folders with symlinks or `node_modules`: trash them instead.\n- `data.deleted` lists every removed file and folder. A repeated delete fails with `NOT_FOUND`; `details.alreadyDeleted: true` and `details.trashPath` show where the first one put it.\n\n## The writer lock\n- All writers in a workspace share one lock, `.agent-cli.lock`, whatever their project.\n- `WORKSPACE_BUSY` (exit 4): `details.lock` names the holder (pid, hostname, startedAt, command), `details.path` the lock file and `details.stale` is `active`, `unknown` or `stale`.\n- `active` (`retryable: true`): wait `details.retryAfterMs` and retry, or rerun with the global `--wait <ms>`. Never delete an active lock.\n- `details.nestedWriter: "running"`: a moved or deleted folder contains a nested root whose writer runs. `--wait` does not wait for it; retry once that writer finished.\n- `unknown` (`retryable: false`): another host, container or boot, or an unreadable lock. Do not retry in a loop. Delete the file in `details.path` only after you verify the recorded process is not a running Forge writer and inspect its changes.\n- `stale` (`retryable: false`): the holder no longer runs but Forge could not remove the file. Confirm no Forge process uses it, delete the file and retry.\n- When Forge removes a stale lock itself, it adds a warning: inspect the interrupted changes with `git status` and read-back before continuing.\n- `ROLLBACK_FAILED`: inspect every listed path and the saved contents before doing more work.\n';
 const __vite_glob_0_5 = "# Generated output and feature commands\n\nRead this when you generate UI or data-source code, manage agents, skills or Claude Code configuration, sync CI workflows, or build webviews and browser evidence. Each feature also has its own skill or reference page.\n\n## UI components and data sources\n- Inspect `components list`, `components inspect <id>` and `plugins.settings.ui` in `config --json` (framework and folders). The `ui` core plugin owns `components`, `interactions`, `make ui` and `make stories`; `data-sources` owns `data-sources` and `make data-source`.\n- Component definitions are workspace-scoped; generated UI uses the active project or `--project <id>`. Start with `components init --dry-run` if there are none, and run `components validate` after edits.\n- Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, check `context.root` and review the generated text.\n- `--plan` compares proposed and current output, `--check` detects drift read-only (exit 5, `UI_DRIFT`) and `--plan-out <file.json>` writes a revision map. Intentional regeneration takes `--revisions-from <file.json>` with the inspected hashes.\n- Generic file commands follow the open project: close it before guarded edits to the shared workspace library.\n- CLI generation does not prove browser behavior or accessibility; test with the project's own toolchain. See `bin/data/docs/reference/ui-components.md`.\n\n## Agents and skills\n- Agent definitions are docker-agent YAML in `agents/*.yaml`: follow the `forge-agents` skill. `agents generate --target claude` maintains `.claude/agents/`; never hand-edit generated agents.\n- `skills list` names the registered skills. `skills show <id>` returns SKILL.md and the list of the skill's `files`; `--file references/<name>.md` returns one of them.\n- `skills install [--target both|claude|agents | --out <dir>]` writes each skill folder into the selected project's `.claude/skills` and `.agents/skills`. Existing different files are refused, so an edited skill is never overwritten.\n\n## Claude Code configuration\n- Use the `claude` command instead of hand-written JSON. `claude capabilities` lists hook events, handler types, plugin components and runtime operations.\n- `claude hooks inspect` returns the settings document (`--scope project|local|user|plugin`, default `project`) with its `revision`; `hooks check` validates it; `hooks add|set|remove|enable|disable|configure` need `--if-match <revision>` once the file exists.\n- `claude agents …` manages `.claude/agents/*.md`; `claude plugins create|inspect|manifest|check|asset|write-asset|remove-asset <dir>` authors a plugin folder without running Claude.\n- `claude plugins list|install|…`, `claude marketplaces …` and `claude runtime …` run the installed `claude` executable and can change the user's installation: preview with `--dry-run`, keep `--scope project` and never pass `--scope user` without consent.\n- Hooks and plugins run commands: review them like code. See `bin/data/docs/reference/claude.md`.\n\n## CI workflows\n- Each project authors workflows in its `src/infrastructure/workflows/<concern>/*.yml`. From the workspace run `workflows sync --dry-run`, review, then `workflows sync`.\n- Never edit the generated `.github/workflows` entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ.\n\n## Webviews and browser evidence\n- Prototype: follow the `forge-webviews` skill. `project create <id> --type webview`, build and test inside that project, `webview inspect --project <id>`, `webview publish --project <id> --dry-run`, then `server start --webview <id>`.\n- Screenshots and illustrated tutorials: follow the `forge-browser` skill and `schema browser`. Dry runs validate without launching a browser.\n";
-const __vite_glob_0_6 = '# Forge protocol\n\nRead this when you need more than the core loop in [SKILL.md](../SKILL.md): the response envelope, discovery details, events, warnings, language and plugins.\n\n## Envelope\n- Success: `{ok: true, data, context, events, warnings}`. Failure: `{ok: false, error: {code, message, hint?, retryable?, details?}, context?, events, warnings}`; built-in codes always carry `hint` and `retryable`.\n- `context.workspaceRoot` is the workspace, `context.root` the root this command used and `context.project` the selected project or `null`. Check `context.root` before reading paths in `changes` or `events`.\n- `--json` prints compact JSON and `--no-json` indented JSON; both are JSON.\n- Exit codes: 0 success, 1 runtime, I/O, plugin or Claude failure, 2 invalid input or conflict, 3 missing file, project or workspace root, 4 writer or server lock busy, 5 generated output drift, 130 (SIGINT) or 143 (SIGTERM) interrupted.\n- `bin/data/docs/reference/errors.md` lists every code with its exit status, hint and `retryable` flag. `schema <command>` publishes its codes in `data.commands[0].errors` and `data.commonErrors`, and `data.errors` describes them.\n\n## Discovery\n- `help` (also no arguments, `--help` and `-h`) returns `{name, version, apiVersion, commands, mutating, globalOptions, next}`: one line per command and the ids of the mutating commands.\n- `help <command>` adds usage, 1-3 `examples`, options, arguments, `annotations.actions` and error codes. Options marked `path: true` accept `./x`, `x\\y` and absolute paths inside the root.\n- `schema <command>` returns the command\'s JSON Schema 2020-12 `inputSchema`, the `outputSchema` of `data` (or `annotations.actions.<action>.outputSchema`), `errors` and `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `scope`), plus the response `envelope` schema. `schema` alone is a compact index of ids; `schema --all` is the complete catalog.\n- Actions declare their own options: an option of another action fails with `UNKNOWN_OPTION`. Typos and common words (`ls`, `cat`, `grep`, `mv`, `rm`, `--force`) fail with suggestions such as `list` or `--if-match`.\n- Treat `destructiveHint: true` commands as needing a reviewed `--dry-run` first.\n- `config --json` shows the effective configuration: the projects path, defaults, enabled plugins and `plugins.settings.<plugin-id>`.\n\n## Events and warnings\n- `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`, with `kind: "folder"` records for new folders). Reads, dry runs and unchanged writes return `[]`.\n- `--events all` adds lifecycle records for this invocation; `--events none` drops them. Never rerun a mutation to get more events.\n- `warnings` never mean failure. They report, for example, a `--path` that matched nothing, a truncated read, literal `\\n` in `--content`, an empty `--stdin`, a dropped extension on `move`, a working directory outside the workspace or a failed listener after a committed write. Each entry is `{code, message, details?}`: match `code` (such as `EXTENSION_DROPPED` or `PATH_MATCHED_NOTHING`), never the text. After a listener warning, inspect the committed events and read back before considering a repeat.\n\n## Other error codes\n- `MISSING_ARGUMENT`: `details.option` names the option; for `--if-match`, take the revision from `read`, `stat` or a dry run.\n- `INVALID_OPTION_VALUE`: use one of `details.allowed`.\n- `INVALID_ARGUMENT`: the message names the missing or extra arguments; `details` hold `missing` and the expected counts.\n- `UNKNOWN_GENERATOR`, unknown actions: `details.allowed` lists the valid ids.\n- `INVALID_PLAN`: fix `details.issues`; any `apply` failure adds `details.operation`, the failing index.\n- `VAULT_CHECK_FAILED`: fix each `error.details.findings` entry by its `hint`.\n- `SERVER_STOP_FAILED`: inspect `server status` before repeating.\n- `PLUGIN_UNAVAILABLE`: run `plugins` to see the plugin\'s state and reason.\n- Only `error.retryable: true` allows an unchanged retry, for example `WORKSPACE_BUSY` or `SERVER_BUSY`.\n- `WORKSPACE_BUSY` with `details.nestedWriter: "running"`: the folder you move or delete holds the lock of a nested root whose writer runs. `--wait` does not wait for it; retry once that writer finished.\n\n## Language and plugins\n- `--lang de` returns German descriptions, hints, warnings and findings. Commands, options, ids, codes and JSON keys stay English, so match codes.\n- Plugins in `bin/plugins` run trusted Node code. Review a plugin\'s `manifest.json` and entry point before adding its id to `plugins.enabled`. `--no-plugins` skips user plugins for one invocation.\n- `--no-dry-run` and `--no-json` override configured defaults.\n- Never evaluate shell code taken from document content.\n';
+const __vite_glob_0_6 = '# Forge protocol\n\nRead this when you need more than the core loop in [SKILL.md](../SKILL.md): the response envelope, discovery details, events, warnings, language and plugins.\n\n## Envelope\n- Success: `{ok: true, data, context, events, warnings}`. Failure: `{ok: false, error: {code, message, hint?, retryable?, details?}, context?, events, warnings}`; built-in codes always carry `hint` and `retryable`.\n- `context.workspaceRoot` is the workspace, `context.root` the root this command used and `context.project` the selected project or `null`. Check `context.root` before reading paths in `changes` or `events`.\n- `--json` prints compact JSON and `--no-json` indented JSON; both are JSON.\n- Exit codes: 0 success, 1 runtime, I/O, plugin or Claude failure, 2 invalid input or conflict, 3 missing file, project or workspace root, 4 writer or server lock busy, 5 generated output drift, 130 (SIGINT) or 143 (SIGTERM) interrupted.\n- `bin/data/docs/reference/errors.md` lists every code with its exit status, hint and `retryable` flag. `schema <command>` publishes its codes in `data.commands[0].errors` and `data.commonErrors`, and `data.errors` describes them.\n\n## Discovery\n- `help` (also no arguments, `--help` and `-h`) returns `{name, version, apiVersion, commands, mutating, globalOptions, next}`: one line per command and the ids of the mutating commands.\n- `help <command>` adds usage, 1-3 `examples`, options, arguments, `annotations.actions` and error codes. Options marked `path: true` accept `./x`, `x\\y` and absolute paths inside the root.\n- `schema <command>` returns the command\'s JSON Schema 2020-12 `inputSchema`, the `outputSchema` of `data` (or `annotations.actions.<action>.outputSchema`), `errors` and `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `scope`), plus the response `envelope` schema. `schema` alone is a compact index of ids; `schema --all` is the complete catalog.\n- Actions declare their own options: an option of another action fails with `UNKNOWN_OPTION`. Typos and common words (`ls`, `cat`, `grep`, `mv`, `rm`, `--force`) fail with suggestions such as `list` or `--if-match`.\n- Treat `destructiveHint: true` commands as needing a reviewed `--dry-run` first.\n- `config --json` shows the effective configuration: the projects path, defaults, enabled plugins and `plugins.settings.<plugin-id>`.\n\n## Events and warnings\n- `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`, with `kind: "folder"` records for new folders). Reads, dry runs and unchanged writes return `[]`.\n- `--events all` adds lifecycle records for this invocation; `--events none` drops them. Never rerun a mutation to get more events.\n- `warnings` never mean failure. They report, for example, a `--path` that matched nothing, a truncated read, literal `\\n` in `--content`, an empty `--stdin`, a dropped extension on `move`, a working directory outside the workspace or a failed listener after a committed write. Each entry is `{code, message, details?}`: match `code` (such as `EXTENSION_DROPPED` or `PATH_MATCHED_NOTHING`), never the text. After a listener warning, inspect the committed events and read back before considering a repeat.\n\n## Other error codes\n- `MISSING_ARGUMENT`: `details.option` names the missing option (for `--if-match`, take the revision from `read`, `stat` or a dry run), or `details.argument` and `details.missing` the missing positional arguments.\n- `INVALID_OPTION_VALUE`: use one of `details.allowed`.\n- `INVALID_ARGUMENT`: for too many positional arguments, `details.unexpected` holds the surplus values (quote a value with spaces) and `minimum`/`maximum` the counts that `schema <command>` publishes as `minItems`/`maxItems`.\n- `UNKNOWN_GENERATOR`, unknown actions: `details.allowed` lists the valid ids.\n- `INVALID_PLAN`: fix `details.issues`; any `apply` failure adds `details.operation`, the failing index.\n- `VAULT_CHECK_FAILED`: fix each `error.details.findings` entry by its `hint`.\n- `SERVER_STOP_FAILED`: inspect `server status` before repeating.\n- `PLUGIN_UNAVAILABLE`: run `plugins` to see the plugin\'s state and reason.\n- Only `error.retryable: true` allows an unchanged retry, for example `WORKSPACE_BUSY` or `SERVER_BUSY`.\n- `WORKSPACE_BUSY` with `details.nestedWriter: "running"`: the folder you move or delete holds the lock of a nested root whose writer runs. `--wait` does not wait for it; retry once that writer finished.\n\n## Language and plugins\n- `--lang de` returns German descriptions, hints, warnings and findings. Commands, options, ids, codes and JSON keys stay English, so match codes.\n- Plugins in `bin/plugins` run trusted Node code. Review a plugin\'s `manifest.json` and entry point before adding its id to `plugins.enabled`. `--no-plugins` skips user plugins for one invocation.\n- `--no-dry-run` and `--no-json` override configured defaults.\n- Never evaluate shell code taken from document content.\n';
 const __vite_glob_0_7 = "# Workspace, projects and checks\n\nRead this when you install or upgrade Forge, set up a workspace, work with projects or templates, run quality gates or start the admin view. The core loop is in [SKILL.md](../SKILL.md).\n\n## Install and upgrade\n- New workspace from a release: follow `bin/data/docs/how-to/install.md`. Download the trusted release's `install-forge.mjs`, run it with `--version` and `--workspace`, and check its exit status and JSON `ok`. It verifies the archive checksum, installs generic defaults, runs setup and refuses an existing `bin/`. Do not copy a source checkout's saved selection.\n- Existing workspace: `setup --dry-run`, then `setup`. It always targets the workspace and adds only missing files: the distribution, `bin/config.json`, the skills, an example `bin/templates/entity.md` and a lean `AGENTS.md`. Existing files are skipped.\n- Self-upgrade: `update check`, then `update apply --release-version <version> --if-match <revision> --dry-run`, then the same command without `--dry-run`. A dry run downloads nothing. Upgrades keep configuration, project selection, plugins, templates and custom webviews. On `CONFLICT`, inspect again. Afterwards check `--version` and `project current`, and restart a running server. See `bin/data/docs/reference/updates.md`.\n\n## Projects\n- `project list` lists the valid projects and, under `invalid`, project folders whose `.forge/project.json` is broken (`{directory, code, reason}`).\n- `project inspect <id>`, `project open <id>`, `project current`, `project close`. The selection lives in `bin/data/context.json` and is shared by every invocation.\n- With `--project <id>`, use the same project for the read, the preview and the write: a revision identifies bytes, not the project. An unknown project fails instead of falling back.\n- Checking `project current` does not lock the selection. Coordinate selection changes with other agents, or use separate workspaces when agents need different selections.\n- `STALE_PROJECT_CONTEXT` names the selected `project` and `directory` with the cause: open a valid project or `project close`.\n- New code project: `project create <kebab-name> --dry-run` (`--type webview` for a prototype). New domain or application file: `project component [id] <PascalName> --kind domain|application --dry-run`; omit the id for the open project.\n- Shared templates always live in workspace `bin/templates` and plugins in `bin/plugins`.\n\n## Templates and documents\n- `templates list`, then `templates inspect <name.md>` for its required values.\n- `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`; review the full text before applying. `--date <ISO>` makes dates repeatable.\n- Workflow stages: `templates inspect workflow/prd.md`, `templates install workflow --dry-run`, then `make document <Title> --template workflow/<kind>.md --values '{\"owner\":\"Team\"}' --dry-run`. See `bin/data/docs/tutorials/idea-to-production.md`. A drafted document is not a completed requirement.\n- When the `templates` or `scaffolds` core plugin is disabled, its commands and generators are unknown, `setup` skips the templates with a warning and `project create` fails with `PLUGIN_UNAVAILABLE`.\n\n## Checks and reporting\n- For generated TypeScript projects, run `npm run check:fast` from the project folder while you work, fix the cause of each failure, rerun the failed stage and finish with `npm run check`. For other projects, read their scripts first.\n- Never weaken a gate to hide a failure.\n- Summarize changed files, acceptance evidence, checks run and remaining limits.\n\n## Admin view\n- Only after the user agrees: `server start --webview admin` and share `data.url`. The CLI never opens a browser.\n- `server status` is read-only, `server start` reuses a running server and `server stop` ends it. Start and stop support `--dry-run`.\n- The URL fragment holds a bearer token: treat it as local session access, and fetch a fresh link after a restart. See `bin/data/docs/reference/server.md`.\n";
 const workflow = '---\nname: forge-workflow\ndescription: Drive the portable Forge CLI (node bin/forge.js) safely. Discover commands with help and schema, pick the workspace and project, preview writes with --dry-run, guard them with --if-match, retry lost writes and recover from error codes. Use when a workspace has bin/forge.js, when starting any Forge task, or when a Forge command fails.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nEvery command prints one JSON envelope and never prompts. Check the exit code and `ok`; match `error.code`, never message text.\n\n## Root and scope\n- The workspace is the folder holding `bin/`, not your working directory. Pick another with `--root <dir>` or `FORGE_ROOT=<dir>`; `--root` wins; a missing root fails with `INVALID_ROOT`.\n- Paths are relative to `context.root`: the open project, or the workspace. Check `project current`. `project open <id>` changes the selection for every agent, and `project close` clears it.\n- With parallel agents, leave the selection alone and pass `--project <id>` to file commands (`read`, `search`, `edit`, `apply`…).\n\n## Discover\n- `help` lists commands. `help <command>` gives usage, examples, options and error codes. `schema <command>` gives the JSON Schema input and output.\n- Avoid `schema --all` (every command at once).\n- Global flags such as `--root`, `--dry-run` and `--wait` may come before or after the command.\n\n## Safe edit loop\n1. `read <path>` and keep `data.revision`.\n2. Run the change with `--dry-run --if-match <revision>` and review `data.changes[].diff`.\n3. Rerun it without `--dry-run`, then read the file back.\n4. Change several files at once with one `apply <plan.json>`: all or nothing, with `ifMatch` on every existing path.\n5. After note changes, run `vault check --strict` until it passes.\n\n## Arguments\n- Quote every value, and quote empty variables (`--replace "$X"`). An option never takes the next flag as its value: it fails with `MISSING_ARGUMENT`.\n- Write a value that starts with `-` as `--key=value` (`--find=--draft`). Pass multiline or shell-sensitive text with `--stdin`.\n\n## Bounded output\n- `read` truncates at 256 KiB (`truncated: true`); read on with `--lines <a>-<b>`.\n- `list` returns 500 files per page and `search` 100 hits. Repeat with `--cursor <nextCursor>` until it is absent.\n- Narrow with `--path <folder or glob>`, `--kind`, or `search --files-only` / `--count`. Check `warnings` too.\n\n## Retries\n- Lost track of a write? Run it again. `operation: "unchanged"` or `alreadyApplied: true` means it already happened.\n- A repeated `delete` fails with `NOT_FOUND`; `details.alreadyDeleted` and `details.trashPath` show it already succeeded.\n- Retry an unchanged command only when `error.retryable` is true.\n\n## Errors\nExit codes: 1 runtime, 2 input or conflict, 3 not found, 4 busy, 5 drift, 130/143 interrupted. Every error has a `hint`.\n- `CONFLICT`: reread the file and reapply your change to its current content; `details.alreadyApplied: true` means it is already there. Never resend the old change unchanged.\n- `NO_MATCH`: copy the exact text, using `details.nearMatch` and `details.lineEndings`.\n- `AMBIGUOUS_EDIT`: extend `--find` until it matches once (`details.lines`).\n- `UNKNOWN_COMMAND`, `UNKNOWN_OPTION`: see `details.suggestions` and `help <command>`.\n- `INVALID_PATH`: use `details.suggestion`.\n- `NOT_FOUND`: check `details.path` and `project current`.\n- `WORKSPACE_BUSY`: wait `details.retryAfterMs` or pass `--wait <ms>` (not for `nestedWriter`).\n- `ROLLBACK_FAILED`: inspect every listed file before continuing.\n\n## Reference\n- [Protocol](references/protocol.md): envelope, events, warnings, language, plugins and other error codes.\n- [Workspace](references/workspace.md): install, setup, updates, projects, templates, quality gates and the admin server.\n- [Generation](references/generation.md): UI, data sources, agents, skills, Claude Code, workflows, webviews and browser.\n- Notes, Canvas, Bases and attachments: the `forge-vault` skill.\n';
 const vault = '---\nname: forge-vault\ndescription: Read, search, link-check, create and edit Obsidian Markdown notes, frontmatter properties, Canvas, Bases and attachments through Forge with revision guards, link-preserving moves and trash deletes. Use when working with notes, wikilinks, backlinks, tags, .canvas or .base files, or any vault file edit in a Forge workspace.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nEdit vault files only through Forge, so links, frontmatter and revisions stay intact. Root rules, the read → `--dry-run` → `--if-match` loop and retries are in the `forge-workflow` skill.\n\n## Paths\n- Paths are relative to `context.root`: the open project, or the workspace. `--project <id>` targets another project for one call.\n- `./x`, `x\\y` and absolute paths inside the root are accepted. Traversal, symlinks and `.git` fail with `INVALID_PATH`.\n\n## Read and find\n- `read <path>` returns `revision`; a note also returns `content` and `properties` (`--parts body` for the body only).\n- Content over 256 KiB is cut (`truncated: true`, `lines.total`): continue with `--lines <a>-<b>`. A note with broken frontmatter still reads, with `properties: null` and an `issue`.\n- `search "text"` returns hits with `path`, `line` and `revision`. Narrow with `--path notes`, `--tag`, `--property status=active`, `--regex`, `--files-only` or `--count`.\n- `list --path notes --kind markdown` lists files. Page both with `--cursor <nextCursor>`.\n- `read-many <paths…>` reads up to 32 files; `stat <path>` gives a revision without content.\n- `links back <note>` lists notes that link to it; `links unresolved` lists broken links.\n\n## Change\n- New file: `create notes/idea.md --content \'# Idea\'`; existing files are refused.\n- One replacement: `edit <file> --find <old> --replace <new> --if-match <rev>`. Several: `--edits \'[{"find":"a","replace":"b"}]\'`.\n- Part of a note: `--section "Plan > Risks" --append --content "- Item"` or `--block <id> --replace <text>` instead of `--find`.\n- Frontmatter: `properties <note> --set \'{"status":"draft"}\' --unset old --if-match <rev>`. Untouched YAML keeps its bytes.\n- Whole file: `write <path> --stdin --if-match <rev>`. Canvas or Base JSON: `patch <file> --pointer /nodes/- --value \'<json>\' --if-match <rev>`.\n- Several files: one `apply plan.json`, with `--dry-run` first and `ifMatch` on every existing path.\n- Move or rename: `move <from> <to>` rewrites every link. A `<to>` ending in `/` or naming a folder moves into it.\n- Delete: `delete <path>` moves the file to `.trash/`. Never copy and delete to move.\n- Dry-run `move`, `rename` and `delete` first: the preview reports the `revision` for `--if-match`.\n\n## Verify\n- Read the file back and run `validate <path>`.\n- Run `vault check --strict` and fix each finding by its `hint` until it passes.\n\n## Errors\n- `NO_MATCH`: copy the exact current text, including whitespace and line endings.\n- `AMBIGUOUS_EDIT`: extend `--find` until it matches once (`details.lines`).\n- `SECTION_NOT_FOUND`: pick from `details.headings` or `details.blocks`.\n- `AMBIGUOUS_SECTION`: pass a `details.candidates` line as `--section-line`.\n- `CONFLICT`: reread and reapply your change to the current content.\n- `DESTINATION_EXISTS`: Forge never overwrites; choose another target.\n- `HAS_BACKLINKS`: fix the links in `details.backlinks` first, or move the note instead.\n- `PROTECTED_PATH`: `.obsidian`, `.forge` and workspace `bin` cannot move or be deleted.\n\n## Reference\n- [Editing](references/editing.md): sections, blocks, apply plans, properties, Canvas, Bases, text, attachments and templates.\n- [Finding and checking](references/finding.md): read limits, search, list, links and vault check rules.\n- [Moving, deleting and locks](references/moving-and-locks.md): link rewriting, the trash and `WORKSPACE_BUSY` recovery.\n- Screenshots in notes: the `forge-browser` skill.\n';
@@ -19267,16 +19293,18 @@ function skillsCommand(skills2) {
     defaultAction: "list",
     unknownAction: "INVALID_ARGUMENT",
     actions: {
-      list: { description: "List the ids of every registered skill.", usage: "skills [list]", output: listOutput$1 },
+      list: { description: "List the ids of every registered skill.", usage: "skills [list]", args: [], output: listOutput$1 },
       show: {
         description: "Return one skill with its SKILL.md content and the list of its files, or with --file one of its reference files.",
         usage: "skills show <id> [--file references/name.md]",
         output: showOutput,
+        args: [{ name: "id", description: "The skill id.", required: true }],
         options: { file: option$1.string("skills show: a file of the skill folder from files, such as references/editing.md; SKILL.md by default.") }
       },
       install: {
         description: "Write every skill folder (SKILL.md and its reference files) to .claude/skills/<id>/ and .agents/skills/<id>/ in the selected project, or to one --target or an --out directory; existing files are refused.",
         usage: "skills install [--target both|claude|agents | --out directory]",
+        args: [],
         scope: "project",
         mutating: true,
         destructive: false,
@@ -19288,19 +19316,11 @@ function skillsCommand(skills2) {
         }
       }
     },
-    args: [
-      { name: "action", description: "list (default), show or install.", enum: ["list", "show", "install"] },
-      { name: "id", description: "The skill id for show." }
-    ],
     errors: ["UNKNOWN_SKILL", "CONFLICT"],
     async run(args, flags, { workspace: workspace2 }) {
       const action2 = args[0] ?? "list";
-      if (action2 === "list") {
-        arity(args, 0, 1);
-        return { skills: skills2.list().map((skill) => skill.id) };
-      }
+      if (action2 === "list") return { skills: skills2.list().map((skill) => skill.id) };
       if (action2 === "show") {
-        arity(args, 2);
         const skill = skills2.get(args[1]);
         ensureSkill(skill, "UNKNOWN_SKILL", args[1]);
         const files2 = skillFileNames(skill), path2 = value$2(flags, "file") ?? "SKILL.md";
@@ -19308,7 +19328,6 @@ function skillsCommand(skills2) {
         return { id: skill.id, path: path2, content: path2 === "SKILL.md" ? skill.content : skill.files[path2], files: files2 };
       }
       ensure(action2 === "install", "INVALID_ARGUMENT", "Use skills list, show, or install.");
-      arity(args, 1);
       const out2 = value$2(flags, "out"), target2 = value$2(flags, "target");
       ensure(out2 === void 0 || target2 === void 0, "INVALID_ARGUMENT", "Use either --target or --out.");
       const roots = out2 === void 0 ? targetRoots(target2 ?? "both") : [out2];
@@ -19330,8 +19349,7 @@ const skillsStrings = {
       "skills install: the skill roots, .claude/skills (claude), .agents/skills (agents) or both (the default).": "skills install: die Skill-Stammordner .claude/skills (claude), .agents/skills (agents) oder beide (Standard).",
       "skills install: one custom directory instead of the --target roots.": "skills install: ein eigenes Verzeichnis statt der --target-Stammordner.",
       "skills show: a file of the skill folder from files, such as references/editing.md; SKILL.md by default.": "skills show: eine Datei des Skill-Ordners aus files, etwa references/editing.md; standardmäßig SKILL.md.",
-      "list (default), show or install.": "list (Standard), show oder install.",
-      "The skill id for show.": "Die Skill-ID für show."
+      "The skill id.": "Die Skill-ID."
     }
   }
 };
@@ -19570,7 +19588,7 @@ function metadataMatches(cache, query) {
     if (value2 === null || value2 === void 0) return false;
     if (query.property.value !== void 0) {
       const values2 = Array.isArray(value2) ? value2 : [value2];
-      if (!values2.some((item) => scalarText(item) === query.property.value)) return false;
+      if (!values2.some((item2) => scalarText(item2) === query.property.value)) return false;
     }
   }
   return true;
@@ -19634,11 +19652,11 @@ class Pager {
   total = 0;
   after;
   more = false;
-  offer(item) {
+  offer(item2) {
     this.total++;
-    if (this.more || this.after !== void 0 && compareKeys(this.key(item), this.after) <= 0) return;
+    if (this.more || this.after !== void 0 && compareKeys(this.key(item2), this.after) <= 0) return;
     if (this.request.limit !== void 0 && this.items.length >= this.request.limit) this.more = true;
-    else this.items.push(item);
+    else this.items.push(item2);
   }
   /** The cursor for the next page, or undefined when this page is the last one. */
   nextCursor() {
@@ -19886,7 +19904,6 @@ function searchCommand(service) {
     output: output$1,
     errors: ["INVALID_SEARCH_PATTERN", "SEARCH_TIMEOUT"],
     async run(args, flags, context) {
-      arity(args, 1);
       const scope2 = value$2(flags, "in") ?? "all", kind2 = value$2(flags, "kind");
       const filters = noteFilters(value$2(flags, "tag"), value$2(flags, "property"));
       const contextLines = integer$2(flags, "context") ?? 0;
@@ -20039,19 +20056,19 @@ const linksOutput = {
   deadends: notes
 };
 const isNote = (path2) => ["markdown", "canvas"].includes(fileKind(path2));
-function location$1(item) {
-  if (item.kind === "frontmatter") return { key: item.reference.key };
-  if (item.kind === "canvas") return { node: item.reference.node };
-  const { line, col, offset } = item.reference.position.start;
+function location$1(item2) {
+  if (item2.kind === "frontmatter") return { key: item2.reference.key };
+  if (item2.kind === "canvas") return { node: item2.reference.node };
+  const { line, col, offset } = item2.reference.position.start;
   return { line: line + 1, column: col + 1, offset };
 }
-function linkEntry(source2, item) {
-  const { kind: kind2, reference, resolution } = item;
+function linkEntry(source2, item2) {
+  const { kind: kind2, reference, resolution } = item2;
   const resolved2 = resolution.status === "resolved" ? { target: resolution.path, via: resolution.via } : resolution.status === "unresolved" ? { reason: resolution.reason, ...resolution.reason === "ambiguous" ? { candidates: resolution.candidates } : {} } : {};
   return {
     source: source2,
     kind: kind2,
-    ...location$1(item),
+    ...location$1(item2),
     original: reference.original,
     link: reference.link,
     ...reference.displayText === void 0 ? {} : { displayText: reference.displayText },
@@ -20060,17 +20077,17 @@ function linkEntry(source2, item) {
   };
 }
 const outbound = (source2, { resolution }) => resolution.status !== "external" && !(resolution.status === "resolved" && resolution.path === source2);
-function indexed(cache, note) {
-  const path2 = vaultPath(note);
+function indexed(cache, note2) {
+  const path2 = vaultPath(note2);
   ensure(cache.files().includes(path2), "NOT_FOUND", `${path2} is not a visible file of the vault; run list to find its path.`);
   return path2;
 }
-function linksOut(cache, note) {
-  const path2 = indexed(cache, note);
+function linksOut(cache, note2) {
+  const path2 = indexed(cache, note2);
   return { path: path2, links: cache.references(path2).map((reference) => linkEntry(path2, reference)), issues: cache.issues().filter((issue2) => issue2.path === path2) };
 }
-function linksBack(cache, note) {
-  const path2 = indexed(cache, note);
+function linksBack(cache, note2) {
+  const path2 = indexed(cache, note2);
   return { path: path2, backlinks: cache.backlinks(path2).map(({ source: source2, ...reference }) => linkEntry(source2, reference)), issues: cache.issues() };
 }
 function unresolvedLinks(cache, include) {
@@ -20087,6 +20104,7 @@ function deadendNotes(cache, include) {
 }
 const actions$5 = ["out", "back", "unresolved", "orphans", "deadends"];
 const noteActions = ["out", "back"];
+const note = { name: "note", description: "The vault path of the file.", required: true };
 const path$2 = option$1.string("For unresolved, orphans and deadends: only files whose root-relative path matches this glob, or that are this file or below this folder.");
 function linksCommand(service) {
   return {
@@ -20099,16 +20117,13 @@ function linksCommand(service) {
     mutating: false,
     unknownAction: "INVALID_ARGUMENT",
     actions: {
-      out: { description: "Every link, embed, frontmatter link and Canvas file node of one file, with location and resolution.", usage: "links out <note>", output: linksOutput.out },
-      back: { description: "References in other files that resolve to one file.", usage: "links back <note>", output: linksOutput.back },
-      unresolved: { description: "Every missing or ambiguous reference in the vault, with candidates for ambiguous ones.", usage: "links unresolved [--path glob]", options: { path: path$2 }, output: linksOutput.unresolved },
-      orphans: { description: "Markdown and Canvas notes that no other file links to or embeds, except configured roots.", usage: "links orphans [--path glob]", options: { path: path$2 }, output: linksOutput.orphans },
-      deadends: { description: "Markdown and Canvas notes without a link to another file.", usage: "links deadends [--path glob]", options: { path: path$2 }, output: linksOutput.deadends }
+      out: { description: "Every link, embed, frontmatter link and Canvas file node of one file, with location and resolution.", usage: "links out <note>", args: [note], output: linksOutput.out },
+      back: { description: "References in other files that resolve to one file.", usage: "links back <note>", args: [note], output: linksOutput.back },
+      unresolved: { description: "Every missing or ambiguous reference in the vault, with candidates for ambiguous ones.", usage: "links unresolved [--path glob]", args: [], options: { path: path$2 }, output: linksOutput.unresolved },
+      orphans: { description: "Markdown and Canvas notes that no other file links to or embeds, except configured roots.", usage: "links orphans [--path glob]", args: [], options: { path: path$2 }, output: linksOutput.orphans },
+      deadends: { description: "Markdown and Canvas notes without a link to another file.", usage: "links deadends [--path glob]", args: [], options: { path: path$2 }, output: linksOutput.deadends }
     },
-    args: [
-      { name: "action", description: "out, back, unresolved, orphans or deadends.", required: true, enum: actions$5 },
-      { name: "note", description: "The vault path of the file for out and back." }
-    ],
+    args: [{ name: "action", description: "out, back, unresolved, orphans or deadends.", required: true, enum: actions$5 }],
     options: { project: option$1.string("Use this project instead of the selected project.") },
     errors: ["NOT_FOUND"],
     async run(args, flags, context) {
@@ -20116,11 +20131,9 @@ function linksCommand(service) {
       ensure(actions$5.includes(action2), "INVALID_ARGUMENT", `Use links ${actions$5.join(", links ")}.`);
       const links2 = service(context);
       if (noteActions.includes(action2)) {
-        arity(args, 2);
         const cache2 = await links2.cache();
         return action2 === "out" ? linksOut(cache2, args[1]) : linksBack(cache2, args[1]);
       }
-      arity(args, 1);
       const glob = value$2(flags, "path");
       const filter = recordingFilter(glob === void 0 ? () => true : pathFilter(glob)), include = filter.matches;
       const cache = await links2.cache();
@@ -20142,7 +20155,7 @@ const linksStrings = {
     descriptions: {
       "For unresolved, orphans and deadends: only files whose root-relative path matches this glob, or that are this file or below this folder.": "Für unresolved, orphans und deadends: nur Dateien, deren Pfad relativ zum Stammverzeichnis diesem Glob entspricht oder die diese Datei sind oder unter diesem Ordner liegen.",
       "out, back, unresolved, orphans or deadends.": "out, back, unresolved, orphans oder deadends.",
-      "The vault path of the file for out and back.": "Der Vault-Pfad der Datei für out und back.",
+      "The vault path of the file.": "Der Vault-Pfad der Datei.",
       "Path globs of entry notes, such as an index or home note, that links orphans never reports.": "Pfad-Globs von Einstiegsnotizen wie einer Index- oder Startnotiz, die links orphans nie meldet."
     }
   }
@@ -20320,7 +20333,7 @@ function issueDetection(issue2) {
   };
 }
 function duplicateBlockIds(path2, cache) {
-  const ids = [...cache.sections ?? [], ...cache.listItems ?? []].flatMap((item) => item.id === void 0 ? [] : [{ id: item.id, start: item.position.start }]).sort((a, b) => a.start.offset - b.start.offset);
+  const ids = [...cache.sections ?? [], ...cache.listItems ?? []].flatMap((item2) => item2.id === void 0 ? [] : [{ id: item2.id, start: item2.position.start }]).sort((a, b) => a.start.offset - b.start.offset);
   const first = /* @__PURE__ */ new Map();
   return ids.flatMap(({ id: id2, start: start2 }) => {
     const seen = first.get(id2.toLowerCase());
@@ -20366,7 +20379,7 @@ const comparable$1 = (text2) => decoded$3(text2).normalize("NFC").toLowerCase().
 const headingSets = /* @__PURE__ */ new WeakMap();
 function headingsOf(cache) {
   let headings = headingSets.get(cache);
-  if (headings === void 0) headingSets.set(cache, headings = new Set((cache.headings ?? []).map((item) => comparable$1(item.heading))));
+  if (headings === void 0) headingSets.set(cache, headings = new Set((cache.headings ?? []).map((item2) => comparable$1(item2.heading))));
   return headings;
 }
 function hasHeading(cache, segment2) {
@@ -20465,26 +20478,26 @@ class ClosestFiles {
     return this.rows;
   }
 }
-const embeds = (item) => item.kind === "embed" || item.kind === "canvas" || item.kind === "frontmatter" && item.reference.embed === true;
-const where = (item) => item.kind === "frontmatter" ? item.reference.key : item.kind === "canvas" ? item.reference.node : "";
+const embeds = (item2) => item2.kind === "embed" || item2.kind === "canvas" || item2.kind === "frontmatter" && item2.reference.embed === true;
+const where = (item2) => item2.kind === "frontmatter" ? item2.reference.key : item2.kind === "canvas" ? item2.reference.node : "";
 function referenceDetections(cache, path2, runs, locator2, suggest) {
   const source2 = cache.getFileCache(path2);
   if (!source2) return [];
   const detections = [], located2 = [];
-  for (const item of cache.references(path2)) {
-    const { resolution, reference } = item;
-    const variant = item.kind === "frontmatter" ? ".frontmatter" : item.kind === "canvas" ? ".canvas" : "";
-    const params = { original: reference.original, link: reference.link, at: where(item) };
+  for (const item2 of cache.references(path2)) {
+    const { resolution, reference } = item2;
+    const variant = item2.kind === "frontmatter" ? ".frontmatter" : item2.kind === "canvas" ? ".canvas" : "";
+    const params = { original: reference.original, link: reference.link, at: where(item2) };
     const report2 = (rule2, message2, extra = {}, suggestion2) => {
       const detection = { rule: rule2, path: path2, line: null, column: null, message: message2, params: { ...params, ...extra }, ...suggestion2 === void 0 ? {} : { suggestion: suggestion2 } };
       detections.push(detection);
-      if (item.kind === "link" || item.kind === "embed") Object.assign(detection, { line: item.reference.position.start.line + 1, column: item.reference.position.start.col + 1 });
-      else if (item.kind === "frontmatter") located2.push(locator2.locate(path2, source2, item.reference.key, item.reference.original).then((location2) => {
+      if (item2.kind === "link" || item2.kind === "embed") Object.assign(detection, { line: item2.reference.position.start.line + 1, column: item2.reference.position.start.col + 1 });
+      else if (item2.kind === "frontmatter") located2.push(locator2.locate(path2, source2, item2.reference.key, item2.reference.original).then((location2) => {
         Object.assign(detection, location2);
       }));
     };
     if (resolution.status === "unresolved" && resolution.reason === "missing") {
-      const rule2 = embeds(item) ? "unresolved-embed" : "unresolved-link";
+      const rule2 = embeds(item2) ? "unresolved-embed" : "unresolved-link";
       if (runs(rule2)) report2(rule2, rule2 + variant, {}, suggest(resolution.linkpath));
     } else if (resolution.status === "unresolved") {
       if (runs("ambiguous-link")) report2("ambiguous-link", "ambiguous-link" + variant, { candidates: resolution.candidates.join(", ") });
@@ -20775,6 +20788,7 @@ function vaultCommand(service) {
     actions: {
       check: {
         output: vaultOutput.check,
+        args: [],
         description: "Report findings of every enabled rule with severity, location, message and hint; --strict fails on error findings.",
         usage: "vault check [--path glob] [--rule id[,id…]] [--strict]",
         options: {
@@ -20784,25 +20798,25 @@ function vaultCommand(service) {
       },
       tags: {
         output: vaultOutput.tags,
+        args: [],
         description: "List frontmatter and inline tags with the files that use them; nested tags also count for their parents.",
         usage: "vault tags [--path glob] [--sort name|count]",
         options: { sort: option$1.string("Order by tag name or by file count, most used first.", { enum: tagSorts, default: "name" }) }
       },
       properties: {
         output: vaultOutput.properties,
+        args: [],
         description: "List frontmatter properties with value counts, inferred types, conflicts and the type declared in .obsidian/types.json.",
         usage: "vault properties [--path glob] [--name property]",
         options: { name: option$1.string("Only this property, with the value type of each note.") }
       }
     },
-    args: [{ name: "action", description: "check (default), tags or properties.", enum: actions$4 }],
     options: {
       path: option$1.string("Only files whose root-relative path matches this glob, or that are this file or below this folder."),
       project: option$1.string("Use this project instead of the selected project.")
     },
     errors: ["VAULT_CHECK_FAILED"],
     async run(args, flags, context) {
-      arity(args, 0, 1);
       const action2 = args[0] ?? "check";
       ensure(actions$4.includes(action2), "INVALID_ARGUMENT", `Use vault ${actions$4.join(", vault ")}.`);
       const vault2 = service(context);
@@ -20909,7 +20923,6 @@ const vaultCheckStrings = {
   de: {
     manifest: { name: "Vault-Prüfung", description: "Den Vault auf defekte Links, ungültige Dateien und uneinheitliche Eigenschaften prüfen und seine Tags und Eigenschaften auflisten." },
     descriptions: {
-      "check (default), tags or properties.": "check (Standard), tags oder properties.",
       "Only files whose root-relative path matches this glob, or that are this file or below this folder.": "Nur Dateien, deren Pfad relativ zum Stammverzeichnis diesem Glob entspricht oder die diese Datei sind oder unter diesem Ordner liegen.",
       "Only these comma-separated rules: unresolved-link, unresolved-embed, ambiguous-link, unresolved-anchor, invalid-frontmatter, invalid-canvas, invalid-base, property-type-mismatch, duplicate-block-id, empty-file, orphan-attachment.": "Nur diese kommagetrennten Regeln: unresolved-link, unresolved-embed, ambiguous-link, unresolved-anchor, invalid-frontmatter, invalid-canvas, invalid-base, property-type-mismatch, duplicate-block-id, empty-file, orphan-attachment.",
       "Fail with VAULT_CHECK_FAILED when any finding has error severity.": "Mit VAULT_CHECK_FAILED fehlschlagen, wenn ein Befund den Schweregrad error hat.",
@@ -21006,7 +21019,7 @@ const vaultCheckPlugin = {
 };
 const isObject$1 = (value2) => value2 !== null && typeof value2 === "object" && !Array.isArray(value2);
 const text$f = (value2) => typeof value2 === "string" && value2.trim().length > 0;
-const stringList = (value2) => Array.isArray(value2) ? value2.filter((item) => typeof item === "string") : [];
+const stringList = (value2) => Array.isArray(value2) ? value2.filter((item2) => typeof item2 === "string") : [];
 const record$4 = (value2) => isObject$1(value2) ? value2 : {};
 function pointer(...segments2) {
   return segments2.map((segment2) => `/${String(segment2).replaceAll("~", "~0").replaceAll("/", "~1")}`).join("");
@@ -21657,7 +21670,7 @@ class AgentDefinitions {
     }));
     const invalid2 = files2.filter((entry2) => !entry2.valid);
     if (invalid2.length > 0) {
-      throw agentError("INVALID_AGENT_DEFINITION", `${invalid2.map((entry2) => `${entry2.path} (${entry2.diagnostics.filter((item) => item.severity === "error").length} errors)`).join(", ")} failed validation; see details.files[].diagnostics.`, { files: invalid2 });
+      throw agentError("INVALID_AGENT_DEFINITION", `${invalid2.map((entry2) => `${entry2.path} (${entry2.diagnostics.filter((item2) => item2.severity === "error").length} errors)`).join(", ")} failed validation; see details.files[].diagnostics.`, { files: invalid2 });
     }
     return { directory: this.directory, valid: true, files: files2 };
   }
@@ -21706,7 +21719,7 @@ function stringField(value2, key, location2, required2 = false) {
   }
 }
 function stringArray(value2, location2) {
-  ensure(Array.isArray(value2) && Array.from(value2).every((item) => typeof item === "string"), code$2, `${location2} must be an array of strings.`);
+  ensure(Array.isArray(value2) && Array.from(value2).every((item2) => typeof item2 === "string"), code$2, `${location2} must be an array of strings.`);
 }
 function handler$1(value2, event, location2) {
   ensure(isRecord$1(value2), code$2, `${location2} must be a hook handler object.`);
@@ -21730,7 +21743,7 @@ function handler$1(value2, event, location2) {
     } catch {
     }
     ensure(validUrl, code$2, `${location2}.url must be an absolute HTTP or HTTPS URL.`);
-    if (Object.hasOwn(value2, "headers")) ensure(isRecord$1(value2.headers) && Object.values(value2.headers).every((item) => typeof item === "string"), code$2, `${location2}.headers must map header names to strings.`);
+    if (Object.hasOwn(value2, "headers")) ensure(isRecord$1(value2.headers) && Object.values(value2.headers).every((item2) => typeof item2 === "string"), code$2, `${location2}.headers must map header names to strings.`);
     if (Object.hasOwn(value2, "allowedEnvVars")) stringArray(value2.allowedEnvVars, `${location2}.allowedEnvVars`);
   } else if (value2.type === "mcp_tool") {
     stringField(value2, "server", location2, true);
@@ -22658,7 +22671,7 @@ function claudeAgent(config2, name2, instructions2, names2, style) {
 function commandEntries(config2, name2, agent) {
   const entries2 = /* @__PURE__ */ new Map();
   const add = (commands2, at) => {
-    const maps = Array.isArray(commands2) ? commands2.map((item, index2) => [record$4(item), `${at}/${index2}`]) : [[record$4(commands2), at]];
+    const maps = Array.isArray(commands2) ? commands2.map((item2, index2) => [record$4(item2), `${at}/${index2}`]) : [[record$4(commands2), at]];
     for (const [map2, where2] of maps) for (const [command2, value2] of Object.entries(map2)) if (!entries2.has(command2)) entries2.set(command2, [value2, `${where2}${pointer(command2)}`]);
   };
   add(agent.commands, pointer("agents", name2, "commands"));
@@ -23270,7 +23283,7 @@ function locateNode(document2, path2) {
     let next;
     if (distExports.isSeq(node2)) next = node2.items[Number(segment2)];
     else if (distExports.isMap(node2)) {
-      const pair = node2.items.find((item) => distExports.isScalar(item.key) && String(item.key.value) === segment2);
+      const pair = node2.items.find((item2) => distExports.isScalar(item2.key) && String(item2.key.value) === segment2);
       next = pair ? pair.value ?? pair.key : void 0;
     }
     if (!next) break;
@@ -23399,8 +23412,8 @@ function requireCode$1() {
       emptyStr() {
         if (this._items.length > 1)
           return false;
-        const item = this._items[0];
-        return item === "" || item === '""';
+        const item2 = this._items[0];
+        return item2 === "" || item2 === '""';
       }
       get str() {
         var _a2;
@@ -24393,8 +24406,8 @@ function requireUtil() {
   const code_1 = /* @__PURE__ */ requireCode$1();
   function toHash(arr) {
     const hash = {};
-    for (const item of arr)
-      hash[item] = true;
+    for (const item2 of arr)
+      hash[item2] = true;
     return hash;
   }
   util.toHash = toHash;
@@ -28673,19 +28686,19 @@ function requireUniqueItems() {
         return itemTypes.length > 0 && !itemTypes.some((t) => t === "object" || t === "array");
       }
       function loopN(i, j) {
-        const item = gen.name("item");
-        const wrongType = (0, dataType_1.checkDataTypes)(itemTypes, item, it.opts.strictNumbers, dataType_1.DataType.Wrong);
+        const item2 = gen.name("item");
+        const wrongType = (0, dataType_1.checkDataTypes)(itemTypes, item2, it.opts.strictNumbers, dataType_1.DataType.Wrong);
         const indices = gen.const("indices", (0, codegen_1._)`{}`);
         gen.for((0, codegen_1._)`;${i}--;`, () => {
-          gen.let(item, (0, codegen_1._)`${data}[${i}]`);
+          gen.let(item2, (0, codegen_1._)`${data}[${i}]`);
           gen.if(wrongType, (0, codegen_1._)`continue`);
           if (itemTypes.length > 1)
-            gen.if((0, codegen_1._)`typeof ${item} == "string"`, (0, codegen_1._)`${item} += "_"`);
-          gen.if((0, codegen_1._)`typeof ${indices}[${item}] == "number"`, () => {
-            gen.assign(j, (0, codegen_1._)`${indices}[${item}]`);
+            gen.if((0, codegen_1._)`typeof ${item2} == "string"`, (0, codegen_1._)`${item2} += "_"`);
+          gen.if((0, codegen_1._)`typeof ${indices}[${item2}] == "number"`, () => {
+            gen.assign(j, (0, codegen_1._)`${indices}[${item2}]`);
             cxt.error();
             gen.assign(valid2, false).break();
-          }).code((0, codegen_1._)`${indices}[${item}] = ${i}`);
+          }).code((0, codegen_1._)`${indices}[${item2}] = ${i}`);
         });
       }
       function loopN2(i, j) {
@@ -30090,7 +30103,7 @@ const schema$3 = {
   definitions
 };
 const configVersion = "16";
-const source = {
+const source$1 = {
   configVersion
 };
 let compiled;
@@ -30114,7 +30127,7 @@ function message(error2) {
   return `${error2.message ?? "is invalid"}.`.replace(/^must/, "Must");
 }
 const ajvDefinitionSchema = {
-  configVersion: source.configVersion,
+  configVersion: source$1.configVersion,
   validate(value2) {
     const validate2 = validator();
     if (validate2(value2)) return [];
@@ -30271,11 +30284,11 @@ const germanAgentMessages = {
 const isDiagnostic = (value2) => typeof value2.severity === "string" && typeof value2.code === "string" && typeof value2.pointer === "string" && typeof value2.message === "string";
 function localizedDiagnostics(value2, language2) {
   if (language2 === "en") return value2;
-  const walk2 = (item) => {
-    if (Array.isArray(item)) return item.map(walk2);
-    if (!isRecord$1(item)) return item;
-    const entries2 = Object.fromEntries(Object.entries(item).map(([key, entry2]) => [key, walk2(entry2)]));
-    return isDiagnostic(item) ? { ...entries2, message: retranslate(item.message, agentMessages, germanAgentMessages, agentFragments) } : entries2;
+  const walk2 = (item2) => {
+    if (Array.isArray(item2)) return item2.map(walk2);
+    if (!isRecord$1(item2)) return item2;
+    const entries2 = Object.fromEntries(Object.entries(item2).map(([key, entry2]) => [key, walk2(entry2)]));
+    return isDiagnostic(item2) ? { ...entries2, message: retranslate(item2.message, agentMessages, germanAgentMessages, agentFragments) } : entries2;
   };
   return walk2(value2);
 }
@@ -30342,15 +30355,16 @@ function agentsCommand(services2) {
     defaultAction: "list",
     unknownAction: "INVALID_ARGUMENT",
     actions: {
-      list: { description: "List definition files with their agents, default agent and diagnostic counts.", usage: "agents [list]" },
-      inspect: { description: "Return one definition file, or one agent with file#agent, with diagnostics.", usage: "agents inspect <file[#agent]>" },
-      validate: { description: "Validate one or every definition file against the docker-agent schema and semantic rules; errors fail with INVALID_AGENT_DEFINITION.", usage: "agents validate [file]" },
+      list: { description: "List definition files with their agents, default agent and diagnostic counts.", usage: "agents [list]", args: [] },
+      inspect: { description: "Return one definition file, or one agent with file#agent, with diagnostics.", usage: "agents inspect <file[#agent]>", args: [{ name: "target", description: "A definition file, or file#agent for one agent.", required: true }] },
+      validate: { description: "Validate one or every definition file against the docker-agent schema and semantic rules; errors fail with INVALID_AGENT_DEFINITION.", usage: "agents validate [file]", args: [{ name: "file", description: "A definition file; every definition file when omitted." }] },
       // Idempotent although --if-match is optional: it is required once the team file exists, so a repeat fails.
       create: {
         description: "Add a docker-agent agent, or a bundled template's agents, to a new or existing team file, preserving comments.",
         mutating: true,
         idempotent: true,
         options: createOptions,
+        args: [{ name: "name", description: "The agent name.", required: true }],
         usage: "agents create <name> [--from-template basic|team|mcp] [--file team.yaml] [--model ref] [--description text] [--instruction text] [--toolset filesystem,shell] [--if-match sha256]"
       },
       import: {
@@ -30358,6 +30372,7 @@ function agentsCommand(services2) {
         mutating: true,
         idempotent: true,
         options: importOptions,
+        args: [{ name: "source", description: "A Claude agent name or Markdown path.", required: true }],
         usage: "agents import <agent|path.md> --from claude [--file team.yaml] [--if-match sha256]"
       },
       generate: {
@@ -30365,32 +30380,19 @@ function agentsCommand(services2) {
         mutating: true,
         idempotent: true,
         options: generateOptions,
+        args: [],
         usage: "agents generate --target claude [--file team.yaml] [--agent name] [--mcp none|inline|project [--rename-conflicts]] [--hooks] [--settings [--allow-broad-permissions]] [--commands] [--model-style id|alias] [--plan | --plan-out path.json | --check | --revisions-from path.json]"
       }
     },
-    args: [
-      { name: "action", description: "list (default), inspect, validate, create, import or generate.", enum: actions$3 },
-      { name: "target", description: "inspect: file[#agent]; validate: file; create: the agent name; import: a Claude agent name or Markdown path." }
-    ],
     errors: ["INVALID_AGENT_DEFINITION", "AGENT_NOT_FOUND", "AGENT_EXISTS", "AGENT_DRIFT", "AGENT_MERGE_CONFLICT", "NOT_FOUND", "CONFLICT", "INVALID_NAME", "INVALID_PATH", "INVALID_YAML", "INVALID_ENCODING", "INVALID_CLAUDE_AGENT", "INVALID_CLAUDE_SETTINGS", "INVALID_GENERATION_PLAN", "INVALID_GENERATION_REVISIONS"],
     async run(args, flags, context) {
       const action2 = args[0] ?? "list";
       ensure(actions$3.includes(action2), "INVALID_ARGUMENT", `Use agents ${actions$3.join(", agents ")}.`);
       const agents2 = services2(context);
-      if (action2 === "list") {
-        arity(args, 0, 1);
-        return agents2.list();
-      }
-      if (action2 === "inspect") {
-        arity(args, 2);
-        return agents2.inspect(args[1]);
-      }
-      if (action2 === "validate") {
-        arity(args, 1, 2);
-        return agents2.validate(args[1]);
-      }
+      if (action2 === "list") return agents2.list();
+      if (action2 === "inspect") return agents2.inspect(args[1]);
+      if (action2 === "validate") return agents2.validate(args[1]);
       if (action2 === "create") {
-        arity(args, 2);
         const [file2, model2, description2, instruction, ifMatch2, types2] = [value$2(flags, "file"), value$2(flags, "model"), value$2(flags, "description"), value$2(flags, "instruction"), value$2(flags, "if-match"), toolsets(flags)];
         const template = flags["from-template"] === void 0 ? void 0 : choice(flags, "from-template", agentTemplates, "basic");
         ensure(template === void 0 || types2 === void 0, "INVALID_ARGUMENT", "--from-template sets the toolsets; omit --toolset or edit the YAML afterwards.");
@@ -30406,12 +30408,10 @@ function agentsCommand(services2) {
         });
       }
       if (action2 === "import") {
-        arity(args, 2);
         ensure(value$2(flags, "from", true) === "claude", "INVALID_ARGUMENT", "--from must be claude.");
         const file2 = value$2(flags, "file"), ifMatch2 = value$2(flags, "if-match");
         return agents2.importClaude(args[1], { ...file2 ? { file: file2 } : {}, ...ifMatch2 ? { ifMatch: ifMatch2 } : {} });
       }
-      arity(args, 1);
       ensure(value$2(flags, "target", true) === "claude", "INVALID_ARGUMENT", "--target must be claude.");
       ensure(flags["allow-broad-permissions"] === void 0 || flags.settings === true, "INVALID_ARGUMENT", "--allow-broad-permissions applies to the rules --settings writes; pass --settings too.");
       ensure(flags["rename-conflicts"] === void 0 || value$2(flags, "mcp") === "project", "INVALID_ARGUMENT", "--rename-conflicts applies to the servers --mcp project merges into .mcp.json; pass --mcp project too.");
@@ -30456,8 +30456,10 @@ const agentsStrings = {
       "With --settings: also write allow rules that approve a whole tool (Bash, Bash(*), Edit, Write, WebFetch without a domain, every tool of an MCP server); without it they fail as broad-permission errors.": "Mit --settings: auch allow-Regeln schreiben, die ein ganzes Werkzeug freigeben (Bash, Bash(*), Edit, Write, WebFetch ohne Domain, jedes Werkzeug eines MCP-Servers); ohne diese Option schlagen sie als broad-permission-Fehler fehl.",
       "Generate commands as .claude/skills/<name>/SKILL.md.": "Befehle als .claude/skills/<name>/SKILL.md generieren.",
       "Emit Anthropic model ids, or Claude aliases (opus, sonnet, haiku, fable).": "Anthropic-Modell-IDs oder Claude-Aliasse (opus, sonnet, haiku, fable) ausgeben.",
-      "list (default), inspect, validate, create, import or generate.": "list (Standard), inspect, validate, create, import oder generate.",
-      "inspect: file[#agent]; validate: file; create: the agent name; import: a Claude agent name or Markdown path.": "inspect: Datei[#Agent]; validate: Datei; create: der Agentenname; import: ein Claude-Agentenname oder Markdown-Pfad.",
+      "A definition file, or file#agent for one agent.": "Eine Definitionsdatei oder Datei#Agent für einen Agenten.",
+      "A definition file; every definition file when omitted.": "Eine Definitionsdatei; ohne Angabe jede Definitionsdatei.",
+      "The agent name.": "Der Agentenname.",
+      "A Claude agent name or Markdown path.": "Ein Claude-Agentenname oder Markdown-Pfad.",
       "Scope-relative folder of docker-agent definition files (*.yaml).": "Ordner der docker-agent-Definitionsdateien (*.yaml), relativ zum Geltungsbereich.",
       "Model reference for agents create and agents import when none is given.": "Modellreferenz für agents create und agents import, wenn keine angegeben ist."
     }
@@ -30465,7 +30467,7 @@ const agentsStrings = {
 };
 const defaults$3 = { directory: "agents", defaultModel: "anthropic/claude-sonnet-5" };
 const ports = { codec: yamlDefinitions, schema: ajvDefinitionSchema, markdown: markdownFrontmatter, digest: sha256Digest };
-const strings$2 = (value2) => Array.isArray(value2) && value2.every((item) => typeof item === "string");
+const strings$2 = (value2) => Array.isArray(value2) && value2.every((item2) => typeof item2 === "string");
 const agentsPlugin = {
   manifest: {
     id: "agents",
@@ -30926,9 +30928,9 @@ function ladderFor(type2, parentLadder) {
   if (onTest && onPlan) return parentLadder ?? LEVELS;
   return onTest ? TEST_LEVELS : LEVELS;
 }
-const inCatalog = (item) => item.ladder === TEST_LEVELS;
-function keepsProjection(item, parent2) {
-  return ladderFor(item.typeName, parent2?.ladder ?? null) === item.ladder;
+const inCatalog = (item2) => item2.ladder === TEST_LEVELS;
+function keepsProjection(item2, parent2) {
+  return ladderFor(item2.typeName, parent2?.ladder ?? null) === item2.ladder;
 }
 function childLevelIndex(parent2, ladder = parent2?.ladder ?? LEVELS) {
   if (!parent2) return 0;
@@ -31436,9 +31438,9 @@ function withComments(text2, kept) {
 }
 function nextIterationName(items2) {
   let highest = 0;
-  for (const item of items2) {
-    if (!isIterationType(item.typeName) || item.outsideFilter) continue;
-    const found = /^\s*(\d+)/.exec(item.title);
+  for (const item2 of items2) {
+    if (!isIterationType(item2.typeName) || item2.outsideFilter) continue;
+    const found = /^\s*(\d+)/.exec(item2.title);
     if (found && Number(found[1]) > highest) highest = Number(found[1]);
   }
   return `${highest + 1} - ${ITERATION_TYPE}`;
@@ -31449,18 +31451,18 @@ function iterationNoteName(name2, goal) {
 }
 function previousIteration(items2) {
   let best = null;
-  for (const item of items2) {
-    const target2 = item.plannedTarget.value;
-    if (!isIterationType(item.typeName) || target2 === null) continue;
+  for (const item2 of items2) {
+    const target2 = item2.plannedTarget.value;
+    if (!isIterationType(item2.typeName) || target2 === null) continue;
     if (best === null) {
-      best = item;
+      best = item2;
       continue;
     }
     const byTarget2 = daysBetween(best.plannedTarget.value, target2);
-    const start2 = item.plannedStart.value, bestStart = best.plannedStart.value;
+    const start2 = item2.plannedStart.value, bestStart = best.plannedStart.value;
     const byStart = start2 === null || bestStart === null ? Number(start2 !== null) - Number(bestStart !== null) : daysBetween(bestStart, start2);
-    const later = byTarget2 !== 0 ? byTarget2 > 0 : byStart !== 0 ? byStart > 0 : item.path > best.path;
-    if (later) best = item;
+    const later = byTarget2 !== 0 ? byTarget2 > 0 : byStart !== 0 ? byStart > 0 : item2.path > best.path;
+    if (later) best = item2;
   }
   return best;
 }
@@ -31520,7 +31522,7 @@ function placeRun(count2, floor, ceiling) {
   return ceiling !== null && placed2[count2 - 1] >= ceiling ? null : placed2;
 }
 function spreadAround(sequence) {
-  const fixed = sequence.filter((item) => item.outsideFilter && item.order !== null).map((item) => item.order).sort((a, b) => a - b);
+  const fixed = sequence.filter((item2) => item2.outsideFilter && item2.order !== null).map((item2) => item2.order).sort((a, b) => a - b);
   let at = 0;
   const above = (floor2) => {
     while (at < fixed.length && floor2 !== null && fixed[at] <= floor2) at++;
@@ -31532,25 +31534,25 @@ function spreadAround(sequence) {
   const flush = () => {
     const placed2 = placeRun(run2.length, floor, above(floor));
     if (placed2 === null) return false;
-    run2.forEach((item, k) => writes.push({ item, order: placed2[k] }));
+    run2.forEach((item2, k) => writes.push({ item: item2, order: placed2[k] }));
     run2 = [];
     return true;
   };
-  for (const item of sequence) {
-    if (!item.outsideFilter) {
-      run2.push(item);
+  for (const item2 of sequence) {
+    if (!item2.outsideFilter) {
+      run2.push(item2);
       continue;
     }
-    if (item.order === null || floor !== null && item.order <= floor) continue;
+    if (item2.order === null || floor !== null && item2.order <= floor) continue;
     if (!flush()) return { wedged: run2 };
-    floor = item.order;
+    floor = item2.order;
   }
   return flush() ? { writes } : { wedged: run2 };
 }
 const isUnrankedContext = (anchor2) => anchor2 !== null && anchor2.outsideFilter && anchor2.order === null;
 const rankablePeers = (rows) => rows.filter((row) => !isUnrankedContext(row));
 function anchoredOrder(ranked, anchor2, side) {
-  const usable = ranked.filter((item) => !(item.outsideFilter && item.order === null));
+  const usable = ranked.filter((item2) => !(item2.outsideFilter && item2.order === null));
   if (isUnrankedContext(anchor2)) return anchoredOrder(usable, null, "after");
   if (usable.length === 0) {
     if (anchor2 === null) return { order: ORDER_SPACING };
@@ -31574,10 +31576,10 @@ function orderForTarget(ranked, target2) {
   return anchoredOrder(ranked, peers[insertIndex - 1], "after");
 }
 function dropPlacement(dragged, target2, ranked) {
-  const global = orderForTarget(ranked.filter((item) => item !== dragged), target2);
+  const global = orderForTarget(ranked.filter((item2) => item2 !== dragged), target2);
   if (!("refusal" in global) || global.refusal !== "tied") return global;
-  const scoped2 = orderForTarget(target2.peers.filter((item) => item !== dragged), target2);
-  if ("refusal" in scoped2 || !ranked.some((item) => item !== dragged && item.order === scoped2.order)) return scoped2;
+  const scoped2 = orderForTarget(target2.peers.filter((item2) => item2 !== dragged), target2);
+  if ("refusal" in scoped2 || !ranked.some((item2) => item2 !== dragged && item2.order === scoped2.order)) return scoped2;
   return global;
 }
 function unchangedPlacement(dragged, target2, siblings) {
@@ -31822,7 +31824,7 @@ function createItems(source2, results, settings2, exists2) {
     const release2 = readLinkList(source2, path2, settings2.releaseKey);
     const releaseRaw = ownValue(frontmatter, settings2.releaseKey);
     const id2 = readNumber(ownValue(frontmatter, "pbl-id"));
-    const item = {
+    const item2 = {
       path: path2,
       title: basename$3(path2),
       outsideFilter: !inFilter,
@@ -31855,8 +31857,8 @@ function createItems(source2, results, settings2, exists2) {
       dependsOnEntries: !inFilter || isMarkerType(typeName) ? [] : readLinkList(source2, path2, settings2.dependsOnKey),
       ownKeys: Object.fromEntries(OPTIONAL_PROPERTIES.map((property) => [property.field, settings2[property.settingsKey] !== "" && ownValue(frontmatter, settings2[property.settingsKey]) !== void 0]))
     };
-    store.byPath.set(path2, item);
-    store.all.push(item);
+    store.byPath.set(path2, item2);
+    store.all.push(item2);
     return seed;
   };
   for (const path2 of results) {
@@ -31876,27 +31878,27 @@ function createItems(source2, results, settings2, exists2) {
   return store;
 }
 function resolveDependencies(items2) {
-  const byPath2 = new Map(items2.map((item) => [item.path, item]));
+  const byPath2 = new Map(items2.map((item2) => [item2.path, item2]));
   const declared = /* @__PURE__ */ new Map();
-  for (const item of items2) {
-    if (item.outsideFilter) continue;
-    const mine = item.dependsOnEntries.map((entry2) => {
+  for (const item2 of items2) {
+    if (item2.outsideFilter) continue;
+    const mine = item2.dependsOnEntries.map((entry2) => {
       const from = entry2.path === null ? void 0 : byPath2.get(entry2.path);
-      return from ? { raw: entry2.raw, from, resolved: true } : { raw: entry2.raw, from: item, resolved: false };
+      return from ? { raw: entry2.raw, from, resolved: true } : { raw: entry2.raw, from: item2, resolved: false };
     });
-    if (mine.length > 0) declared.set(item.path, mine);
+    if (mine.length > 0) declared.set(item2.path, mine);
   }
   const component = stronglyConnected(items2, declared);
   const results = /* @__PURE__ */ new Map();
-  for (const item of items2) {
+  for (const item2 of items2) {
     const result = { prerequisites: [], broken: [] };
     const seen = /* @__PURE__ */ new Set();
-    for (const candidate of declared.get(item.path) ?? []) {
+    for (const candidate of declared.get(item2.path) ?? []) {
       if (!candidate.resolved) {
         result.broken.push({ raw: candidate.raw, reason: "unresolved" });
         continue;
       }
-      if (component.get(candidate.from.path) === component.get(item.path)) {
+      if (component.get(candidate.from.path) === component.get(item2.path)) {
         result.broken.push({ raw: candidate.raw, reason: "cycle" });
         continue;
       }
@@ -31904,13 +31906,13 @@ function resolveDependencies(items2) {
       seen.add(candidate.from.path);
       result.prerequisites.push(candidate.from);
     }
-    results.set(item.path, result);
+    results.set(item2.path, result);
   }
   return results;
 }
 function stronglyConnected(items2, declared) {
-  const ids = new Map(items2.map((item, id2) => [item.path, id2]));
-  const edges = items2.map((item) => (declared.get(item.path) ?? []).filter((edge) => edge.resolved).map((edge) => ids.get(edge.from.path) ?? -1));
+  const ids = new Map(items2.map((item2, id2) => [item2.path, id2]));
+  const edges = items2.map((item2) => (declared.get(item2.path) ?? []).filter((edge) => edge.resolved).map((edge) => ids.get(edge.from.path) ?? -1));
   const index2 = items2.map(() => -1), low = items2.map(() => -1), onStack = items2.map(() => false), component = items2.map(() => -1);
   const stack = [];
   let next = 0, components = 0;
@@ -31946,7 +31948,7 @@ function stronglyConnected(items2, declared) {
       if (parent2) low[parent2.id] = Math.min(low[parent2.id], low[frame.id]);
     }
   }
-  return new Map(items2.map((item, id2) => [item.path, component[id2]]));
+  return new Map(items2.map((item2, id2) => [item2.path, component[id2]]));
 }
 function dependentsClosure(path2, prerequisites) {
   const dependents = /* @__PURE__ */ new Map();
@@ -31961,8 +31963,8 @@ function dependentsClosure(path2, prerequisites) {
   }
   return reached;
 }
-function inPlan(item) {
-  return !isReleaseType(item.typeName) && !inCatalog(item) && !isIterationType(item.typeName);
+function inPlan(item2) {
+  return !isReleaseType(item2.typeName) && !inCatalog(item2) && !isIterationType(item2.typeName);
 }
 const compareSiblings = (a, b) => {
   const ao = a.order ?? Number.POSITIVE_INFINITY, bo = b.order ?? Number.POSITIVE_INFINITY;
@@ -31973,28 +31975,28 @@ function buildModel(source2, results, settings2, exists2) {
   const store = createItems(source2, results, settings2, exists2);
   const all2 = store.all;
   const byPath2 = store.byPath;
-  for (const item of all2) Object.assign(item, { parent: null, children: [], orphan: false, cycleCut: false, prerequisites: [], brokenPrerequisites: [] });
+  for (const item2 of all2) Object.assign(item2, { parent: null, children: [], orphan: false, cycleCut: false, prerequisites: [], brokenPrerequisites: [] });
   const roots = [];
-  for (const item of all2) {
-    let parent2 = item.parentPath ? byPath2.get(item.parentPath) : void 0;
-    if (!parent2 && settings2.folderHierarchy && !item.hasParentValue && !item.explicitRoot) {
-      const folderNote = nearestFolderNote(item.path, (path2) => byPath2.has(path2));
+  for (const item2 of all2) {
+    let parent2 = item2.parentPath ? byPath2.get(item2.parentPath) : void 0;
+    if (!parent2 && settings2.folderHierarchy && !item2.hasParentValue && !item2.explicitRoot) {
+      const folderNote = nearestFolderNote(item2.path, (path2) => byPath2.has(path2));
       parent2 = folderNote === null ? void 0 : byPath2.get(folderNote);
     }
-    if (parent2 && parent2 !== item) {
-      item.parent = parent2;
-      parent2.children.push(item);
+    if (parent2 && parent2 !== item2) {
+      item2.parent = parent2;
+      parent2.children.push(item2);
     } else {
-      item.orphan = item.hasParentValue;
-      roots.push(item);
+      item2.orphan = item2.hasParentValue;
+      roots.push(item2);
     }
   }
   breakCycles(all2, roots);
   const ignored = [];
   if (settings2.hierarchyOnly) {
     const supported = new Set(ALL_TYPES.map((type2) => type2.toLowerCase()));
-    const belongs = (item) => item.parent !== null || item.hasParentValue || item.explicitRoot || item.parentExists || item.typeName !== null && supported.has(item.typeName.toLowerCase());
-    const subtreeBelongs = (item) => belongs(item) || item.children.some(subtreeBelongs);
+    const belongs = (item2) => item2.parent !== null || item2.hasParentValue || item2.explicitRoot || item2.parentExists || item2.typeName !== null && supported.has(item2.typeName.toLowerCase());
+    const subtreeBelongs = (item2) => belongs(item2) || item2.children.some(subtreeBelongs);
     for (let index2 = roots.length - 1; index2 >= 0; index2--) {
       const root = roots[index2];
       if (subtreeBelongs(root)) continue;
@@ -32009,41 +32011,41 @@ function buildModel(source2, results, settings2, exists2) {
   }
   const sortDeep = (list2) => {
     list2.sort(compareSiblings);
-    for (const item of list2) sortDeep(item.children);
+    for (const item2 of list2) sortDeep(item2.children);
   };
   sortDeep(roots);
   const items2 = [];
-  const assign = (item, depth2) => {
-    item.depth = depth2;
-    computeLevel(item);
-    items2.push(item);
+  const assign = (item2, depth2) => {
+    item2.depth = depth2;
+    computeLevel(item2);
+    items2.push(item2);
     let count2 = 0, done = 0;
-    for (const child of item.children) {
+    for (const child of item2.children) {
       const sub = assign(child, depth2 + 1);
-      if (inCatalog(child) || inCatalog(item)) continue;
+      if (inCatalog(child) || inCatalog(item2)) continue;
       const self = child.outsideFilter || isMarkerType(child.typeName) ? 0 : 1;
       count2 += self + sub.count;
       done += (child.done ? self : 0) + sub.done;
     }
-    Object.assign(item, { descendantCount: count2, doneDescendants: done, subtreeDone: item.done && done === count2 });
+    Object.assign(item2, { descendantCount: count2, doneDescendants: done, subtreeDone: item2.done && done === count2 });
     return { count: count2, done };
   };
   for (const root of roots) assign(root, 0);
   const dependencies2 = resolveDependencies(items2);
-  for (const item of items2) {
-    const result = dependencies2.get(item.path);
-    item.prerequisites = result.prerequisites;
-    item.brokenPrerequisites = result.broken;
+  for (const item2 of items2) {
+    const result = dependencies2.get(item2.path);
+    item2.prerequisites = result.prerequisites;
+    item2.brokenPrerequisites = result.broken;
   }
-  const inFilter = items2.filter((item) => !item.outsideFilter);
+  const inFilter = items2.filter((item2) => !item2.outsideFilter);
   return {
     roots,
     byPath: byPath2,
     items: items2,
     ranked: [...items2].sort(compareRank),
     results: inFilter.filter(inPlan),
-    iterations: inFilter.filter((item) => isIterationType(item.typeName)),
-    releases: inFilter.filter((item) => isReleaseType(item.typeName)),
+    iterations: inFilter.filter((item2) => isIterationType(item2.typeName)),
+    releases: inFilter.filter((item2) => isReleaseType(item2.typeName)),
     resources: store.resources,
     absences: store.absences,
     ignored: ignored.reverse()
@@ -32079,22 +32081,22 @@ function breakCycles(all2, roots) {
     mark(entry2);
   }
 }
-function computeLevel(item) {
-  item.ladder = ladderFor(item.typeName, item.parent?.ladder ?? null);
-  const childSlot = childLevelIndex(item.parent, item.ladder);
-  if (item.typeName !== null) {
-    const name2 = item.typeName.toLowerCase();
-    const index2 = item.ladder.findIndex((level) => level.toLowerCase() === name2);
-    item.levelIndex = index2;
-    item.effectiveLevelIndex = index2 >= 0 ? index2 : isExtraType(item.typeName) ? EXTRA_TYPE_RANK : childSlot;
-    item.impliedType = false;
+function computeLevel(item2) {
+  item2.ladder = ladderFor(item2.typeName, item2.parent?.ladder ?? null);
+  const childSlot = childLevelIndex(item2.parent, item2.ladder);
+  if (item2.typeName !== null) {
+    const name2 = item2.typeName.toLowerCase();
+    const index2 = item2.ladder.findIndex((level) => level.toLowerCase() === name2);
+    item2.levelIndex = index2;
+    item2.effectiveLevelIndex = index2 >= 0 ? index2 : isExtraType(item2.typeName) ? EXTRA_TYPE_RANK : childSlot;
+    item2.impliedType = false;
   } else {
-    item.levelIndex = item.effectiveLevelIndex = childSlot;
-    item.impliedType = true;
+    item2.levelIndex = item2.effectiveLevelIndex = childSlot;
+    item2.impliedType = true;
   }
 }
-function displayType(item) {
-  return item.levelIndex >= 0 ? item.ladder[item.levelIndex] : item.typeName ?? "";
+function displayType(item2) {
+  return item2.levelIndex >= 0 ? item2.ladder[item2.levelIndex] : item2.typeName ?? "";
 }
 const BACKLOG_VIEW = "product-backlog";
 const RELEASE_VIEW = "product-release";
@@ -32199,12 +32201,12 @@ function findItem(session, reference, model2 = session.model) {
   if (direct) return direct;
   const resolved2 = session.cache.getFirstLinkpathDest(text2.replace(/^\[\[|\]\]$/g, ""), session.base.path);
   if (resolved2 !== null && model2.byPath.has(resolved2)) return model2.byPath.get(resolved2);
-  const byTitle = [...model2.byPath.values()].filter((item) => item.title.toLowerCase() === text2.toLowerCase());
+  const byTitle = [...model2.byPath.values()].filter((item2) => item2.title.toLowerCase() === text2.toLowerCase());
   const id2 = /^#?(\d+)$/.exec(text2);
-  const byId2 = id2 ? [...model2.byPath.values()].filter((item) => item.pblId === Number(id2[1])) : [];
+  const byId2 = id2 ? [...model2.byPath.values()].filter((item2) => item2.pblId === Number(id2[1])) : [];
   const matches2 = byTitle.length > 0 ? byTitle : byId2;
   if (matches2.length === 1) return matches2[0];
-  if (matches2.length > 1) throw backlogError("BACKLOG_AMBIGUOUS", `${reference} names ${matches2.length} backlog items; pass a vault path.`, { reference, candidates: matches2.map((item) => item.path) });
+  if (matches2.length > 1) throw backlogError("BACKLOG_AMBIGUOUS", `${reference} names ${matches2.length} backlog items; pass a vault path.`, { reference, candidates: matches2.map((item2) => item2.path) });
   throw backlogError("BACKLOG_NOT_FOUND", `${reference} is not an item of ${session.base.path} › ${session.view.name}.`, { reference, base: session.base.path, view: session.view.name });
 }
 const encoder$2 = new TextEncoder();
@@ -32222,8 +32224,8 @@ function ensureWritable(session) {
   if (problems.length > 0) throw backlogError("BACKLOG_CONFIG_PROBLEM", `Fix the backlog configuration first: ${problems[0]}`, { problems, base: session.base.path, view: session.view.name });
 }
 function ensureInFilter(session, path2) {
-  const item = session.model.byPath.get(path2);
-  if (item === void 0 || item.outsideFilter) throw refused("outside-filter", `${path2} is outside the filter of ${session.base.path} › ${session.view.name}; context rows are read-only.`, { path: path2 });
+  const item2 = session.model.byPath.get(path2);
+  if (item2 === void 0 || item2.outsideFilter) throw refused("outside-filter", `${path2} is outside the filter of ${session.base.path} › ${session.view.name}; context rows are read-only.`, { path: path2 });
 }
 async function planNoteEdits(session, edits, ifMatch2) {
   const { workspace: workspace2 } = session.context;
@@ -32287,8 +32289,8 @@ function endOfSiblings(session, parent2) {
   const peers = rankablePeers(parent2 ? parent2.children : session.model.roots);
   return placed(dropPlacement(null, { parent: parent2, peers, insertIndex: peers.length }, session.model.ranked));
 }
-function ensureResult(item, role) {
-  if (item.outsideFilter) throw refused("outside-filter", `${item.path} is a context row outside the filter and cannot be ${role}.`, { path: item.path });
+function ensureResult(item2, role) {
+  if (item2.outsideFilter) throw refused("outside-filter", `${item2.path} is a context row outside the filter and cannot be ${role}.`, { path: item2.path });
 }
 function folderFor(session, type2, parent2, explicit) {
   if (explicit !== void 0) return vaultFolder(explicit);
@@ -32296,8 +32298,8 @@ function folderFor(session, type2, parent2, explicit) {
   const chosen = folderForType(type2, session.settings) || session.settings.homeFolder;
   if (chosen) return chosen;
   const counts2 = /* @__PURE__ */ new Map();
-  for (const item of session.model.items) if (!item.outsideFilter) {
-    const folder = item.path.includes("/") ? item.path.slice(0, item.path.lastIndexOf("/")) : "";
+  for (const item2 of session.model.items) if (!item2.outsideFilter) {
+    const folder = item2.path.includes("/") ? item2.path.slice(0, item2.path.lastIndexOf("/")) : "";
     counts2.set(folder, (counts2.get(folder) ?? 0) + 1);
   }
   return [...counts2].reduce((best, entry2) => entry2[1] > best[1] ? entry2 : best, ["", 0])[0];
@@ -32340,9 +32342,9 @@ async function addItem(session, request) {
   });
   appendFields(session, frontmatter, path2, request, workflowOf(typeName, ladderFor(typeName, parent2?.ladder ?? null)));
   const result = await createNotes(session, [{ path: path2, text: newNoteText(session, frontmatter) }]);
-  const item = { path: path2, title: path2.slice(path2.lastIndexOf("/") + 1, -3), type: typeName, id: frontmatter[ITEM_ID_KEY], parent: parent2?.path ?? null, order: order2 };
-  await announce(session, result, "backlog.item-created", item);
-  return { ...result, item };
+  const item2 = { path: path2, title: path2.slice(path2.lastIndexOf("/") + 1, -3), type: typeName, id: frontmatter[ITEM_ID_KEY], parent: parent2?.path ?? null, order: order2 };
+  await announce(session, result, "backlog.item-created", item2);
+  return { ...result, item: item2 };
 }
 function appendFields(session, frontmatter, path2, request, workflow2) {
   const { settings: settings2 } = session;
@@ -32397,36 +32399,36 @@ async function moveItem(session, request) {
   const order2 = placed(dropPlacement(moved2, target2, session.model.ranked));
   const parentChanged = newParent !== oldParent || target2.parent === null && moved2.parent === null && moved2.hasParentValue;
   const result = await writeItems(session, [{ path: moved2.path, order: order2, ...parentChanged ? { parent: newParent } : {} }], request.ifMatch);
-  const item = { path: moved2.path, parent: newParent, order: order2, previousParent: oldParent, previousOrder: moved2.order };
-  await announce(session, result, "backlog.item-moved", item);
-  return { ...result, item };
+  const item2 = { path: moved2.path, parent: newParent, order: order2, previousParent: oldParent, previousOrder: moved2.order };
+  await announce(session, result, "backlog.item-moved", item2);
+  return { ...result, item: item2 };
 }
 async function respaceRanks(session, mode) {
   ensureWritable(session);
   const sequence = [];
   if (mode === "seed") {
     const visit2 = (items2) => {
-      for (const item of items2) {
-        sequence.push(item);
-        visit2(item.children);
+      for (const item2 of items2) {
+        sequence.push(item2);
+        visit2(item2.children);
       }
     };
     visit2(session.model.roots);
   } else sequence.push(...session.model.ranked);
   const spread = spreadAround(sequence);
-  if ("wedged" in spread) throw backlogError("BACKLOG_NO_GAP", `${spread.wedged.length} items no longer fit between the ranks of their context rows.`, { reason: "gapSpent", paths: spread.wedged.map((item) => item.path) });
-  const writes = spread.writes.filter(({ item, order: order2 }) => item.order !== order2).map(({ item, order: order2 }) => ({ path: item.path, order: order2 }));
+  if ("wedged" in spread) throw backlogError("BACKLOG_NO_GAP", `${spread.wedged.length} items no longer fit between the ranks of their context rows.`, { reason: "gapSpent", paths: spread.wedged.map((item2) => item2.path) });
+  const writes = spread.writes.filter(({ item: item2, order: order2 }) => item2.order !== order2).map(({ item: item2, order: order2 }) => ({ path: item2.path, order: order2 }));
   return { ...await writeItems(session, writes), ranked: spread.writes.length };
 }
 const option = (value2) => value2 === void 0 ? void 0 : value2.trim() === "" ? null : value2.trim();
 const bound = (key, name2) => {
   if (!key) throw refused("unbound-property", `Bind ${name2} in the backlog view first.`, { option: name2 });
 };
-function currentState(item, workflow2) {
-  return workflow2 === "deliverable" ? item.deliverableStateValue : workflow2 === "test" ? item.testStateValue : item.stateValue;
+function currentState(item2, workflow2) {
+  return workflow2 === "deliverable" ? item2.deliverableStateValue : workflow2 === "test" ? item2.testStateValue : item2.stateValue;
 }
-function stateWrite(item, workflow2, state2, settings2, today2) {
-  if (sameValue(currentState(item, workflow2), state2)) return null;
+function stateWrite(item2, workflow2, state2, settings2, today2) {
+  if (sameValue(currentState(item2, workflow2), state2)) return null;
   if (workflow2 === "deliverable") return state2 === null ? { removeDeliverableStateKey: true } : { deliverableState: state2 };
   if (workflow2 === "test") return state2 === null ? { removeTestStateKey: true } : { testState: state2 };
   return {
@@ -32435,112 +32437,112 @@ function stateWrite(item, workflow2, state2, settings2, today2) {
     ...settings2.finishedDateKey ? { finish: { date: today2, toDone: isDoneValue(settings2, state2) } } : {}
   };
 }
-function scheduleWrite(session, item, start2, due) {
+function scheduleWrite(session, item2, start2, due) {
   if (start2 === void 0 && due === void 0) return null;
   const { settings: settings2 } = session;
-  const iteration2 = isIterationType(item.typeName);
-  const ends = placementEnds(item.typeName, iteration2 || settings2.iterationBars);
+  const iteration2 = isIterationType(item2.typeName);
+  const ends = placementEnds(item2.typeName, iteration2 || settings2.iterationBars);
   const axis = iteration2 ? {} : { ends };
   for (const [end2, value2, key, name2] of [["start", start2, settings2.startKey, "startProperty"], ["target", due, settings2.targetKey, "targetProperty"]]) {
     if (value2 === void 0) continue;
     bound(key, name2);
-    if (!ends.includes(end2)) throw refused("field-not-held", `A ${item.typeName ?? "note"} holds no ${key} date.`, { path: item.path, key });
+    if (!ends.includes(end2)) throw refused("field-not-held", `A ${item2.typeName ?? "note"} holds no ${key} date.`, { path: item2.path, key });
     ensure(value2 === null || readDate(value2).value !== null, "INVALID_ARGUMENT", `--${end2 === "start" ? "start" : "due"} must be a date such as 2026-10-01.`);
     axis[end2] = value2;
   }
   const date2 = (value2, held) => value2 === void 0 ? held.value : value2 === null ? null : readDate(value2).value;
-  if (iteration2 && reversedSpan(date2(start2, item.plannedStart), date2(due, item.plannedTarget))) throw refused("reversed-span", "The iteration would end before it starts.", { path: item.path });
+  if (iteration2 && reversedSpan(date2(start2, item2.plannedStart), date2(due, item2.plannedTarget))) throw refused("reversed-span", "The iteration would end before it starts.", { path: item2.path });
   return axis;
 }
 async function setFields(session, request) {
   const { settings: settings2 } = session;
-  const item = findItem(session, request.item);
-  const write = { path: item.path };
+  const item2 = findItem(session, request.item);
+  const write = { path: item2.path };
   const today2 = formatCivil(session.today);
-  const workflow2 = workflowOf(item.typeName, item.ladder), typed = option(request.state);
+  const workflow2 = workflowOf(item2.typeName, item2.ladder), typed = option(request.state);
   const state2 = typed === void 0 || typed === null ? typed : declaredSpelling(workflowValues(settings2, workflow2), typed);
   let stateChange = null;
   if (state2 !== void 0) {
     bound(workflowKey(settings2, workflow2), "stateProperty");
-    stateChange = stateWrite(item, workflow2, state2, settings2, today2);
+    stateChange = stateWrite(item2, workflow2, state2, settings2, today2);
     Object.assign(write, stateChange);
   }
   const horizon = option(request.horizon);
   if (horizon !== void 0) {
     bound(settings2.horizonKey, "horizonProperty");
-    if (horizon === null ? item.ownKeys.horizon : !sameValue(item.horizon.value, horizon)) write.axis = { horizon: horizon === null ? null : declaredSpelling(settings2.horizonValues, horizon) };
+    if (horizon === null ? item2.ownKeys.horizon : !sameValue(item2.horizon.value, horizon)) write.axis = { horizon: horizon === null ? null : declaredSpelling(settings2.horizonValues, horizon) };
   }
-  for (const [field2, raw, key, name2, values2, current] of [["risk", request.risk, settings2.riskKey, "riskProperty", settings2.riskValues, item.riskValue], ["priority", request.priority, settings2.priorityKey, "priorityProperty", settings2.priorityValues, item.priorityValue]]) {
+  for (const [field2, raw, key, name2, values2, current] of [["risk", request.risk, settings2.riskKey, "riskProperty", settings2.riskValues, item2.riskValue], ["priority", request.priority, settings2.priorityKey, "priorityProperty", settings2.priorityValues, item2.priorityValue]]) {
     const value2 = option(raw);
     if (value2 === void 0) continue;
     bound(key, name2);
-    if (value2 === null ? item.ownKeys[field2] : !sameValue(current, value2)) write[field2] = value2 === null ? null : declaredSpelling(values2, value2);
+    if (value2 === null ? item2.ownKeys[field2] : !sameValue(current, value2)) write[field2] = value2 === null ? null : declaredSpelling(values2, value2);
   }
-  const schedule = scheduleWrite(session, item, option(request.start), option(request.due));
+  const schedule = scheduleWrite(session, item2, option(request.start), option(request.due));
   if (schedule) write.axis = { ...write.axis, ...schedule };
   const assignee = option(request.assignee);
   if (assignee !== void 0) {
     bound(settings2.assigneeKey, "assigneeProperty");
     const target2 = assignee === null ? null : session.cache.getFirstLinkpathDest(assignee.replace(/^\[\[|\]\]$/g, ""), session.base.path);
     if (assignee !== null && (target2 === null || !sameType(typeOf(session, target2), RESOURCE_TYPE))) throw refused("not-a-resource", `${assignee} is not a Resource note.`, { assignee });
-    if (target2 === null ? item.ownKeys.assignee : item.assigneeEntry?.path !== target2) write.assignee = target2;
+    if (target2 === null ? item2.ownKeys.assignee : item2.assigneeEntry?.path !== target2) write.assignee = target2;
   }
   if (request.type !== void 0) {
     const typeName = canonicalType(request.type.trim());
     ensure(typeName.length > 0, "INVALID_ARGUMENT", "--type needs a type name.");
     if ([RESOURCE_TYPE, ABSENCE_TYPE].some((type2) => sameType(typeName, type2))) throw refused("reserved-type", `${typeName} notes are not backlog items.`, { type: typeName });
-    if (item.typeName !== typeName) write.typeName = typeName;
+    if (item2.typeName !== typeName) write.typeName = typeName;
   }
   const result = await writeItems(session, [write], request.ifMatch);
-  const summary = { path: item.path, title: item.title };
-  if (stateChange) await announce(session, result, "backlog.state-changed", { ...summary, from: currentState(item, workflow2), to: state2, ...stateChange.startedDate ? { started: stateChange.startedDate } : {}, ...stateChange.finish ? { finished: stateChange.finish.toDone ? stateChange.finish.date : null } : {} });
+  const summary = { path: item2.path, title: item2.title };
+  if (stateChange) await announce(session, result, "backlog.state-changed", { ...summary, from: currentState(item2, workflow2), to: state2, ...stateChange.startedDate ? { started: stateChange.startedDate } : {}, ...stateChange.finish ? { finished: stateChange.finish.toDone ? stateChange.finish.date : null } : {} });
   return { ...result, item: summary };
 }
 function declaredMap(session) {
-  return new Map(session.model.items.filter((item) => !item.outsideFilter && !isMarkerType(item.typeName)).map((item) => [item.path, item.dependsOnEntries.map((entry2) => entry2.path).filter((path2) => path2 !== null && session.model.byPath.has(path2))]));
+  return new Map(session.model.items.filter((item2) => !item2.outsideFilter && !isMarkerType(item2.typeName)).map((item2) => [item2.path, item2.dependsOnEntries.map((entry2) => entry2.path).filter((path2) => path2 !== null && session.model.byPath.has(path2))]));
 }
 async function depend(session, reference, on, ifMatch2) {
   bound(session.settings.dependsOnKey, "dependsOnProperty");
-  const item = findItem(session, reference), prerequisite = findItem(session, on);
-  if (isMarkerType(item.typeName)) throw refused("marker", `${item.title} is a ${item.typeName}; a marker waits for nothing.`, { path: item.path });
+  const item2 = findItem(session, reference), prerequisite = findItem(session, on);
+  if (isMarkerType(item2.typeName)) throw refused("marker", `${item2.title} is a ${item2.typeName}; a marker waits for nothing.`, { path: item2.path });
   if (prerequisite.outsideFilter) throw refused("outside-filter", `${prerequisite.path} is outside the filter.`, { path: prerequisite.path });
   const declaredPaths = declaredMap(session);
-  if (dependentsClosure(item.path, declaredPaths).has(prerequisite.path)) throw refused("dependency-cycle", `${item.title} cannot wait for ${prerequisite.title}: that closes a dependency loop.`, { path: item.path, on: prerequisite.path });
-  const already = (declaredPaths.get(item.path) ?? []).includes(prerequisite.path);
-  const result = already ? { dryRun: session.context.workspace.dryRun, changes: [] } : await writeItems(session, [{ path: item.path, dependsOn: { add: prerequisite.path } }], ifMatch2);
-  return { ...result, item: { path: item.path, on: prerequisite.path } };
+  if (dependentsClosure(item2.path, declaredPaths).has(prerequisite.path)) throw refused("dependency-cycle", `${item2.title} cannot wait for ${prerequisite.title}: that closes a dependency loop.`, { path: item2.path, on: prerequisite.path });
+  const already = (declaredPaths.get(item2.path) ?? []).includes(prerequisite.path);
+  const result = already ? { dryRun: session.context.workspace.dryRun, changes: [] } : await writeItems(session, [{ path: item2.path, dependsOn: { add: prerequisite.path } }], ifMatch2);
+  return { ...result, item: { path: item2.path, on: prerequisite.path } };
 }
 async function undepend(session, reference, on, ifMatch2) {
   bound(session.settings.dependsOnKey, "dependsOnProperty");
-  const item = findItem(session, reference);
+  const item2 = findItem(session, reference);
   const resolved2 = session.cache.getFirstLinkpathDest(on.replace(/^\[\[|\]\]$/g, ""), session.base.path);
   const delta = resolved2 !== null ? { removePath: resolved2 } : { removeRaw: on.trim() };
-  const result = await writeItems(session, [{ path: item.path, dependsOn: delta }], ifMatch2);
-  return { ...result, item: { path: item.path, removed: result.changes.length > 0 ? resolved2 ?? on.trim() : null } };
+  const result = await writeItems(session, [{ path: item2.path, dependsOn: delta }], ifMatch2);
+  return { ...result, item: { path: item2.path, removed: result.changes.length > 0 ? resolved2 ?? on.trim() : null } };
 }
 async function assignIteration(session, reference, iterationRef, ifMatch2) {
   bound(session.settings.iterationKey, "iterationProperty");
-  const item = findItem(session, reference), iteration2 = findItem(session, iterationRef);
+  const item2 = findItem(session, reference), iteration2 = findItem(session, iterationRef);
   if (!isIterationType(iteration2.typeName) || iteration2.outsideFilter) throw refused("not-an-iteration", `${iteration2.title} is not an Iteration of this backlog.`, { iteration: iteration2.path });
   const axis = {};
-  for (const [end2, wanted, held] of [["start", iteration2.plannedStart.value, item.plannedStart.value], ["target", iteration2.plannedTarget.value, item.plannedTarget.value]]) {
+  for (const [end2, wanted, held] of [["start", iteration2.plannedStart.value, item2.plannedStart.value], ["target", iteration2.plannedTarget.value, item2.plannedTarget.value]]) {
     if (wanted === null || held !== null && daysBetween(wanted, held) === 0) continue;
     axis[end2] = formatCivil(wanted);
   }
-  const linkChanges = item.iterationEntry?.path !== iteration2.path;
-  const write = { path: item.path, ...linkChanges ? { iteration: iteration2.path } : {}, ...Object.keys(axis).length > 0 ? { axis } : {} };
+  const linkChanges = item2.iterationEntry?.path !== iteration2.path;
+  const write = { path: item2.path, ...linkChanges ? { iteration: iteration2.path } : {}, ...Object.keys(axis).length > 0 ? { axis } : {} };
   const result = linkChanges || write.axis ? await writeItems(session, [write], ifMatch2) : { dryRun: session.context.workspace.dryRun, changes: [] };
-  return { ...result, item: { path: item.path, iteration: iteration2.path } };
+  return { ...result, item: { path: item2.path, iteration: iteration2.path } };
 }
 async function joinRelease(session, reference, releaseRef, ifMatch2) {
   bound(session.settings.releaseKey, "releaseProperty");
-  const item = findItem(session, reference), release2 = findItem(session, releaseRef);
+  const item2 = findItem(session, reference), release2 = findItem(session, releaseRef);
   if (!isReleaseType(release2.typeName) || release2.outsideFilter) throw refused("not-a-release", `${release2.title} is not a Release of this backlog.`, { release: release2.path });
-  const settled2 = !item.releaseMultiple && item.releaseEntry?.path === release2.path;
+  const settled2 = !item2.releaseMultiple && item2.releaseEntry?.path === release2.path;
   const due = release2.releaseDate.value;
-  const write = { path: item.path, release: release2.path, axis: { fillOnly: true, start: formatCivil(session.today), ...due ? { target: formatCivil(due) } : {} } };
+  const write = { path: item2.path, release: release2.path, axis: { fillOnly: true, start: formatCivil(session.today), ...due ? { target: formatCivil(due) } : {} } };
   const result = settled2 ? { dryRun: session.context.workspace.dryRun, changes: [] } : await writeItems(session, [write], ifMatch2);
-  return { ...result, item: { path: item.path, release: release2.path } };
+  return { ...result, item: { path: item2.path, release: release2.path } };
 }
 const unconfigured = () => ({ value: null, invalid: false, unconfigured: true });
 const figure = (reading2) => ({ ...reading2, unconfigured: false });
@@ -32550,20 +32552,20 @@ function readLabel(raw) {
   const text2 = readString(raw);
   return text2 === null ? { value: null, invalid: true } : { value: text2, invalid: false };
 }
-const workflowKind = (item) => isDeliverableType(item.typeName) ? "deliverable" : inCatalog(item) ? "test" : "requirements";
-function ownWorkflowReading(item) {
-  const kind2 = workflowKind(item);
-  if (kind2 === "deliverable") return { value: item.deliverableStateValue, done: item.deliverableDone };
-  if (kind2 === "test") return { value: item.testStateValue, done: item.testDone };
-  return { value: item.stateValue, done: item.done };
+const workflowKind = (item2) => isDeliverableType(item2.typeName) ? "deliverable" : inCatalog(item2) ? "test" : "requirements";
+function ownWorkflowReading(item2) {
+  const kind2 = workflowKind(item2);
+  if (kind2 === "deliverable") return { value: item2.deliverableStateValue, done: item2.deliverableDone };
+  if (kind2 === "test") return { value: item2.testStateValue, done: item2.testDone };
+  return { value: item2.stateValue, done: item2.done };
 }
 function workflowClears(kind2, plan) {
   const [key, done] = kind2 === "deliverable" ? [deliverableStateKey(plan), plan.deliverableDoneValues] : kind2 === "test" ? [testStateKey(plan), plan.testDoneValues] : [plan.stateKey, plan.doneValues];
   return key !== "" && done.length > 0;
 }
-function membershipTarget(source2, item, releasePaths, settings2) {
+function membershipTarget(source2, item2, releasePaths, settings2) {
   if (!settings2.membershipKey) return null;
-  const raw = ownValue(source2.frontmatter(item.path), settings2.membershipKey);
+  const raw = ownValue(source2.frontmatter(item2.path), settings2.membershipKey);
   if (raw === null || raw === void 0) return null;
   if (Array.isArray(raw)) {
     if (raw.length === 0) return null;
@@ -32571,43 +32573,43 @@ function membershipTarget(source2, item, releasePaths, settings2) {
   }
   const scalar2 = Array.isArray(raw) ? raw[0] : raw;
   const text2 = typeof scalar2 === "string" ? readString(scalar2) : null;
-  if (text2 === null || !inPlan(item) || isMarkerType(item.typeName)) return "unresolved";
-  const path2 = source2.resolve(linkpathFromRawValue(text2), item.path);
+  if (text2 === null || !inPlan(item2) || isMarkerType(item2.typeName)) return "unresolved";
+  const path2 = source2.resolve(linkpathFromRawValue(text2), item2.path);
   return path2 !== null && releasePaths.has(path2) ? path2 : "unresolved";
 }
 function releaseIndex(source2, model2, settings2, plan, today2) {
   const releasePaths = new Set(model2.releases.map((release2) => release2.path));
   const counts2 = /* @__PURE__ */ new Map(), done = /* @__PURE__ */ new Map(), kinds = /* @__PURE__ */ new Map();
   const unresolved = [];
-  for (const item of model2.items.filter((entry2) => !entry2.outsideFilter)) {
-    const named = membershipTarget(source2, item, releasePaths, settings2);
+  for (const item2 of model2.items.filter((entry2) => !entry2.outsideFilter)) {
+    const named = membershipTarget(source2, item2, releasePaths, settings2);
     if (named === null) continue;
     if (named === "unresolved") {
-      unresolved.push(item);
+      unresolved.push(item2);
       continue;
     }
     counts2.set(named, (counts2.get(named) ?? 0) + 1);
-    if (ownWorkflowReading(item).done) done.set(named, (done.get(named) ?? 0) + 1);
-    kinds.set(named, /* @__PURE__ */ new Set([...kinds.get(named) ?? [], workflowKind(item)]));
+    if (ownWorkflowReading(item2).done) done.set(named, (done.get(named) ?? 0) + 1);
+    kinds.set(named, /* @__PURE__ */ new Set([...kinds.get(named) ?? [], workflowKind(item2)]));
   }
   const key = (date2) => date2 === null ? Number.POSITIVE_INFINITY : date2.year * 1e4 + date2.month * 100 + date2.day;
-  const rows = model2.releases.map((item) => {
-    const frontmatter = source2.frontmatter(item.path);
+  const rows = model2.releases.map((item2) => {
+    const frontmatter = source2.frontmatter(item2.path);
     const read2 = (property, reader) => property ? figure(reader(ownValue(frontmatter, property))) : unconfigured();
     const target2 = read2(settings2.targetDateKey, readSoleDate), released = read2(settings2.releasedDateKey, readSoleDate);
-    const own2 = kinds.get(item.path);
+    const own2 = kinds.get(item2.path);
     const ready = own2 === void 0 || own2.size === 0 ? plan.stateKey !== "" : [...own2].every((kind2) => workflowClears(kind2, plan));
     return {
-      path: item.path,
-      name: item.title,
-      item,
+      path: item2.path,
+      name: item2.title,
+      item: item2,
       version: read2(settings2.versionKey, readLabel),
       target: target2,
       status: read2(settings2.statusKey, readLabel),
       description: read2(settings2.descriptionKey, readLabel),
       released,
-      members: settings2.membershipKey ? figure({ value: counts2.get(item.path) ?? 0, invalid: false }) : unconfigured(),
-      done: settings2.membershipKey && ready ? figure({ value: done.get(item.path) ?? 0, invalid: false }) : unconfigured(),
+      members: settings2.membershipKey ? figure({ value: counts2.get(item2.path) ?? 0, invalid: false }) : unconfigured(),
+      done: settings2.membershipKey && ready ? figure({ value: done.get(item2.path) ?? 0, invalid: false }) : unconfigured(),
       shipped: released.value !== null,
       overdue: released.value === null && key(target2.value) < key(today2),
       daysToTarget: target2.value === null ? null : daysBetween(today2, target2.value),
@@ -32627,17 +32629,17 @@ function releaseIndex(source2, model2, settings2, plan, today2) {
 }
 function scopeRows(model2, isMember) {
   const members2 = /* @__PURE__ */ new Set(), keep = /* @__PURE__ */ new Set();
-  for (const item of model2.items) {
-    if (item.outsideFilter || !isMember(item)) continue;
-    members2.add(item.path);
-    keep.add(item.path);
-    for (let up = item.parent; up !== null; up = up.parent) if (!isMarkerType(up.typeName) && !up.outsideFilter) keep.add(up.path);
+  for (const item2 of model2.items) {
+    if (item2.outsideFilter || !isMember(item2)) continue;
+    members2.add(item2.path);
+    keep.add(item2.path);
+    for (let up = item2.parent; up !== null; up = up.parent) if (!isMarkerType(up.typeName) && !up.outsideFilter) keep.add(up.path);
   }
   const rows = [];
-  const walk2 = (item, depth2) => {
-    const kept = keep.has(item.path);
-    if (kept) rows.push({ item, depth: depth2, context: !members2.has(item.path) });
-    for (const child of item.children) walk2(child, kept ? depth2 + 1 : depth2);
+  const walk2 = (item2, depth2) => {
+    const kept = keep.has(item2.path);
+    if (kept) rows.push({ item: item2, depth: depth2, context: !members2.has(item2.path) });
+    for (const child of item2.children) walk2(child, kept ? depth2 + 1 : depth2);
   };
   for (const root of model2.roots) walk2(root, 0);
   return rows;
@@ -32649,30 +32651,30 @@ function estimateValue(raw) {
   return parsed2 === null || parsed2 < 0 ? null : parsed2;
 }
 function releaseReadiness(source2, members2, settings2, plan) {
-  const fm = (item, key) => ownValue(source2.frontmatter(item.path), key);
+  const fm = (item2, key) => ownValue(source2.frontmatter(item2.path), key);
   const criterion = (key, judge) => {
     let cleared = 0, unreadable = 0;
     const outstandingPaths = [];
-    for (const item of members2) {
-      const result = judge(item);
+    for (const item2 of members2) {
+      const result = judge(item2);
       if (result.unreadable) unreadable++;
-      if (result.outstanding) outstandingPaths.push(item.path);
+      if (result.outstanding) outstandingPaths.push(item2.path);
       else cleared++;
     }
     return { key, verdict: verdictOf(cleared, outstandingPaths.length), cleared, outstanding: outstandingPaths.length, unreadable, outstandingPaths };
   };
-  const estimated = settings2.estimateKey === "" ? off("estimated") : criterion("estimated", (item) => ({ outstanding: estimateValue(fm(item, settings2.estimateKey)) === null, unreadable: false }));
+  const estimated = settings2.estimateKey === "" ? off("estimated") : criterion("estimated", (item2) => ({ outstanding: estimateValue(fm(item2, settings2.estimateKey)) === null, unreadable: false }));
   const anyWorkflow = ["requirements", "deliverable", "test"].some((kind2) => workflowClears(kind2, plan));
-  const blocked = settings2.dependsOnKey === "" || !anyWorkflow ? off("blocked") : criterion("blocked", (item) => {
-    const raw = fm(item, settings2.dependsOnKey);
+  const blocked = settings2.dependsOnKey === "" || !anyWorkflow ? off("blocked") : criterion("blocked", (item2) => {
+    const raw = fm(item2, settings2.dependsOnKey);
     const dropped = raw === void 0 || raw === null ? 0 : (Array.isArray(raw) ? raw : [raw]).filter((value2) => value2 !== null && value2 !== void 0 && typeof value2 !== "string").length;
-    const broken = dropped > 0 || item.brokenPrerequisites.length > 0;
-    const unread = item.prerequisites.some((prerequisite) => !workflowClears(workflowKind(prerequisite), plan));
-    const waiting = item.prerequisites.some((prerequisite) => workflowClears(workflowKind(prerequisite), plan) && !ownWorkflowReading(prerequisite).done);
+    const broken = dropped > 0 || item2.brokenPrerequisites.length > 0;
+    const unread = item2.prerequisites.some((prerequisite) => !workflowClears(workflowKind(prerequisite), plan));
+    const waiting = item2.prerequisites.some((prerequisite) => workflowClears(workflowKind(prerequisite), plan) && !ownWorkflowReading(prerequisite).done);
     return { outstanding: broken || unread || waiting, unreadable: broken || unread };
   });
-  const risk = settings2.riskKey === "" || settings2.criticalRiskValues.length === 0 || settings2.addressedRiskValues.length === 0 ? off("risk") : criterion("risk", (item) => {
-    const raw = fm(item, settings2.riskKey);
+  const risk = settings2.riskKey === "" || settings2.criticalRiskValues.length === 0 || settings2.addressedRiskValues.length === 0 ? off("risk") : criterion("risk", (item2) => {
+    const raw = fm(item2, settings2.riskKey);
     const entries2 = raw === void 0 || raw === null ? [] : Array.isArray(raw) ? raw : [raw];
     const values2 = entries2.map(readString);
     if (values2.some((value2) => value2 === null)) return { outstanding: true, unreadable: true };
@@ -32680,7 +32682,7 @@ function releaseReadiness(source2, members2, settings2, plan) {
     const addressed = held.some((value2) => settings2.addressedRiskValues.some((ok) => sameValue(value2, ok)));
     return { outstanding: !addressed && held.some((value2) => settings2.criticalRiskValues.some((critical) => sameValue(value2, critical))), unreadable: false };
   });
-  const estimates = settings2.estimateKey === "" ? null : members2.map((item) => ({ item, value: estimateValue(fm(item, settings2.estimateKey)) }));
+  const estimates = settings2.estimateKey === "" ? null : members2.map((item2) => ({ item: item2, value: estimateValue(fm(item2, settings2.estimateKey)) }));
   const counting = estimates?.filter((entry2) => entry2.value !== null) ?? [];
   const doneReadable = counting.every((entry2) => workflowClears(workflowKind(entry2.item), plan));
   const sum = (values2) => exactSum(values2);
@@ -32729,8 +32731,8 @@ function releaseNotesContent(name2, rows, source2) {
   }
   return lines2.join("\n");
 }
-function releaseNotesPath(folder, releaseName) {
-  const directory = vaultFolder(folder), name2 = `${releaseName} release notes.md`;
+function releaseNotesPath(folder, releaseName2) {
+  const directory = vaultFolder(folder), name2 = `${releaseName2} release notes.md`;
   return directory ? `${directory}/${name2}` : name2;
 }
 function exactSum(values2) {
@@ -32755,7 +32757,7 @@ const parseDate = (value2, option2) => {
 async function addIteration(session, request) {
   ensureWritable(session);
   const { settings: settings2, model: model2 } = session;
-  const population = [...model2.byPath.values()].filter((item2) => !item2.outsideFilter);
+  const population = [...model2.byPath.values()].filter((item22) => !item22.outsideFilter);
   const length = request.length ?? settings2.iterationLengthDays;
   const defaults2 = nextIterationDates(previousIteration(population), session.today, length);
   const start2 = request.start === void 0 ? defaults2.start : formatCivil(parseDate(request.start, "start"));
@@ -32776,9 +32778,9 @@ async function addIteration(session, request) {
     ...settings2.iterationGoalKey && goal ? { iterationGoal: goal } : {}
   });
   const result = await createNotes(session, [{ path: path2, text: newNoteText(session, frontmatter) }]);
-  const item = { path: path2, title: path2.slice(path2.lastIndexOf("/") + 1, -3), type: ITERATION_TYPE, id: frontmatter[ITEM_ID_KEY], parent: null, order: placed2.order, start: start2, target: target2 };
-  await announce(session, result, "backlog.item-created", item);
-  return { ...result, item };
+  const item2 = { path: path2, title: path2.slice(path2.lastIndexOf("/") + 1, -3), type: ITERATION_TYPE, id: frontmatter[ITEM_ID_KEY], parent: null, order: placed2.order, start: start2, target: target2 };
+  await announce(session, result, "backlog.item-created", item2);
+  return { ...result, item: item2 };
 }
 async function addRelease(session, title2, spec) {
   const settings2 = session.releaseView?.settings ?? resolveReleaseSettings({});
@@ -32792,9 +32794,9 @@ async function addRelease(session, title2, spec) {
   const path2 = uniqueNotePath(settings2.folder, title2, (candidate) => pathTaken(session, candidate));
   const frontmatter = releaseFrontmatter(settings2, nextId(session), spec);
   const result = await createNotes(session, [{ path: path2, text: newNoteText(session, frontmatter) }]);
-  const item = { path: path2, title: path2.slice(path2.lastIndexOf("/") + 1, -3), type: RELEASE_TYPE, id: frontmatter[ITEM_ID_KEY] };
-  await announce(session, result, "backlog.item-created", item);
-  return { ...result, item };
+  const item2 = { path: path2, title: path2.slice(path2.lastIndexOf("/") + 1, -3), type: RELEASE_TYPE, id: frontmatter[ITEM_ID_KEY] };
+  await announce(session, result, "backlog.item-created", item2);
+  return { ...result, item: item2 };
 }
 const figureJson = (figure2, format2 = (value2) => value2) => figure2.unconfigured ? { unconfigured: true } : figure2.invalid ? { invalid: true } : { value: figure2.value === null ? null : format2(figure2.value) };
 function rowJson(row) {
@@ -32819,18 +32821,18 @@ async function releaseContext(session, bases, reference) {
   const context = await openReleaseModel(session, bases);
   const index2 = releaseIndex(session.source, context.model, context.release.settings, context.plan, session.today);
   if (reference === void 0) return { ...context, index: index2, row: null };
-  const item = findItem(session, reference, context.model);
-  const row = index2.rows.find((entry2) => entry2.path === item.path);
-  if (row === void 0 || !isReleaseType(item.typeName)) throw backlogError("BACKLOG_NOT_FOUND", `${reference} is not a Release of ${session.base.path} › ${context.release.name}.`, { reference });
+  const item2 = findItem(session, reference, context.model);
+  const row = index2.rows.find((entry2) => entry2.path === item2.path);
+  if (row === void 0 || !isReleaseType(item2.typeName)) throw backlogError("BACKLOG_NOT_FOUND", `${reference} is not a Release of ${session.base.path} › ${context.release.name}.`, { reference });
   return { ...context, index: index2, row };
 }
 async function listReleases(session, bases) {
   const { index: index2, release: release2 } = await releaseContext(session, bases);
-  return { base: session.base.path, view: release2.name, releases: index2.rows.map(rowJson), unresolved: index2.unresolved.map((item) => item.path) };
+  return { base: session.base.path, view: release2.name, releases: index2.rows.map(rowJson), unresolved: index2.unresolved.map((item2) => item2.path) };
 }
 function members$1(session, context, path2) {
   const releasePaths = new Set(context.model.releases.map((release2) => release2.path));
-  return scopeRows(context.model, (item) => membershipTarget(session.source, item, releasePaths, context.release.settings) === path2);
+  return scopeRows(context.model, (item2) => membershipTarget(session.source, item2, releasePaths, context.release.settings) === path2);
 }
 async function readiness(session, bases, reference) {
   const context = await releaseContext(session, bases, reference);
@@ -32898,13 +32900,13 @@ async function initBacklog(context, folderInput = "docs") {
 }
 function observedStates(items2, settings2) {
   const seen = /* @__PURE__ */ new Map();
-  for (const item of items2) if (!item.outsideFilter && item.stateValue !== null && !seen.has(item.stateValue.toLowerCase())) seen.set(item.stateValue.toLowerCase(), item.stateValue);
+  for (const item2 of items2) if (!item2.outsideFilter && item2.stateValue !== null && !seen.has(item2.stateValue.toLowerCase())) seen.set(item2.stateValue.toLowerCase(), item2.stateValue);
   const sorted2 = [...seen.values()].sort((a, b) => a.localeCompare(b));
   const done = (value2) => settings2.doneValues.some((entry2) => entry2.toLowerCase() === value2.toLowerCase());
   return [...sorted2.filter((value2) => !done(value2)), ...sorted2.filter(done)];
 }
 function requirementsBoard(model2, settings2) {
-  const observed = observedStates(model2.results.filter((item) => !isDeliverableType(item.typeName)), settings2);
+  const observed = observedStates(model2.results.filter((item2) => !isDeliverableType(item2.typeName)), settings2);
   const values2 = menuValues(settings2.states, settings2.doneValues, observed);
   const column = (state2, outsideWorkflow) => ({
     state: state2,
@@ -32940,47 +32942,47 @@ function requirementsBoard(model2, settings2) {
 }
 const error$2 = (code2, message2, extra = {}) => ({ code: code2, severity: "error", message: message2, ...extra });
 const warning = (code2, message2, extra = {}) => ({ code: code2, severity: "warning", message: message2, ...extra });
-const notHeld = (item, key) => item.typeName === null ? fill(checkMessages.fieldNotHeldUntyped, { title: item.title, key }) : fill(checkMessages.fieldNotHeld, { type: item.typeName, title: item.title, key });
-function linkProblems(item, input2) {
+const notHeld = (item2, key) => item2.typeName === null ? fill(checkMessages.fieldNotHeldUntyped, { title: item2.title, key }) : fill(checkMessages.fieldNotHeld, { type: item2.typeName, title: item2.title, key });
+function linkProblems(item2, input2) {
   const problems = [];
   const { settings: settings2 } = input2;
-  if (item.cycleCut) problems.push(error$2("parent-cycle", fill(checkMessages.parentCycle, { title: item.title }), { path: item.path, key: settings2.parentKey }));
-  else if (item.orphan) problems.push(error$2("unresolved-parent", fill(checkMessages.unresolvedParent, { title: item.title }), { path: item.path, key: settings2.parentKey }));
-  for (const broken of item.brokenPrerequisites) {
+  if (item2.cycleCut) problems.push(error$2("parent-cycle", fill(checkMessages.parentCycle, { title: item2.title }), { path: item2.path, key: settings2.parentKey }));
+  else if (item2.orphan) problems.push(error$2("unresolved-parent", fill(checkMessages.unresolvedParent, { title: item2.title }), { path: item2.path, key: settings2.parentKey }));
+  for (const broken of item2.brokenPrerequisites) {
     problems.push(error$2(
       broken.reason === "cycle" ? "dependency-cycle" : "unresolved-dependency",
-      fill(broken.reason === "cycle" ? checkMessages.dependencyCycle : checkMessages.unresolvedDependency, { title: item.title, target: broken.raw }),
-      { path: item.path, key: settings2.dependsOnKey, value: broken.raw }
+      fill(broken.reason === "cycle" ? checkMessages.dependencyCycle : checkMessages.unresolvedDependency, { title: item2.title, target: broken.raw }),
+      { path: item2.path, key: settings2.dependsOnKey, value: broken.raw }
     ));
   }
-  const iteration2 = item.iterationEntry;
+  const iteration2 = item2.iterationEntry;
   if (iteration2 && (iteration2.path === null || !isIterationType(input2.typeOf(iteration2.path)))) {
-    problems.push(error$2("broken-iteration", fill(checkMessages.brokenIteration, { title: item.title, iteration: iteration2.raw }), { path: item.path, key: settings2.iterationKey, value: iteration2.raw }));
+    problems.push(error$2("broken-iteration", fill(checkMessages.brokenIteration, { title: item2.title, iteration: iteration2.raw }), { path: item2.path, key: settings2.iterationKey, value: iteration2.raw }));
   }
-  const assignee = item.assigneeEntry;
+  const assignee = item2.assigneeEntry;
   if (assignee && (assignee.path === null || !isResourceType(input2.typeOf(assignee.path)))) {
-    problems.push(warning("broken-assignee", fill(checkMessages.brokenAssignee, { title: item.title, assignee: assignee.raw }), { path: item.path, key: settings2.assigneeKey, value: assignee.raw }));
+    problems.push(warning("broken-assignee", fill(checkMessages.brokenAssignee, { title: item2.title, assignee: assignee.raw }), { path: item2.path, key: settings2.assigneeKey, value: assignee.raw }));
   }
   return problems;
 }
-function fieldProblems(item, settings2) {
+function fieldProblems(item2, settings2) {
   const problems = [];
   const held = [
-    ["release", item.releaseEntry !== null || item.releaseMultiple, settings2.releaseKey],
-    ["horizon", item.ownKeys.horizon && item.horizon.value !== null, settings2.horizonKey],
-    ["iteration", item.ownKeys.iteration && item.iterationEntry !== null, settings2.iterationKey],
-    ["iterationGoal", item.iterationGoalValue !== null, settings2.iterationGoalKey]
+    ["release", item2.releaseEntry !== null || item2.releaseMultiple, settings2.releaseKey],
+    ["horizon", item2.ownKeys.horizon && item2.horizon.value !== null, settings2.horizonKey],
+    ["iteration", item2.ownKeys.iteration && item2.iterationEntry !== null, settings2.iterationKey],
+    ["iterationGoal", item2.iterationGoalValue !== null, settings2.iterationGoalKey]
   ];
   for (const [field2, present2, key] of held) {
-    if (present2 && !mayHoldField(item.typeName, field2, settings2.iterationBars)) problems.push(error$2("field-not-held", notHeld(item, key), { path: item.path, key }));
+    if (present2 && !mayHoldField(item2.typeName, field2, settings2.iterationBars)) problems.push(error$2("field-not-held", notHeld(item2, key), { path: item2.path, key }));
   }
-  const ends = placementEnds(item.typeName, true);
-  for (const [end2, reading2, key] of [["start", item.plannedStart, settings2.startKey], ["target", item.plannedTarget, settings2.targetKey]]) {
-    if (reading2.value !== null && !ends.includes(end2)) problems.push(error$2("field-not-held", notHeld(item, key), { path: item.path, key }));
-    if (reading2.invalid) problems.push(warning("unreadable-date", fill(checkMessages.unreadableValue, { title: item.title, key }), { path: item.path, key }));
+  const ends = placementEnds(item2.typeName, true);
+  for (const [end2, reading2, key] of [["start", item2.plannedStart, settings2.startKey], ["target", item2.plannedTarget, settings2.targetKey]]) {
+    if (reading2.value !== null && !ends.includes(end2)) problems.push(error$2("field-not-held", notHeld(item2, key), { path: item2.path, key }));
+    if (reading2.invalid) problems.push(warning("unreadable-date", fill(checkMessages.unreadableValue, { title: item2.title, key }), { path: item2.path, key }));
   }
-  if (item.horizon.invalid) problems.push(warning("unreadable-horizon", fill(checkMessages.unreadableValue, { title: item.title, key: settings2.horizonKey }), { path: item.path, key: settings2.horizonKey }));
-  if (reversedSpan(item.plannedStart.value, item.plannedTarget.value)) problems.push(warning("reversed-span", fill(checkMessages.reversedSpan, { title: item.title }), { path: item.path }));
+  if (item2.horizon.invalid) problems.push(warning("unreadable-horizon", fill(checkMessages.unreadableValue, { title: item2.title, key: settings2.horizonKey }), { path: item2.path, key: settings2.horizonKey }));
+  if (reversedSpan(item2.plannedStart.value, item2.plannedTarget.value)) problems.push(warning("reversed-span", fill(checkMessages.reversedSpan, { title: item2.title }), { path: item2.path }));
   return problems;
 }
 function checkBacklog(input2) {
@@ -32989,13 +32991,13 @@ function checkBacklog(input2) {
     ...configProblems(settings2).map((message2) => error$2("config", message2)),
     ...input2.releaseProblems.map((message2) => error$2("release-config", message2))
   ];
-  const results = model2.items.filter((item) => !item.outsideFilter);
-  for (const item of results) problems.push(...linkProblems(item, input2), ...fieldProblems(item, settings2));
+  const results = model2.items.filter((item2) => !item2.outsideFilter);
+  for (const item2 of results) problems.push(...linkProblems(item2, input2), ...fieldProblems(item2, settings2));
   for (const path2 of input2.unresolvedMemberships) problems.push(error$2("unresolved-membership", fill(checkMessages.unresolvedMembership, { path: path2 }), { path: path2 }));
   const byOrder = /* @__PURE__ */ new Map();
-  for (const item of results) if (item.order !== null) byOrder.set(item.order, [...byOrder.get(item.order) ?? [], item.path]);
+  for (const item2 of results) if (item2.order !== null) byOrder.set(item2.order, [...byOrder.get(item2.order) ?? [], item2.path]);
   for (const [order2, paths2] of byOrder) if (paths2.length > 1) problems.push(warning("rank-tie", fill(checkMessages.rankTie, { count: paths2.length, rank: order2 }), { value: String(order2), paths: paths2 }));
-  const unranked = results.filter((item) => item.order === null && !isReleaseType(item.typeName)).map((item) => item.path);
+  const unranked = results.filter((item2) => item2.order === null && !isReleaseType(item2.typeName)).map((item2) => item2.path);
   if (unranked.length > 0) problems.push(warning("unranked", fill(unranked.length === 1 ? checkMessages.unrankedOne : checkMessages.unranked, { count: unranked.length }), { paths: unranked }));
   const ignored = input2.ignored ?? model2.ignored;
   if (ignored.length > 0) problems.push(warning("ignored", fill(ignored.length === 1 ? checkMessages.ignoredOne : checkMessages.ignored, { count: ignored.length }), { paths: [...ignored] }));
@@ -33003,51 +33005,51 @@ function checkBacklog(input2) {
 }
 const date$2 = (reading2) => reading2.invalid ? { invalid: true } : reading2.value === null ? null : formatCivil(reading2.value);
 const link = (entry2) => entry2 === null ? null : { raw: entry2.raw, path: entry2.path };
-function itemJson(session, item) {
-  const rank = session.model.ranked.indexOf(item);
+function itemJson(session, item2) {
+  const rank = session.model.ranked.indexOf(item2);
   return {
-    path: item.path,
-    title: item.title,
-    id: item.pblId,
-    type: item.typeName,
-    displayType: displayType(item),
-    impliedType: item.impliedType,
-    ladder: inCatalog(item) ? "test" : "plan",
-    level: item.levelIndex,
-    depth: item.depth,
-    parent: item.parent?.path ?? null,
-    orphan: item.orphan,
-    context: item.outsideFilter,
-    order: item.order,
+    path: item2.path,
+    title: item2.title,
+    id: item2.pblId,
+    type: item2.typeName,
+    displayType: displayType(item2),
+    impliedType: item2.impliedType,
+    ladder: inCatalog(item2) ? "test" : "plan",
+    level: item2.levelIndex,
+    depth: item2.depth,
+    parent: item2.parent?.path ?? null,
+    orphan: item2.orphan,
+    context: item2.outsideFilter,
+    order: item2.order,
     rank: rank < 0 ? null : rank + 1,
-    state: item.stateValue,
-    done: item.done,
-    ...item.deliverableStateValue !== null && item.deliverableStateValue !== item.stateValue ? { deliverableState: item.deliverableStateValue } : {},
-    ...item.testStateValue !== null && item.testStateValue !== item.stateValue ? { testState: item.testStateValue } : {},
-    horizon: item.horizon.invalid ? { invalid: true } : item.horizon.value,
-    start: date$2(item.plannedStart),
-    due: date$2(item.plannedTarget),
-    risk: item.riskValue,
-    priority: item.priorityValue,
-    assignee: link(item.assigneeEntry),
-    iteration: link(item.iterationEntry),
-    release: link(item.releaseEntry),
-    ...item.iterationGoalValue !== null ? { goal: item.iterationGoalValue } : {},
-    tags: item.tags,
-    dependsOn: item.prerequisites.map((prerequisite) => prerequisite.path),
-    brokenDependencies: item.brokenPrerequisites,
-    children: item.children.length,
-    descendants: item.descendantCount,
-    doneDescendants: item.doneDescendants
+    state: item2.stateValue,
+    done: item2.done,
+    ...item2.deliverableStateValue !== null && item2.deliverableStateValue !== item2.stateValue ? { deliverableState: item2.deliverableStateValue } : {},
+    ...item2.testStateValue !== null && item2.testStateValue !== item2.stateValue ? { testState: item2.testStateValue } : {},
+    horizon: item2.horizon.invalid ? { invalid: true } : item2.horizon.value,
+    start: date$2(item2.plannedStart),
+    due: date$2(item2.plannedTarget),
+    risk: item2.riskValue,
+    priority: item2.priorityValue,
+    assignee: link(item2.assigneeEntry),
+    iteration: link(item2.iterationEntry),
+    release: link(item2.releaseEntry),
+    ...item2.iterationGoalValue !== null ? { goal: item2.iterationGoalValue } : {},
+    tags: item2.tags,
+    dependsOn: item2.prerequisites.map((prerequisite) => prerequisite.path),
+    brokenDependencies: item2.brokenPrerequisites,
+    children: item2.children.length,
+    descendants: item2.descendantCount,
+    doneDescendants: item2.doneDescendants
   };
 }
 const header = (session) => ({ base: session.base.path, view: session.view.name });
 function listItems(session, includeContext) {
-  const items2 = session.model.ranked.filter((item) => includeContext || !item.outsideFilter);
-  return { ...header(session), total: items2.length, items: items2.map((item) => itemJson(session, item)), ignored: session.model.ignored };
+  const items2 = session.model.ranked.filter((item2) => includeContext || !item2.outsideFilter);
+  return { ...header(session), total: items2.length, items: items2.map((item2) => itemJson(session, item2)), ignored: session.model.ignored };
 }
 function itemTree(session) {
-  const node2 = (item) => ({ ...itemJson(session, item), items: item.children.map(node2) });
+  const node2 = (item2) => ({ ...itemJson(session, item2), items: item2.children.map(node2) });
   return { ...header(session), roots: session.model.roots.map(node2), ignored: session.model.ignored };
 }
 function board(session) {
@@ -33068,17 +33070,17 @@ function board(session) {
   };
 }
 function showItem(session, reference) {
-  const item = findItem(session, reference);
-  const dependents = session.model.items.filter((other) => other.prerequisites.includes(item)).map((other) => other.path);
+  const item2 = findItem(session, reference);
+  const dependents = session.model.items.filter((other) => other.prerequisites.includes(item2)).map((other) => other.path);
   return {
     ...header(session),
-    item: itemJson(session, item),
+    item: itemJson(session, item2),
     ancestors: (() => {
       const chain = [];
-      for (let up = item.parent; up; up = up.parent) chain.unshift(up.path);
+      for (let up = item2.parent; up; up = up.parent) chain.unshift(up.path);
       return chain;
     })(),
-    childItems: item.children.map((child) => ({ path: child.path, title: child.title, type: child.typeName, order: child.order, state: child.stateValue })),
+    childItems: item2.children.map((child) => ({ path: child.path, title: child.title, type: child.typeName, order: child.order, state: child.stateValue })),
     dependents
   };
 }
@@ -33095,7 +33097,7 @@ function indexProblems(session) {
 function check$1(session) {
   const release2 = session.releaseView;
   const releasePaths = new Set(session.model.releases.map((entry2) => entry2.path));
-  const memberships = release2 ? session.model.items.filter((item) => !item.outsideFilter && membershipTarget(session.source, item, releasePaths, release2.settings) === "unresolved").map((item) => item.path) : [];
+  const memberships = release2 ? session.model.items.filter((item2) => !item2.outsideFilter && membershipTarget(session.source, item2, releasePaths, release2.settings) === "unresolved").map((item2) => item2.path) : [];
   const notes2 = release2 ? vaultFolder(release2.settings.notesFolder) : "";
   const ignored = session.model.ignored.filter((path2) => notes2 === "" || !path2.startsWith(`${notes2}/`));
   const releaseProblems = release2 ? [...releaseNoteProblems(release2.settings), ...[membershipCollision(release2.settings, session.settings)].filter((problem) => problem !== null)] : [];
@@ -33106,7 +33108,7 @@ function check$1(session) {
   return {
     ...header(session),
     ok: !problems.some((problem) => problem.severity === "error"),
-    counts: { items: session.model.items.filter((item) => !item.outsideFilter).length, context: session.model.items.filter((item) => item.outsideFilter).length, ignored: session.model.ignored.length, errors: problems.filter((problem) => problem.severity === "error").length, warnings: problems.filter((problem) => problem.severity === "warning").length },
+    counts: { items: session.model.items.filter((item2) => !item2.outsideFilter).length, context: session.model.items.filter((item2) => item2.outsideFilter).length, ignored: session.model.ignored.length, errors: problems.filter((problem) => problem.severity === "error").length, warnings: problems.filter((problem) => problem.severity === "warning").length },
     writable: configProblems(session.settings).length === 0,
     problems
   };
@@ -33197,25 +33199,25 @@ function synced(context, field2) {
 const basename$2 = (path2) => path2.slice(path2.lastIndexOf("/") + 1).replace(/\.md$/i, "");
 const iterationNote = (session, name2) => session.cache.files().find((path2) => path2.toLowerCase().endsWith(".md") && basename$2(path2).toLowerCase() === name2.toLowerCase() && isIterationType(readString(ownValue(session.cache.getFileCache(path2)?.frontmatter, session.settings.typeKey)))) ?? null;
 const scalar$2 = (value2) => value2 === void 0 || value2 === null || value2 === "" ? null : typeof value2 === "string" || typeof value2 === "number" || typeof value2 === "boolean" ? value2 : void 0;
-const itemType = (item) => item.typeName ?? (displayType(item) || null);
-function localValues(context, item, frontmatter, body) {
+const itemType = (item2) => item2.typeName ?? (displayType(item2) || null);
+function localValues(context, item2, frontmatter, body) {
   const values2 = /* @__PURE__ */ new Map();
-  const type2 = itemType(item);
-  if (synced(context, "title")) values2.set("title", item.title);
+  const type2 = itemType(item2);
+  if (synced(context, "title")) values2.set("title", item2.title);
   const remote = type2 === null ? void 0 : remoteType(context.mapping, type2);
   if (synced(context, "type") && remote !== void 0) values2.set("type", remote);
-  if (synced(context, "state")) values2.set("state", item.stateValue === null ? null : remoteState(context.mapping, type2, item.stateValue));
+  if (synced(context, "state")) values2.set("state", item2.stateValue === null ? null : remoteState(context.mapping, type2, item2.stateValue));
   if (synced(context, "parent")) {
-    const parent2 = item.parent === null ? null : context.idOf(item.parent.path);
-    if (item.parent === null || parent2 !== null) values2.set("parent", parent2);
+    const parent2 = item2.parent === null ? null : context.idOf(item2.parent.path);
+    if (item2.parent === null || parent2 !== null) values2.set("parent", parent2);
   }
   if (synced(context, "dependencies")) {
-    const ids = item.dependsOnEntries.map((entry2) => entry2.path === null ? null : context.idOf(entry2.path));
+    const ids = item2.dependsOnEntries.map((entry2) => entry2.path === null ? null : context.idOf(entry2.path));
     if (ids.every((id2) => id2 !== null)) values2.set("dependencies", sortedIds(ids));
   }
   const root = iterationRoot(context);
   if (synced(context, "iteration") && root !== null) {
-    const entry2 = item.iterationEntry;
+    const entry2 = item2.iterationEntry;
     if (entry2 === null) values2.set("iteration", null);
     else if (entry2.path !== null) values2.set("iteration", iterationPath(root, basename$2(entry2.path)));
   }
@@ -33224,15 +33226,15 @@ function localValues(context, item, frontmatter, body) {
     if (area === null || typeof area === "string") values2.set("area", area === null ? null : area.trim().replace(/\\+$/, "") || null);
   }
   if (synced(context, "priority")) {
-    const number2 = priorityNumber(item.priorityValue);
-    if (item.priorityValue === null || number2 !== null) values2.set("priority", number2);
+    const number2 = priorityNumber(item2.priorityValue);
+    if (item2.priorityValue === null || number2 !== null) values2.set("priority", number2);
   }
   if (synced(context, "effort")) {
     const raw = ownValue(frontmatter, context.connection.effortProperty);
     const number2 = readNumber(raw);
     if (raw === void 0 || raw === null || raw === "" || number2 !== null) values2.set("effort", number2);
   }
-  if (synced(context, "tags")) values2.set("tags", item.tags);
+  if (synced(context, "tags")) values2.set("tags", item2.tags);
   if (synced(context, "description") && body !== null) {
     const text2 = withoutComments(body.replace(/\r\n?/g, "\n")).trim();
     values2.set("description", text2 === "" ? null : text2);
@@ -33274,53 +33276,53 @@ function remoteChange(context, values2) {
   }
   return Object.keys(fields2).length > 0 ? { ...change2, fields: fields2 } : change2;
 }
-function pulledNote(context, item, pulls, pathOfRemote2, body) {
+function pulledNote(context, item2, pulls, pathOfRemote2, body) {
   const { session } = context;
   const { settings: settings2 } = session;
-  const note = { write: { path: item.path }, extra: {}, removed: [], skipped: [] };
-  const type2 = itemType(item);
+  const note2 = { write: { path: item2.path }, extra: {}, removed: [], skipped: [] };
+  const type2 = itemType(item2);
   for (const [field2, value2] of pulls) {
-    if (field2 === "title") note.title = sanitizeTitle(String(value2));
+    if (field2 === "title") note2.title = sanitizeTitle(String(value2));
     else if (field2 === "type" && typeof value2 === "string") {
       const local = localType(context.mapping, value2, type2);
-      if (local === void 0) note.skipped.push({ field: field2, code: "unmapped-remote-type", reason: fill(syncMessages.unmappedRemoteType, { type: String(value2) }) });
-      else note.write.typeName = local;
-    } else if (field2 === "state") Object.assign(note.write, stateWrite(item, workflowOf(item.typeName, item.ladder), value2 === null ? null : localState(context.mapping, type2, String(value2), item.stateValue, settings2.states), settings2, formatCivil(session.today)));
+      if (local === void 0) note2.skipped.push({ field: field2, code: "unmapped-remote-type", reason: fill(syncMessages.unmappedRemoteType, { type: String(value2) }) });
+      else note2.write.typeName = local;
+    } else if (field2 === "state") Object.assign(note2.write, stateWrite(item2, workflowOf(item2.typeName, item2.ladder), value2 === null ? null : localState(context.mapping, type2, String(value2), item2.stateValue, settings2.states), settings2, formatCivil(session.today)));
     else if (field2 === "parent") {
       const parent2 = value2 === null ? null : pathOfRemote2(String(value2));
-      if (value2 !== null && parent2 === null) note.skipped.push({ field: field2, code: "unsynced-parent", reason: fill(syncMessages.unsyncedParent, { parent: String(value2) }) });
-      else note.write.parent = parent2;
+      if (value2 !== null && parent2 === null) note2.skipped.push({ field: field2, code: "unsynced-parent", reason: fill(syncMessages.unsyncedParent, { parent: String(value2) }) });
+      else note2.write.parent = parent2;
     } else if (field2 === "dependencies" && Array.isArray(value2)) {
       const paths2 = value2.map((id2) => pathOfRemote2(id2));
       const missing2 = value2.filter((_id, index2) => paths2[index2] === null);
-      if (missing2.length > 0) note.skipped.push({ field: field2, code: "unsynced-dependency", reason: fill(syncMessages.unsyncedDependency, { ids: missing2.join(", ") }) });
-      else note.dependsOn = paths2;
+      if (missing2.length > 0) note2.skipped.push({ field: field2, code: "unsynced-dependency", reason: fill(syncMessages.unsyncedDependency, { ids: missing2.join(", ") }) });
+      else note2.dependsOn = paths2;
     } else if (field2 === "iteration") {
       const name2 = iterationName(iterationRoot(context), value2 === null ? null : String(value2));
       const target2 = name2 === null ? null : iterationNote(session, name2);
-      if (name2 !== null && target2 === null) note.skipped.push({ field: field2, code: "missing-iteration", reason: fill(syncMessages.missingIteration, { name: name2 }) });
-      else note.write.iteration = target2;
-    } else if (field2 === "priority") note.write.priority = value2 === null ? null : priorityLabel(Number(value2), settings2.priorityValues);
+      if (name2 !== null && target2 === null) note2.skipped.push({ field: field2, code: "missing-iteration", reason: fill(syncMessages.missingIteration, { name: name2 }) });
+      else note2.write.iteration = target2;
+    } else if (field2 === "priority") note2.write.priority = value2 === null ? null : priorityLabel(Number(value2), settings2.priorityValues);
     else if (field2 === "tags" && Array.isArray(value2)) {
       const lower = new Set(value2.map((tag) => tag.toLowerCase()));
-      note.write.tags = { add: value2, remove: item.tags.filter((tag) => !lower.has(tag.toLowerCase())) };
-    } else if (field2 === "description") note.body = withComments(value2 === null ? "" : String(value2), comments(body ?? ""));
+      note2.write.tags = { add: value2, remove: item2.tags.filter((tag) => !lower.has(tag.toLowerCase())) };
+    } else if (field2 === "description") note2.body = withComments(value2 === null ? "" : String(value2), comments(body ?? ""));
     else {
       const key = field2 === "effort" ? context.connection.effortProperty : field2 === "area" ? context.connection.areaProperty : field2.slice(PROPERTY.length);
-      if (value2 === null) note.removed.push(key);
-      else setOwn(note.extra, key, value2);
+      if (value2 === null) note2.removed.push(key);
+      else setOwn(note2.extra, key, value2);
     }
   }
-  return note;
+  return note2;
 }
 const linkValue = (connection, frontmatter) => readString(ownValue(frontmatter, connection.linkProperty));
 function identify(context, items2, state2, linkId, exists2) {
   const members2 = [], skipped = [], adopted = [];
   const claimed = /* @__PURE__ */ new Map();
-  const mapped = items2.filter(({ item }) => {
-    const type2 = itemType(item);
+  const mapped = items2.filter(({ item: item2 }) => {
+    const type2 = itemType(item2);
     if (type2 !== null && remoteType(context.mapping, type2) !== void 0) return true;
-    skipped.push({ path: item.path, code: "unmapped-type", reason: type2 === null ? syncMessages.untyped : fill(syncMessages.unmappedType, { type: type2 }) });
+    skipped.push({ path: item2.path, code: "unmapped-type", reason: type2 === null ? syncMessages.untyped : fill(syncMessages.unmappedType, { type: type2 }) });
     return false;
   });
   const linkOf = ({ frontmatter }) => {
@@ -33337,7 +33339,7 @@ function identify(context, items2, state2, linkId, exists2) {
     claimed.set(entry2.id, source2.item.path);
     members2.push({ ...source2, id: entry2.id, entry: entry2, relink: linkOf(source2).id !== entry2.id });
   }
-  const linkOnly = mapped.filter(({ item }) => state2.items[item.path] === void 0).map((source2) => ({ source: source2, ...linkOf(source2) }));
+  const linkOnly = mapped.filter(({ item: item2 }) => state2.items[item2.path] === void 0).map((source2) => ({ source: source2, ...linkOf(source2) }));
   const linking = /* @__PURE__ */ new Map();
   for (const { id: id2 } of linkOnly) if (id2 !== null) linking.set(id2, (linking.get(id2) ?? 0) + 1);
   for (const { source: source2, link: link2, id: id2 } of linkOnly) {
@@ -33364,18 +33366,18 @@ function identify(context, items2, state2, linkId, exists2) {
     if (id2 !== null) claimed.set(id2, path2);
     members2.push({ ...source2, id: id2, entry: entry2, relink: false });
   }
-  const order2 = new Map(items2.map(({ item }, index2) => [item.path, index2]));
+  const order2 = new Map(items2.map(({ item: item2 }, index2) => [item2.path, index2]));
   members2.sort((a, b) => order2.get(a.item.path) - order2.get(b.item.path));
   return { members: members2, skipped, adopted };
 }
 const fieldSkip = (path2, field2, local, base2) => field2 === "description" && base2 ? { path: path2, field: field2, code: "remote-format-unknown", reason: syncMessages.remoteFormatUnknown } : local ? { path: path2, field: field2, code: "unexpressible", reason: fill(syncMessages.unexpressible, { field: field2 }) } : { path: path2, field: field2, code: "unreadable-remote", reason: fill(syncMessages.unreadableRemote, { field: field2 }) };
 const LINK_FIELDS = /* @__PURE__ */ new Set(["parent", "dependencies"]);
 function planItem(context, member2, remote, options2) {
-  const { item, entry: entry2 } = member2;
-  const local = localValues(context, item, member2.frontmatter, member2.body);
+  const { item: item2, entry: entry2 } = member2;
+  const local = localValues(context, item2, member2.frontmatter, member2.body);
   const plan = {
-    item,
-    path: item.path,
+    item: item2,
+    path: item2.path,
     frontmatter: member2.frontmatter,
     body: member2.body,
     id: member2.id,
@@ -33397,11 +33399,11 @@ function planItem(context, member2, remote, options2) {
     relink: member2.relink
   };
   if (plan.create) return plan;
-  if (remote === null) return { path: item.path, code: "remote-missing", reason: fill(syncMessages.remoteMissing, { id: String(member2.id) }) };
+  if (remote === null) return { path: item2.path, code: "remote-missing", reason: fill(syncMessages.remoteMissing, { id: String(member2.id) }) };
   plan.remoteValues = remoteValues(context, remote);
   plan.remoteMarkdown = remote.description === null || remote.descriptionMarkdown === true;
   const unchangedRemote = entry2 !== null && entry2.rev === remote.rev;
-  const resolution = options2.resolution?.path === item.path ? options2.resolution : void 0;
+  const resolution = options2.resolution?.path === item2.path ? options2.resolution : void 0;
   const hashOf = (field2, values2) => values2.has(field2) ? options2.hash(canonical(field2, values2.get(field2))) : void 0;
   for (const field2 of /* @__PURE__ */ new Set([...local.keys(), ...plan.remoteValues.keys()])) {
     const baseKey = field2 === "description" ? `${REMOTE_BASE}${field2}` : field2;
@@ -33420,7 +33422,7 @@ function planItem(context, member2, remote, options2) {
     else if (decision === "pull" && options2.direction !== "push") plan.pull.set(field2, plan.remoteValues.get(field2));
     else if (decision === "conflict") plan.conflicts.push({ field: field2, local: local.get(field2) ?? null, remote: plan.remoteValues.get(field2) ?? null });
     else if (decision === "converged") plan.converged.push(field2);
-    else if (decision === "skip") plan.skipped.push(fieldSkip(item.path, field2, localHash === void 0, base2 !== void 0));
+    else if (decision === "skip") plan.skipped.push(fieldSkip(item2.path, field2, localHash === void 0, base2 !== void 0));
   }
   return plan;
 }
@@ -33595,22 +33597,22 @@ function settleLinks(context, plan, result, resolved2) {
 const basename$1 = (path2) => path2.slice(path2.lastIndexOf("/") + 1).replace(/\.md$/i, "");
 function landings(session, context, plans, pathOfRemote2) {
   const landed = plans.map((plan) => {
-    const note = pulledNote(context, plan.item, plan.pull, pathOfRemote2, plan.body);
-    const skipped = note.skipped.map((skip) => ({ path: plan.path, ...skip }));
-    const pulled = new Set([...plan.pull.keys()].filter((field2) => !note.skipped.some((skip) => skip.field === field2)));
+    const note2 = pulledNote(context, plan.item, plan.pull, pathOfRemote2, plan.body);
+    const skipped = note2.skipped.map((skip) => ({ path: plan.path, ...skip }));
+    const pulled = new Set([...plan.pull.keys()].filter((field2) => !note2.skipped.some((skip) => skip.field === field2)));
     let renameTo = null;
-    if (note.title !== void 0) {
+    if (note2.title !== void 0) {
       const folder = plan.path.includes("/") ? plan.path.slice(0, plan.path.lastIndexOf("/") + 1) : "";
-      const target2 = `${folder}${note.title}.md`;
+      const target2 = `${folder}${note2.title}.md`;
       if (target2.toLowerCase() !== plan.path.toLowerCase() && pathTaken(session, target2)) {
         pulled.delete("title");
         skipped.push({ path: plan.path, field: "title", code: "title-taken", reason: fill(syncMessages.titleTaken, { path: target2 }) });
       } else if (target2 !== plan.path) renameTo = target2;
     }
-    return { plan, note, pulled, renameTo, skipped };
+    return { plan, note: note2, pulled, renameTo, skipped };
   });
   const renamed = new Map(landed.flatMap((landing) => landing.renameTo === null ? [] : [[landing.plan.path, landing.renameTo]]));
-  for (const { note } of landed) if (typeof note.write.parent === "string") note.write.parent = renamed.get(note.write.parent) ?? note.write.parent;
+  for (const { note: note2 } of landed) if (typeof note2.write.parent === "string") note2.write.parent = renamed.get(note2.write.parent) ?? note2.write.parent;
   return landed;
 }
 function dependsOnList(plan, wanted, link2) {
@@ -33630,7 +33632,7 @@ async function commitVault(session, context, items2, store, pushed, hash, live) 
     const text2 = session.cache.fileToLinktext(from, source2), old = basename$1(from), next = basename$1(target2);
     return `[[${text2.endsWith(old) ? `${text2.slice(0, -old.length)}${next}` : text2}]]`;
   };
-  for (const { plan, note, pulled, renameTo } of items2) {
+  for (const { plan, note: note2, pulled, renameTo } of items2) {
     let path2 = plan.path;
     if (renameTo !== null) {
       const moved2 = await session.context.app.fileManager.move(plan.path, renameTo);
@@ -33641,19 +33643,19 @@ async function commitVault(session, context, items2, store, pushed, hash, live) 
         store.remove(plan.path);
       }
     }
-    const extra = { ...note.extra };
+    const extra = { ...note2.extra };
     if (plan.url !== null && (plan.relink || plan.create)) setOwn(extra, connection.linkProperty, plan.url);
-    if (Object.keys(note.write).length > 1 || Object.keys(extra).length > 0 || note.removed.length > 0 || note.body !== void 0 || note.dependsOn !== void 0) {
-      const write = itemEdit(session, { ...note.write, path: path2 }, links2);
-      const dependsOn = note.dependsOn === void 0 ? void 0 : dependsOnList(plan, note.dependsOn, (target2) => links2(target2, path2));
+    if (Object.keys(note2.write).length > 1 || Object.keys(extra).length > 0 || note2.removed.length > 0 || note2.body !== void 0 || note2.dependsOn !== void 0) {
+      const write = itemEdit(session, { ...note2.write, path: path2 }, links2);
+      const dependsOn = note2.dependsOn === void 0 ? void 0 : dependsOnList(plan, note2.dependsOn, (target2) => links2(target2, path2));
       edits.push({
         path: path2,
-        ...note.body === void 0 ? {} : { body: note.body },
+        ...note2.body === void 0 ? {} : { body: note2.body },
         edit: (frontmatter) => {
           const failure2 = write.edit(frontmatter);
           if (failure2) return failure2;
           for (const [key2, value2] of Object.entries(extra)) setOwn(frontmatter, key2, value2);
-          for (const key2 of note.removed) delete frontmatter[key2];
+          for (const key2 of note2.removed) delete frontmatter[key2];
           const key = session.settings.dependsOnKey;
           if (dependsOn !== void 0 && dependsOn.length > 0) setOwn(frontmatter, key, dependsOn);
           else if (dependsOn !== void 0) delete frontmatter[key];
@@ -33693,10 +33695,10 @@ async function syncView(session, bound2, store, hash, options2) {
   const mapping = connector.mapping(connection);
   const ids = /* @__PURE__ */ new Map();
   const context = { session, connection, mapping, idOf: (path2) => ids.get(path2) ?? store.state.items[path2]?.id ?? null };
-  const sources = await Promise.all(session.model.results.map(async (item) => ({
-    item,
-    frontmatter: session.cache.getFileCache(item.path)?.frontmatter ?? {},
-    body: mapping.fields.description === null ? null : noteBody(new TextDecoder().decode((await workspace2.files.read(item.path)).bytes))
+  const sources = await Promise.all(session.model.results.map(async (item2) => ({
+    item: item2,
+    frontmatter: session.cache.getFileCache(item2.path)?.frontmatter ?? {},
+    body: mapping.fields.description === null ? null : noteBody(new TextDecoder().decode((await workspace2.files.read(item2.path)).bytes))
   })));
   const files2 = new Set(session.cache.files());
   const { members: members2, skipped, adopted } = identify(context, sources, store.state, (url2) => connector.idFromLink(connection, url2), (path2) => files2.has(path2));
@@ -33708,7 +33710,7 @@ async function syncView(session, bound2, store, hash, options2) {
   for (const member2 of members2) ids.set(member2.item.path, member2.id ?? `${PLACEHOLDER}${member2.item.path}`);
   const targets2 = options2.resolution ? members2.filter((member2) => member2.item.path === options2.resolution.path) : members2;
   const linked = targets2.flatMap((member2) => member2.id === null ? [] : [member2.id]);
-  const remotes = new Map((linked.length > 0 ? await connector.query(connection, linked) : []).map((item) => [item.id, item]));
+  const remotes = new Map((linked.length > 0 ? await connector.query(connection, linked) : []).map((item2) => [item2.id, item2]));
   const report2 = {
     base: session.base.path,
     view: session.view.name,
@@ -33875,7 +33877,7 @@ async function heldPaths(all2, connections, open2) {
   const held = new Map(connections.map((id2) => [id2, /* @__PURE__ */ new Set()]));
   for (const view of all2) {
     const paths2 = held.get(view.connection);
-    if (paths2) for (const item of (await open2(view)).model.results) paths2.add(item.path);
+    if (paths2) for (const item2 of (await open2(view)).model.results) paths2.add(item2.path);
   }
   return held;
 }
@@ -33954,12 +33956,8 @@ function syncAction(rest, flags, context, services2, selection2) {
   ensure(["push", "pull", "both"].includes(direction2), "INVALID_ARGUMENT", "--direction must be push, pull or both.");
   const run2 = async (request) => localizedSync(await runSync(context, services2, request, syncWarningText(context.language)), context.language);
   if (sub === void 0) return run2({ ...selection2, direction: direction2, mode: "sync" });
-  if (sub === "status") {
-    arity(args, 0);
-    return run2({ ...selection2, direction: direction2, mode: "status" });
-  }
+  if (sub === "status") return run2({ ...selection2, direction: direction2, mode: "status" });
   ensure(sub === "resolve", "INVALID_ARGUMENT", "Use backlog sync, backlog sync status or backlog sync resolve <item> --take local|remote.");
-  arity(args, 1);
   const take = value$2(flags, "take", true);
   ensure(take === "local" || take === "remote", "INVALID_ARGUMENT", "--take must be local or remote.");
   const fields2 = value$2(flags, "field")?.split(",").map((field2) => field2.trim()).filter(Boolean) ?? null;
@@ -33976,28 +33974,33 @@ const ifMatch$4 = option$1.string("The revision of the item note the write is pl
 const read$1 = { mutating: false };
 const written = { output: changesOutput() };
 const settled = { idempotent: true, ...written };
+const item = { name: "item", description: "The item: a vault path, link text, title or pbl-id.", required: true };
+const releaseName = { name: "release", description: "The release: a vault path, link text, title or pbl-id.", required: true };
 const direction = option$1.string("Push vault changes, pull remote changes, or both (default).", { enum: ["push", "pull", "both"] });
 const backlogActions = {
   init: {
     description: "Write the plugin's Product Backlog.base scaffold into a folder (default docs).",
     usage: "backlog init [--folder docs]",
     ...written,
+    args: [],
     options: { folder: option$1.string("The backlog folder (default docs).") }
   },
   list: {
     description: "Every item by global rank as JSON.",
     usage: "backlog list [--context]",
     ...read$1,
+    args: [],
     options: { context: option$1.boolean("Include read-only context rows (ancestors outside the filter).") }
   },
-  tree: { description: "The hierarchy in sibling rank order, context ancestors included.", usage: "backlog tree", ...read$1 },
-  board: { description: "Board columns by state with WIP limits and the no-state column.", usage: "backlog board", ...read$1 },
-  show: { description: "One item with its ancestors, children, prerequisites and dependents.", usage: "backlog show <item>", ...read$1 },
-  check: { description: "Report parent and dependency cycles, broken links, unresolved memberships, configuration and field problems, rank ties.", usage: "backlog check", ...read$1 },
+  tree: { description: "The hierarchy in sibling rank order, context ancestors included.", usage: "backlog tree", ...read$1, args: [] },
+  board: { description: "Board columns by state with WIP limits and the no-state column.", usage: "backlog board", ...read$1, args: [] },
+  show: { description: "One item with its ancestors, children, prerequisites and dependents.", usage: "backlog show <item>", ...read$1, args: [item] },
+  check: { description: "Report parent and dependency cycles, broken links, unresolved memberships, configuration and field problems, rank ties.", usage: "backlog check", ...read$1, args: [] },
   add: {
     description: "Create an item note exactly as the plugin does: sanitized name, type folder, pbl-id, key order and end-of-siblings rank.",
     usage: "backlog add <type> <title> [--parent item] [--folder directory] [--state state] [--iteration iteration] [--release release] [--assignee resource] [--tags tags]",
     ...written,
+    args: [{ name: "type", description: "The item type, such as Epic or Story.", required: true }, { name: "title", description: "The item title; quote a title with spaces.", required: true }],
     options: {
       parent: option$1.string("The parent item."),
       folder: option$1.string("The folder of the new note instead of its type folder."),
@@ -34012,6 +34015,7 @@ const backlogActions = {
     description: "Reparent or reorder one item with the plugin's rank arithmetic; writes only its parent and order.",
     usage: "backlog move <item> [--parent item | --top] [--before item | --after item | --first | --last] [--if-match revision]",
     ...settled,
+    args: [item],
     options: {
       parent: option$1.string("The new parent."),
       top: option$1.boolean("Make the item a top-level item (no parent)."),
@@ -34022,11 +34026,17 @@ const backlogActions = {
       "if-match": ifMatch$4
     }
   },
-  ranks: { description: "seed (tree preorder) or respace (current rank order) ranks 1000 apart.", usage: "backlog ranks seed|respace", ...settled },
+  ranks: {
+    description: "seed (tree preorder) or respace (current rank order) ranks 1000 apart.",
+    usage: "backlog ranks seed|respace",
+    ...settled,
+    args: [{ name: "mode", description: "seed or respace.", required: true, enum: ["seed", "respace"] }]
+  },
   set: {
     description: "Set state (with started/finished stamps), horizon, priority, risk, dates, assignee or type; an empty value clears.",
     usage: "backlog set <item> [--state state] [--horizon horizon] [--priority priority] [--risk risk] [--start date] [--due date] [--assignee resource] [--type type] [--if-match revision]",
     ...settled,
+    args: [item],
     options: {
       state: option$1.string("The workflow state."),
       horizon: option$1.string("The roadmap horizon (Now, Next, Later…)."),
@@ -34043,18 +34053,21 @@ const backlogActions = {
     description: "Add a dependsOn link unless it closes a dependency loop.",
     usage: "backlog depend <item> --on <item> [--if-match revision]",
     ...settled,
+    args: [item],
     options: { on: option$1.string("The prerequisite item.", { required: true }), "if-match": ifMatch$4 }
   },
   undepend: {
     description: "Remove a dependsOn entry; the key is deleted when the list empties.",
     usage: "backlog undepend <item> --on <item> [--if-match revision]",
     ...settled,
+    args: [item],
     options: { on: option$1.string("The prerequisite item.", { required: true }), "if-match": ifMatch$4 }
   },
   "iteration add": {
     description: "Add an iteration with the plugin's name and date defaults.",
     usage: "backlog iteration add [--name name] [--goal goal] [--start date] [--due date] [--length days]",
     ...written,
+    args: [],
     options: {
       name: option$1.string('The name instead of "<N> - Iteration".'),
       goal: option$1.string("The iteration goal."),
@@ -34067,12 +34080,14 @@ const backlogActions = {
     description: "Plan an item in an iteration.",
     usage: "backlog iteration assign <item> <iteration> [--if-match revision]",
     ...settled,
+    args: [item, { name: "iteration", description: "The iteration: a vault path, link text, title or pbl-id.", required: true }],
     options: { "if-match": ifMatch$4 }
   },
   "release add": {
     description: "Add a release note.",
     usage: "backlog release add <name> [--release-version version] [--target-date date] [--status status] [--description text]",
     ...written,
+    args: [{ name: "name", description: "The release name.", required: true }],
     options: {
       "release-version": option$1.string("The version (the release view's versionProperty)."),
       "target-date": option$1.string("The target date."),
@@ -34080,26 +34095,29 @@ const backlogActions = {
       description: option$1.string("The description.")
     }
   },
-  "release join": { description: "Plan an item in a release.", usage: "backlog release join <item> <release> [--if-match revision]", ...settled, options: { "if-match": ifMatch$4 } },
+  "release join": { description: "Plan an item in a release.", usage: "backlog release join <item> <release> [--if-match revision]", ...settled, args: [item, releaseName], options: { "if-match": ifMatch$4 } },
   // A repeat finds the release released and is refused, so it changes nothing.
-  "release mark-released": { description: "Mark a release released.", usage: "backlog release mark-released <release> [--if-match revision]", ...settled, options: { "if-match": ifMatch$4 } },
-  "release readiness": { description: "Report how ready a release is.", usage: "backlog release readiness <release>", ...read$1 },
-  "release notes": { description: "Write the generated release notes of a release; an unchanged repeat writes nothing.", usage: "backlog release notes <release>", ...settled },
-  "release list": { description: "List the releases.", usage: "backlog release list", ...read$1 },
+  "release mark-released": { description: "Mark a release released.", usage: "backlog release mark-released <release> [--if-match revision]", ...settled, args: [releaseName], options: { "if-match": ifMatch$4 } },
+  "release readiness": { description: "Report how ready a release is.", usage: "backlog release readiness <release>", ...read$1, args: [releaseName] },
+  "release notes": { description: "Write the generated release notes of a release; an unchanged repeat writes nothing.", usage: "backlog release notes <release>", ...settled, args: [releaseName] },
+  "release list": { description: "List the releases.", usage: "backlog release list", ...read$1, args: [] },
   sync: {
     description: "Two-way sync of every view bound to a connection (view option connection: <id>) with explicit conflicts.",
     usage: "backlog sync [--direction push|pull|both]",
+    args: [],
     options: { direction }
   },
   "sync status": {
     description: "Read both sides of every bound view without writing.",
     usage: "backlog sync status [--direction push|pull|both]",
     ...read$1,
+    args: [],
     options: { direction }
   },
   "sync resolve": {
     description: "Settle a sync conflict of one item with the local or the remote value.",
     usage: "backlog sync resolve <item> --take local|remote [--field fields]",
+    args: [item],
     options: {
       take: option$1.string("Settle the conflict with the local or the remote value.", { enum: ["local", "remote"], required: true }),
       field: option$1.string(`Comma-separated fields to settle (${SYNC_FIELDS.join(", ")}, property:<key>); default every conflicting field.`)
@@ -34131,19 +34149,13 @@ function backlogCommand(ports2) {
     mutating: true,
     actions: backlogActions,
     unknownAction: "INVALID_ARGUMENT",
-    args: [
-      { name: "action", description: actions$2.join(", "), required: true, enum: actions$2 },
-      { name: "arguments", description: "The action's arguments: an item, a type and title, or a sub-action and its arguments.", variadic: true }
-    ],
+    args: [{ name: "action", description: actions$2.join(", "), required: true, enum: actions$2 }],
     options: selectionOptions,
     errors: ["BACKLOG_NOT_FOUND", "BACKLOG_AMBIGUOUS", "BACKLOG_CONFIG_PROBLEM", "BACKLOG_WRITE_REFUSED", "BACKLOG_NO_GAP", "CONFLICT", "SYNC_CONFLICT", "SYNC_INTERRUPTED", "CONNECTOR_NOT_FOUND", "CONNECTION_INVALID", "CONNECTOR_AUTH_FAILED", "CONNECTOR_REQUEST_FAILED"],
     async run(args, flags, context) {
       const [action2, ...rest] = args;
       ensure(action2 !== void 0 && actions$2.includes(action2), "INVALID_ARGUMENT", `Use backlog ${actions$2.join(", backlog ")}.`);
-      if (action2 === "init") {
-        arity(rest, 0);
-        return initBacklog(context, value$2(flags, "folder"));
-      }
+      if (action2 === "init") return initBacklog(context, value$2(flags, "folder"));
       const { bases, ports: host, sync } = ports2(context);
       if (action2 === "sync") {
         const today2 = date$1(flags, "today");
@@ -34153,44 +34165,34 @@ function backlogCommand(ports2) {
       const ifMatch2 = value$2(flags, "if-match");
       switch (action2) {
         case "list":
-          arity(rest, 0);
           return listItems(session, flags.context === true);
         case "tree":
-          arity(rest, 0);
           return itemTree(session);
         case "board":
-          arity(rest, 0);
           return board(session);
         case "show":
-          arity(rest, 1);
           return showItem(session, rest[0]);
         case "check":
-          arity(rest, 0);
           return localizedCheck(check$1(session), context.language);
         case "add": {
-          arity(rest, 2);
           const tags2 = value$2(flags, "tags");
           return addItem(session, { type: rest[0], title: rest[1], parent: value$2(flags, "parent"), folder: value$2(flags, "folder"), state: value$2(flags, "state"), iteration: value$2(flags, "iteration"), release: value$2(flags, "release"), assignee: value$2(flags, "assignee"), ...tags2 === void 0 ? {} : { tags: [tags2] } });
         }
         case "move": {
-          arity(rest, 1);
           const placements = ["before", "after", "first", "last"].filter((key) => flags[key] !== void 0);
           ensure(placements.length <= 1 && !(flags.top === true && flags.parent !== void 0), "INVALID_ARGUMENT", "Pass at most one of --before, --after, --first, --last, and either --parent or --top.");
           return moveItem(session, { item: rest[0], parent: value$2(flags, "parent"), top: flags.top === true, before: value$2(flags, "before"), after: value$2(flags, "after"), first: flags.first === true, last: flags.last === true, ifMatch: ifMatch2 });
         }
         case "ranks":
-          arity(rest, 1);
           ensure(rest[0] === "seed" || rest[0] === "respace", "INVALID_ARGUMENT", "Use backlog ranks seed or backlog ranks respace.");
           return respaceRanks(session, rest[0]);
         case "set": {
-          arity(rest, 1);
           const fields2 = ["state", "horizon", "priority", "risk", "start", "due", "assignee", "type"];
           ensure(fields2.some((key) => flags[key] !== void 0), "MISSING_ARGUMENT", `backlog set needs at least one of --${fields2.join(", --")}.`);
           return setFields(session, { item: rest[0], ifMatch: ifMatch2, ...Object.fromEntries(fields2.flatMap((key) => value$2(flags, key) === void 0 ? [] : [[key, value$2(flags, key)]])) });
         }
         case "depend":
         case "undepend": {
-          arity(rest, 1);
           const on = value$2(flags, "on", true);
           return action2 === "depend" ? depend(session, rest[0], on, ifMatch2) : undepend(session, rest[0], on, ifMatch2);
         }
@@ -34205,12 +34207,10 @@ function backlogCommand(ports2) {
 function iteration(session, rest, flags, ifMatch2) {
   const [sub, ...args] = rest;
   if (sub === "add") {
-    arity(args, 0);
     const length = integer$2(flags, "length", 1);
     return addIteration(session, { name: value$2(flags, "name"), goal: value$2(flags, "goal"), start: value$2(flags, "start"), due: value$2(flags, "due"), ...length === void 0 ? {} : { length } });
   }
   ensure(sub === "assign", "INVALID_ARGUMENT", "Use backlog iteration add or backlog iteration assign <item> <iteration>.");
-  arity(args, 2);
   return assignIteration(session, args[0], args[1], ifMatch2);
 }
 function release(session, bases, rest, flags, ifMatch2) {
@@ -34219,22 +34219,16 @@ function release(session, bases, rest, flags, ifMatch2) {
   ensure(sub !== void 0 && subs.includes(sub), "INVALID_ARGUMENT", `Use backlog release ${subs.join(", ")}.`);
   switch (sub) {
     case "add":
-      arity(args, 1);
       return addRelease(session, args[0], { version: value$2(flags, "release-version"), targetDate: value$2(flags, "target-date"), status: value$2(flags, "status"), description: value$2(flags, "description") });
     case "join":
-      arity(args, 2);
       return joinRelease(session, args[0], args[1], ifMatch2);
     case "mark-released":
-      arity(args, 1);
       return markReleased(session, bases, args[0], ifMatch2);
     case "readiness":
-      arity(args, 1);
       return readiness(session, bases, args[0]);
     case "notes":
-      arity(args, 1);
       return releaseNotes(session, bases, args[0]);
     default:
-      arity(args, 0);
       return listReleases(session, bases);
   }
 }
@@ -34323,7 +34317,13 @@ const backlogStrings = {
       "Settle the conflict with the local or the remote value.": "Den Konflikt mit dem lokalen oder dem entfernten Wert auflösen.",
       "Comma-separated fields to settle (title, type, state, parent, dependencies, iteration, area, priority, effort, tags, description, property:<key>); default every conflicting field.": "Kommagetrennte aufzulösende Felder (title, type, state, parent, dependencies, iteration, area, priority, effort, tags, description, property:<key>); standardmäßig jedes Feld im Konflikt.",
       "init, list, tree, board, show, check, add, move, ranks, set, depend, undepend, iteration, release, sync": "init, list, tree, board, show, check, add, move, ranks, set, depend, undepend, iteration, release oder sync",
-      "The action's arguments: an item, a type and title, or a sub-action and its arguments.": "Die Argumente der Aktion: ein Eintrag, ein Typ und ein Titel oder eine Unteraktion und ihre Argumente.",
+      "The item: a vault path, link text, title or pbl-id.": "Der Eintrag: ein Vault-Pfad, Linktext, Titel oder eine pbl-id.",
+      "The item type, such as Epic or Story.": "Der Eintragstyp, etwa Epic oder Story.",
+      "The item title; quote a title with spaces.": "Der Titel des Eintrags; einen Titel mit Leerzeichen in Anführungszeichen setzen.",
+      "seed or respace.": "seed oder respace.",
+      "The iteration: a vault path, link text, title or pbl-id.": "Die Iteration: ein Vault-Pfad, Linktext, Titel oder eine pbl-id.",
+      "The release name.": "Der Name des Releases.",
+      "The release: a vault path, link text, title or pbl-id.": "Das Release: ein Vault-Pfad, Linktext, Titel oder eine pbl-id.",
       "The default .base file of the backlog command, relative to the command scope.": "Die Standard-.base-Datei des Befehls backlog, relativ zum Geltungsbereich des Befehls.",
       "The default product-backlog view of that base.": "Die Standard-product-backlog-Ansicht dieser Base."
     }
@@ -35074,33 +35074,31 @@ function templatesCommand(templates2, workflowPack) {
     discovery: false,
     mutating: true,
     defaultAction: "list",
+    unknownAction: "INVALID_ARGUMENT",
     errors: ["INVALID_TEMPLATE", "INVALID_TEMPLATE_PACK", "NOT_FOUND", "CONFLICT"],
     actions: {
-      list: { description: "List the editable Markdown templates in bin/templates.", mutating: false },
-      inspect: { description: "Report a template's required and optional values.", mutating: false },
+      list: { description: "List the editable Markdown templates in bin/templates.", mutating: false, args: [] },
+      inspect: { description: "Report a template's required and optional values.", mutating: false, args: [{ name: "template", description: "The template path inside bin/templates, such as prd.md.", required: true }] },
       install: {
         description: "Install the planning workflow template pack into bin/templates; existing templates are skipped.",
         destructive: false,
         idempotent: true,
+        args: [{ name: "pack", description: "The template pack; workflow is the only one.", enum: ["workflow"] }],
         output: changesOutput({ directory: { type: "string" }, skipped: { type: "array", items: { type: "string" }, description: "Templates that already exist and were left unchanged." } }, ["directory", "skipped"])
       }
     },
-    args: [{ name: "action", description: "list (default), inspect or install.", enum: ["list", "inspect", "install"] }, { name: "target", description: "The template for inspect, or the pack (workflow) for install." }],
     async run(args, _flags, context) {
       const { environment } = context;
       const action2 = args[0] ?? "list";
       if (action2 === "install") {
-        arity(args, 1, 2);
         ensure(args[1] === void 0 || args[1] === "workflow", "INVALID_ARGUMENT", "The available template pack is workflow. Run templates install workflow.");
         return new TemplateInstaller(environment, workflowPack).install();
       }
       if (action2 === "list") {
-        arity(args, 0, 1);
         const prefix = "bin/templates/";
         return { directory: "bin/templates", templates: (await environment.files.list()).filter((path22) => path22.startsWith(prefix) && path22.toLowerCase().endsWith(".md")).map((path22) => path22.slice(prefix.length)) };
       }
       ensure(action2 === "inspect", "INVALID_ARGUMENT", "Use templates list, templates inspect <template.md>, or templates install workflow.");
-      arity(args, 2);
       ensureTemplate(args[1].toLowerCase().endsWith(".md"), "INVALID_TEMPLATE", "Use a Markdown template.");
       const path2 = `bin/templates/${vaultPath(args[1])}`;
       return { path: path2, ...templates2(context).inspect((await environment.files.read(path2)).bytes) };
@@ -35160,8 +35158,8 @@ const templatesStrings = {
     errors: germanTemplateErrors,
     manifest: { name: "Vorlagen", description: "Obsidian-Markdown-Vorlagen zu Dokumenten rendern und das Planungs-Workflow-Paket installieren." },
     descriptions: {
-      "list (default), inspect or install.": "list (Standard), inspect oder install.",
-      "The template for inspect, or the pack (workflow) for install.": "Die Vorlage für inspect oder das Paket (workflow) für install.",
+      "The template path inside bin/templates, such as prd.md.": "Der Pfad der Vorlage in bin/templates, etwa prd.md.",
+      "The template pack; workflow is the only one.": "Das Vorlagenpaket; workflow ist das einzige.",
       "Markdown template under bin/templates.": "Markdown-Vorlage unter bin/templates.",
       "Template values as a JSON object.": "Vorlagenwerte als JSON-Objekt.",
       "Read template values from a JSON file.": "Vorlagenwerte aus einer JSON-Datei lesen.",
@@ -38112,9 +38110,9 @@ const $ZodArray = /* @__PURE__ */ $constructor("$ZodArray", (inst, def) => {
     const proms = [];
     const abortEarly = ctx?.abortEarly;
     for (let i = 0; i < input2.length; i++) {
-      const item = input2[i];
+      const item2 = input2[i];
       const result = def.element._zod.run({
-        value: item,
+        value: item2,
         issues: []
       }, ctx);
       if (result instanceof Promise) {
@@ -40546,8 +40544,8 @@ function isTransforming(_schema, _ctx) {
     return false;
   }
   if (def.type === "tuple") {
-    for (const item of def.items) {
-      if (isTransforming(item, ctx))
+    for (const item2 of def.items) {
+      if (isTransforming(item2, ctx))
         return true;
     }
     if (def.rest && isTransforming(def.rest, ctx))
@@ -42253,7 +42251,7 @@ function typedParameters(parameters, typescript) {
   return { list: parameters.map(([name2]) => name2).join(", "), jsdoc: `/** ${parameters.map(([name2, type2]) => `@param {${type2}} ${name2}`).join(" ")} */
 ` };
 }
-const unsafeCharacters = (value2, extra) => `globalThis.Array.from(${value2}).some(character => character < ' '${extra.map((item) => ` || character === ${json$3(item)}`).join("")})`;
+const unsafeCharacters = (value2, extra) => `globalThis.Array.from(${value2}).some(character => character < ' '${extra.map((item2) => ` || character === ${json$3(item2)}`).join("")})`;
 function formActionHelper(prefix, typescript, classMembers) {
   const member2 = classMembers ? "this." : "";
   const parameters = typedParameters([["target", "EventTarget | null"], ["action", "string"], ["option", "unknown"]], typescript);
@@ -42337,7 +42335,7 @@ function renderInteractionHandlers(definition2, interactions, options2) {
   const { typescript } = options2;
   const prefix = options2.prefix ?? "_ui";
   const next = `${prefix}Next`, event = `${prefix}Event`;
-  const value2 = (item) => expression(item, options2.propsScope ?? "props", next);
+  const value2 = (item2) => expression(item2, options2.propsScope ?? "props", next);
   const eventType = "{ currentTarget: EventTarget | null; target: EventTarget | null; key?: string; preventDefault(): void; stopPropagation(): void }";
   const functions = selected2.map((interaction) => {
     const asynchronous = interaction.actions.some((action2) => ["save-form", "upload-form", "download-form"].includes(action2.type));
@@ -42360,7 +42358,7 @@ function renderInteractionHandlers(definition2, interactions, options2) {
         }
         lines2.push(`  ${next}[${json$3(action2.state)}] = ${assigned};`, `  ${options2.commit(next)}`);
       } else if (action2.type === "emit") {
-        const detail = `{ ${ordered(action2.detail ?? {}).map(([key, item]) => `${key === "__proto__" ? `[${json$3(key)}]` : json$3(key)}: ${value2(item)}`).join(", ")} }`;
+        const detail = `{ ${ordered(action2.detail ?? {}).map(([key, item2]) => `${key === "__proto__" ? `[${json$3(key)}]` : json$3(key)}: ${value2(item2)}`).join(", ")} }`;
         lines2.push(`  ${options2.classMembers ? "this." : ""}${prefix}Emit(${currentTarget}, ${json$3(action2.event)}, ${detail});`);
       } else if (action2.type === "navigate") {
         lines2.push(`  ${options2.classMembers ? "this." : ""}${prefix}Navigate(${currentTarget}, ${value2(action2.url)});`);
@@ -42888,12 +42886,12 @@ function modulePath(directory, target2) {
   return relative.startsWith(".") ? relative : `./${relative}`;
 }
 function literal(value2, indent2 = 0) {
-  if (Array.isArray(value2)) return `[${value2.map((item) => literal(item, indent2)).join(", ")}]`;
+  if (Array.isArray(value2)) return `[${value2.map((item2) => literal(item2, indent2)).join(", ")}]`;
   if (value2 !== null && typeof value2 === "object") {
     const entries2 = Object.entries(value2).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
     if (!entries2.length) return "{}";
     return `{
-${entries2.map(([key, item]) => `${" ".repeat(indent2 + 2)}${key === "__proto__" ? `[${JSON.stringify(key)}]` : /^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key)}: ${literal(item, indent2 + 2)}`).join(",\n")}
+${entries2.map(([key, item2]) => `${" ".repeat(indent2 + 2)}${key === "__proto__" ? `[${JSON.stringify(key)}]` : /^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key)}: ${literal(item2, indent2 + 2)}`).join(",\n")}
 ${" ".repeat(indent2)}}`;
   }
   return JSON.stringify(value2) ?? "undefined";
@@ -43039,31 +43037,30 @@ ${description2}`);
 }
 const createOnly = { destructive: false, idempotent: true, output: changesOutput() };
 function libraryMetadata(id2, noun, create2 = {}) {
+  const definition2 = [{ name: "id", description: `The ${noun} definition id.`, required: true }];
   const flags = Object.entries(create2).map(([name2, schema2]) => ` [--${name2} ${schema2.enum?.join("|") ?? "value"}]`).join("");
   const actions2 = {
-    list: { description: `List the ${noun} definitions in the library.`, usage: `${id2} [list]`, mutating: false },
-    init: { description: `Create the library with starter ${noun} definitions.`, usage: `${id2} init`, ...createOnly },
-    inspect: { description: `Return one parsed ${noun} definition.`, usage: `${id2} inspect <id>`, mutating: false },
-    validate: { description: `Validate every ${noun} definition.`, usage: `${id2} validate`, mutating: false },
-    create: { description: `Create a new ${noun} definition.`, usage: `${id2} create <id>${flags}`, ...createOnly, options: create2 },
+    list: { description: `List the ${noun} definitions in the library.`, usage: `${id2} [list]`, mutating: false, args: [] },
+    init: { description: `Create the library with starter ${noun} definitions.`, usage: `${id2} init`, ...createOnly, args: [] },
+    inspect: { description: `Return one parsed ${noun} definition.`, usage: `${id2} inspect <id>`, mutating: false, args: definition2 },
+    validate: { description: `Validate every ${noun} definition.`, usage: `${id2} validate`, mutating: false, args: [] },
+    create: { description: `Create a new ${noun} definition.`, usage: `${id2} create <id>${flags}`, ...createOnly, options: create2, args: definition2 },
     import: {
       description: `Copy ${noun} definitions from the import directory into the library.`,
       usage: `${id2} import [--from directory]`,
       ...createOnly,
+      args: [],
       options: { from: option$1.string("Import source directory for import.") }
     },
     export: {
       description: `Copy the library's ${noun} definitions to the export directory.`,
       usage: `${id2} export [--out directory]`,
       ...createOnly,
+      args: [],
       options: { out: option$1.string("Export destination directory for export.") }
     }
   };
-  const args = [
-    { name: "action", description: "list (default), init, inspect, validate, create, import or export.", enum: Object.keys(actions2) },
-    { name: "id", description: "The definition id for inspect and create." }
-  ];
-  return { scope: "workspace", discovery: false, mutating: true, defaultAction: "list", unknownAction: "INVALID_ARGUMENT", actions: actions2, args };
+  return { scope: "workspace", discovery: false, mutating: true, defaultAction: "list", unknownAction: "INVALID_ARGUMENT", actions: actions2 };
 }
 const libraryOptions = {
   library: option$1.string("Library directory, relative to the workspace; defaults to the configured path.")
@@ -43087,7 +43084,6 @@ function componentsCommand(services2) {
       const action2 = args[0] ?? "list", directory = value$2(flags, "library") ?? settings2.components;
       const interactionDirectory = value$2(flags, "interactions-library") ?? settings2.interactions;
       if (action2 === "list") {
-        arity(args, 0, 1);
         const definitions2 = await library.list(directory, interactionDirectory);
         return localizedLibraryResult("components", context, { directory, count: definitions2.length, status: definitions2.length ? "ready" : "empty", ...!definitions2.length ? { nextStep: `Run components init --library ${directory}, or add a Markdown component definition.` } : {}, components: definitions2.map((definition2) => ({
           id: definition2.id,
@@ -43098,28 +43094,12 @@ function componentsCommand(services2) {
           dependencies: componentDependencies(definition2.root)
         })) });
       }
-      if (action2 === "init") {
-        arity(args, 1);
-        return { directory, ...await library.init(directory, interactionDirectory) };
-      }
-      if (action2 === "inspect") {
-        arity(args, 2);
-        return library.inspect(directory, args[1], interactionDirectory);
-      }
-      if (action2 === "validate") {
-        arity(args, 1);
-        return localizedLibraryResult("components", context, await library.validate(directory, interactionDirectory));
-      }
-      if (action2 === "create") {
-        arity(args, 2);
-        return library.create(directory, args[1], value$2(flags, "tag") ?? "div", interactionDirectory);
-      }
-      if (action2 === "import") {
-        arity(args, 1);
-        return library.import(value$2(flags, "from") ?? settings2.componentImports, directory, interactionDirectory);
-      }
+      if (action2 === "init") return { directory, ...await library.init(directory, interactionDirectory) };
+      if (action2 === "inspect") return library.inspect(directory, args[1], interactionDirectory);
+      if (action2 === "validate") return localizedLibraryResult("components", context, await library.validate(directory, interactionDirectory));
+      if (action2 === "create") return library.create(directory, args[1], value$2(flags, "tag") ?? "div", interactionDirectory);
+      if (action2 === "import") return library.import(value$2(flags, "from") ?? settings2.componentImports, directory, interactionDirectory);
       ensure(action2 === "export", "INVALID_ARGUMENT", "Use components list, init, inspect, validate, create, import, or export.");
-      arity(args, 1);
       return library.export(directory, value$2(flags, "out") ?? settings2.componentExports, interactionDirectory);
     }
   };
@@ -43136,7 +43116,6 @@ function interactionsCommand(services2) {
       const { settings: settings2, interactions: library } = services2(context);
       const action2 = args[0] ?? "list", directory = value$2(flags, "library") ?? settings2.interactions;
       if (action2 === "list") {
-        arity(args, 0, 1);
         const definitions2 = await library.list(directory);
         return localizedLibraryResult("interactions", context, {
           directory,
@@ -43153,29 +43132,15 @@ function interactionsCommand(services2) {
           }))
         });
       }
-      if (action2 === "init") {
-        arity(args, 1);
-        return { directory, ...await library.init(directory) };
-      }
-      if (action2 === "inspect") {
-        arity(args, 2);
-        return library.inspect(directory, args[1]);
-      }
-      if (action2 === "validate") {
-        arity(args, 1);
-        return localizedLibraryResult("interactions", context, await library.validate(directory));
-      }
+      if (action2 === "init") return { directory, ...await library.init(directory) };
+      if (action2 === "inspect") return library.inspect(directory, args[1]);
+      if (action2 === "validate") return localizedLibraryResult("interactions", context, await library.validate(directory));
       if (action2 === "create") {
-        arity(args, 2);
         const event = value$2(flags, "event");
         return library.create(directory, args[1], event);
       }
-      if (action2 === "import") {
-        arity(args, 1);
-        return library.import(value$2(flags, "from") ?? settings2.interactionImports, directory);
-      }
+      if (action2 === "import") return library.import(value$2(flags, "from") ?? settings2.interactionImports, directory);
       ensure(action2 === "export", "INVALID_ARGUMENT", "Use interactions list, init, inspect, validate, create, import, or export.");
-      arity(args, 1);
       return library.export(directory, value$2(flags, "out") ?? settings2.interactionExports);
     }
   };
@@ -43505,8 +43470,8 @@ function dataSourceSettings(section2) {
 const reserved = new Set("arguments await break case catch class const constructor continue debugger default delete do else enum eval export extends false finally for function if implements import in instanceof interface let new null package private protected prototype public return static super switch this throw true try typeof var void while with yield undefined __proto__".split(" "));
 const identifier = string$3().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).refine((value2) => !reserved.has(value2), "Reserved field name");
 const value = union([string$3(), number$1().finite(), boolean(), _null()]);
-function matches(field2, item) {
-  return item === null ? field2.nullable === true : typeof item === field2.type;
+function matches(field2, item2) {
+  return item2 === null ? field2.nullable === true : typeof item2 === field2.type;
 }
 const field$1 = strictObject({
   type: _enum(["string", "number", "boolean"]),
@@ -43515,7 +43480,7 @@ const field$1 = strictObject({
   enum: array(value).min(1).max(100).optional(),
   example: value.optional()
 }).superRefine((property, context) => {
-  if (property.enum?.some((item) => !matches(property, item))) context.addIssue({ code: "custom", message: "Enum values must match the field type and nullability." });
+  if (property.enum?.some((item2) => !matches(property, item2))) context.addIssue({ code: "custom", message: "Enum values must match the field type and nullability." });
   if (property.enum && new Set(property.enum).size !== property.enum.length) context.addIssue({ code: "custom", message: "Enum values must be unique." });
   if (property.example !== void 0 && (!matches(property, property.example) || property.enum && !property.enum.includes(property.example))) context.addIssue({ code: "custom", message: "Example must match the field type, nullability and enum." });
 });
@@ -43538,7 +43503,7 @@ const schema = strictObject({
   const fields2 = definition2.model.fields, primary = fields2[definition2.model.idField];
   if (!Object.keys(fields2).length) issue2("Model must define at least one field.");
   if (!primary || !["string", "number"].includes(primary.type) || primary.optional || primary.nullable) issue2("idField must name a required, non-nullable string or number field.");
-  const invalidId = (item) => item === "" || item === "." || item === "..";
+  const invalidId = (item2) => item2 === "" || item2 === "." || item2 === "..";
   if (invalidId(primary?.example) || primary?.enum?.some(invalidId)) issue2("ID examples and enum values cannot be empty or dot path segments.");
   if (definition2.kind === "rest" ? !definition2.rest || !!definition2.json : !definition2.json || !!definition2.rest) issue2("Supply only the configuration matching the source kind.");
   if (definition2.rest) {
@@ -43557,7 +43522,7 @@ const schema = strictObject({
         issue2(`Operation ${name2} contains malformed URL encoding.`);
       }
       const placeholders2 = config2.path.match(/\{[^}]*\}/g) ?? [];
-      if (placeholders2.some((item) => item !== "{id}") || /[{}]/.test(config2.path.replace(/\{id\}/g, ""))) issue2(`Operation ${name2} only supports the {id} parameter.`);
+      if (placeholders2.some((item2) => item2 !== "{id}") || /[{}]/.test(config2.path.replace(/\{id\}/g, ""))) issue2(`Operation ${name2} only supports the {id} parameter.`);
       const needsId = ["get", "update", "delete"].includes(name2);
       if (needsId ? placeholders2.length !== 1 : placeholders2.length !== 0) issue2(`Operation ${name2} ${needsId ? "requires exactly one" : "cannot use an"} {id} parameter.`);
       if (name2 === "delete" && config2.responsePath !== void 0) issue2("Delete operations do not have a responsePath.");
@@ -43569,8 +43534,8 @@ const schema = strictObject({
   for (const [index2, record2] of (definition2.testData?.records ?? []).entries()) {
     for (const key of Object.keys(record2)) if (!Object.hasOwn(fields2, key)) issue2(`Test record ${index2} has unknown field ${key}.`);
     for (const [key, property] of Object.entries(fields2)) {
-      const item = record2[key];
-      if (item === void 0 ? !property.optional : !matches(property, item) || property.enum && !property.enum.includes(item)) issue2(`Test record ${index2}.${key} must match its declared field.`);
+      const item2 = record2[key];
+      if (item2 === void 0 ? !property.optional : !matches(property, item2) || property.enum && !property.enum.includes(item2)) issue2(`Test record ${index2}.${key} must match its declared field.`);
     }
     const recordId = record2[definition2.model.idField];
     if (recordId !== void 0) {
@@ -43614,10 +43579,10 @@ ${description2}`);
 }
 const compare = (left, right) => left < right ? -1 : left > right ? 1 : 0;
 function canonicalJson(value2, spaces) {
-  const normalize = (item) => {
-    if (Array.isArray(item)) return item.map(normalize);
-    if (item !== null && typeof item === "object") return Object.fromEntries(Object.entries(item).sort(([left], [right]) => compare(left, right)).map(([key, child]) => [key, normalize(child)]));
-    return item;
+  const normalize = (item2) => {
+    if (Array.isArray(item2)) return item2.map(normalize);
+    if (item2 !== null && typeof item2 === "object") return Object.fromEntries(Object.entries(item2).sort(([left], [right]) => compare(left, right)).map(([key, child]) => [key, normalize(child)]));
+    return item2;
   };
   return JSON.stringify(normalize(value2), null, spaces);
 }
@@ -43825,7 +43790,6 @@ function dataSourcesCommand(services2) {
       const { settings: settings2, library } = services2(context);
       const action2 = args[0] ?? "list", directory = value$2(flags, "library") ?? settings2.library;
       if (action2 === "list") {
-        arity(args, 0, 1);
         const definitions2 = await library.list(directory);
         return localizedLibraryResult("data-sources", context, {
           directory,
@@ -43835,30 +43799,16 @@ function dataSourcesCommand(services2) {
           sources: definitions2.map((definition2) => ({ id: definition2.id, kind: definition2.kind, model: definition2.model.name, sourcePath: definition2.sourcePath, fields: Object.keys(definition2.model.fields).sort() }))
         });
       }
-      if (action2 === "init") {
-        arity(args, 1);
-        return { directory, ...await library.init(directory) };
-      }
-      if (action2 === "inspect") {
-        arity(args, 2);
-        return library.inspect(directory, args[1]);
-      }
-      if (action2 === "validate") {
-        arity(args, 1);
-        return localizedLibraryResult("data-sources", context, await library.validate(directory));
-      }
+      if (action2 === "init") return { directory, ...await library.init(directory) };
+      if (action2 === "inspect") return library.inspect(directory, args[1]);
+      if (action2 === "validate") return localizedLibraryResult("data-sources", context, await library.validate(directory));
       if (action2 === "create") {
-        arity(args, 2);
         const kind2 = value$2(flags, "kind") ?? "rest";
         ensure(kind2 === "rest" || kind2 === "json", "INVALID_ARGUMENT", "--kind must be rest or json.");
         return library.create(directory, args[1], kind2);
       }
-      if (action2 === "import") {
-        arity(args, 1);
-        return library.import(value$2(flags, "from") ?? settings2.imports, directory);
-      }
+      if (action2 === "import") return library.import(value$2(flags, "from") ?? settings2.imports, directory);
       ensure(action2 === "export", "INVALID_ARGUMENT", "Use data-sources list, init, inspect, validate, create, import, or export.");
-      arity(args, 1);
       return library.export(directory, value$2(flags, "out") ?? settings2.exports);
     }
   };
@@ -44469,10 +44419,10 @@ class ClaudeSettings {
     const permissions = Object.hasOwn(current.settings, "permissions") ? current.settings.permissions : {};
     ensure(isRecord$1(permissions), "INVALID_CLAUDE_SETTINGS", "permissions must be an object.");
     const deny = Object.hasOwn(permissions, "deny") ? permissions.deny : [];
-    ensure(Array.isArray(deny) && deny.every((item) => typeof item === "string"), "INVALID_CLAUDE_SETTINGS", "permissions.deny must be an array of strings.");
+    ensure(Array.isArray(deny) && deny.every((item2) => typeof item2 === "string"), "INVALID_CLAUDE_SETTINGS", "permissions.deny must be an array of strings.");
     ensure(!/[()*]/.test(name2), "INVALID_CLAUDE_AGENT", "This agent name cannot be represented as a literal Agent(name) permission rule.");
     const rule2 = `Agent(${name2})`;
-    const next = enabled2 ? deny.filter((item) => item !== rule2) : deny.includes(rule2) ? deny : [...deny, rule2];
+    const next = enabled2 ? deny.filter((item2) => item2 !== rule2) : deny.includes(rule2) ? deny : [...deny, rule2];
     const result = await this.save({ ...current.settings, permissions: { ...permissions, deny: next } }, current.revision, revision2);
     return { ...result, rule: rule2, enabled: enabled2, note: claudeMessages.agentRestrictions };
   }
@@ -44516,10 +44466,8 @@ async function agentCommands(args, flags, context, services2) {
   const settings2 = new ClaudeSettings(target2.workspace, target2.settingsPath, target2.scope === "plugin");
   let result;
   if (action2 === "list") {
-    arity(args, 0, 1);
     result = await agents2.list();
   } else {
-    arity(args, 2);
     const id2 = args[1];
     switch (action2) {
       case "inspect":
@@ -44559,29 +44507,24 @@ async function hookCommands(args, flags, context, services2) {
   switch (action2) {
     case "inspect":
     case "check":
-      arity(args, 0, 1);
       result = action2 === "inspect" ? await settings2.inspect() : await settings2.validate();
       break;
     case "set":
     case "configure": {
-      arity(args, 1);
       const input2 = parseJson(await claudeInput(flags, context));
       result = action2 === "set" ? await settings2.set(input2, revision2) : await settings2.configure(input2, revision2);
       break;
     }
     case "add":
-      arity(args, 2);
       result = await settings2.add(args[1], parseJson(await claudeInput(flags, context)), revision2);
       break;
     case "remove": {
-      arity(args, 2);
       const index2 = value$2(flags, "index");
       result = await settings2.remove(args[1], value$2(flags, "if-match", true), index2 === void 0 ? void 0 : Number(index2));
       break;
     }
     default:
       ensure(action2 === "enable" || action2 === "disable", "INVALID_ARGUMENT", "Use hooks inspect, check, set, add, remove, configure, enable, or disable.");
-      arity(args, 1);
       result = await settings2.toggle(action2 === "enable", revision2);
   }
   return { target: { scope: target2.scope, directory: target2.directory }, ...result };
@@ -44639,7 +44582,7 @@ function text$a(value2, path2, nonempty2 = false) {
   check(typeof value2 === "string" && (!nonempty2 || value2.trim().length > 0), path2, `must be ${nonempty2 ? "a nonempty" : "a"} string.`);
 }
 function strings$1(value2, path2) {
-  check(Array.isArray(value2) && value2.every((item) => typeof item === "string"), path2, "must be an array of strings.");
+  check(Array.isArray(value2) && value2.every((item2) => typeof item2 === "string"), path2, "must be an array of strings.");
 }
 function optionalStrings(value2, fields2, path2) {
   for (const field2 of fields2) if (value2[field2] !== void 0) text$a(value2[field2], `${path2}.${field2}`);
@@ -44649,7 +44592,7 @@ function optionalBooleans(value2, fields2, path2) {
 }
 function stringMap(value2, path2) {
   object(value2, path2);
-  for (const [key, item] of Object.entries(value2)) text$a(item, `${path2}.${key}`);
+  for (const [key, item2] of Object.entries(value2)) text$a(item2, `${path2}.${key}`);
 }
 function pluginName(value2, path2) {
   text$a(value2, path2, true);
@@ -44667,7 +44610,7 @@ function paths(value2, path2, extensions, allowRoot = false, prefixRequired = tr
     componentPath(value2, path2, extensions, allowRoot, prefixRequired);
     return;
   }
-  value2.forEach((item, index2) => componentPath(item, `${path2}[${index2}]`, extensions, allowRoot, prefixRequired));
+  value2.forEach((item2, index2) => componentPath(item2, `${path2}[${index2}]`, extensions, allowRoot, prefixRequired));
 }
 function mixed(value2, path2, validatePath, validateInline) {
   const entries2 = Array.isArray(value2) ? value2 : [value2];
@@ -44757,12 +44700,12 @@ function userConfig(value2, path2) {
     if (option2.min !== void 0 && option2.max !== void 0) check(Number(option2.min) <= Number(option2.max), location2, "min cannot exceed max.");
     if (option2.default !== void 0) {
       const initial = option2.default;
-      check(typeof initial === "string" || typeof initial === "boolean" || typeof initial === "number" && Number.isFinite(initial) || Array.isArray(initial) && initial.every((item) => typeof item === "string"), `${location2}.default`, "must be a string, finite number, boolean, or string array.");
+      check(typeof initial === "string" || typeof initial === "boolean" || typeof initial === "number" && Number.isFinite(initial) || Array.isArray(initial) && initial.every((item2) => typeof item2 === "string"), `${location2}.default`, "must be a string, finite number, boolean, or string array.");
     }
     if (option2.options !== void 0) {
       strings$1(option2.options, `${location2}.options`);
       check(option2.type === "string" && option2.multiple !== true && option2.sensitive !== true, location2, "options require a single, non-sensitive string.");
-      check(option2.options.length > 0 && option2.options.every((item) => item.length >= 1 && item.length <= 64), `${location2}.options`, "must contain labels of 1 to 64 characters.");
+      check(option2.options.length > 0 && option2.options.every((item2) => item2.length >= 1 && item2.length <= 64), `${location2}.options`, "must contain labels of 1 to 64 characters.");
       check(option2.default === void 0 ? option2.required === true : typeof option2.default === "string" && option2.options.includes(option2.default), location2, "options require a listed default or required: true.");
     }
   }
@@ -44990,7 +44933,7 @@ class ClaudePluginService {
     }
     return {
       ...inspected,
-      valid: !diagnostics2.some((item) => item.severity === "error"),
+      valid: !diagnostics2.some((item2) => item2.severity === "error"),
       diagnostics: diagnostics2,
       validation: "structure",
       limitations: [claudeMessages.noCodeExecuted, claudeMessages.claudeAuthoritative]
@@ -45045,7 +44988,6 @@ class ClaudePluginService {
 const nativePluginActions = ["create", "inspect", "manifest", "check", "asset", "write-asset", "remove-asset"];
 async function nativePlugin(args, flags, context, services2) {
   const [action2, directory, path2] = args;
-  arity(args, ["asset", "write-asset", "remove-asset"].includes(action2) ? 3 : 2);
   const plugins = new ClaudePluginService(context.workspace, services2.agentCodec);
   if (action2 === "create") return plugins.create(directory, parseJson(await claudeInput(flags, context)));
   if (action2 === "manifest") return plugins.update(directory, parseJson(await claudeInput(flags, context)), value$2(flags, "if-match", true));
@@ -45055,23 +44997,25 @@ async function nativePlugin(args, flags, context, services2) {
   if (action2 === "remove-asset") return plugins.removeAsset(directory, path2, value$2(flags, "if-match", true));
   return plugins.writeAsset(directory, path2, await claudeBytes(flags, context), value$2(flags, "if-match"));
 }
+const operand = (name2, description2, required2 = true) => ({ name: name2, description: description2, ...required2 ? { required: required2 } : {} });
+const plugin = operand("plugin", "The plugin, as name or name@marketplace.");
 const acceptance = { yes: "boolean", "accept-command": "hash" };
 const commands$1 = {
   plugins: {
-    list: { min: 0, output: "json", options: { available: "boolean", "data-size": "optional-string" } },
-    details: { min: 1 },
-    install: { min: 1, scope: true, output: "json-last-line", options: { ...acceptance, config: "repeat" } },
-    update: { min: 1, scope: true, managed: true, output: "json-last-line", options: acceptance },
-    uninstall: { min: 1, scope: true, output: "json-last-line", options: { "keep-data": "boolean", prune: "boolean", yes: "boolean" } },
-    enable: { min: 1, scope: true, output: "json-last-line" },
-    disable: { min: 0, max: 1, scope: true, output: "json-last-line", options: { all: "boolean" } },
-    validate: { min: 1, output: "json", options: { strict: "boolean" } },
-    configure: { min: 1, output: "json", options: { "values-stdin": "boolean" } },
-    prune: { min: 0, scope: true, options: { yes: "boolean" } },
-    init: { min: 1, options: { description: "string", author: "string", "author-email": "string", with: "list", force: "boolean" } },
-    tag: { min: 0, max: 1, options: { push: "boolean", force: "boolean", message: "string", remote: "string" } },
-    test: { min: 0, max: 1 },
-    eval: { min: 0, max: 1, options: {
+    list: { output: "json", options: { available: "boolean", "data-size": "optional-string" } },
+    details: { operand: plugin },
+    install: { operand: plugin, scope: true, output: "json-last-line", options: { ...acceptance, config: "repeat" } },
+    update: { operand: plugin, scope: true, managed: true, output: "json-last-line", options: acceptance },
+    uninstall: { operand: plugin, scope: true, output: "json-last-line", options: { "keep-data": "boolean", prune: "boolean", yes: "boolean" } },
+    enable: { operand: plugin, scope: true, output: "json-last-line" },
+    disable: { operand: operand("plugin", "The plugin, as name or name@marketplace; omitted with --all.", false), scope: true, output: "json-last-line", options: { all: "boolean" } },
+    validate: { operand: operand("path", "The plugin or marketplace path."), output: "json", options: { strict: "boolean" } },
+    configure: { operand: operand("plugin", "The plugin as name@marketplace, from plugins list."), output: "json", options: { "values-stdin": "boolean" } },
+    prune: { scope: true, options: { yes: "boolean" } },
+    init: { operand: operand("name", "The name of the new plugin."), options: { description: "string", author: "string", "author-email": "string", with: "list", force: "boolean" } },
+    tag: { operand: operand("path", "The plugin path.", false), options: { push: "boolean", force: "boolean", message: "string", remote: "string" } },
+    test: { operand: operand("directory", "The plugin directory.", false) },
+    eval: { operand: operand("target", "The evaluation target, such as a plugin directory.", false), options: {
       runs: "integer",
       concurrency: "integer",
       model: "string",
@@ -45096,19 +45040,19 @@ const commands$1 = {
       "native-json": "boolean",
       "native-json-output": "string"
     } },
-    "eval init": { min: 1, options: { bare: "boolean", interactive: "boolean", "eval-dir": "string" } }
+    "eval init": { operand: operand("case-name", "The name of the evaluation case."), options: { bare: "boolean", interactive: "boolean", "eval-dir": "string" } }
   },
   marketplaces: {
-    add: { min: 1, scope: true, options: { sparse: "list", claudeai: "boolean" } },
-    list: { min: 0, output: "json" },
-    remove: { min: 1, scope: true },
-    update: { min: 0, max: 1 }
+    add: { operand: operand("source", "The marketplace source."), scope: true, options: { sparse: "list", claudeai: "boolean" } },
+    list: { output: "json" },
+    remove: { operand: operand("name", "The marketplace name."), scope: true },
+    update: { operand: operand("name", "The marketplace name; every marketplace when omitted.", false) }
   },
   runtime: {
-    version: { min: 0 },
-    doctor: { min: 0 },
-    install: { min: 0, max: 1 },
-    update: { min: 0 }
+    version: {},
+    doctor: {},
+    install: { operand: operand("target", "The version or release channel to install.", false) },
+    update: {}
   }
 };
 const claudeRuntimeOptions = (() => {
@@ -45128,6 +45072,7 @@ const claudeRuntimeOptions = (() => {
 const claudeRuntimeActions = Object.entries(commands$1).flatMap(([section2, actions2]) => Object.entries(actions2).map(([action2, command2]) => ({
   section: section2,
   action: action2,
+  args: command2.operand ? [command2.operand] : [],
   scoped: command2.scope === true,
   managed: command2.managed === true,
   options: Object.fromEntries(Object.keys(command2.options ?? {}).map((name2) => [name2, claudeRuntimeOptions[name2]]))
@@ -45168,7 +45113,7 @@ function listValue(value2, flag2) {
     }
   }
   const list2 = Array.isArray(result) ? result : [result];
-  ensureClaude(list2.length > 0 && list2.every((item) => typeof item === "string" && item.trim().length > 0 && !item.startsWith("-") && !item.includes("\0")), "INVALID_CLAUDE_OPTION", `--${flag2} requires nonempty strings that do not start with a dash or contain null bytes.`);
+  ensureClaude(list2.length > 0 && list2.every((item2) => typeof item2 === "string" && item2.trim().length > 0 && !item2.startsWith("-") && !item2.includes("\0")), "INVALID_CLAUDE_OPTION", `--${flag2} requires nonempty strings that do not start with a dash or contain null bytes.`);
   return list2;
 }
 function optionArgs(flag2, kind2, value2) {
@@ -45179,9 +45124,9 @@ function optionArgs(flag2, kind2, value2) {
   if (kind2 === "optional-string" && (value2 === true || value2 === "")) return [`--${flag2}`];
   if (kind2 === "list" || kind2 === "repeat") {
     const list2 = listValue(value2, flag2);
-    if (flag2 === "with") ensureClaude(list2.every((item) => ["skills", "agents", "hooks", "mcp", "lsp", "output-style", "channel"].includes(item)), "INVALID_CLAUDE_OPTION", "--with must name skills, agents, hooks, mcp, lsp, output-style, or channel.");
-    if (flag2 === "config") ensureClaude(list2.every((item) => /^[^=\s]+=/.test(item)), "INVALID_CLAUDE_OPTION", "--config entries must use key=value.");
-    return kind2 === "repeat" ? list2.flatMap((item) => [`--${flag2}`, item]) : [`--${flag2}`, ...list2];
+    if (flag2 === "with") ensureClaude(list2.every((item2) => ["skills", "agents", "hooks", "mcp", "lsp", "output-style", "channel"].includes(item2)), "INVALID_CLAUDE_OPTION", "--with must name skills, agents, hooks, mcp, lsp, output-style, or channel.");
+    if (flag2 === "config") ensureClaude(list2.every((item2) => /^[^=\s]+=/.test(item2)), "INVALID_CLAUDE_OPTION", "--config entries must use key=value.");
+    return kind2 === "repeat" ? list2.flatMap((item2) => [`--${flag2}`, item2]) : [`--${flag2}`, ...list2];
   }
   stringValue(value2, flag2);
   if (kind2 === "hash") ensureClaude(/^[a-fA-F0-9]{64}$/.test(value2), "INVALID_CLAUDE_OPTION", "--accept-command requires the displayed command SHA-256 hash.");
@@ -45208,10 +45153,9 @@ function commandRules(section2, action2, operands, flags) {
 function buildClaudeRuntimeArgs(section2, args, flags) {
   const { action: action2, operands } = actionArgs(section2, args);
   const command2 = commandDefinition(section2, action2);
-  arity(operands, command2.min, command2.max ?? command2.min);
-  for (const operand of operands) {
+  for (const operand2 of operands) {
     ensureClaude(
-      operand.trim().length > 0 && !operand.startsWith("-") && !operand.includes("\0"),
+      operand2.trim().length > 0 && !operand2.startsWith("-") && !operand2.includes("\0"),
       "INVALID_CLAUDE_ARGUMENT",
       "Claude command operands must be nonempty and cannot start with a dash or contain null bytes. Prefix a dash-leading local path with ./ ."
     );
@@ -45264,46 +45208,52 @@ const agentInput = { ...input, metadata: option$1.string("JSON metadata for agen
 const targetUsage = "[--scope project|user|plugin] [--directory plugin] [--claude-dir directory]";
 const hookUsage = "[--scope project|local|user|plugin] [--directory plugin] [--claude-dir directory]";
 const inputUsage = "--from file | --content text | --stdin";
+const agentId = [{ name: "id", description: "The native agent id, its file name without .md.", required: true }];
+const hookEvent = [{ name: "event", description: "The hook event, such as PreToolUse.", required: true }];
+const pluginDirectory = { name: "directory", description: "The Claude plugin directory.", required: true };
+const pluginAsset = [pluginDirectory, { name: "path", description: "The asset path inside the plugin directory.", required: true }];
 const agents = {
-  agents: { description: "List native agents, as agents list does.", usage: `claude agents ${targetUsage}`, ...read, options: agentTarget },
-  "agents list": { description: "List native agents.", usage: `claude agents list ${targetUsage}`, ...read, options: agentTarget },
-  "agents inspect": { description: "Return one native agent with its metadata and prompt.", usage: `claude agents inspect <id> ${targetUsage}`, ...read, options: agentTarget },
-  "agents create": { description: "Create a native agent file.", usage: `claude agents create <id> (${inputUsage} | --metadata json --prompt text) ${targetUsage}`, ...guarded, options: { ...agentTarget, ...agentInput } },
-  "agents update": { description: "Replace a native agent file.", usage: `claude agents update <id> (${inputUsage} | --metadata json --prompt text) --if-match sha256 ${targetUsage}`, ...guarded, options: { ...agentTarget, ...agentInput, "if-match": ifMatch$3 } },
-  "agents remove": { description: "Remove a native agent file.", usage: `claude agents remove <id> --if-match sha256 ${targetUsage}`, ...guarded, options: { ...agentTarget, "if-match": ifMatch$3 } },
-  "agents enable": { description: "Enable a native agent in the settings.", usage: `claude agents enable <id> [--if-match sha256] ${targetUsage}`, ...guarded, options: { ...agentTarget, "if-match": ifMatch$3 } },
-  "agents disable": { description: "Disable a native agent in the settings.", usage: `claude agents disable <id> [--if-match sha256] ${targetUsage}`, ...guarded, options: { ...agentTarget, "if-match": ifMatch$3 } },
+  agents: { description: "List native agents, as agents list does.", usage: `claude agents ${targetUsage}`, ...read, args: [], options: agentTarget },
+  "agents list": { description: "List native agents.", usage: `claude agents list ${targetUsage}`, ...read, args: [], options: agentTarget },
+  "agents inspect": { description: "Return one native agent with its metadata and prompt.", usage: `claude agents inspect <id> ${targetUsage}`, ...read, args: agentId, options: agentTarget },
+  "agents create": { description: "Create a native agent file.", usage: `claude agents create <id> (${inputUsage} | --metadata json --prompt text) ${targetUsage}`, ...guarded, args: agentId, options: { ...agentTarget, ...agentInput } },
+  "agents update": { description: "Replace a native agent file.", usage: `claude agents update <id> (${inputUsage} | --metadata json --prompt text) --if-match sha256 ${targetUsage}`, ...guarded, args: agentId, options: { ...agentTarget, ...agentInput, "if-match": ifMatch$3 } },
+  "agents remove": { description: "Remove a native agent file.", usage: `claude agents remove <id> --if-match sha256 ${targetUsage}`, ...guarded, args: agentId, options: { ...agentTarget, "if-match": ifMatch$3 } },
+  "agents enable": { description: "Enable a native agent in the settings.", usage: `claude agents enable <id> [--if-match sha256] ${targetUsage}`, ...guarded, args: agentId, options: { ...agentTarget, "if-match": ifMatch$3 } },
+  "agents disable": { description: "Disable a native agent in the settings.", usage: `claude agents disable <id> [--if-match sha256] ${targetUsage}`, ...guarded, args: agentId, options: { ...agentTarget, "if-match": ifMatch$3 } },
   "agents export": {
     description: "Return a native agent as Markdown and session JSON, or write it to a .md file with --out.",
     usage: `claude agents export <id> [--out agent.md [--if-match sha256]] ${targetUsage}`,
     ...guarded,
+    args: agentId,
     options: { ...agentTarget, out: option$1.string("Destination path for export."), "if-match": ifMatch$3 }
   }
 };
 const hooks = {
-  hooks: { description: "Inspect the native hook configuration, as hooks inspect does.", usage: `claude hooks ${hookUsage}`, ...read, options: hookTarget },
-  "hooks inspect": { description: "Inspect the native hook configuration.", usage: `claude hooks inspect ${hookUsage}`, ...read, options: hookTarget },
-  "hooks check": { description: "Validate the native hook configuration.", usage: `claude hooks check ${hookUsage}`, ...read, options: hookTarget },
-  "hooks set": { description: "Replace the hook configuration with JSON input.", usage: `claude hooks set (${inputUsage}) [--if-match sha256] ${hookUsage}`, ...guarded, options: { ...hookTarget, ...input, "if-match": ifMatch$3 } },
-  "hooks add": { description: "Add a hook entry for one event from JSON input.", usage: `claude hooks add <event> (${inputUsage}) [--if-match sha256] ${hookUsage}`, ...guarded, options: { ...hookTarget, ...input, "if-match": ifMatch$3 } },
+  hooks: { description: "Inspect the native hook configuration, as hooks inspect does.", usage: `claude hooks ${hookUsage}`, ...read, args: [], options: hookTarget },
+  "hooks inspect": { description: "Inspect the native hook configuration.", usage: `claude hooks inspect ${hookUsage}`, ...read, args: [], options: hookTarget },
+  "hooks check": { description: "Validate the native hook configuration.", usage: `claude hooks check ${hookUsage}`, ...read, args: [], options: hookTarget },
+  "hooks set": { description: "Replace the hook configuration with JSON input.", usage: `claude hooks set (${inputUsage}) [--if-match sha256] ${hookUsage}`, ...guarded, args: [], options: { ...hookTarget, ...input, "if-match": ifMatch$3 } },
+  "hooks add": { description: "Add a hook entry for one event from JSON input.", usage: `claude hooks add <event> (${inputUsage}) [--if-match sha256] ${hookUsage}`, ...guarded, args: hookEvent, options: { ...hookTarget, ...input, "if-match": ifMatch$3 } },
   "hooks remove": {
     description: "Remove the hooks of one event, or one entry with --index.",
     usage: `claude hooks remove <event> --if-match sha256 [--index n] ${hookUsage}`,
     ...guarded,
+    args: hookEvent,
     options: { ...hookTarget, "if-match": ifMatch$3, index: option$1.string("Hook entry index for hooks remove.") }
   },
-  "hooks configure": { description: "Set hook-related settings from JSON input.", usage: `claude hooks configure (${inputUsage}) [--if-match sha256] ${hookUsage}`, ...guarded, options: { ...hookTarget, ...input, "if-match": ifMatch$3 } },
-  "hooks enable": { description: "Enable every hook of the settings file.", usage: `claude hooks enable [--if-match sha256] ${hookUsage}`, ...guarded, options: { ...hookTarget, "if-match": ifMatch$3 } },
-  "hooks disable": { description: "Disable every hook of the settings file.", usage: `claude hooks disable [--if-match sha256] ${hookUsage}`, ...guarded, options: { ...hookTarget, "if-match": ifMatch$3 } }
+  "hooks configure": { description: "Set hook-related settings from JSON input.", usage: `claude hooks configure (${inputUsage}) [--if-match sha256] ${hookUsage}`, ...guarded, args: [], options: { ...hookTarget, ...input, "if-match": ifMatch$3 } },
+  "hooks enable": { description: "Enable every hook of the settings file.", usage: `claude hooks enable [--if-match sha256] ${hookUsage}`, ...guarded, args: [], options: { ...hookTarget, "if-match": ifMatch$3 } },
+  "hooks disable": { description: "Disable every hook of the settings file.", usage: `claude hooks disable [--if-match sha256] ${hookUsage}`, ...guarded, args: [], options: { ...hookTarget, "if-match": ifMatch$3 } }
 };
 const authoring = {
-  "plugins create": { description: "Create a Claude plugin directory from a JSON manifest.", usage: `claude plugins create <directory> (${inputUsage})`, ...guarded, options: input },
-  "plugins inspect": { description: "Describe a Claude plugin directory and its assets.", usage: "claude plugins inspect <directory>", ...read },
-  "plugins manifest": { description: "Replace the plugin manifest with JSON input.", usage: `claude plugins manifest <directory> (${inputUsage}) --if-match sha256`, ...guarded, options: { ...input, "if-match": ifMatch$3 } },
-  "plugins check": { description: "Validate a Claude plugin directory.", usage: "claude plugins check <directory>", ...read },
-  "plugins asset": { description: "Read one asset of a Claude plugin.", usage: "claude plugins asset <directory> <path>", ...read },
-  "plugins write-asset": { description: "Write one asset of a Claude plugin.", usage: `claude plugins write-asset <directory> <path> (${inputUsage}) [--if-match sha256]`, ...guarded, options: { ...input, "if-match": ifMatch$3 } },
-  "plugins remove-asset": { description: "Remove one asset of a Claude plugin.", usage: "claude plugins remove-asset <directory> <path> --if-match sha256", ...guarded, options: { "if-match": ifMatch$3 } }
+  "plugins create": { description: "Create a Claude plugin directory from a JSON manifest.", usage: `claude plugins create <directory> (${inputUsage})`, ...guarded, args: [pluginDirectory], options: input },
+  "plugins inspect": { description: "Describe a Claude plugin directory and its assets.", usage: "claude plugins inspect <directory>", ...read, args: [pluginDirectory] },
+  "plugins manifest": { description: "Replace the plugin manifest with JSON input.", usage: `claude plugins manifest <directory> (${inputUsage}) --if-match sha256`, ...guarded, args: [pluginDirectory], options: { ...input, "if-match": ifMatch$3 } },
+  "plugins check": { description: "Validate a Claude plugin directory.", usage: "claude plugins check <directory>", ...read, args: [pluginDirectory] },
+  "plugins asset": { description: "Read one asset of a Claude plugin.", usage: "claude plugins asset <directory> <path>", ...read, args: pluginAsset },
+  "plugins write-asset": { description: "Write one asset of a Claude plugin.", usage: `claude plugins write-asset <directory> <path> (${inputUsage}) [--if-match sha256]`, ...guarded, args: pluginAsset, options: { ...input, "if-match": ifMatch$3 } },
+  "plugins remove-asset": { description: "Remove one asset of a Claude plugin.", usage: "claude plugins remove-asset <directory> <path> --if-match sha256", ...guarded, args: pluginAsset, options: { "if-match": ifMatch$3 } }
 };
 const runtimeDescriptions = {
   "plugins list": "List installed plugins, or available ones with --available.",
@@ -45337,20 +45287,21 @@ const native = {
 };
 const pluginScope = (managed) => scope$1("Installed-CLI plugin commands: the native scope; managed only with plugins update.", ["project", "local", "user", ...managed ? ["managed"] : []]);
 const marketplaceScope = scope$1("Marketplace add and remove: the native scope.", ["project", "local", "user"]);
-const runtime = Object.fromEntries(claudeRuntimeActions.map(({ section: section2, action: action2, scoped: scoped2, managed, options: options2 }) => {
+const runtime = Object.fromEntries(claudeRuntimeActions.map(({ section: section2, action: action2, args, scoped: scoped2, managed, options: options2 }) => {
   const id2 = `${section2} ${action2}`;
   const scopes = scoped2 ? { scope: section2 === "plugins" ? pluginScope(managed) : marketplaceScope } : {};
   const values2 = id2 === "plugins configure" ? input : {};
   const flags = Object.entries({ ...scopes, ...options2, ...values2 }).map(([name2, schema2]) => `[--${name2}${schema2.type === "string" ? " value" : ""}]`);
   return [id2, {
     description: runtimeDescriptions[id2],
-    usage: ["claude", id2, "[operands]", ...flags, "[--claude-bin path] [--timeout ms]"].join(" "),
+    usage: ["claude", id2, ...args.map((arg) => arg.required ? `<${arg.name}>` : `[${arg.name}]`), ...flags, "[--claude-bin path] [--timeout ms]"].join(" "),
     ...readRuntime.has(id2) ? read : {},
+    args,
     options: { ...scopes, ...options2, ...values2, ...native }
   }];
 }));
 const claudeActions = {
-  capabilities: { description: "Describe supported formats, scopes and operations.", usage: "claude [capabilities]", scope: "workspace", discovery: true, mutating: false },
+  capabilities: { description: "Describe supported formats, scopes and operations.", usage: "claude [capabilities]", scope: "workspace", discovery: true, mutating: false, args: [] },
   ...agents,
   ...hooks,
   ...authoring,
@@ -45398,10 +45349,6 @@ function claudeCommand(adapters) {
     defaultAction: "capabilities",
     actions: claudeActions,
     unknownAction: "INVALID_ARGUMENT",
-    args: [
-      { name: "section", description: "capabilities (default), agents, hooks, plugins, marketplaces or runtime.", enum: ["capabilities", "agents", "hooks", "plugins", "marketplaces", "runtime"] },
-      { name: "operands", description: "The section action and its operands; see usage.", variadic: true }
-    ],
     errors: [
       "INVALID_CLAUDE_AGENT",
       "INVALID_CLAUDE_HOOKS",
@@ -45429,7 +45376,6 @@ function claudeCommand(adapters) {
     async run(args, flags, context) {
       const [section2, action2] = args;
       if (!section2 || section2 === "capabilities") {
-        arity(args, 0, 1);
         return {
           provider: "Claude Code",
           nativeFormats: true,
@@ -45453,7 +45399,7 @@ function claudeCommand(adapters) {
       let input2;
       if (claudeRuntimeNeedsInput(section2, args.slice(1), flags)) {
         const values2 = parseJson(await claudeInput(flags, context));
-        ensure(isRecord$1(values2) && Object.values(values2).every((item) => typeof item === "string" && !/[\r\n]/.test(item)), "INVALID_INPUT", "Claude plugin configuration must map keys to single-line string values.");
+        ensure(isRecord$1(values2) && Object.values(values2).every((item2) => typeof item2 === "string" && !/[\r\n]/.test(item2)), "INVALID_INPUT", "Claude plugin configuration must map keys to single-line string values.");
         input2 = JSON.stringify(values2) + "\n";
         ensureClaude(new TextEncoder().encode(input2).length <= 1024 * 1024, "INVALID_CLAUDE_INPUT", "Claude configuration input must not exceed 1 MiB.");
       }
@@ -45535,8 +45481,23 @@ const claudeStrings = {
       "Hook entry index for hooks remove.": "Index des Hook-Eintrags für hooks remove.",
       "Path of the Claude Code executable; defaults to claude on PATH.": "Pfad der ausführbaren Claude-Code-Datei; standardmäßig claude im PATH.",
       "Native process timeout in milliseconds (1 to 3600000).": "Zeitlimit des nativen Prozesses in Millisekunden (1 bis 3600000).",
-      "capabilities (default), agents, hooks, plugins, marketplaces or runtime.": "capabilities (Standard), agents, hooks, plugins, marketplaces oder runtime.",
-      "The section action and its operands; see usage.": "Die Aktion des Bereichs und ihre Operanden; siehe usage."
+      "The native agent id, its file name without .md.": "Die ID des nativen Agenten, sein Dateiname ohne .md.",
+      "The hook event, such as PreToolUse.": "Das Hook-Ereignis, etwa PreToolUse.",
+      "The Claude plugin directory.": "Das Verzeichnis des Claude-Plugins.",
+      "The asset path inside the plugin directory.": "Der Pfad des Assets im Plugin-Verzeichnis.",
+      "The plugin, as name or name@marketplace.": "Das Plugin als Name oder Name@Marketplace.",
+      "The plugin, as name or name@marketplace; omitted with --all.": "Das Plugin als Name oder Name@Marketplace; mit --all entfällt es.",
+      "The plugin or marketplace path.": "Der Pfad des Plugins oder Marketplace.",
+      "The plugin as name@marketplace, from plugins list.": "Das Plugin als Name@Marketplace, aus plugins list.",
+      "The name of the new plugin.": "Der Name des neuen Plugins.",
+      "The plugin path.": "Der Pfad des Plugins.",
+      "The plugin directory.": "Das Plugin-Verzeichnis.",
+      "The evaluation target, such as a plugin directory.": "Das Ziel der Evaluierung, etwa ein Plugin-Verzeichnis.",
+      "The name of the evaluation case.": "Der Name des Evaluierungsfalls.",
+      "The marketplace source.": "Die Quelle des Marketplace.",
+      "The marketplace name.": "Der Name des Marketplace.",
+      "The marketplace name; every marketplace when omitted.": "Der Name des Marketplace; ohne Angabe jeder Marketplace.",
+      "The version or release channel to install.": "Die zu installierende Version oder der Release-Kanal."
     }
   }
 };
@@ -45764,6 +45725,7 @@ function tokenSet(connection, environment) {
   return (environment(connection.tokenEnv)?.trim() ?? "") !== "";
 }
 const actions = ["list", "inspect", "test"];
+const connectionId = { name: "id", description: "The connection id.", required: true };
 function connectionJson({ connection, connector }, environment, language2) {
   return {
     id: connection.id,
@@ -45786,21 +45748,17 @@ function connectorsCommand(hub, environment) {
     discovery: false,
     mutating: false,
     defaultAction: "list",
+    unknownAction: "INVALID_ARGUMENT",
     actions: {
-      list: { description: "Every connection with its platform, validity, warnings and whether its token variable is set." },
-      inspect: { description: "One connection with its resolved type, state and field mappings." },
-      test: { description: "An authenticated, read-only probe of one connection." }
+      list: { description: "Every connection with its platform, validity, warnings and whether its token variable is set.", args: [] },
+      inspect: { description: "One connection with its resolved type, state and field mappings.", args: [connectionId] },
+      test: { description: "An authenticated, read-only probe of one connection.", args: [connectionId] }
     },
-    args: [
-      { name: "action", description: actions.join(", "), enum: actions },
-      { name: "id", description: "The connection id (inspect, test)." }
-    ],
     errors: ["CONNECTOR_NOT_FOUND", "CONNECTION_INVALID", "CONNECTOR_AUTH_FAILED", "CONNECTOR_REQUEST_FAILED"],
     async run(args, _flags, { language: language2 }) {
       const [action2 = "list", ...rest] = args;
       ensure(actions.includes(action2), "INVALID_ARGUMENT", `Use connectors ${actions.join(", connectors ")}.`);
       if (action2 === "list") {
-        arity(rest, 0);
         return {
           platforms: hub.platforms(),
           connections: hub.statuses().map((status2) => ({
@@ -45811,7 +45769,6 @@ function connectorsCommand(hub, environment) {
           }))
         };
       }
-      arity(rest, 1);
       const bound2 = hub.connection(rest[0]);
       if (action2 === "inspect") {
         const description2 = bound2.connector.describe(language2);
@@ -45845,8 +45802,7 @@ const connectorStrings = {
   de: {
     manifest: { name: "Connector-Verbindungen", description: "Verbindungsprofile und der gemeinsame Hub für Backlog-Connectors zu externen Work-Trackern." },
     descriptions: {
-      "list, inspect, test": "list, inspect oder test",
-      "The connection id (inspect, test).": "Die Verbindungs-ID (inspect, test).",
+      "The connection id.": "Die Verbindungs-ID.",
       "Connection profiles by id (lowercase kebab-case).": "Verbindungsprofile nach ID (kebab-case in Kleinbuchstaben).",
       "The connector platform, for example azure-devops.": "Die Connector-Plattform, zum Beispiel azure-devops.",
       "The environment variable holding the access token, named PAT, TOKEN or ending in _PAT or _TOKEN so a shared profile cannot pick an unrelated secret; the platform default when omitted. Its value is sent to the organization, so review both in shared configuration.": "Die Umgebungsvariable mit dem Zugriffstoken, benannt PAT, TOKEN oder mit der Endung _PAT oder _TOKEN, damit ein gemeinsam genutztes Profil kein fremdes Geheimnis wählen kann; ohne Angabe der Standard der Plattform. Ihr Wert wird an die Organisation gesendet; prüfen Sie daher beide in gemeinsam genutzter Konfiguration.",
@@ -45989,7 +45945,7 @@ function markdownToHtml(markdown) {
   };
   const flushList = () => {
     const list2 = open2.list;
-    if (list2) html2.push(`<${list2.tag}>${list2.items.map((item) => `<li>${inline(item)}</li>`).join("")}</${list2.tag}>`);
+    if (list2) html2.push(`<${list2.tag}>${list2.items.map((item2) => `<li>${inline(item2)}</li>`).join("")}</${list2.tag}>`);
     open2.list = null;
   };
   const flush = () => {
@@ -46123,8 +46079,8 @@ function updateOperations(patch, expectedRev, context, relations = []) {
 const WORK_ITEM_URL = /\/_apis\/wit\/workitems\/(\d+)$/i;
 const relationKey = (relation) => {
   if (!isRecord$1(relation)) return "";
-  const url2 = String(relation.url), item = WORK_ITEM_URL.exec(url2)?.[1];
-  return `${String(relation.rel)} ${item === void 0 ? `url ${url2}` : `item ${item}`}`;
+  const url2 = String(relation.url), item2 = WORK_ITEM_URL.exec(url2)?.[1];
+  return `${String(relation.rel)} ${item2 === void 0 ? `url ${url2}` : `item ${item2}`}`;
 };
 const RELATION_INDEX = /^\/relations\/(\d+)$/;
 const tally = (keys) => keys.reduce((counts2, key) => counts2.set(key, (counts2.get(key) ?? 0) + 1), /* @__PURE__ */ new Map());
@@ -46147,19 +46103,19 @@ const byId = (a, b) => Number(a) - Number(b) || (a < b ? -1 : a > b ? 1 : 0);
 const text$9 = (value2) => typeof value2 === "string" && value2.trim() !== "" ? value2 : null;
 const number = (value2) => typeof value2 === "number" && Number.isFinite(value2) ? value2 : typeof value2 === "string" && value2.trim() !== "" && Number.isFinite(Number(value2)) ? Number(value2) : null;
 function remoteItem(json2, context, url2) {
-  const item = isRecord$1(json2) ? json2 : {};
-  const values2 = isRecord$1(item.fields) ? item.fields : {};
-  const relations = Array.isArray(item.relations) ? item.relations.filter(isRecord$1) : [];
+  const item2 = isRecord$1(json2) ? json2 : {};
+  const values2 = isRecord$1(item2.fields) ? item2.fields : {};
+  const relations = Array.isArray(item2.relations) ? item2.relations.filter(isRecord$1) : [];
   const { fields: fields2 } = context.mapping;
-  const id2 = String(item.id);
+  const id2 = String(item2.id);
   const read2 = (reference) => reference === null ? void 0 : values2[reference];
-  const formats = isRecord$1(item.multilineFieldsFormat) ? item.multilineFieldsFormat : {};
+  const formats = isRecord$1(item2.multilineFieldsFormat) ? item2.multilineFieldsFormat : {};
   const description2 = fields2.description === null ? void 0 : text$9(read2(fields2.description));
   const markdown = fields2.description !== null && String(formats[fields2.description] ?? "").toLowerCase() === "markdown";
   const area = text$9(values2[fields2.area ?? AREA_PATH]);
   return {
     id: id2,
-    rev: String(item.rev),
+    rev: String(item2.rev),
     url: url2(id2),
     type: String(values2["System.WorkItemType"] ?? ""),
     title: String(read2(fields2.title) ?? ""),
@@ -46307,11 +46263,11 @@ class AzureDevOpsConnector {
    * a state and then moved to the drafted state with a revision-guarded update. A failed move still returns the
    * created item. Creates are never retried automatically, so a throttled create cannot create a duplicate.
    */
-  async create(connection, item) {
+  async create(connection, item2) {
     const context = this.context(connection);
-    const { state: state2, ...draft } = item;
+    const { state: state2, ...draft } = item2;
     const operations2 = createOperations({ ...withDefaults(connection, draft), area: draft.area ?? defaultArea(connection) }, context);
-    const json2 = await this.call(connection, "POST", this.projectUrl(connection, `workitems/$${encodeURIComponent(item.type)}?api-version=${API_VERSION}`), operations2, { contentType: "application/json-patch+json" });
+    const json2 = await this.call(connection, "POST", this.projectUrl(connection, `workitems/$${encodeURIComponent(item2.type)}?api-version=${API_VERSION}`), operations2, { contentType: "application/json-patch+json" });
     const created = remoteItem(json2, context, (id2) => this.link(connection, id2));
     if (state2 === void 0 || state2 === null || state2 === created.state || context.mapping.fields.state === null) return created;
     try {
@@ -46331,7 +46287,7 @@ class AzureDevOpsConnector {
     if (links2 && !relationsLanded(relations, operations2, Array.isArray(json2.relations) ? json2.relations : [])) {
       throw failure("CONNECTOR_REQUEST_FAILED", `Azure DevOps applied the update of work item ${id2} for connection ${connection.id}, but its links changed on the other end meanwhile, so a link removed by position may not be the one intended. Compare the item's links in Azure DevOps.`, { connection: connection.id, status: 200, method: "PATCH", url: url2, reason: "relations-changed", remoteId: id2 });
     }
-    return remoteItem(json2, context, (item) => this.link(connection, item));
+    return remoteItem(json2, context, (item2) => this.link(connection, item2));
   }
   context(connection) {
     return { mapping: this.mapping(connection), descriptionFormat: setting(connection, "descriptionFormat") ?? "markdown", organization: organizationOf(connection), defaultArea: defaultArea(connection) };
@@ -46611,15 +46567,15 @@ function webviewCommand(publication) {
     defaultAction: "inspect",
     unknownAction: "INVALID_ARGUMENT",
     options: { project: option$1.string("Inspect or publish this project instead of the selected one.") },
-    args: [{ name: "action", description: "inspect (default) or publish.", enum: ["inspect", "publish"] }],
     actions: {
-      inspect: { description: "Compare dist with the installed webview and return its current folder revision.", output: report },
+      inspect: { description: "Compare dist with the installed webview and return its current folder revision.", args: [], output: report },
       publish: {
         description: "Publish dist with revision guards, or check drift without writing with --check.",
         mutating: true,
         destructive: true,
         idempotent: true,
         output: report,
+        args: [],
         options: {
           "if-match": option$1.string("The installed folder revision from webview inspect; required to replace a changed view."),
           check: option$1.boolean("Check publication drift without writing; fail with WEBVIEW_DRIFT when assets differ.")
@@ -46628,7 +46584,6 @@ function webviewCommand(publication) {
     },
     errors: ["PROJECT_REQUIRED", "INVALID_ARGUMENT", "WEBVIEW_INVALID", "WEBVIEW_BUILD_REQUIRED", "WEBVIEW_PROJECT_REQUIRED", "WEBVIEW_DRIFT", "CONFLICT", "UNSAFE_PATH", "INVALID_PATH", "NOT_FOUND"],
     async run(args, flags, context) {
-      arity(args, 0, 1);
       if ((args[0] ?? "inspect") === "inspect") return publication.inspect(context);
       const ifMatch2 = value$2(flags, "if-match");
       ensure(!(flags.check && ifMatch2 !== void 0), "INVALID_ARGUMENT", "--check does not accept --if-match.");
@@ -46645,7 +46600,6 @@ const webviewsStrings = { de: {
     "webview publish": "dist mit Revisionsschutz bereitstellen oder mit --check ohne Schreibzugriff auf Abweichungen prüfen."
   },
   descriptions: {
-    "inspect (default) or publish.": "inspect (Standard) oder publish.",
     "Inspect or publish this project instead of the selected one.": "Dieses Projekt statt des ausgewählten Projekts prüfen oder bereitstellen.",
     "The installed folder revision from webview inspect; required to replace a changed view.": "Die installierte Ordnerrevision aus webview inspect; zum Ersetzen einer geänderten Ansicht erforderlich.",
     "Check publication drift without writing; fail with WEBVIEW_DRIFT when assets differ.": "Ohne Schreibzugriff auf Abweichungen prüfen; bei Unterschieden mit WEBVIEW_DRIFT fehlschlagen."
@@ -50881,9 +50835,9 @@ function initializeDocument(effects) {
   return start2;
   function start2(code2) {
     if (continued < stack.length) {
-      const item = stack[continued];
-      self.containerState = item[1];
-      return effects.attempt(item[0].continuation, documentContinue, checkNewContainers)(code2);
+      const item2 = stack[continued];
+      self.containerState = item2[1];
+      return effects.attempt(item2[0].continuation, documentContinue, checkNewContainers)(code2);
     }
     return checkNewContainers(code2);
   }
@@ -51916,9 +51870,9 @@ class SpliceBuffer {
    * @returns {undefined}
    *   Nothing.
    */
-  push(item) {
+  push(item2) {
     this.setCursor(Number.POSITIVE_INFINITY);
-    this.left.push(item);
+    this.left.push(item2);
   }
   /**
    * Inserts many items to the high-numbered side of the array.
@@ -51942,9 +51896,9 @@ class SpliceBuffer {
    * @returns {undefined}
    *   Nothing.
    */
-  unshift(item) {
+  unshift(item2) {
     this.setCursor(0);
-    this.right.push(item);
+    this.right.push(item2);
   }
   /**
    * Inserts many items to the low-numbered side of the array;
@@ -53989,8 +53943,8 @@ function initializeFactory(field2) {
       let index2 = -1;
       if (list2) {
         while (++index2 < list2.length) {
-          const item = list2[index2];
-          if (!item.previous || item.previous.call(self, self.previous)) {
+          const item2 = list2[index2];
+          if (!item2.previous || item2.previous.call(self, self.previous)) {
             return true;
           }
         }
@@ -54866,17 +54820,17 @@ function compiler(options2) {
           });
         }
         if (event[1].type === "listItemPrefix") {
-          const item = {
+          const item2 = {
             type: "listItem",
             _spread: false,
             start: Object.assign({}, event[1].start),
             // @ts-expect-error: we’ll add `end` in a second.
             end: void 0
           };
-          listItem2 = item;
+          listItem2 = item2;
           insertions.push({
             at: index2,
-            event: ["enter", item, event[2]]
+            event: ["enter", item2, event[2]]
           });
           firstBlankLineIndex = void 0;
           atMarker = true;
@@ -55577,11 +55531,11 @@ function url(value2) {
   return parsed2.href;
 }
 function locator(value2) {
-  const item = record$1(value2, ["role", "name", "label", "testId", "css"], "Locator");
-  const kinds = ["role", "label", "testId", "css"].filter((key) => item[key] !== void 0);
-  valid(kinds.length === 1 && (item.name === void 0 || kinds[0] === "role"), "A locator must specify exactly one of role, label, testId or css; only role accepts name.");
+  const item2 = record$1(value2, ["role", "name", "label", "testId", "css"], "Locator");
+  const kinds = ["role", "label", "testId", "css"].filter((key) => item2[key] !== void 0);
+  valid(kinds.length === 1 && (item2.name === void 0 || kinds[0] === "role"), "A locator must specify exactly one of role, label, testId or css; only role accepts name.");
   const kind2 = kinds[0];
-  const result = { [kind2]: text$6(item[kind2], `Locator ${kind2}`), ...item.name === void 0 ? {} : { name: text$6(item.name, "Locator name") } };
+  const result = { [kind2]: text$6(item2[kind2], `Locator ${kind2}`), ...item2.name === void 0 ? {} : { name: text$6(item2.name, "Locator name") } };
   return result;
 }
 function action(value2) {
@@ -55910,6 +55864,7 @@ const timeout = option$1.string("Browser operation timeout in milliseconds, from
 const revision = option$1.string("Current output revision from read (screenshot) or browser validate (tutorial); required before replacing existing output.");
 const noSandbox = option$1.boolean("Run Chromium without its operating-system sandbox; only for trusted pages where the sandbox cannot start.");
 const projectMode = { scope: "project", projectOption: "project", discovery: false };
+const source = { name: "source", description: "Project-relative flow JSON, Markdown or Canvas source.", required: true };
 function browserCommand(runtime2, blocks) {
   const screenshot = new BrowserScreenshot(runtime2), tutorial = new BrowserTutorial(runtime2, blocks);
   return {
@@ -55921,15 +55876,12 @@ function browserCommand(runtime2, blocks) {
     mutating: false,
     defaultAction: "status",
     unknownAction: "INVALID_ARGUMENT",
-    args: [
-      { name: "action", description: "status (default), install, screenshot, validate or tutorial.", enum: ["status", "install", "screenshot", "validate", "tutorial"] },
-      { name: "source", description: "Absolute HTTP(S) URL for screenshot, or a project-relative flow JSON, Markdown or Canvas source." }
-    ],
     actions: {
       status: {
         description: "Inspect executable-file availability without launching a browser or verifying browser compatibility.",
         discovery: true,
         output: browserStatusSchema,
+        args: [],
         options: { "browser-executable": executable }
       },
       install: {
@@ -55938,7 +55890,8 @@ function browserCommand(runtime2, blocks) {
         mutating: true,
         destructive: false,
         idempotent: true,
-        output: installSchema
+        output: installSchema,
+        args: []
       },
       screenshot: {
         description: "Save a webpage screenshot as a guarded PNG and return a Markdown image reference.",
@@ -55947,6 +55900,7 @@ function browserCommand(runtime2, blocks) {
         destructive: true,
         idempotent: true,
         output: screenshotSchema,
+        args: [{ name: "url", description: "Absolute HTTP(S) URL of the page.", required: true }],
         usage: "browser screenshot <url> --out <image.png> [--width <pixels>] [--height <pixels>] [--full-page] [--wait-for-selector <selector>] [--timeout-ms <milliseconds>] [--browser-executable <path>] [--if-match <revision>] [--project <id>]",
         options: {
           project: project$1,
@@ -55964,12 +55918,14 @@ function browserCommand(runtime2, blocks) {
       validate: {
         description: "Validate a declared tutorial flow without opening a browser and inspect its output revision.",
         ...projectMode,
+        args: [source],
         options: { project: project$1, out: option$1.string("Optional project-relative tutorial directory whose current revision should be inspected.") },
         output: tutorialValidationSchema
       },
       tutorial: {
         description: "Replay a declared flow and atomically save its manual, screenshots and repeatable plan.",
         ...projectMode,
+        args: [source],
         mutating: true,
         destructive: true,
         idempotent: true,
@@ -55988,16 +55944,11 @@ function browserCommand(runtime2, blocks) {
     async run(args, flags, context) {
       const action2 = args[0] ?? "status";
       ensure(["status", "install", "screenshot", "validate", "tutorial"].includes(action2), "INVALID_ARGUMENT", "Use browser status, install, screenshot, validate or tutorial.");
-      if (action2 === "status") {
-        arity(args, 0, 1);
-        return browserStatusView(await runtime2.status(browserExecutable(value$2(flags, "browser-executable"))), context.t);
-      }
+      if (action2 === "status") return browserStatusView(await runtime2.status(browserExecutable(value$2(flags, "browser-executable"))), context.t);
       if (action2 === "install") {
-        arity(args, 1);
         if (context.workspace.dryRun) return { dryRun: true, executed: false, plan: { browser: "chromium", operation: "install" } };
         return { dryRun: false, executed: true, status: browserStatusView(await runtime2.install(), context.t) };
       }
-      arity(args, 2);
       if (action2 === "validate") return tutorial.validate(context, args[1], value$2(flags, "out"));
       const out2 = value$2(flags, "out", true);
       const timeoutMs = browserTimeout(integer$2(flags, "timeout-ms", 1));
@@ -56044,8 +55995,8 @@ const browserStrings = { en: { messages: englishMessages }, de: {
     "browser tutorial": "Einen deklarierten Ablauf ausführen und Anleitung, Screenshots und wiederholbaren Plan atomar speichern."
   },
   descriptions: {
-    "status (default), install, screenshot, validate or tutorial.": "status (Standard), install, screenshot, validate oder tutorial.",
-    "Absolute HTTP(S) URL for screenshot, or a project-relative flow JSON, Markdown or Canvas source.": "Absolute HTTP(S)-URL für screenshot oder projektrelative JSON-, Markdown- oder Canvas-Ablaufquelle.",
+    "Absolute HTTP(S) URL of the page.": "Absolute HTTP(S)-URL der Seite.",
+    "Project-relative flow JSON, Markdown or Canvas source.": "Projektrelative JSON-, Markdown- oder Canvas-Ablaufquelle.",
     "Use this project instead of the selected project.": "Dieses Projekt statt des ausgewählten Projekts verwenden.",
     "Use this Chromium executable; otherwise use FORGE_BROWSER_EXECUTABLE or the installed managed browser.": "Diese Chromium-Datei verwenden; sonst FORGE_BROWSER_EXECUTABLE oder den installierten verwalteten Browser verwenden.",
     "Browser operation timeout in milliseconds, from 1 to 120000.": "Zeitlimit für Browser-Vorgänge in Millisekunden von 1 bis 120000.",
@@ -56308,11 +56259,11 @@ function updateCommand(updater) {
     mutating: false,
     defaultAction: "check",
     unknownAction: "INVALID_ARGUMENT",
-    args: [{ name: "action", description: "check (default) or apply.", enum: ["check", "apply"] }],
     actions: {
       check: {
         description: "Inspect the installed revision and latest stable GitHub release without changing the app.",
         output: updateCheckSchema,
+        args: [],
         options: { "release-version": option$1.string("Check this pinned stable release instead of resolving latest.") }
       },
       apply: {
@@ -56321,6 +56272,7 @@ function updateCommand(updater) {
         destructive: true,
         idempotent: true,
         output: updateApplySchema,
+        args: [],
         options: {
           "release-version": option$1.string("Stable GitHub release version to install, such as 0.1.0.", { required: true }),
           "if-match": option$1.string("Installed bin folder revision returned by update check; required before upgrading.", { required: true })
@@ -56329,7 +56281,6 @@ function updateCommand(updater) {
     },
     errors: ["INVALID_ARGUMENT", "INVALID_PATH", "NOT_FOUND", "CONFLICT", "UNSAFE_PATH", "DESTINATION_EXISTS", "UPDATE_INVALID", "UPDATE_DOWNLOAD_FAILED", "UPDATE_SCOPE_INVALID"],
     async run(args, flags, context) {
-      arity(args, 0, 1);
       const action2 = args[0] ?? "check";
       ensure(action2 === "check" || action2 === "apply", "INVALID_ARGUMENT", "Use update check or update apply.");
       if (action2 === "check") return updater.check(context, value$2(flags, "release-version"));
@@ -56348,7 +56299,6 @@ const updatesStrings = { de: {
     "update apply": "Eine feste Version herunterladen, prüfen und als geschützten Stapel anwenden; veränderbare Workspace-Daten erhalten."
   },
   descriptions: {
-    "check (default) or apply.": "check (Standard) oder apply.",
     "Check this pinned stable release instead of resolving latest.": "Diese feste stabile Version statt der neuesten Version prüfen.",
     "Stable GitHub release version to install, such as 0.1.0.": "Zu installierende stabile GitHub-Version, etwa 0.1.0.",
     "Installed bin folder revision returned by update check; required before upgrading.": "Installierte bin-Ordnerrevision aus update check; vor der Aktualisierung erforderlich."
@@ -56562,7 +56512,7 @@ function encodeOutcome(outcome) {
   const source2 = outcome.metadata, metadata2 = { ...source2 };
   for (const key of positioned) {
     const items2 = source2[key];
-    if (items2) metadata2[key] = items2.map((item) => ({ ...item, position: index2(item.position) }));
+    if (items2) metadata2[key] = items2.map((item2) => ({ ...item2, position: index2(item2.position) }));
   }
   if (source2.blocks) metadata2.blocks = Object.fromEntries(Object.entries(source2.blocks).map(([id2, block]) => [id2, { ...block, position: index2(block.position) }]));
   if (source2.frontmatterPosition) metadata2.frontmatterPosition = index2(source2.frontmatterPosition);
@@ -56578,10 +56528,10 @@ function decodeOutcome(stored) {
     const at = value2 * 6;
     return { start: { line: positions2[at], col: positions2[at + 1], offset: positions2[at + 2] }, end: { line: positions2[at + 3], col: positions2[at + 4], offset: positions2[at + 5] } };
   };
-  const decode2 = (item) => {
-    const value2 = position2(item.position);
+  const decode2 = (item2) => {
+    const value2 = position2(item2.position);
     if (value2 === void 0) return false;
-    item.position = value2;
+    item2.position = value2;
     return true;
   };
   for (const key of positioned) {
@@ -56615,7 +56565,7 @@ function decodeResolution(stored, paths2) {
   if (reason === "missing") return stored.length === 2 ? { status: "unresolved", linkpath, reason } : void 0;
   if (reason !== "path" && reason !== "alias") return void 0;
   const candidates2 = indexes2.map(path2);
-  return candidates2.length > 1 && candidates2.every((item) => item !== void 0) ? { status: "unresolved", linkpath, reason: "ambiguous", via: reason, candidates: candidates2 } : void 0;
+  return candidates2.length > 1 && candidates2.every((item2) => item2 !== void 0) ? { status: "unresolved", linkpath, reason: "ambiguous", via: reason, candidates: candidates2 } : void 0;
 }
 class ParseResults {
   constructor(options2) {
@@ -56831,7 +56781,7 @@ class VaultMetadata {
     const sources = this.sources().map((source2) => {
       const references2 = this.outgoing.get(source2) ?? [];
       let next = 0;
-      return [source2, orderedReferences(this.caches.get(source2)).map((item) => references2[next]?.reference === item.reference ? encodeResolution(references2[next++].resolution, (path2) => positions2.get(path2)) : null)];
+      return [source2, orderedReferences(this.caches.get(source2)).map((item2) => references2[next]?.reference === item2.reference ? encodeResolution(references2[next++].resolution, (path2) => positions2.get(path2)) : null)];
     });
     return { paths: [...this.paths], aliases: this.aliases, sources: Object.fromEntries(sources) };
   }
@@ -56888,7 +56838,7 @@ class VaultMetadata {
     return fileToLinktext(this.index, path2, sourcePath, omitMdExtension);
   }
   backlinks(path2) {
-    return vaultOrder(this.incoming.get(path2) ?? []).filter((source2) => source2 !== path2).flatMap((source2) => this.references(source2).filter((item) => item.resolution.status === "resolved" && item.resolution.path === path2).map((item) => ({ ...item, source: source2 })));
+    return vaultOrder(this.incoming.get(path2) ?? []).filter((source2) => source2 !== path2).flatMap((source2) => this.references(source2).filter((item2) => item2.resolution.status === "resolved" && item2.resolution.path === path2).map((item2) => ({ ...item2, source: source2 })));
   }
   /**
    * Lists the vault, then takes each indexed file's parse result from the stored snapshot when its stamp is
@@ -56994,7 +56944,7 @@ class VaultMetadata {
   }
   resolutionKey(source2) {
     const references2 = this.outgoing.get(source2);
-    return references2 && JSON.stringify(references2.map((item) => item.resolution));
+    return references2 && JSON.stringify(references2.map((item2) => item2.resolution));
   }
   sources() {
     return this.paths.filter((path2) => this.caches.has(path2));
@@ -57021,10 +56971,10 @@ class VaultMetadata {
     this.unlink(source2);
     const ordered2 = orderedReferences(this.caches.get(source2)), known2 = stored?.length === ordered2.length ? stored : void 0;
     const references2 = [];
-    for (const [place, item] of ordered2.entries()) {
-      const syntax2 = item.reference.syntax, relative = syntax2 !== "wikilink" && syntax2 !== "canvas";
-      const resolution = (known2 && decodeResolution(known2[place], this.paths)) ?? resolveLinkpath(this.index, item.reference.link, source2, { relative, aliases: true });
-      if (resolution.status !== "external") references2.push({ ...item, resolution });
+    for (const [place, item2] of ordered2.entries()) {
+      const syntax2 = item2.reference.syntax, relative = syntax2 !== "wikilink" && syntax2 !== "canvas";
+      const resolution = (known2 && decodeResolution(known2[place], this.paths)) ?? resolveLinkpath(this.index, item2.reference.link, source2, { relative, aliases: true });
+      if (resolution.status !== "external") references2.push({ ...item2, resolution });
     }
     const resolved2 = counts(), unresolved = counts();
     for (const { resolution } of references2) {
@@ -57039,8 +56989,8 @@ class VaultMetadata {
     this.unresolvedLinks[source2] = unresolved;
   }
   unlink(source2) {
-    for (const item of this.outgoing.get(source2) ?? []) {
-      if (item.resolution.status === "resolved") this.incoming.get(item.resolution.path)?.delete(source2);
+    for (const item2 of this.outgoing.get(source2) ?? []) {
+      if (item2.resolution.status === "resolved") this.incoming.get(item2.resolution.path)?.delete(source2);
     }
   }
   /** Removes a source's outgoing references and link counts. */
@@ -64988,7 +64938,7 @@ function markdownReferences(value2, tree, inlineTags) {
     if ("tagName" in element2) {
       if (["script", "style", "code", "pre"].includes(element2.tagName)) return;
       const attribute2 = element2.tagName === "a" ? "href" : ["img", "audio", "video", "source", "iframe"].includes(element2.tagName) ? "src" : void 0;
-      const target2 = element2.attrs.find((item) => item.name === attribute2)?.value;
+      const target2 = element2.attrs.find((item2) => item2.name === attribute2)?.value;
       if (target2) {
         const location2 = element2.sourceCodeLocation?.attrs?.[attribute2];
         const [from, to] = location2 ? [location2.startOffset, location2.endOffset] : [0, node2.value.length];
@@ -65062,14 +65012,14 @@ function markdownStructure(text2, tree, lines2) {
   }
   const items2 = (list2, parentLine) => {
     const listLine = lines2.line(start(list2));
-    for (const item of list2.children ?? []) {
-      const content2 = (item.children ?? []).filter((child) => child.type !== "list");
-      const span = { start: start(item), end: content2.length ? end(content2.at(-1)) : lines2.lineEnd(lines2.line(start(item))) };
+    for (const item2 of list2.children ?? []) {
+      const content2 = (item2.children ?? []).filter((child) => child.type !== "list");
+      const span = { start: start(item2), end: content2.length ? end(content2.at(-1)) : lines2.lineEnd(lines2.line(start(item2))) };
       const marker = task.exec(text2.slice(span.start, lines2.lineEnd(lines2.line(span.start))))?.[1];
       const id2 = content2.length ? lastLineId(span) : void 0;
       listItems2.push({ parentLine, listLine, ...span, ...marker === void 0 ? {} : { task: marker }, ...id2 ? { id: id2 } : {} });
       if (id2) blocks.push({ id: id2, ...span });
-      for (const child of item.children ?? []) if (child.type === "list") items2(child, lines2.line(span.start));
+      for (const child of item2.children ?? []) if (child.type === "list") items2(child, lines2.line(span.start));
     }
   };
   const visit2 = (node2) => {
@@ -65088,7 +65038,7 @@ function frontmatterLinks(properties2) {
         result.push({ key, link: link2, original, displayText, syntax: syntax2, ...subpath ? { subpath } : {}, ...embed ? { embed } : {} });
       }
     } else if (value2 && typeof value2 === "object") {
-      for (const [name2, item] of Object.entries(value2)) visit2(item, key ? `${key}.${name2}` : name2);
+      for (const [name2, item2] of Object.entries(value2)) visit2(item2, key ? `${key}.${name2}` : name2);
     }
   };
   visit2(properties2, "");
@@ -65129,8 +65079,8 @@ function markdownMetadata(content2, properties2, body) {
   for (const { id: id2, ...span } of structure.blocks) blocks[id2.toLowerCase()] ??= { id: id2, ...at(span) };
   const aliases = frontmatterAliases(properties2);
   return {
-    ...nonEmpty("links", found.references.filter((item) => !item.embed).map(link2)),
-    ...nonEmpty("embeds", found.references.filter((item) => item.embed).map(link2)),
+    ...nonEmpty("links", found.references.filter((item2) => !item2.embed).map(link2)),
+    ...nonEmpty("embeds", found.references.filter((item2) => item2.embed).map(link2)),
     ...nonEmpty("frontmatterLinks", frontmatterLinks(properties2)),
     ...nonEmpty("referenceLinks", found.definitions.map(({ id: id2, link: link22, original, ...span }) => ({ id: id2, link: link22, original, ...at(span) }))),
     ...nonEmpty("tags", found.tags.map(({ tag, ...span }) => ({ tag, ...at(span) }))),
@@ -65331,7 +65281,7 @@ function sections(text2, headings) {
     while (stack.length > 0 && stack.at(-1).level >= heading2.level) stack.pop();
     stack.push(heading2);
     const next = ordered2.slice(index2 + 1).find((candidate) => candidate.level <= heading2.level);
-    return { heading: heading2, path: stack.map((item) => item.heading.trim()), bodyStart: nextLine(text2, heading2.position.end.offset), end: next?.position.start.offset ?? text2.length };
+    return { heading: heading2, path: stack.map((item2) => item2.heading.trim()), bodyStart: nextLine(text2, heading2.position.end.offset), end: next?.position.start.offset ?? text2.length };
   });
 }
 function names$1(path2, segments2, same2) {
@@ -65394,7 +65344,7 @@ const reportedBlocks = 50;
 const itemMarker = /^((?:[-*+]|\d{1,9}[.)])[ \t]+)((?:\[.\][ \t]+)?)/;
 const blankLine = /^[ \t]*(?:\r?\n|$)/;
 function blockCount(metadata2, id2) {
-  return [...metadata2.sections ?? [], ...metadata2.listItems ?? []].filter((item) => item.id?.toLowerCase() === id2).length;
+  return [...metadata2.sections ?? [], ...metadata2.listItems ?? []].filter((item2) => item2.id?.toLowerCase() === id2).length;
 }
 function insertBlocks(text2, at, content2, newline) {
   let head = text2.slice(0, at);
@@ -65403,11 +65353,11 @@ function insertBlocks(text2, at, content2, newline) {
   if (head !== "" && !/(?:^|\n)[ \t]*\r?\n$/.test(head)) head += newline;
   return head + asLines(content2, newline) + (tail !== "" && !blankLine.test(tail) ? newline : "") + tail;
 }
-function subtreeEnd(items2, item) {
-  const lines2 = /* @__PURE__ */ new Set([item.position.start.line]);
-  let end2 = item.position.end.offset;
-  for (const next of items2.slice(items2.indexOf(item) + 1)) {
-    if (!lines2.has(next.parent) || next.position.start.col <= item.position.start.col) break;
+function subtreeEnd(items2, item2) {
+  const lines2 = /* @__PURE__ */ new Set([item2.position.start.line]);
+  let end2 = item2.position.end.offset;
+  for (const next of items2.slice(items2.indexOf(item2) + 1)) {
+    if (!lines2.has(next.parent) || next.position.start.col <= item2.position.start.col) break;
     lines2.add(next.position.start.line);
     end2 = Math.max(end2, next.position.end.offset);
   }
@@ -65416,13 +65366,13 @@ function subtreeEnd(items2, item) {
 function indented(lines2, first, indent2, newline) {
   return lines2.map((line, index2) => index2 === 0 ? first + line : line.trim() === "" ? indent2.trimEnd() + line : indent2 + line).join(newline);
 }
-function editListItem(text2, metadata2, item, id2, mode, content2, newline) {
-  const start2 = item.position.start.offset, lineAt = lineStart(text2, start2), prefix = text2.slice(lineAt, start2);
+function editListItem(text2, metadata2, item2, id2, mode, content2, newline) {
+  const start2 = item2.position.start.offset, lineAt = lineStart(text2, start2), prefix = text2.slice(lineAt, start2);
   const lines2 = content2.replace(/\r?\n$/, "").split(/\r?\n/);
   if (mode !== "replace") {
     ensure(itemMarker.test(lines2[0]), "INVALID_INPUT", `Content added next to the list item ^${id2} becomes sibling list items, so it must start with a list marker, such as "- ${lines2[0].trim() || "Item"}".`, { block: id2 });
     const siblings = lines2.map((line) => line.trim() === "" ? prefix.trimEnd() : prefix + line).join(newline);
-    return insertLines(text2, mode === "append" ? nextLine(text2, subtreeEnd(metadata2.listItems ?? [], item)) : lineAt, siblings, newline);
+    return insertLines(text2, mode === "append" ? nextLine(text2, subtreeEnd(metadata2.listItems ?? [], item2)) : lineAt, siblings, newline);
   }
   const [, bullet = "", checkbox = ""] = itemMarker.exec(text2.slice(start2)) ?? [];
   const own2 = itemMarker.exec(lines2[0]);
@@ -65430,16 +65380,16 @@ function editListItem(text2, metadata2, item, id2, mode, content2, newline) {
   const width = (own2?.[1] ?? bullet).length;
   let replacement2 = indented(lines2, first, prefix.replace(/[^\s>]/g, " ") + " ".repeat(width), newline);
   if (!new RegExp(`(?:^|\\s)\\^${id2}\\s*$`, "i").test(replacement2)) replacement2 += ` ^${id2}`;
-  return text2.slice(0, start2) + replacement2 + text2.slice(item.position.end.offset);
+  return text2.slice(0, start2) + replacement2 + text2.slice(item2.position.end.offset);
 }
 function editBlock(text2, metadata2, id2, mode, content2) {
   const key = id2.replace(/^\^/, "").toLowerCase(), block = metadata2.blocks?.[key];
-  if (!block) throw forgeError("SECTION_NOT_FOUND", `No block has the id ^${key}.`, { block: key, blocks: Object.values(metadata2.blocks ?? {}).sort((a, b) => a.position.start.offset - b.position.start.offset).slice(0, reportedBlocks).map((item2) => item2.id) });
+  if (!block) throw forgeError("SECTION_NOT_FOUND", `No block has the id ^${key}.`, { block: key, blocks: Object.values(metadata2.blocks ?? {}).sort((a, b) => a.position.start.offset - b.position.start.offset).slice(0, reportedBlocks).map((item22) => item22.id) });
   const count2 = blockCount(metadata2, key);
   ensure(count2 <= 1, "AMBIGUOUS_SECTION", `The block id ^${block.id} occurs ${count2} times; Obsidian links only the first. Give each block a unique id.`, { block: block.id, matches: count2 });
   const newline = lineBreak(text2), { start: start2, end: end2 } = { start: block.position.start.offset, end: block.position.end.offset };
-  const item = metadata2.listItems?.find((candidate) => candidate.id?.toLowerCase() === key && candidate.position.start.offset === start2);
-  if (item) return editListItem(text2, metadata2, item, block.id, mode, content2, newline);
+  const item2 = metadata2.listItems?.find((candidate) => candidate.id?.toLowerCase() === key && candidate.position.start.offset === start2);
+  if (item2) return editListItem(text2, metadata2, item2, block.id, mode, content2, newline);
   const marker = new RegExp(`(?:^|\\s)\\^${block.id}\\s*$`, "i");
   const inside2 = marker.test(text2.slice(start2, end2));
   if (mode === "prepend") return insertBlocks(text2, lineStart(text2, start2), content2, newline);
@@ -65643,22 +65593,22 @@ function resolvesTo(index2, candidate, source2, target2) {
 }
 function candidates(metadata2, plan) {
   const result = [];
-  for (const item of [...metadata2.links ?? [], ...metadata2.embeds ?? []]) {
-    if (item.syntax === "reference") continue;
-    const { start: start2, end: end2 } = { start: item.position.start.offset, end: item.position.end.offset };
-    result.push({ link: item.link, original: item.original, syntax: item.syntax, relative: isRelativeSyntax(item.syntax), apply: (text2) => plan.edits.push({ start: start2, end: end2, original: item.original, text: text2 }) });
+  for (const item2 of [...metadata2.links ?? [], ...metadata2.embeds ?? []]) {
+    if (item2.syntax === "reference") continue;
+    const { start: start2, end: end2 } = { start: item2.position.start.offset, end: item2.position.end.offset };
+    result.push({ link: item2.link, original: item2.original, syntax: item2.syntax, relative: isRelativeSyntax(item2.syntax), apply: (text2) => plan.edits.push({ start: start2, end: end2, original: item2.original, text: text2 }) });
   }
-  for (const item of metadata2.referenceLinks ?? []) {
-    const { start: start2, end: end2 } = { start: item.position.start.offset, end: item.position.end.offset };
-    result.push({ link: item.link, original: item.original, syntax: "reference", relative: true, apply: (text2) => plan.edits.push({ start: start2, end: end2, original: item.original, text: text2 }) });
+  for (const item2 of metadata2.referenceLinks ?? []) {
+    const { start: start2, end: end2 } = { start: item2.position.start.offset, end: item2.position.end.offset };
+    result.push({ link: item2.link, original: item2.original, syntax: "reference", relative: true, apply: (text2) => plan.edits.push({ start: start2, end: end2, original: item2.original, text: text2 }) });
   }
-  for (const item of metadata2.frontmatterLinks ?? []) {
-    result.push({ link: item.link, original: item.original, syntax: item.syntax, relative: isRelativeSyntax(item.syntax), apply: (text2) => {
-      if (!plan.frontmatter.some((entry2) => entry2.key === item.key && entry2.original === item.original)) plan.frontmatter.push({ key: item.key, original: item.original, text: text2 });
+  for (const item2 of metadata2.frontmatterLinks ?? []) {
+    result.push({ link: item2.link, original: item2.original, syntax: item2.syntax, relative: isRelativeSyntax(item2.syntax), apply: (text2) => {
+      if (!plan.frontmatter.some((entry2) => entry2.key === item2.key && entry2.original === item2.original)) plan.frontmatter.push({ key: item2.key, original: item2.original, text: text2 });
     } });
   }
-  for (const item of metadata2.canvasLinks ?? []) {
-    result.push({ link: item.link, original: item.original, syntax: "canvas", relative: false, apply: (file) => plan.canvas.push({ node: item.node, original: item.original, file }) });
+  for (const item2 of metadata2.canvasLinks ?? []) {
+    result.push({ link: item2.link, original: item2.original, syntax: "canvas", relative: false, apply: (file) => plan.canvas.push({ node: item2.node, original: item2.original, file }) });
   }
   return result;
 }
@@ -66057,26 +66007,25 @@ function serverCommands(controller) {
     mutating: false,
     defaultAction: "status",
     unknownAction: "INVALID_ARGUMENT",
-    args: [{ name: "action", description: "status (default), start or stop.", enum: ["status", "start", "stop"] }],
     output: statusOutput,
     actions: {
-      status: { description: "Inspect the workspace server and discover installed webviews, including while stopped.", mutating: false },
+      status: { description: "Inspect the workspace server and discover installed webviews, including while stopped.", mutating: false, args: [] },
       start: {
         description: "Start or reuse the localhost server and return its authenticated URL; no browser opens.",
         mutating: true,
         destructive: false,
         idempotent: true,
         output: lifecycleOutput,
+        args: [],
         options: {
           port: option$1.string("TCP port from 0 to 65535; 0 chooses an available port. A running server keeps its current port.", { default: "0" }),
           webview: option$1.string("Installed webview id to include in the launch URL, such as admin.")
         }
       },
-      stop: { description: "Stop the verified workspace server; repeated stops have no further effect.", mutating: true, destructive: false, idempotent: true, output: lifecycleOutput }
+      stop: { description: "Stop the verified workspace server; repeated stops have no further effect.", args: [], mutating: true, destructive: false, idempotent: true, output: lifecycleOutput }
     },
     errors: ["SERVER_START_FAILED", "SERVER_STOP_FAILED", "SERVER_STATE_INVALID", "SERVER_BUSY"],
     async run(args, flags, context) {
-      arity(args, 0, 1);
       const action2 = args[0] ?? "status";
       ensure(action2 === "start" || action2 === "stop" || action2 === "status", "INVALID_ARGUMENT", "Use server status, server start or server stop.");
       ensure(action2 === "start" || flags.port === void 0 && flags.webview === void 0, "INVALID_ARGUMENT", "--port and --webview require server start.");
@@ -66571,16 +66520,16 @@ class Help {
    */
   groupItems(unsortedItems, visibleItems, getGroup) {
     const result = /* @__PURE__ */ new Map();
-    unsortedItems.forEach((item) => {
-      const group = getGroup(item);
+    unsortedItems.forEach((item2) => {
+      const group = getGroup(item2);
       if (!result.has(group)) result.set(group, []);
     });
-    visibleItems.forEach((item) => {
-      const group = getGroup(item);
+    visibleItems.forEach((item2) => {
+      const group = getGroup(item2);
       if (!result.has(group)) {
         result.set(group, []);
       }
-      result.get(group).push(item);
+      result.get(group).push(item2);
     });
     return result;
   }
@@ -69452,24 +69401,6 @@ function unknownOptionGuidance(error2, command2, args) {
   const option2 = error2.details.option, accepts = [...Object.keys(commandOptions(command2, args)), ...commandGlobals];
   return forgeError("UNKNOWN_OPTION", `Unknown option ${option2} for ${invocationName(command2, args)}.`, { option: option2, command: command2.id, suggestions: optionSuggestions(option2, accepts) });
 }
-const arityDetails = (details) => isRecord$1(details) && ["minimum", "maximum", "received"].every((key) => typeof details[key] === "number") && Object.keys(details).length === 3;
-function argumentGuidance(error2, command2, args) {
-  if (!(error2 instanceof AppError) || error2.code !== "INVALID_ARGUMENT" || !arityDetails(error2.details)) return error2;
-  const { received, minimum } = error2.details;
-  const id2 = args.length > received ? spelledAction(command2, args) : void 0, action2 = id2 === void 0 ? void 0 : command2.actions?.[id2];
-  const usage = action2?.usage ?? command2.usage;
-  const missing2 = command2.actions === void 0 && received < minimum ? (command2.args ?? []).slice(received, minimum).map((arg) => arg.name) : [];
-  const named = missing2.length > 0 ? `Missing ${missing2.map((name2) => `<${name2}>`).join(" ")}. ` : action2 ? `${command2.id} ${id2}: ` : "";
-  return forgeError("INVALID_ARGUMENT", `${named}${error2.message} Usage: ${usage}`, { ...error2.details, ...missing2.length > 0 ? { missing: missing2 } : {} });
-}
-async function runCommand(command2, args, flags, context) {
-  ensureKnownAction(command2, args);
-  try {
-    return await command2.run(args, flags, context);
-  } catch (error2) {
-    throw argumentGuidance(error2, command2, args);
-  }
-}
 const globalOptionMetadata = {
   root: option$1.string("Workspace root to load bin/config.json from; overrides FORGE_ROOT."),
   lang: option$1.string("Response language for descriptions, hints and summaries.", { enum: ["en", "de"], default: "en" }),
@@ -69527,7 +69458,7 @@ function declaredValues(options2, flags) {
     }
     if (typeof given !== "string") continue;
     const items2 = schema2.list ? listOptionItems(given) : [given];
-    if (schema2.enum !== void 0 && !items2.every((item) => schema2.enum.includes(item))) {
+    if (schema2.enum !== void 0 && !items2.every((item2) => schema2.enum.includes(item2))) {
       const expected = schema2.list ? "a comma-separated list of" : "one of";
       throw forgeError("INVALID_OPTION_VALUE", `--${key} must be ${expected}: ${schema2.enum.join(", ")}.`, { option: key, value: given, allowed: [...schema2.enum] });
     }
@@ -69610,6 +69541,7 @@ function declaredErrors(command2) {
 const generatorCatalog = (registry2) => [...registry2.generators.values()].map(({ id: id2, description: description2 }) => ({ id: id2, description: description2 }));
 const makeErrors = ["UNKNOWN_GENERATOR", "INVALID_NAME", "CONFLICT", "GENERATION_DRIFT", "INVALID_GENERATION_PLAN", "INVALID_GENERATION_REVISIONS", "PROJECT_REQUIRED"];
 const out = { out: option$1.string("Output directory; each generator documents its default.") };
+const nameArgument = { name: "name", description: "The name or id the generator creates from.", required: true };
 function generatorOptions(generator) {
   return { ...generator.fixedDirectory ? {} : out, ...generator.options, ...generator.review ? reviewOptions : {} };
 }
@@ -69625,10 +69557,8 @@ function generationCommand(registry2) {
     scope: "workspace",
     discovery: false,
     mutating: false,
-    args: [
-      { name: "generator", description: "A generator id; without one, make lists the generators." },
-      { name: "name", description: "The name or id the generator creates from." }
-    ],
+    // Without a generator, make lists the generators; each generator takes the name it creates from.
+    args: [],
     unknownAction: "UNKNOWN_GENERATOR",
     generatorActions: true,
     localizedOutput: { generators: "generators" },
@@ -69647,6 +69577,7 @@ function generationCommand(registry2) {
         idempotent: generator.idempotent ?? false,
         ...generator.projectOption ? { projectOption: generator.projectOption } : {},
         options: generatorOptions(generator),
+        args: [nameArgument],
         ...generatorOutput(generator) ? { output: generatorOutput(generator) } : {}
       }]));
     },
@@ -69656,7 +69587,6 @@ function generationCommand(registry2) {
         ensure(own2.length === 0, "INVALID_ARGUMENT", "Generation options require a generator and name. Run make <generator> <Name>; help make lists each generator's usage and options.");
         return { generators: generatorCatalog(registry2) };
       }
-      arity(args, 2);
       const generator = registry2.generators.get(args[0]);
       ensure(generator, "UNKNOWN_GENERATOR", args[0]);
       const accepted = generatorOptions(generator);
@@ -69686,7 +69616,6 @@ const germanServerActions = {
   "server stop": "Den verifizierten Workspace-Server beenden; wiederholtes Beenden hat keine weitere Wirkung."
 };
 const germanServerDescriptions = {
-  "status (default), start or stop.": "status (Standard), start oder stop.",
   "TCP port from 0 to 65535; 0 chooses an available port. A running server keeps its current port.": "TCP-Port von 0 bis 65535; 0 wählt einen verfügbaren Port. Ein laufender Server behält seinen aktuellen Port.",
   "Installed webview id to include in the launch URL, such as admin.": "ID einer installierten Webview für die Start-URL, zum Beispiel admin."
 };
@@ -69787,11 +69716,11 @@ const germanDescriptions = {
   "A command id from the catalog.": "Eine Befehls-ID aus dem Katalog.",
   "Project scaffold type for project create.": "Projektvorlage für project create.",
   "Component kind for project component.": "Komponentenart für project component.",
-  "list (default), create, open, current, close, inspect or component.": "list (Standard), create, open, current, close, inspect oder component.",
+  "A project id.": "Eine Projekt-ID.",
+  "A project id; defaults to the selected project.": "Eine Projekt-ID; standardmäßig das ausgewählte Projekt.",
   "A project id, or the component name.": "Eine Projekt-ID oder der Komponentenname.",
   "The component name when a project id precedes it.": "Der Komponentenname, wenn eine Projekt-ID vorangeht.",
   "With sync: fail with WORKFLOW_DRIFT instead of writing when generated workflows differ.": "Mit sync: mit WORKFLOW_DRIFT fehlschlagen, statt zu schreiben, wenn generierte Workflows abweichen.",
-  "list (default) or sync.": "list (Standard) oder sync.",
   // File commands.
   "Use this project instead of the selected project.": "Dieses Projekt statt des ausgewählten Projekts verwenden.",
   "Only files of this kind.": "Nur Dateien dieser Art.",
@@ -69839,7 +69768,6 @@ const germanDescriptions = {
   "File or folder to rename.": "Umzubenennende Datei oder umzubenennender Ordner.",
   "New name without slashes; a file keeps its extension.": "Neuer Name ohne Schrägstriche; eine Datei behält ihre Erweiterung.",
   // Generation and shared library options.
-  "A generator id; without one, make lists the generators.": "Eine Generator-ID; ohne sie listet make die Generatoren auf.",
   "The name or id the generator creates from.": "Der Name oder die ID, aus der der Generator erzeugt.",
   "Output directory; each generator documents its default.": "Ausgabeverzeichnis; jeder Generator dokumentiert seinen Standard.",
   "JSON file mapping generated paths to approved SHA-256 revisions (from --plan-out).": "JSON-Datei, die generierte Pfade freigegebenen SHA-256-Revisionen zuordnet (aus --plan-out).",
@@ -69851,8 +69779,9 @@ const germanDescriptions = {
   "Library directory, relative to the workspace; defaults to the configured path.": "Bibliotheksverzeichnis relativ zum Workspace; standardmäßig der konfigurierte Pfad.",
   "Import source directory for import.": "Quellverzeichnis für import.",
   "Export destination directory for export.": "Zielverzeichnis für export.",
-  "list (default), init, inspect, validate, create, import or export.": "list (Standard), init, inspect, validate, create, import oder export.",
-  "The definition id for inspect and create.": "Die Definitions-ID für inspect und create.",
+  "The component definition id.": "Die ID der Komponentendefinition.",
+  "The interaction definition id.": "Die ID der Interaktionsdefinition.",
+  "The data-source definition id.": "Die ID der Datenquellendefinition.",
   // The JSON documents that `edit --edits` and the `apply` plan hold (the schema `help` and `schema` publish with them).
   "Literal replacements applied in order, each to the result of the previous one.": "Wörtliche Ersetzungen, der Reihe nach jeweils auf das Ergebnis der vorherigen angewendet.",
   "Exact text that must occur once, or at least once with all.": "Genauer Text, der einmal vorkommen muss, mit all mindestens einmal.",
@@ -70026,7 +69955,7 @@ function germanHintVariant(code2, value2) {
   return variants !== void 0 && Object.hasOwn(variants, value2) ? variants[value2] : void 0;
 }
 const scalar = (value2) => typeof value2 === "string" || typeof value2 === "number" && Number.isFinite(value2);
-const names = (value2) => Array.isArray(value2) && value2.length > 0 && value2.every((item) => typeof item === "string") ? value2 : void 0;
+const names = (value2) => Array.isArray(value2) && value2.length > 0 && value2.every((item2) => typeof item2 === "string") ? value2 : void 0;
 function templateValues(details) {
   const values2 = {};
   for (const [key, value2] of Object.entries(details)) if (scalar(value2)) values2[key] = value2;
@@ -70034,8 +69963,9 @@ function templateValues(details) {
   if (typeof details.argument === "string") values2.named = `Argument <${details.argument}>${typeof details.index === "number" ? ` an Position ${details.index}` : ""}`;
   if (typeof details.value === "string") values2.quoted = JSON.stringify(details.value);
   if (typeof details.minimum === "number" && typeof details.maximum === "number") values2.range = details.minimum === details.maximum ? details.minimum : `${details.minimum} bis ${details.maximum}`;
-  const missing2 = names(details.missing), allowed = names(details.allowed);
+  const missing2 = names(details.missing), allowed = names(details.allowed), unexpected = names(details.unexpected);
   if (missing2) values2.missingArguments = missing2.map((name2) => `<${name2}>`).join(" ");
+  if (unexpected) values2.unexpectedArguments = unexpected.map((value2) => JSON.stringify(value2)).join(" ");
   if (allowed) values2.allowedValues = allowed.join(", ");
   return values2;
 }
@@ -70049,12 +69979,14 @@ const templates = {
   UNKNOWN_COMMAND: [{ text: "Der Befehl {command} ist nicht registriert." }],
   UNKNOWN_OPTION: [{ text: "Der Befehl {command} akzeptiert die Option {option} nicht." }, { text: "Die Option {option} wird nicht akzeptiert." }],
   MISSING_ARGUMENT: [
+    { text: "Es fehlt {missingArguments}: erwartet {range} Positionsargumente, erhalten {received}." },
+    { text: "Es fehlt {missingArguments}: erwartet mindestens {minimum} Positionsargumente, erhalten {received}." },
     { text: "Die Option --{option} benötigt einen Wert, aber {next} folgt ihr; einen Wert, der mit - beginnt, schreiben Sie als --{option}=<Wert>." },
     { text: "--if-match ist erforderlich: Übergeben Sie die aktuelle Revision, data.revision aus read oder stat (auch ein Probelauf von move, rename oder delete meldet sie).", when: (details) => details.option === "if-match" },
     { text: "Die Option --{option} ist erforderlich." }
   ],
   INVALID_ARGUMENT: [
-    { text: "Es fehlt {missingArguments}: Falsche Anzahl an Positionsargumenten, erwartet {range}, erhalten {received}." },
+    { text: "Überzählig: {unexpectedArguments}. Falsche Anzahl an Positionsargumenten: erwartet {range}, erhalten {received}." },
     { text: "Falsche Anzahl an Positionsargumenten: erwartet {range}, erhalten {received}." },
     { text: "Unbekannte Aktion {action}; verfügbar sind {allowedValues}." },
     { text: "Jeder Pfad darf nur einmal vorkommen; er steht bereits an Position {duplicateOf}." },
@@ -70099,7 +70031,7 @@ function germanErrorMessage(code2, details) {
 }
 function location(details, text2) {
   if (typeof details.operation === "number") return `Vorgang ${details.operation}: `;
-  return typeof details.argument === "string" && !placeholders(text2).includes("named") ? `${templateValues(details).named}: ` : "";
+  return typeof details.argument === "string" && !placeholders(text2).some((name2) => name2 === "named" || name2 === "missingArguments") ? `${templateValues(details).named}: ` : "";
 }
 function locatedGermanSummary(details, summary) {
   return details === void 0 ? summary : location(details, summary) + summary;
@@ -70123,7 +70055,7 @@ function alternatives(items2, or) {
   return items2.length < 2 ? items2.join("") : `${items2.slice(0, -1).join(", ")}${or}${items2.at(-1)}`;
 }
 function suggestion$1(code2, details, language2) {
-  const suggestions2 = Array.isArray(details.suggestions) ? details.suggestions.filter((item) => typeof item === "string") : [];
+  const suggestions2 = Array.isArray(details.suggestions) ? details.suggestions.filter((item2) => typeof item2 === "string") : [];
   if (!suggestionCodes.has(code2) || suggestions2.length === 0) return void 0;
   const text2 = phrases[language2];
   if (code2 === "UNKNOWN_OPTION" && forceOptions.includes(String(details.option)) && suggestions2.includes("--if-match")) return text2.force;
@@ -70170,9 +70102,9 @@ class Localizer {
     const actions2 = command2.actions && Object.fromEntries(Object.entries(command2.actions).map(([id2, action2]) => {
       const key = `${command2.id} ${id2}`;
       const german = translated(germanActions, key) ?? this.plugins?.text("de", "actions", key) ?? (command2.generatorActions ? this.german("generators", id2) : void 0);
-      const actionOptions = this.options(action2.options);
-      if (german || actionOptions !== action2.options) translatedActions = true;
-      return [id2, { ...action2, ...german ? { description: german } : {}, ...actionOptions ? { options: actionOptions } : {} }];
+      const actionOptions = this.options(action2.options), actionArgs2 = action2.args && this.described(action2.args);
+      if (german || actionOptions !== action2.options || actionArgs2 !== action2.args) translatedActions = true;
+      return [id2, { ...action2, ...german ? { description: german } : {}, ...actionOptions ? { options: actionOptions } : {}, ...actionArgs2 ? { args: actionArgs2 } : {} }];
     }));
     if (!description2 && !translatedActions && options2 === command2.options && args === command2.args) return command2;
     return { ...command2, ...description2 ? { description: description2 } : {}, ...options2 ? { options: options2 } : {}, ...args ? { args } : {}, ...translatedActions ? { actions: actions2 } : {} };
@@ -70185,7 +70117,7 @@ class Localizer {
   /** Option and argument descriptions, including the descriptions inside the JSON document schema one declares. */
   described(items2) {
     if (this.language !== "de") return items2;
-    return items2.map((item) => ({ ...item, description: this.description(item.description), ...item.schema === void 0 ? {} : { schema: this.schema(item.schema) } }));
+    return items2.map((item2) => ({ ...item2, description: this.description(item2.description), ...item2.schema === void 0 ? {} : { schema: this.schema(item2.schema) } }));
   }
   options(options2) {
     if (!options2) return options2;
@@ -70194,9 +70126,9 @@ class Localizer {
   }
   /** `description` texts inside a JSON Schema: a plugin settings schema, as `config` reports it, or an option's document. */
   schema(value2) {
-    if (Array.isArray(value2)) return value2.map((item) => this.schema(item));
+    if (Array.isArray(value2)) return value2.map((item2) => this.schema(item2));
     if (!isRecord$1(value2)) return value2;
-    return Object.fromEntries(Object.entries(value2).map(([key, item]) => [key, key === "description" && typeof item === "string" ? this.description(item) : this.schema(item)]));
+    return Object.fromEntries(Object.entries(value2).map(([key, item2]) => [key, key === "description" && typeof item2 === "string" ? this.description(item2) : this.schema(item2)]));
   }
   /**
    * A host warning or plugin state reason as the response's `{code, message, details?}`: host messages in the
@@ -70213,24 +70145,24 @@ class Localizer {
   }
   catalogued(kind2, items2) {
     if (!Array.isArray(items2)) return items2;
-    return items2.map((item) => {
-      if (!isRecord$1(item) || typeof item.id !== "string") return item;
-      const description2 = this.german(kind2, item.id);
-      return description2 ? { ...item, description: description2 } : item;
+    return items2.map((item2) => {
+      if (!isRecord$1(item2) || typeof item2.id !== "string") return item2;
+      const description2 = this.german(kind2, item2.id);
+      return description2 ? { ...item2, description: description2 } : item2;
     });
   }
   errors(items2) {
-    return items2.map((item) => {
-      if (!isRecord$1(item) || typeof item.code !== "string") return item;
-      const summary = errorDefinition(item.code) ? germanErrors[item.code].summary : this.plugins?.localizedError(item.code, "de")?.summary;
-      return summary ? { ...item, summary } : item;
+    return items2.map((item2) => {
+      if (!isRecord$1(item2) || typeof item2.code !== "string") return item2;
+      const summary = errorDefinition(item2.code) ? germanErrors[item2.code].summary : this.plugins?.localizedError(item2.code, "de")?.summary;
+      return summary ? { ...item2, summary } : item2;
     });
   }
   /** English guidance text in the response language, by its text, wherever `value` holds it. */
   text(value2) {
     if (typeof value2 === "string") return translated(germanGuidance, value2) ?? this.plugins?.description("de", value2) ?? value2;
-    if (Array.isArray(value2)) return value2.map((item) => this.text(item));
-    return isRecord$1(value2) ? Object.fromEntries(Object.entries(value2).map(([key, item]) => [key, this.text(item)])) : value2;
+    if (Array.isArray(value2)) return value2.map((item2) => this.text(item2));
+    return isRecord$1(value2) ? Object.fromEntries(Object.entries(value2).map(([key, item2]) => [key, this.text(item2)])) : value2;
   }
   output(kind2, value2) {
     switch (kind2) {
@@ -70578,7 +70510,6 @@ function catalogCommands(registry2) {
       errors: ["UNKNOWN_COMMAND"],
       localizedOutput: { next: "text", globalOptions: "options" },
       run(args) {
-        arity(args, 0, 1);
         if (!args[0]) return helpIndex(identity2, [...registry2.commands.values()], Object.keys(globalOptionMetadata).map((key) => `--${key}`), helpNext);
         const command2 = registry2.resolveCommand(args[0]);
         return { ...describe(command2, false), globalOptions: globalOptionMetadata };
@@ -70595,7 +70526,6 @@ function catalogCommands(registry2) {
       output: schemaOutput,
       localizedOutput: { more: "text", eventOutput: "text", globalOptions: "options", generators: "generators", errors: "errors" },
       run(args, flags) {
-        arity(args, 0, 1);
         ensure(args[0] === void 0 || flags.all !== true, "INVALID_ARGUMENT", "Pass a command or --all, not both.");
         if (args[0] === void 0 && flags.all !== true) return {
           ...identity2,
@@ -70624,9 +70554,9 @@ function catalogCommands(registry2) {
       description: "Native Obsidian formats and supported operations.",
       usage: "formats",
       ...discovery$1,
+      args: [],
       localizedOutput: { textFiles: "text", attachments: "text", otherFiles: "text" },
-      run(args) {
-        arity(args, 0);
+      run() {
         return { nativeFormats, structured: ["md", "canvas", "base"], text: textExtensions, textFilenames, textFiles: "textFilenames match case-insensitively, including dot suffixes that start with a non-dot character; native extensions take precedence. UTF-8 read, literal edit, append and full replacement with unified dry-run diffs; files that are not valid UTF-8 or contain NUL characters read as base64 attachments.", attachments: "Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.", otherFiles: "Opaque bytes; plugins can provide additional processing." };
       }
     }
@@ -70636,17 +70566,16 @@ const hostNamespaces = [...hostEventNamespaces];
 const eventDelivery = "Ordered, awaited, per-listener snapshots; failures become warnings. Obsidian-style vault.* records follow each committed write (new folders first, parent before child, then files in batch order); dry runs emit workspace.quick-preview instead. Once the metadata cache is loaded in the invocation, the vault.* records of each batch are followed by metadataCache.changed, metadataCache.deleted, metadataCache.resolve and one metadataCache.resolved. operation.*, command.* and plugin.* records are host lifecycle phases, and the claude core plugin's claude.* records are the phases of each Claude invocation; workspace.* records are Obsidian workspace analogues (file-open, quick-preview, layout-ready, quit, project-change). Host namespaces are host-owned: plugins observe them but emit only their own events. onAny observes all events; replay reads bounded invocation history. No persistent replay. Responses include only vault.* records by default; --events none|changes|all or settings.events selects the output without changing delivery or replay.";
 function extensionCommands(registry2, services2) {
   return [
-    { id: "events", description: "List invocation event contracts.", usage: "events", ...discovery$1, localizedOutput: { contracts: "events", delivery: "text" }, run(args, _, { events: events2 }) {
-      arity(args, 0);
+    { id: "events", description: "List invocation event contracts.", usage: "events", ...discovery$1, args: [], localizedOutput: { contracts: "events", delivery: "text" }, run(_args, _, { events: events2 }) {
       return { events: events2.ids(), contracts: events2.catalog(), hostNamespaces, delivery: eventDelivery };
     } },
-    { id: "plugins", description: "List core and user plugins with their state and contributions.", usage: "plugins", ...discovery$1, async run(args, _, { language: language2 }) {
-      arity(args, 0);
+    { id: "plugins", description: "List core and user plugins with their state and contributions.", usage: "plugins", ...discovery$1, args: [], async run(_args, _, { language: language2 }) {
       return { plugins: pluginCatalog(registry2, await services2.installedPlugins(), new Localizer(language2, registry2.catalog)) };
     } }
   ];
 }
 const discovery = { scope: "workspace", discovery: true };
+const projectId = { name: "id", description: "A project id.", required: true };
 const additive = { destructive: false, idempotent: true };
 const configOutput = {
   type: "object",
@@ -70688,8 +70617,8 @@ function workspaceCommands(services2) {
       errors: ["INVALID_CONFIG"],
       output: configOutput,
       localizedOutput: { sections: "settings" },
-      run(args) {
-        arity(args, 0);
+      args: [],
+      run() {
         return { ...services2.loaded, sections: services2.configSections() };
       }
     },
@@ -70702,8 +70631,8 @@ function workspaceCommands(services2) {
       ...additive,
       errors: ["INVALID_SETUP"],
       localizedOutput: { nextSteps: "text" },
-      run(args) {
-        arity(args, 0);
+      args: [],
+      run() {
         return services2.setup();
       }
     },
@@ -70718,51 +70647,34 @@ function workspaceCommands(services2) {
       unknownAction: "INVALID_ARGUMENT",
       errors: ["INVALID_PROJECT", "INVALID_PROJECT_NAME", "INVALID_PROJECT_CONTEXT", "PROJECT_EXISTS", "PROJECT_NOT_FOUND", "PROJECT_REQUIRED", "STALE_PROJECT_CONTEXT", "INVALID_NAME", "INVALID_COMPONENT_KIND", "PLUGIN_UNAVAILABLE"],
       actions: {
-        list: { description: "List managed projects, and the directories whose project marker is invalid.", usage: "project [list]", mutating: false, output: projectListOutput },
-        create: { description: "Create a self-contained TypeScript library or Vue webview project.", usage: "project create <id> [--type library|webview]", ...additive, output: changesOutput({ project: projectInfoSchema, nextSteps: { type: "array", items: { type: "object" } } }, ["project", "nextSteps"]), options: { type: option$1.string("Project scaffold type for project create.", { enum: ["library", "webview"], default: "library" }) } },
-        open: { description: "Select a project for file commands and generators.", usage: "project open <id>", ...additive, output: changesOutput({ project: projectInfoSchema }, ["project"]) },
-        current: { description: "Report the selected project.", usage: "project current", mutating: false, output: { type: "object", required: ["project"], properties: { project: selectedProjectSchema } } },
-        close: { description: "Clear the project selection.", usage: "project close", ...additive, output: changesOutput({ project: { type: "null" } }, ["project"]) },
-        inspect: { description: "Describe a project, or the selected one.", usage: "project inspect [id]", mutating: false },
+        list: { description: "List managed projects, and the directories whose project marker is invalid.", usage: "project [list]", mutating: false, args: [], output: projectListOutput },
+        create: { description: "Create a self-contained TypeScript library or Vue webview project.", usage: "project create <id> [--type library|webview]", ...additive, args: [projectId], output: changesOutput({ project: projectInfoSchema, nextSteps: { type: "array", items: { type: "object" } } }, ["project", "nextSteps"]), options: { type: option$1.string("Project scaffold type for project create.", { enum: ["library", "webview"], default: "library" }) } },
+        open: { description: "Select a project for file commands and generators.", usage: "project open <id>", ...additive, args: [projectId], output: changesOutput({ project: projectInfoSchema }, ["project"]) },
+        current: { description: "Report the selected project.", usage: "project current", mutating: false, args: [], output: { type: "object", required: ["project"], properties: { project: selectedProjectSchema } } },
+        close: { description: "Clear the project selection.", usage: "project close", ...additive, args: [], output: changesOutput({ project: { type: "null" } }, ["project"]) },
+        inspect: { description: "Describe a project, or the selected one.", usage: "project inspect [id]", mutating: false, args: [{ name: "id", description: "A project id; defaults to the selected project." }] },
         component: {
           description: "Add a tested domain or application component to a project.",
           usage: "project component [id] <Name> [--kind domain|application]",
           ...additive,
+          args: [{ name: "target", description: "A project id, or the component name.", required: true }, { name: "name", description: "The component name when a project id precedes it." }],
           output: changesOutput({ project: projectInfoSchema, component: { type: "object", required: ["name", "kind"], properties: { name: { type: "string" }, kind: { type: "string", enum: ["domain", "application"] } } } }, ["project", "component"]),
           options: { kind: option$1.string("Component kind for project component.", { enum: ["domain", "application"], default: "domain" }) }
         }
       },
-      args: [{ name: "action", description: "list (default), create, open, current, close, inspect or component.", enum: ["list", "create", "open", "current", "close", "inspect", "component"] }, { name: "target", description: "A project id, or the component name." }, { name: "name", description: "The component name when a project id precedes it." }],
       async run(args, flags) {
         const action2 = args[0] ?? "list";
-        if (action2 === "list") {
-          arity(args, 0, 1);
-          return { directory: config2.paths.projects, ...await services2.projects.discover() };
-        }
-        if (action2 === "current") {
-          arity(args, 1);
-          return { project: await services2.projects.current() };
-        }
-        if (action2 === "open") {
-          arity(args, 2);
-          return services2.projects.open(args[1]);
-        }
-        if (action2 === "close") {
-          arity(args, 1);
-          return services2.projects.close();
-        }
-        if (action2 === "inspect") {
-          arity(args, 1, 2);
-          return args[1] ? services2.projects.inspect(args[1]) : services2.projects.requireCurrent();
-        }
+        if (action2 === "list") return { directory: config2.paths.projects, ...await services2.projects.discover() };
+        if (action2 === "current") return { project: await services2.projects.current() };
+        if (action2 === "open") return services2.projects.open(args[1]);
+        if (action2 === "close") return services2.projects.close();
+        if (action2 === "inspect") return args[1] ? services2.projects.inspect(args[1]) : services2.projects.requireCurrent();
         if (action2 === "create") {
-          arity(args, 2);
           const type2 = value$2(flags, "type") ?? "library";
           ensure(type2 === "library" || type2 === "webview", "INVALID_ARGUMENT", "--type must be library or webview.");
           return services2.projects.create(args[1], type2);
         }
         ensure(action2 === "component", "INVALID_ARGUMENT", "Use project list, inspect, create, open, current, close, or component.");
-        arity(args, 2, 3);
         const kind2 = value$2(flags, "kind") ?? "domain";
         ensure(kind2 === "domain" || kind2 === "application", "INVALID_ARGUMENT", "--kind must be domain or application.");
         const name2 = args.length === 3 ? args[1] : (await services2.projects.requireCurrent()).name;
@@ -70782,24 +70694,20 @@ function workflowsCommands(services2) {
     defaultAction: "list",
     unknownAction: "INVALID_ARGUMENT",
     actions: {
-      list: { description: "List every managed project's authored workflows and their generated entrypoints.", usage: "workflows [list]", mutating: false },
+      list: { description: "List every managed project's authored workflows and their generated entrypoints.", usage: "workflows [list]", mutating: false, args: [] },
       sync: {
         description: "Write the generated .github/workflows entrypoints; with --check, report drift without writing.",
         usage: "workflows sync [--check] [--dry-run]",
         idempotent: true,
+        args: [],
         options: { check: option$1.boolean("With sync: fail with WORKFLOW_DRIFT instead of writing when generated workflows differ.") }
       }
     },
-    args: [{ name: "action", description: "list (default) or sync.", enum: ["list", "sync"] }],
     errors: ["INVALID_WORKFLOW", "WORKFLOW_DRIFT", "CONFLICT"],
     async run(args, flags) {
       const action2 = args[0] ?? "list";
-      if (action2 === "list") {
-        arity(args, 0, 1);
-        return services2.workflows.list();
-      }
+      if (action2 === "list") return services2.workflows.list();
       ensure(action2 === "sync", "INVALID_ARGUMENT", "Use workflows list or workflows sync [--check].");
-      arity(args, 1);
       return flags.check === true ? services2.workflows.check() : services2.workflows.sync();
     }
   }];
@@ -71047,7 +70955,6 @@ function readCommand() {
     },
     output: readOutput,
     async run(args, flags, { workspace: workspace2, events: events2 }) {
-      arity(args, 1);
       const request = selection(flags);
       return readView(await workspace2.read(args[0]), request, (message2) => events2.warn(message2));
     }
@@ -71090,12 +70997,11 @@ function readManyCommand() {
     projectOption: "project",
     discovery: false,
     mutating: false,
-    args: [{ name: "paths", description: "Vault path relative to the command scope.", required: true, variadic: true, path: true }],
+    args: [{ name: "paths", description: "Vault path relative to the command scope.", required: true, variadic: true, maximum: maxFiles, path: true }],
     options: { "max-bytes": maxBytesOption, project: option$1.string("Use this project instead of the selected project.") },
     output: readManyOutput,
     errors: ["NOT_FOUND", "INVALID_FRONTMATTER", "INVALID_YAML", "INVALID_CANVAS", "INVALID_BASE", "INVALID_ENCODING"],
     async run(args, flags, context) {
-      arity(args, 1, maxFiles);
       const limit = maxBytes$1(flags);
       const paths2 = /* @__PURE__ */ new Set();
       for (const [index2, input2] of args.entries()) {
@@ -71239,22 +71145,22 @@ function validated(schema2, value2, at, failure2) {
 const operationIds = ["write", "edit", "frontmatter", "move", "delete"];
 function parsePlan(value2) {
   const operations2 = isRecord$1(value2) && Array.isArray(value2.operations) ? value2.operations : [];
-  operations2.forEach((item, index2) => {
+  operations2.forEach((item2, index2) => {
     const issue2 = `plan.operations[${index2}].op: must be one of ${operationIds.join(", ")}`;
-    if (isRecord$1(item)) ensure(operationIds.includes(String(item.op)), "INVALID_PLAN", `Operation ${index2}: op must be one of ${operationIds.join(", ")}.`, { operation: index2, issues: [issue2] });
+    if (isRecord$1(item2)) ensure(operationIds.includes(String(item2.op)), "INVALID_PLAN", `Operation ${index2}: op must be one of ${operationIds.join(", ")}.`, { operation: index2, issues: [issue2] });
   });
   const plan = validated(applyPlanSchema, value2, "plan", { what: "The plan", indexKey: "operation", error: (message2, details) => forgeError("INVALID_PLAN", message2, details) });
-  plan.operations.forEach((item, index2) => {
-    if (item.op === "frontmatter") ensure(item.set !== void 0 || item.unset !== void 0, "INVALID_PLAN", `Operation ${index2}: frontmatter needs set, unset or both.`, { operation: index2 });
+  plan.operations.forEach((item2, index2) => {
+    if (item2.op === "frontmatter") ensure(item2.set !== void 0 || item2.unset !== void 0, "INVALID_PLAN", `Operation ${index2}: frontmatter needs set, unset or both.`, { operation: index2 });
   });
   return plan;
 }
-function editRequest$1(item) {
-  if (item.edits !== void 0) return { kind: "literal", edits: item.edits };
-  const mode = rangeEditModes.find((candidate) => item[candidate] !== void 0);
-  if (item.section !== void 0) return { kind: "section", section: item.section, ...item.sectionLine === void 0 ? {} : { line: item.sectionLine }, mode, content: item[mode] };
-  if (item.block !== void 0) return { kind: "block", block: item.block, mode, content: item[mode] };
-  return { kind: "append", content: item.append };
+function editRequest$1(item2) {
+  if (item2.edits !== void 0) return { kind: "literal", edits: item2.edits };
+  const mode = rangeEditModes.find((candidate) => item2[candidate] !== void 0);
+  if (item2.section !== void 0) return { kind: "section", section: item2.section, ...item2.sectionLine === void 0 ? {} : { line: item2.sectionLine }, mode, content: item2[mode] };
+  if (item2.block !== void 0) return { kind: "block", block: item2.block, mode, content: item2[mode] };
+  return { kind: "append", content: item2.append };
 }
 const inside = (path2, folder) => path2.startsWith(`${folder}/`);
 const byPath = (a, b) => a < b ? -1 : a > b ? 1 : 0;
@@ -71481,7 +71387,7 @@ class PlanRunner {
   planning;
   async run(plan) {
     const { workspace: workspace2, metadata: metadata2 } = this.scope;
-    if (plan.operations.some((item) => item.op === "move" || item.op === "delete")) await metadata2.load();
+    if (plan.operations.some((item2) => item2.op === "move" || item2.op === "delete")) await metadata2.load();
     const index2 = await metadata2.fork(this.staged);
     let failure2;
     const observer = { async committed(batch2) {
@@ -71495,13 +71401,13 @@ class PlanRunner {
     const planned = new Workspace(this.staged, workspace2.codec, planningEvents, false, workspace2.root, observer);
     this.planning = { workspace: planned, files: new FileManager(planned, index2, { workspace: this.scope.workspaceScope }) };
     const operations2 = [];
-    for (const [position2, item] of plan.operations.entries()) {
+    for (const [position2, item2] of plan.operations.entries()) {
       this.staged.operation = position2;
       try {
-        operations2.push({ index: position2, ...await this.operation(item) });
+        operations2.push({ index: position2, ...await this.operation(item2) });
         if (failure2 !== void 0) throw failure2;
       } catch (error2) {
-        throw located(error2, position2, item.op);
+        throw located(error2, position2, item2.op);
       }
     }
     for (const warning2 of planningEvents.warningRecords) if (isKernelMessage(warning2)) workspace2.warn(warning2);
@@ -71532,40 +71438,40 @@ class PlanRunner {
     }
     ensure(original === ifMatch2, "CONFLICT", `${path2} changed; read it again and use its current revision as ifMatch.`, revisionConflict(path2, ifMatch2, original));
   }
-  async operation(item) {
+  async operation(item2) {
     const { workspace: workspace2, files: files2 } = this.planning;
-    switch (item.op) {
+    switch (item2.op) {
       case "write": {
-        const current = await this.staged.current(item.path);
-        await this.guard(item.path, item.ifMatch);
-        await workspace2.write([{ path: item.path, bytes: contentBytes(item.content, item.encoding), expectedRevision: current?.revision }]);
-        return { op: "write", path: item.path, operation: current ? "updated" : "created" };
+        const current = await this.staged.current(item2.path);
+        await this.guard(item2.path, item2.ifMatch);
+        await workspace2.write([{ path: item2.path, bytes: contentBytes(item2.content, item2.encoding), expectedRevision: current?.revision }]);
+        return { op: "write", path: item2.path, operation: current ? "updated" : "created" };
       }
       case "edit": {
-        const { revision: revision2 } = await workspace2.files.read(item.path);
-        await this.guard(item.path, item.ifMatch);
-        await workspace2.edit(item.path, revision2, (bytes2) => editBytes(item.path, bytes2, editRequest$1(item), this.scope.metadata));
-        return { op: "edit", path: item.path };
+        const { revision: revision2 } = await workspace2.files.read(item2.path);
+        await this.guard(item2.path, item2.ifMatch);
+        await workspace2.edit(item2.path, revision2, (bytes2) => editBytes(item2.path, bytes2, editRequest$1(item2), this.scope.metadata));
+        return { op: "edit", path: item2.path };
       }
       case "frontmatter": {
-        const { revision: revision2 } = await workspace2.files.read(item.path);
-        await this.guard(item.path, item.ifMatch);
-        const result = await files2.processFrontMatter(item.path, (properties2) => {
-          Object.assign(properties2, item.set ?? {});
-          for (const key of item.unset ?? []) delete properties2[key];
+        const { revision: revision2 } = await workspace2.files.read(item2.path);
+        await this.guard(item2.path, item2.ifMatch);
+        const result = await files2.processFrontMatter(item2.path, (properties2) => {
+          Object.assign(properties2, item2.set ?? {});
+          for (const key of item2.unset ?? []) delete properties2[key];
         }, { ifMatch: revision2 });
-        return { op: "frontmatter", path: item.path, changed: result.changes.length > 0 };
+        return { op: "frontmatter", path: item2.path, changed: result.changes.length > 0 };
       }
       case "move": {
-        await this.guard(item.from, item.ifMatch);
-        const result = await files2.move(item.from, item.to, { updateLinks: item.updateLinks });
-        return { op: "move", path: item.from, to: result.to, kind: result.kind, links: result.links };
+        await this.guard(item2.from, item2.ifMatch);
+        const result = await files2.move(item2.from, item2.to, { updateLinks: item2.updateLinks });
+        return { op: "move", path: item2.from, to: result.to, kind: result.kind, links: result.links };
       }
       case "delete": {
-        await this.guard(item.path, item.ifMatch);
-        const result = await files2.delete(item.path, { recursive: item.recursive, allowBrokenLinks: item.allowBrokenLinks });
+        await this.guard(item2.path, item2.ifMatch);
+        const result = await files2.delete(item2.path, { recursive: item2.recursive, allowBrokenLinks: item2.allowBrokenLinks });
         this.trash.push(result.trashPath);
-        return { op: "delete", path: item.path, kind: result.kind, trashPath: result.trashPath, brokenLinks: result.brokenLinks };
+        return { op: "delete", path: item2.path, kind: result.kind, trashPath: result.trashPath, brokenLinks: result.brokenLinks };
       }
     }
   }
@@ -71638,7 +71544,6 @@ function editCommand() {
       project: option$1.string("Use this project instead of the selected project.")
     },
     async run(args, flags, context) {
-      arity(args, 1);
       const path2 = args[0];
       const request = await editRequest(flags, context);
       ensureEditable(path2, request);
@@ -71667,7 +71572,6 @@ function applyCommand() {
     args: [{ name: "plan", description: "Plan file in the command scope, or - to read the plan from standard input.", required: true, schema: applyPlanSchema, path: true }],
     options: { project: option$1.string("Use this project instead of the selected project.") },
     async run(args, _flags, context) {
-      arity(args, 1);
       const plan = parsePlan(await jsonInput(args[0] === "-" ? "-" : `@${args[0]}`, context));
       return new PlanRunner({ workspace: context.workspace, metadata: context.metadata, workspaceScope: context.project === null }).run(plan);
     }
@@ -71684,6 +71588,7 @@ function listCommand() {
     projectOption: "project",
     discovery: false,
     mutating: false,
+    args: [],
     options: {
       kind: option$1.string("Only files of this kind.", { enum: fileKinds }),
       path: option$1.string("Only files whose root-relative path matches this glob (*, **, ?, [abc], {a,b}), or that are this file or below this folder."),
@@ -71695,8 +71600,7 @@ function listCommand() {
       project: option$1.string("Use this project instead of the selected project.")
     },
     output: listOutput,
-    async run(args, flags, { workspace: workspace2, metadata: metadata2, events: events2 }) {
-      arity(args, 0);
+    async run(_args, flags, { workspace: workspace2, metadata: metadata2, events: events2 }) {
       const kind2 = value$2(flags, "kind"), glob = value$2(flags, "path"), filters = noteFilters(value$2(flags, "tag"), value$2(flags, "property"));
       const inPath = recordingFilter(glob === void 0 ? () => true : pathFilter(glob));
       const trash = flags["include-trash"] === true || glob !== void 0 && isInTrash(glob.replace(/^\.\//, "").split("/")[0]);
@@ -71742,7 +71646,6 @@ function documentCommands() {
     listCommand(),
     readCommand(),
     { id: "validate", description: "Validate Markdown frontmatter, Canvas graph, Base structure or UTF-8 text.", usage: "validate <path> [--project id]", ...reading, args: [pathArgument()], options: projectOptions, errors: ["NOT_FOUND", "INVALID_FRONTMATTER", "INVALID_YAML", "INVALID_CANVAS", "INVALID_BASE", "INVALID_ENCODING"], output: validateOutput, async run(args, _, { workspace: workspace2 }) {
-      arity(args, 1);
       const file = await workspace2.files.read(args[0]);
       workspace2.codec.validate(file.path, file.bytes);
       const kind2 = fileKind(file.path);
@@ -71761,7 +71664,6 @@ function documentCommands() {
       examples: ['create notes/idea.md --content "# Idea"', "create notes/idea.md --stdin"],
       errors: ["CONFLICT", "INVALID_INPUT", "INVALID_ENCODING", "INVALID_FRONTMATTER", "INVALID_CANVAS", "INVALID_BASE"],
       async run(args, flags, context) {
-        arity(args, 1);
         const path2 = args[0];
         const hasInput = flags.content !== void 0 || flags.from !== void 0 || flags.stdin === true;
         const kind2 = fileKind(path2);
@@ -71785,7 +71687,6 @@ function documentCommands() {
       options: { ...contentOptions, "if-match": ifMatch$1(), ...projectOptions },
       errors: ["CONFLICT", "INVALID_INPUT", "INVALID_ENCODING", "INVALID_FRONTMATTER", "INVALID_CANVAS", "INVALID_BASE"],
       async run(args, flags, context) {
-        arity(args, 1);
         return context.workspace.write([{ path: args[0], bytes: await content(args[0], flags, context), expectedRevision: value$2(flags, "if-match") }], { diff: true });
       }
     },
@@ -71806,7 +71707,6 @@ function documentCommands() {
         ...projectOptions
       },
       async run(args, flags, { workspace: workspace2 }) {
-        arity(args, 1);
         ensure(fileKind(args[0]) === "markdown", "UNSUPPORTED_EDIT", "Properties require a Markdown note.");
         const set2 = value$2(flags, "set"), unset = value$2(flags, "unset");
         ensure(set2 !== void 0 || unset !== void 0, "INVALID_INPUT", "Pass --set, --unset or both.");
@@ -71827,7 +71727,6 @@ function documentCommands() {
       errors: ["CONFLICT", "INVALID_POINTER", "INVALID_JSON", "INVALID_CANVAS", "INVALID_BASE", "UNSUPPORTED_EDIT"],
       options: { pointer: option$1.string("JSON Pointer to set; /- appends to an existing array.", { required: true }), value: option$1.string("JSON value to set.", { required: true }), "if-match": ifMatch$1(true), ...projectOptions },
       async run(args, flags, { workspace: workspace2 }) {
-        arity(args, 1);
         const pointer2 = value$2(flags, "pointer", true), data = parseJson(value$2(flags, "value", true));
         return workspace2.edit(args[0], value$2(flags, "if-match", true), (bytes2) => workspace2.codec.patch(args[0], bytes2, pointer2, data));
       }
@@ -71875,7 +71774,6 @@ function statCommand() {
     errors: ["NOT_FOUND", "CONFLICT"],
     output: statOutput,
     async run(args, _flags, { workspace: workspace2 }) {
-      arity(args, 1);
       const entry2 = await workspace2.files.stat(args[0]);
       const identity2 = { path: entry2.path, kind: entry2.kind, revision: entry2.revision };
       return entry2.kind === "file" ? { ...identity2, bytes: entry2.bytes } : { ...identity2, fileCount: entry2.files.length, folderCount: entry2.folders.length };
@@ -71901,7 +71799,6 @@ function vaultCommands() {
       examples: ["delete notes/idea.md --if-match <revision>", "delete drafts --recursive --dry-run"],
       options: { "if-match": ifMatch, recursive: option$1.boolean("Required to delete a folder."), permanent: option$1.boolean("Remove instead of moving to .trash."), "allow-broken-links": option$1.boolean("Delete even while other files link to it."), project },
       async run(args, flags, { app, workspace: workspace2 }) {
-        arity(args, 1);
         return app.fileManager.delete(args[0], {
           ifMatch: guard(flags, workspace2.dryRun),
           recursive: flags.recursive === true,
@@ -71921,7 +71818,6 @@ function vaultCommands() {
       examples: ["move notes/idea.md archive/idea.md --if-match <revision>", "move notes/idea.md archive/idea.md --dry-run"],
       args: [{ name: "from", description: "File or folder to move.", required: true, path: true }, { name: "to", description: "New path that must not exist, or a folder to move into: one ending with / or one that exists.", required: true, path: true }],
       async run(args, flags, { app, workspace: workspace2 }) {
-        arity(args, 2);
         return app.fileManager.move(args[0], args[1], { ifMatch: guard(flags, workspace2.dryRun), updateLinks: flags["no-update-links"] !== true });
       }
     },
@@ -71936,7 +71832,6 @@ function vaultCommands() {
       examples: ["rename notes/idea.md plan.md --if-match <revision>"],
       args: [{ name: "path", description: "File or folder to rename.", required: true, path: true }, { name: "new-name", description: "New name without slashes; a file keeps its extension.", required: true }],
       async run(args, flags, { app, workspace: workspace2 }) {
-        arity(args, 2);
         return app.fileManager.rename(args[0], args[1], { ifMatch: guard(flags, workspace2.dryRun), updateLinks: flags["no-update-links"] !== true });
       }
     }
@@ -72049,10 +71944,10 @@ function checked(input2, origin, scope2) {
   }
 }
 function normalizedPathInputs(command2, args, flags, scope2) {
-  const declared = command2.args ?? [];
+  const { words, args: declared } = declaredArguments(command2, args) ?? { words: 0, args: [] };
   const normalizedArgs = args.map((value2, index2) => {
-    const variadic = index2 >= declared.length - 1 && declared.at(-1)?.variadic === true;
-    const argument = variadic ? declared.at(-1) : declared[index2];
+    const position2 = index2 - words, variadic = position2 >= declared.length - 1 && declared.at(-1)?.variadic === true;
+    const argument = position2 < 0 ? void 0 : variadic ? declared.at(-1) : declared[position2];
     const source2 = { argument: argument?.name ?? "", ...variadic ? { index: index2 } : {} };
     return argument?.path === true ? checked(value2, { source: source2, stdin: false }, scope2) : value2;
   });
@@ -72063,6 +71958,28 @@ function normalizedPathInputs(command2, args, flags, scope2) {
     if (option2.path === true && typeof value2 === "string") normalizedFlags[key] = checked(value2, { source: { option: key }, stdin: stdin2 }, scope2);
   }
   return [normalizedArgs, normalizedFlags];
+}
+function expectedArguments(minimum, maximum) {
+  const count2 = maximum === minimum ? `${minimum}` : maximum === void 0 ? `at least ${minimum}` : `${minimum}–${maximum}`;
+  return `${count2} positional argument${(maximum ?? minimum) === 1 ? "" : "s"}`;
+}
+function ensureArguments(command2, args) {
+  ensureKnownAction(command2, args);
+  const declared = declaredArguments(command2, args);
+  if (declared === void 0) return;
+  const { minimum, maximum } = argumentBounds(declared), received = args.length;
+  if (received >= minimum && (maximum === void 0 || received <= maximum)) return;
+  const { action: action2 } = declared;
+  const usage = action2 === void 0 ? command2.usage : actionUsage(command2, action2);
+  const where2 = action2 === void 0 ? "" : `${command2.id} ${action2}: `;
+  const counts2 = { command: command2.id, ...action2 === void 0 ? {} : { action: action2 }, minimum, ...maximum === void 0 ? {} : { maximum }, received };
+  const expected = `Expected ${expectedArguments(minimum, maximum)}, got ${received}. Usage: ${usage}`;
+  if (received < minimum) {
+    const missing2 = declared.args.filter((arg) => arg.required).slice(received - declared.words).map((arg) => arg.name);
+    throw forgeError("MISSING_ARGUMENT", `${where2}Missing ${missing2.map((name2) => `<${name2}>`).join(" ")}. ${expected}`, { argument: missing2[0], missing: missing2, ...counts2 });
+  }
+  const unexpected = args.slice(maximum);
+  throw forgeError("INVALID_ARGUMENT", `${where2}Unexpected ${unexpected.map((value2) => JSON.stringify(value2)).join(" ")}. ${expected}`, { unexpected, ...counts2 });
 }
 const corePlugins = [
   templatesPlugin,
@@ -72162,6 +72079,7 @@ async function run() {
       for (const [commandId2, registered] of registry2.commands) registry2.commands.set(commandId2, commandLocalizer.command(registered));
       ensure(!parsed2.flags.version, "INVALID_ARGUMENT", "--version must be used without a command.");
       const flags = parsed2.flags.help ? parsed2.flags : declaredValues(commandOptions(command2, parsed2.args.slice(1)), parsed2.flags);
+      if (!parsed2.flags.help) ensureArguments(command2, parsed2.args.slice(1));
       if (!parsed2.flags.help) lockWait = waitBudget(parsed2.flags);
       settings2.dryRun = flagSetting(parsed2.flags, "dry-run", settings2.dryRun);
       let metadataCommits;
@@ -72204,7 +72122,7 @@ async function run() {
         await registry2.activate(events2, context, skipUserPlugins ? void 0 : new WorkspacePluginState(environment, (message2) => events2.warn(message2), settingsRevision));
         await announceLayoutReady(events2);
       }, async () => {
-        const output2 = parsed2.flags.help ? await invokedCommand.run(id2 === "help" ? [] : [id2], {}, context) : await runCommand(command2, ...normalizedPathInputs(command2, parsed2.args.slice(1), flags, context), context);
+        const output2 = parsed2.flags.help ? await invokedCommand.run(id2 === "help" ? [] : [id2], {}, context) : await command2.run(...normalizedPathInputs(command2, parsed2.args.slice(1), flags, context), context);
         return localizer().result(registry2.commands.get(commandId), output2);
       });
       result = { ok: true, data };

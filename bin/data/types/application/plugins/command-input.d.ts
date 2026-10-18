@@ -24,11 +24,6 @@ export declare function value(flags: CommandFlags, key: string, required?: boole
 export declare function integer(flags: CommandFlags, key: string, minimum?: number): number | undefined;
 /** The global `--wait` budget: the milliseconds a write may wait for another Forge writer's lock, 0 when absent. */
 export declare function waitBudget(flags: CommandFlags): number;
-/**
- * Positional argument count check shared by every command; `details` `{minimum, maximum, received}` let the host
- * name the missing arguments and the usage from the command's metadata.
- */
-export declare function arity(args: readonly string[], min: number, max?: number): void;
 /** Selects raw input from exactly one of --from (read in the command's scope), --content or --stdin; callers own decoding. */
 export declare function readInputBytes(flags: CommandFlags, context: Pick<CommandContext, 'workspace' | 'input'>, message: string): Promise<Uint8Array>;
 /** Parses JSON input, ignoring a leading UTF-8 byte order mark (Windows PowerShell writes one); malformed input is INVALID_JSON. */

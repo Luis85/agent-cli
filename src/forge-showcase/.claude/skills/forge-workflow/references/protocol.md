@@ -23,9 +23,9 @@ Read this when you need more than the core loop in [SKILL.md](../SKILL.md): the 
 - `warnings` never mean failure. They report, for example, a `--path` that matched nothing, a truncated read, literal `\n` in `--content`, an empty `--stdin`, a dropped extension on `move`, a working directory outside the workspace or a failed listener after a committed write. Each entry is `{code, message, details?}`: match `code` (such as `EXTENSION_DROPPED` or `PATH_MATCHED_NOTHING`), never the text. After a listener warning, inspect the committed events and read back before considering a repeat.
 
 ## Other error codes
-- `MISSING_ARGUMENT`: `details.option` names the option; for `--if-match`, take the revision from `read`, `stat` or a dry run.
+- `MISSING_ARGUMENT`: `details.option` names the missing option (for `--if-match`, take the revision from `read`, `stat` or a dry run), or `details.argument` and `details.missing` the missing positional arguments.
 - `INVALID_OPTION_VALUE`: use one of `details.allowed`.
-- `INVALID_ARGUMENT`: the message names the missing or extra arguments; `details` hold `missing` and the expected counts.
+- `INVALID_ARGUMENT`: for too many positional arguments, `details.unexpected` holds the surplus values (quote a value with spaces) and `minimum`/`maximum` the counts that `schema <command>` publishes as `minItems`/`maxItems`.
 - `UNKNOWN_GENERATOR`, unknown actions: `details.allowed` lists the valid ids.
 - `INVALID_PLAN`: fix `details.issues`; any `apply` failure adds `details.operation`, the failing index.
 - `VAULT_CHECK_FAILED`: fix each `error.details.findings` entry by its `hint`.
