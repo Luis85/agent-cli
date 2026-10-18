@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { forgeError } from '../../src/domain/shared/errors.ts';
+import { conflictMessage, revisionConflict } from '../../src/domain/documents/write-plan.ts';
 import type { ErrorCode } from '../../src/domain/shared/error-catalog.ts';
 import { germanErrors } from '../../src/presentation/localization/errors.ts';
 import { germanErrorMessage, templatedErrorCodes } from '../../src/presentation/localization/error-messages.ts';
@@ -22,12 +23,24 @@ describe('German error messages with the values of the occurrence', () => {
     expect(german('DESTINATION_EXISTS', { path: 'b.md', from: 'a.md' })).toBe('Das Ziel b.md existiert bereits.');
   });
 
+  it('names an empty revision as missing, in English and German, rather than as an existing or changed file', () => {
+    // An empty revision of a present file guards nothing; for an absent file the missing-file case still applies.
+    expect(revisionConflict('a.md', '', 'r2')).toEqual({ path: 'a.md', expectedRevision: '', currentRevision: 'r2', reason: 'revision-required' });
+    expect(revisionConflict('a.md', '', null)).toEqual({ path: 'a.md', expectedRevision: '', currentRevision: null });
+    expect(revisionConflict('a.md', null, 'r2')).toEqual({ path: 'a.md', expectedRevision: null, currentRevision: 'r2' });
+    expect(conflictMessage(revisionConflict('a.md', '', 'r2'))).toBe('No revision guards a.md: pass its currentRevision as --if-match (ifMatch in an apply plan) to change or delete it.');
+    const error = forgeError('CONFLICT', 'English diagnostic', revisionConflict('a.md', '', 'r2'));
+    expect(new Localizer('en').error(error).hint).toMatch(/^The request named error\.details\.path with an empty revision/);
+    expect(new Localizer('de').error(error).hint).toMatch(/^Die Anfrage nannte error\.details\.path mit einer leeren Revision/);
+  });
+
   it('describes each CONFLICT case and locates apply plan operations', () => {
     expect(german('CONFLICT', { path: 'a.md', expectedRevision: 'r1', currentRevision: 'r2' })).toBe('a.md wurde seit dem Lesen geändert: erwartet r1, aktuell r2.');
     expect(german('CONFLICT', { path: 'a.md', expectedRevision: null, currentRevision: 'r2' })).toBe('a.md existiert bereits mit der Revision r2.');
     expect(german('CONFLICT', { path: 'a.md', expectedRevision: 'r1', currentRevision: null })).toBe('a.md existiert nicht, erwartet wurde die Revision r1.');
     expect(german('CONFLICT', { path: 'a.md', expectedRevision: 'r1', currentRevision: 'r2', alreadyApplied: true })).toBe('a.md enthält die angeforderte Änderung bereits (Revision r2); ein erneuter Versuch ist nicht nötig.');
     expect(german('CONFLICT', { operation: 2, path: 'a.md', expectedRevision: 'r1', currentRevision: 'r2' })).toBe('Vorgang 2: a.md wurde seit dem Lesen geändert: erwartet r1, aktuell r2.');
+    expect(german('CONFLICT', revisionConflict('a.md', '', 'r2'))).toBe('Keine Revision schützt a.md: Übergeben Sie die aktuelle Revision r2 mit --if-match (ifMatch in einem apply-Plan), um die Datei zu ändern oder zu löschen.');
   });
 
   it('names the argument, option and value of a rejected path', () => {

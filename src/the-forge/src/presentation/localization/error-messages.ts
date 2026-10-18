@@ -58,6 +58,7 @@ const templates: Partial<Record<ErrorCode, readonly Template[]>> = {
   UNKNOWN_GENERATOR: [{ text: 'Unbekannter Generator {generator}; verfügbar sind {allowedValues}.' }],
   CONFLICT: [
     { text: '{path} wurde geändert, während die Linkaktualisierungen geplant wurden; wiederholen Sie den Befehl.', when: details => details.reason === 'changed-while-planning' },
+    { text: 'Keine Revision schützt {path}: Übergeben Sie die aktuelle Revision {currentRevision} mit --if-match (ifMatch in einem apply-Plan), um die Datei zu ändern oder zu löschen.', when: details => details.reason === 'revision-required' },
     { text: '{path} enthält die angeforderte Änderung bereits (Revision {currentRevision}); ein erneuter Versuch ist nicht nötig.', when: details => details.alreadyApplied === true },
     { text: '{path} existiert bereits mit der Revision {currentRevision}.', when: details => details.expectedRevision === null },
     { text: '{path} existiert nicht, erwartet wurde die Revision {expectedRevision}.', when: details => details.currentRevision === null },

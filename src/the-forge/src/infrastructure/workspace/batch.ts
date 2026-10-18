@@ -128,7 +128,7 @@ export class Transaction {
     // The first conflict keeps single-file details flat; multi-step batches also list every conflicting path.
     const [conflict] = conflicts, steps = renames.length + writes.length + removes.length;
     if (conflict !== undefined) {
-      const message = steps === 1 && removes.length === 1 ? `File changed; read again before removing: ${conflict.path}`
+      const message = steps === 1 && removes.length === 1 && conflict.reason === undefined ? `File changed; read again before removing: ${conflict.path}`
         : conflictMessage(conflict) + (conflicts.length > 1 ? ` Conflicting paths: ${conflicts.map(item => item.path).join(', ')}.` : '');
       throw forgeError('CONFLICT', message, { ...conflict, ...(steps > 1 ? { conflicts } : {}) });
     }
@@ -238,7 +238,7 @@ export class Transaction {
       const special = entry.kind === 'folder' ? entry.snapshot.special : [];
       ensure(special.length === 0, 'PROTECTED_PATH', `Folder ${request.path} contains symlinks, node_modules or special files; Forge permanently removes only regular files and folders. Move it to the trash instead, or remove those entries first.`, { path: request.path, entries: special.slice(0, 20).map(item => ({ path: `${request.path}/${item.path}`, kind: item.kind })) });
       const current = entryRevision(entry);
-      ensure(request.expectedRevision.length > 0, 'CONFLICT', `Removing a file requires its current --if-match revision: ${request.path}`, revisionConflict(request.path, null, current));
+      ensure(request.expectedRevision.length > 0, 'CONFLICT', `Removing a file requires its current --if-match revision: ${request.path}`, revisionConflict(request.path, request.expectedRevision, current));
       if (current !== request.expectedRevision) conflicts.push(revisionConflict(request.path, request.expectedRevision, current));
       plans.push({ request, target: await this.host.resolvePath(request.path, true), entry });
     }

@@ -85,6 +85,23 @@ describe('retried mutations through the portable CLI', () => {
     expect((await cli(['delete', 'c.md', '--if-match', a])).body.error.details).toEqual({ path: 'c.md' });
   });
 
+  it('refuses an empty revision as no guard, in English and German, and writes nothing', async () => {
+    const { cli, revision, text } = await vault('unguarded', { 'a.md': 'A\n' });
+    const current = await revision('a.md');
+    const english = 'No revision guards a.md: pass its currentRevision as --if-match (ifMatch in an apply plan) to change or delete it.';
+    const german = `Keine Revision schützt a.md: Übergeben Sie die aktuelle Revision ${current} mit --if-match (ifMatch in einem apply-Plan), um die Datei zu ändern oder zu löschen.`;
+    for (const [args, message] of [
+      [['delete', 'a.md'], english], [['delete', 'a.md', '--permanent'], 'Removing a file requires its current --if-match revision: a.md'],
+      [['move', 'a.md', 'b.md'], english], [['write', 'a.md', '--content', 'B\n'], english],
+    ] as const) {
+      const failed = await cli([...args, '--if-match=']);
+      expect(failed.body.error, args.join(' ')).toMatchObject({ code: 'CONFLICT', message, hint: expect.stringMatching(/^The request named error\.details\.path with an empty revision/), details: { path: 'a.md', expectedRevision: '', currentRevision: current, reason: 'revision-required' } });
+      const localized = await cli(['--lang', 'de', ...args, '--if-match=']);
+      expect(localized.body.error, args.join(' ')).toMatchObject({ code: 'CONFLICT', message: german, hint: expect.stringMatching(/^Die Anfrage nannte error\.details\.path mit einer leeren Revision/), details: { reason: 'revision-required' } });
+    }
+    expect(await text('a.md')).toBe('A\n');
+  });
+
   it('moves into a folder named with a trailing slash or that exists, and warns when an extension is dropped', async () => {
     const { root, cli, revision } = await vault('into', { 'a.md': 'A\n', 'b.md': 'B\n', 'c.md': 'C\n', 'archive/old.md': 'Old\n' });
     expect((await cli(['move', 'a.md', 'new/', '--if-match', await revision('a.md')])).body.data.to).toBe('new/a.md');
