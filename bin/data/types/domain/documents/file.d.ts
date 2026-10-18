@@ -2,6 +2,8 @@
 export declare const writerLockName = ".agent-cli.lock";
 /** The prefix of Forge's temporary files: staged writes, parked removals, lock records and break guards. */
 export declare const temporaryPrefix = ".agent-cli-tmp-";
+/** A name as case-insensitive filesystems, Windows trailing-dot/space aliases and HFS+ ignorable code points resolve it. */
+export declare const canonicalName: (segment: string) => string;
 /**
  * Whether `segment` names `name` (lower case) on some filesystem: in another letter case, with trailing dots or
  * spaces (Windows), with ignorable code points (HFS+), or as a Windows 8.3 short name.

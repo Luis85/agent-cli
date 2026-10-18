@@ -31,6 +31,26 @@ export declare function skillFiles(skill: SkillText, roots: readonly string[]): 
 export declare function skillFolderFiles(id: string, modules: Readonly<Record<string, string>>): Record<string, string>;
 /** Problems of a skill's further `files`: a map of relative paths other than SKILL.md to text. */
 export declare function skillFileIssues(id: string, files: unknown): string[];
+/**
+ * A skill path that no install can write on some filesystem: a skill id or file path segment that is a Windows
+ * device name, or a file path that names the same file as `duplicateOf` (`case-duplicate`) or its folder
+ * (`folder-conflict`) where letter case and trailing dots are ignored.
+ */
+export interface SkillPathIssue {
+    message: string;
+    details: {
+        skill: string;
+        reason: 'device-name' | 'case-duplicate' | 'folder-conflict';
+        file?: string;
+        segment?: string;
+        duplicateOf?: string;
+    };
+}
+/**
+ * Problems of the paths a valid skill installs (see `SkillPathIssue`), so a plugin fails at registration instead of
+ * every later `setup` and `skills install`. `files` holds valid relative paths (see `skillFileIssues`).
+ */
+export declare function skillPathIssues(id: string, files?: Readonly<Record<string, unknown>>): SkillPathIssue[];
 /** The roots of `--target both|claude|agents`. */
 export declare function targetRoots(target: string): string[];
 /** The YAML frontmatter of a SKILL.md: its parsed value, the YAML syntax error, or null when the file has none. */
