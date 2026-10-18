@@ -37,10 +37,12 @@ describe('the scaffolds core plugin', () => {
       const create = await cli(['project', 'create', 'other']);
       expect(create.status).toBe(2);
       expect(create.body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'project create', plugin: 'scaffolds', service: 'scaffolds.projects', issues: [] } });
-      expect(create.body.error.details.reason).toContain('disabled');
+      expect(create.body.error.details.reason).toEqual({ code: 'PLUGIN_PROVIDER_DISABLED', message: 'Requires service scaffolds.projects; its provider scaffolds is disabled.', details: { service: 'scaffolds.projects', provider: 'scaffolds' } });
       // The summary covers kernel commands that need a service of the unavailable plugin.
       expect((await cli(['schema', '--all'])).body.data.errors).toContainEqual(expect.objectContaining({ code: 'PLUGIN_UNAVAILABLE', summary: 'The command or generator belongs to, or needs a service of, a plugin that is disabled, missing or unavailable.' }));
-      expect((await cli(['--lang', 'de', 'project', 'create', 'other'])).body.error.message).toBe('Der Befehl oder Generator gehört zu einem Plugin, das deaktiviert, nicht installiert oder nicht verfügbar ist, oder benötigt einen Dienst eines solchen Plugins.');
+      const german = (await cli(['--lang', 'de', 'project', 'create', 'other'])).body.error;
+      expect(german.details.reason).toEqual({ code: 'PLUGIN_PROVIDER_DISABLED', message: 'Benötigt den Dienst scaffolds.projects; sein Anbieter scaffolds ist deaktiviert.', details: { service: 'scaffolds.projects', provider: 'scaffolds' } });
+      expect(german.message).toBe('Der Befehl oder Generator gehört zu einem Plugin, das deaktiviert, nicht installiert oder nicht verfügbar ist, oder benötigt einen Dienst eines solchen Plugins.');
       expect((await cli(['project', 'component', 'demo', 'Widget'])).body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'project component', plugin: 'scaffolds' } });
       expect((await cli(['project', 'list'])).body.data.projects.map((project: { name: string }) => project.name)).toEqual(['demo']);
       expect((await cli(['project', 'open', 'demo'])).status).toBe(0);

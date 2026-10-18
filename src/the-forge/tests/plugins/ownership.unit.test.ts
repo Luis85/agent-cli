@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { registerHostEvents, hostEventNamespaces } from '../../src/application/plugins/host-events.ts';
-import { pluginEvents } from '../../src/application/plugins/ownership.ts';
+import { ownsWarningCode, pluginEvents } from '../../src/application/plugins/ownership.ts';
 import { Registry, validatePluginManifest, type CommandContext, type Plugin } from '../../src/application/plugins/registry.ts';
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { errorCatalog } from '../../src/domain/shared/error-catalog.ts';
@@ -63,6 +63,22 @@ describe('event ownership', () => {
     await attempt(context.events, 'host');
     expect(outcomes).toEqual(['onload:EVENT_OWNERSHIP', 'command:EVENT_OWNERSHIP', 'host:emitted']);
     expect(bus.history.filter(record => record.id === 'vault.create')).toHaveLength(1);
+  });
+
+  it('keeps only warning codes in the plugin\'s namespace, as for user plugin error codes', () => {
+    const registered = ['quality', 'quality-gate', 'backlog'];
+    expect(ownsWarningCode('quality', 'QUALITY_STALE', registered)).toBe(true);
+    expect(ownsWarningCode('quality-gate', 'QUALITY_GATE_STALE', registered)).toBe(true);
+    // A longer registered prefix claims the code, another plugin's prefix never matches, and the prefix needs its `_`.
+    for (const code of ['QUALITY_GATE_STALE', 'BACKLOG_SYNC_LOCK_LEFT', 'QUALITYSTALE', 'STALE']) expect(ownsWarningCode('quality', code, registered), code).toBe(false);
+    expect(ownsWarningCode('quality', 'QUALITY_GATE_STALE', ['quality'])).toBe(true);
+    const bus = create(), events = pluginEvents(bus, 'quality', () => registered);
+    events.warn({ code: 'QUALITY_STALE', message: 'Stale' });
+    events.warn({ code: 'QUALITY_GATE_STALE', message: 'Gate' });
+    expect(bus.warningRecords).toEqual([
+      { code: 'QUALITY_STALE', message: 'Stale', details: { plugin: 'quality' } },
+      { code: 'PLUGIN_WARNING', message: 'Gate', details: { requestedCode: 'QUALITY_GATE_STALE', plugin: 'quality' } },
+    ]);
   });
 
   it('reserves every host namespace that a plugin id could spell', () => {

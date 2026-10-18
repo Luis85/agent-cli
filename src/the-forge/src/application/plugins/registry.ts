@@ -239,15 +239,16 @@ export class Registry {
   }
   /**
    * Like `service`, but a missing service fails with PLUGIN_UNAVAILABLE for `command` (`project create`), with
-   * `details` `{command, plugin, service, reason, issues}`. The provider is the plugin the service id names.
+   * `details` `{command, plugin, service, reason, issues}`. The provider is the plugin the service id names; `reason`
+   * is a host message, which the response reports as `{code, message, details?}` in its language.
    */
   requireService<T>(id: string, command: string): T {
     const service = this.service<T>(id);
     if (service !== undefined) return service;
     const pluginId = id.split('.')[0]!;
     const unavailable = this.unavailable.get(pluginId);
-    const reason = unavailable ? renderKernelMessage(unavailable.reason) : this.disabled.some(manifest => manifest.id === pluginId) ? `Plugin ${pluginId} is disabled (plugins.disabled).` : `No enabled plugin provides service ${id}.`;
-    throw forgeError('PLUGIN_UNAVAILABLE', `Command ${command} is unavailable because it needs service ${id} of plugin ${pluginId}: ${reason}`, { command, plugin: pluginId, service: id, reason, issues: unavailable?.issues ?? [] });
+    const reason = unavailable?.reason ?? kernelMessage(this.disabled.some(manifest => manifest.id === pluginId) ? 'PLUGIN_PROVIDER_DISABLED' : 'PLUGIN_PROVIDER_MISSING', { service: id, provider: pluginId });
+    throw forgeError('PLUGIN_UNAVAILABLE', `Command ${command} is unavailable because it needs service ${id} of plugin ${pluginId}: ${renderKernelMessage(reason)}`, { command, plugin: pluginId, service: id, reason, issues: unavailable?.issues ?? [] });
   }
   /** Marks every plugin unavailable whose required service has a disabled, missing or unavailable provider, transitively. */
   private cascadeUnavailable(): void {
@@ -281,7 +282,7 @@ export class Registry {
   pluginContext(plugin: Plugin, context: CommandContext, events: EventBus): PluginContext {
     const pluginId = plugin.manifest.id;
     return {
-      ...context, events: pluginEvents(events, pluginId), settings: this.settings.value(pluginId),
+      ...context, events: pluginEvents(events, pluginId, () => this.plugins.map(entry => entry.manifest.id)), settings: this.settings.value(pluginId),
       services: pluginServices(plugin, this.availableProviders()),
       t: key => this.catalog.message(pluginId, context.language, key),
     };
@@ -355,8 +356,7 @@ export class Registry {
     const unavailable = this.unavailable.get(plugin.manifest.id);
     if (!unavailable) return;
     const label = 'command' in contribution ? `Command ${contribution.command}` : `Generator ${contribution.generator}`;
-    const reason = renderKernelMessage(unavailable.reason);
-    throw forgeError('PLUGIN_UNAVAILABLE', `${label} is unavailable because plugin ${plugin.manifest.id} is unavailable: ${reason}`, { ...contribution, plugin: plugin.manifest.id, reason, issues: unavailable.issues });
+    throw forgeError('PLUGIN_UNAVAILABLE', `${label} is unavailable because plugin ${plugin.manifest.id} is unavailable: ${renderKernelMessage(unavailable.reason)}`, { ...contribution, plugin: plugin.manifest.id, reason: unavailable.reason, issues: unavailable.issues });
   }
   /** Plugin commands run with their plugin's context, so they can emit only their own events; coded errors resolve through the catalog. */
   private ownedCommand(plugin: Plugin, command: Command, events: EventBus): Command {

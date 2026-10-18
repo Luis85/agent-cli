@@ -146,7 +146,7 @@ describe('the claude.lifecycle service for trusted plugins', () => {
   it('leaves a plugin that requires it unavailable when the claude core plugin is disabled', async () => {
     const plugin = await configuredPlugin('lifecycle-disabled', { disabled: ['claude'] });
     const result = await plugin.cli(['native-audit.run']);
-    expect(result.body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'native-audit.run', plugin: 'native-audit', reason: 'Requires service claude.lifecycle; its provider claude is disabled.' } });
+    expect(result.body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'native-audit.run', plugin: 'native-audit', reason: { code: 'PLUGIN_PROVIDER_DISABLED', message: 'Requires service claude.lifecycle; its provider claude is disabled.' } } });
     expect((await plugin.cli(['claude', 'capabilities'])).body.error.code).toBe('UNKNOWN_COMMAND');
     const events = (await plugin.cli(['events'])).body.data;
     expect(events.events.filter((id: string) => id.startsWith('claude.'))).toEqual([]);
