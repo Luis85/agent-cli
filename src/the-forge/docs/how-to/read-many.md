@@ -46,8 +46,8 @@ the original error code and add `error.details.argument` (`paths`),
 `read-many path at index 1: ...`, and with `--lang de` as
 `Argument <paths> an Position 1: ...`. An exceeded budget reports
 `details.aggregateLimit` (8 MiB), `details.maxBytes` (the per-file
-`--max-bytes`) and `details.bytes`. Duplicate errors also identify `duplicateOf`. Limit and
-argument-count violations use `INVALID_ARGUMENT`. The command stops at the first
+`--max-bytes`) and `details.bytes`. Duplicate errors also identify `duplicateOf`. Limit violations
+and more than 32 paths use `INVALID_ARGUMENT`; no path at all is `MISSING_ARGUMENT`. The command stops at the first
 read failure. Standard read events for preceding successful reads may already
 have been delivered; no file writes or committed vault-change events occur.
 

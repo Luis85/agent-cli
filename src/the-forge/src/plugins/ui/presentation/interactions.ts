@@ -1,6 +1,6 @@
 import { ensure } from '../../../domain/shared/errors.ts';
 import type { Command, PluginContext } from '../../../application/plugins/registry.ts';
-import { arity, value } from '../../../application/plugins/command-input.ts';
+import { value } from '../../../application/plugins/command-input.ts';
 import { option } from '../../../application/plugins/command-metadata.ts';
 import { libraryMetadata, libraryOptions, localizedLibraryResult } from '../../../application/plugins/library-commands.ts';
 import { interactionEvents, type InteractionEvent } from '../domain/interactions/definition.ts';
@@ -19,7 +19,6 @@ export function interactionsCommand(services: UiServicesFactory): Command<Plugin
       const { settings, interactions: library } = services(context);
       const action = args[0] ?? 'list', directory = value(flags, 'library') ?? settings.interactions;
       if (action === 'list') {
-        arity(args, 0, 1);
         const definitions = await library.list(directory);
         return localizedLibraryResult('interactions', context, { directory, count: definitions.length, defaults: defaultInteractionIds, status: definitions.length ? 'ready' : 'empty',
           ...(!definitions.length ? { nextStep: `Run interactions init --library ${directory}, or add a Markdown interaction definition.` } : {}),
@@ -29,17 +28,16 @@ export function interactionsCommand(services: UiServicesFactory): Command<Plugin
           })),
         });
       }
-      if (action === 'init') { arity(args, 1); return { directory, ...await library.init(directory) }; }
-      if (action === 'inspect') { arity(args, 2); return library.inspect(directory, args[1]!); }
-      if (action === 'validate') { arity(args, 1); return localizedLibraryResult('interactions', context, await library.validate(directory)); }
+      if (action === 'init') return { directory, ...await library.init(directory) };
+      if (action === 'inspect') return library.inspect(directory, args[1]!);
+      if (action === 'validate') return localizedLibraryResult('interactions', context, await library.validate(directory));
       if (action === 'create') {
-        arity(args, 2);
         const event = value(flags, 'event');
         return library.create(directory, args[1]!, event as InteractionEvent | undefined);
       }
-      if (action === 'import') { arity(args, 1); return library.import(value(flags, 'from') ?? settings.interactionImports, directory); }
+      if (action === 'import') return library.import(value(flags, 'from') ?? settings.interactionImports, directory);
       ensure(action === 'export', 'INVALID_ARGUMENT', 'Use interactions list, init, inspect, validate, create, import, or export.');
-      arity(args, 1); return library.export(directory, value(flags, 'out') ?? settings.interactionExports);
+      return library.export(directory, value(flags, 'out') ?? settings.interactionExports);
     },
   };
 }

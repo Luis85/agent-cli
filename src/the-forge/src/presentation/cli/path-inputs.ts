@@ -1,6 +1,6 @@
 import { AppError, forgeError } from '../../domain/shared/errors.ts';
 import { vaultPath } from '../../domain/documents/file.ts';
-import { commandOptions, type CommandFlags, type CommandMetadata } from '../../application/plugins/command-metadata.ts';
+import { commandOptions, declaredArguments, type CommandFlags, type CommandMetadata } from '../../application/plugins/command-metadata.ts';
 
 /** The absolute roots of an invocation: its scope (the selected project or the workspace) and the workspace. */
 export interface PathScope { root: string; workspaceRoot: string }
@@ -81,10 +81,11 @@ function checked(input: string, origin: Origin, scope: PathScope): string {
  * that reads `--stdin` when the file lies outside the workspace.
  */
 export function normalizedPathInputs(command: CommandMetadata, args: readonly string[], flags: CommandFlags, scope: PathScope): [string[], CommandFlags] {
-  const declared = command.args ?? [];
+  const { words, args: declared } = declaredArguments(command, args) ?? { words: 0, args: [] };
   const normalizedArgs = args.map((value, index) => {
-    const variadic = index >= declared.length - 1 && declared.at(-1)?.variadic === true;
-    const argument = variadic ? declared.at(-1) : declared[index];
+    // Action words are no arguments; the declared arguments of the action follow them.
+    const position = index - words, variadic = position >= declared.length - 1 && declared.at(-1)?.variadic === true;
+    const argument = position < 0 ? undefined : variadic ? declared.at(-1) : declared[position];
     // A variadic argument's values are told apart by their zero-based position among all arguments.
     const source = { argument: argument?.name ?? '', ...(variadic ? { index } : {}) };
     return argument?.path === true ? checked(value, { source, stdin: false }, scope) : value;

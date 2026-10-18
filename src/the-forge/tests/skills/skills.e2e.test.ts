@@ -74,7 +74,7 @@ describe('the skills core plugin', () => {
     expect(skills.inputSchema).toMatchObject({ $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object', required: ['args', 'options'] });
     expect(skills.inputSchema.oneOf.map((branch: { title: string }) => branch.title)).toEqual(['skills (list)', 'skills list', 'skills show', 'skills install']);
     expect(skills.inputSchema.oneOf[3]).toMatchObject({
-      properties: { args: { type: 'array', maxItems: 2, prefixItems: [{ const: 'install' }, { type: 'string' }] }, options: { properties: { target: { type: 'string', enum: ['both', 'claude', 'agents'] }, out: { type: 'string' } }, additionalProperties: false } },
+      properties: { args: { type: 'array', minItems: 1, maxItems: 1, prefixItems: [{ const: 'install' }] }, options: { properties: { target: { type: 'string', enum: ['both', 'claude', 'agents'] }, out: { type: 'string' } }, additionalProperties: false } },
     });
     expect(skills.annotations).toMatchObject({ scope: 'workspace', mutating: true, readOnlyHint: false, destructiveHint: false, actions: { list: { readOnlyHint: true }, install: { scope: 'project', mutating: true, destructiveHint: false, idempotentHint: true } } });
     expect(skills.annotations.actions.list.outputSchema).toMatchObject({

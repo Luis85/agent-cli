@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CommandContext } from '../../src/application/plugins/registry.ts';
 import type { FileStat } from '../../src/domain/documents/file.ts';
 import { statCommand } from '../../src/presentation/documents/stat-command.ts';
+import { ensureArguments } from '../../src/application/plugins/command-arguments.ts';
 import { statOutput } from '../../src/presentation/documents/stat-output.ts';
 import { commandAnnotations, commandInputSchema, validateCommandMetadata } from '../../src/application/plugins/command-metadata.ts';
 import { validateJsonValue } from '../../src/domain/schema/json-schema.ts';
@@ -35,10 +36,8 @@ describe('stat metadata contract', () => {
     expect(JSON.stringify(result).length).toBeLessThan(200);
     expect(validateJsonValue(statOutput, result, 'data').issues).toEqual([]);
   });
-  it.each([{ args: [] }, { args: ['a', 'b'] }])('requires exactly one path ($args.length given)', async ({ args }) => {
-    const { stat, context } = fixture(file);
-    await expect(command.run(args, {}, context)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
-    expect(stat).not.toHaveBeenCalled();
+  it.each([{ args: [], code: 'MISSING_ARGUMENT' }, { args: ['a', 'b'], code: 'INVALID_ARGUMENT' }])('declares exactly one path, which the host requires ($args.length given)', ({ args, code }) => {
+    expect(() => ensureArguments(command, args)).toThrow(expect.objectContaining({ code }));
   });
   it('strictly separates file and folder outputs and rejects content or child listings', () => {
     expect(validateJsonValue(statOutput, file, 'data').issues).toEqual([]);

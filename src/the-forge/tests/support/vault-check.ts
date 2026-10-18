@@ -13,6 +13,7 @@ import { testHost } from './core-plugins.ts';
 import { scopeServices } from './metadata.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 import { forgeVersion } from './workspace.ts';
+import { ensureArguments } from '../../src/application/plugins/command-arguments.ts';
 
 export interface VaultFinding { rule: string; severity: string; path: string; line: number | null; column: number | null; message: string; hint: string; suggestion?: string }
 interface VaultCheckResult {
@@ -31,6 +32,11 @@ export async function vaultCommand(root: string, settings: Record<string, unknow
   await registry.configure(settings, async () => [], message => events.warn(message));
   const workspace = new Workspace(await NodeFiles.at(root), new ObsidianDocuments(), events, false);
   const context = { workspace, events, root, workspaceRoot: root, project: null, input: async () => new Uint8Array(), ...scopeServices(workspace, events), language: options.language ?? 'en' } as unknown as CommandContext;
-  const run = (args: string[], flags: Record<string, string | boolean> = {}) => registry.commands.get('vault')!.run(args, flags, context);
+  // The host counts the positional arguments before a command runs.
+  const run = async (args: string[], flags: Record<string, string | boolean> = {}) => {
+    const command = registry.commands.get('vault')!;
+    ensureArguments(command, args);
+    return command.run(args, flags, context);
+  };
   return { run, check: (flags: Record<string, string | boolean> = {}) => run(['check'], flags) as Promise<VaultCheckResult>, events };
 }

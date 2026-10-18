@@ -1,5 +1,4 @@
 import type { Command, CommandContext } from '../../application/plugins/registry.ts';
-import { arity } from '../../application/plugins/command-input.ts';
 import { option } from '../../application/plugins/command-metadata.ts';
 import { vaultPath } from '../../domain/documents/file.ts';
 import { AppError, ensure, errorMessage, forgeError, locatedError } from '../../domain/shared/errors.ts';
@@ -27,12 +26,11 @@ export function readManyCommand(): Command {
     id: 'read-many', description: 'Read up to 32 files sequentially with revisions; each file contributes at most --max-bytes to an 8 MiB aggregate limit.',
     examples: ['read-many notes/a.md notes/b.md'],
     usage: 'read-many <paths...> [--max-bytes count] [--project id]', scope: 'project', projectOption: 'project', discovery: false, mutating: false,
-    args: [{ name: 'paths', description: 'Vault path relative to the command scope.', required: true, variadic: true, path: true }],
+    args: [{ name: 'paths', description: 'Vault path relative to the command scope.', required: true, variadic: true, maximum: maxFiles, path: true }],
     options: { 'max-bytes': maxBytesOption, project: option.string('Use this project instead of the selected project.') },
     output: readManyOutput,
     errors: ['NOT_FOUND', 'INVALID_FRONTMATTER', 'INVALID_YAML', 'INVALID_CANVAS', 'INVALID_BASE', 'INVALID_ENCODING'],
     async run(args, flags, context) {
-      arity(args, 1, maxFiles);
       const limit = maxBytesFlag(flags);
       // Validate the entire path list before reading; vaultPath accepts only canonical relative POSIX paths.
       const paths = new Set<string>();

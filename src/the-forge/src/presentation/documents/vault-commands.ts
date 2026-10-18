@@ -1,5 +1,5 @@
 import type { Command } from '../../application/plugins/registry.ts';
-import { arity, value } from '../../application/plugins/command-input.ts';
+import { value } from '../../application/plugins/command-input.ts';
 import { option } from '../../application/plugins/command-metadata.ts';
 import { deleteOutput, moveOutput } from './output.ts';
 
@@ -19,7 +19,6 @@ export function vaultCommands(): Command[] {
     { id: 'delete', description: 'Move a file or folder to .trash, or remove it with --permanent; refuses while other files link to it.', usage: 'delete <path> --if-match sha256 [--recursive] [--permanent] [--allow-broken-links] [--project id]', ...vaultWrite, output: deleteOutput, args: [{ name: 'path', description: 'File or folder to delete.', required: true, path: true }], errors: ['NOT_FOUND', 'CONFLICT', 'PROTECTED_PATH', 'HAS_BACKLINKS'],
       examples: ['delete notes/idea.md --if-match <revision>', 'delete drafts --recursive --dry-run'],
       options: { 'if-match': ifMatch, recursive: option.boolean('Required to delete a folder.'), permanent: option.boolean('Remove instead of moving to .trash.'), 'allow-broken-links': option.boolean('Delete even while other files link to it.'), project }, async run(args, flags, { app, workspace }) {
-      arity(args, 1);
       return app.fileManager.delete(args[0]!, {
         ifMatch: guard(flags, workspace.dryRun), recursive: flags.recursive === true, permanent: flags.permanent === true, allowBrokenLinks: flags['allow-broken-links'] === true,
       });
@@ -27,13 +26,11 @@ export function vaultCommands(): Command[] {
     { id: 'move', description: 'Move or rename a file or folder and rewrite every link to it in one guarded batch.', usage: 'move <from> <to> --if-match sha256 [--no-update-links] [--project id]', options: linkOptions, ...vaultWrite, output: moveOutput, errors: moveErrors,
       examples: ['move notes/idea.md archive/idea.md --if-match <revision>', 'move notes/idea.md archive/idea.md --dry-run'],
       args: [{ name: 'from', description: 'File or folder to move.', required: true, path: true }, { name: 'to', description: 'New path that must not exist, or a folder to move into: one ending with / or one that exists.', required: true, path: true }], async run(args, flags, { app, workspace }) {
-      arity(args, 2);
       return app.fileManager.move(args[0]!, args[1]!, { ifMatch: guard(flags, workspace.dryRun), updateLinks: flags['no-update-links'] !== true });
     } },
     { id: 'rename', description: 'Rename a file or folder in place and rewrite every link to it; a file keeps its extension.', usage: 'rename <path> <new-name> --if-match sha256 [--no-update-links] [--project id]', options: linkOptions, ...vaultWrite, output: moveOutput, errors: moveErrors,
       examples: ['rename notes/idea.md plan.md --if-match <revision>'],
       args: [{ name: 'path', description: 'File or folder to rename.', required: true, path: true }, { name: 'new-name', description: 'New name without slashes; a file keeps its extension.', required: true }], async run(args, flags, { app, workspace }) {
-      arity(args, 2);
       return app.fileManager.rename(args[0]!, args[1]!, { ifMatch: guard(flags, workspace.dryRun), updateLinks: flags['no-update-links'] !== true });
     } },
   ];

@@ -8,7 +8,6 @@ export const updatesStrings: PluginStrings = { de: {
     'update apply': 'Eine feste Version herunterladen, prüfen und als geschützten Stapel anwenden; veränderbare Workspace-Daten erhalten.',
   },
   descriptions: {
-    'check (default) or apply.': 'check (Standard) oder apply.',
     'Check this pinned stable release instead of resolving latest.': 'Diese feste stabile Version statt der neuesten Version prüfen.',
     'Stable GitHub release version to install, such as 0.1.0.': 'Zu installierende stabile GitHub-Version, etwa 0.1.0.',
     'Installed bin folder revision returned by update check; required before upgrading.': 'Installierte bin-Ordnerrevision aus update check; vor der Aktualisierung erforderlich.',

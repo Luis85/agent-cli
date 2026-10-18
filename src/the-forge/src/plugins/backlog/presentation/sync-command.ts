@@ -1,6 +1,6 @@
 import type { CommandContext } from '../../../application/plugins/registry.ts';
 import type { CommandFlags } from '../../../application/plugins/command-metadata.ts';
-import { arity, value } from '../../../application/plugins/command-input.ts';
+import { value } from '../../../application/plugins/command-input.ts';
 import { ensure } from '../../../domain/shared/errors.ts';
 import type { CivilDate } from '../domain/fields.ts';
 import type { Direction } from '../application/sync-plan.ts';
@@ -17,9 +17,8 @@ export function syncAction(rest: string[], flags: CommandFlags, context: Command
   ensure(['push', 'pull', 'both'].includes(direction), 'INVALID_ARGUMENT', '--direction must be push, pull or both.');
   const run = async (request: SyncRequest) => localizedSync(await runSync(context, services, request, syncWarningText(context.language)), context.language);
   if (sub === undefined) return run({ ...selection, direction, mode: 'sync' });
-  if (sub === 'status') { arity(args, 0); return run({ ...selection, direction, mode: 'status' }); }
+  if (sub === 'status') return run({ ...selection, direction, mode: 'status' });
   ensure(sub === 'resolve', 'INVALID_ARGUMENT', 'Use backlog sync, backlog sync status or backlog sync resolve <item> --take local|remote.');
-  arity(args, 1);
   const take = value(flags, 'take', true)!;
   ensure(take === 'local' || take === 'remote', 'INVALID_ARGUMENT', '--take must be local or remote.');
   const fields = value(flags, 'field')?.split(',').map(field => field.trim()).filter(Boolean) ?? null;

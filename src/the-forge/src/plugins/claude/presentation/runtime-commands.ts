@@ -1,5 +1,5 @@
-import { arity, globalOptions } from '../../../application/plugins/command-input.ts';
-import type { CommandOption } from '../../../application/plugins/command-metadata.ts';
+import { globalOptions } from '../../../application/plugins/command-input.ts';
+import type { CommandArgument, CommandOption } from '../../../application/plugins/command-metadata.ts';
 import { ensureClaude } from '../domain/errors.ts';
 
 type RuntimeSection = 'plugins' | 'marketplaces' | 'runtime';
@@ -7,31 +7,33 @@ type Flags = Record<string, string | boolean>;
 type OptionKind = 'boolean' | 'string' | 'list' | 'repeat' | 'hash' | 'integer' | 'number' | 'optional-string';
 type RuntimeOutput = 'text' | 'json' | 'json-last-line';
 interface RuntimeCommand {
-  min: number;
-  max?: number;
+  /** The native operand, when the action takes one. */
+  operand?: CommandArgument;
   scope?: boolean;
   managed?: boolean;
   output?: RuntimeOutput;
   options?: Record<string, OptionKind>;
 }
 
+const operand = (name: string, description: string, required = true): CommandArgument => ({ name, description, ...(required ? { required } : {}) });
+const plugin = operand('plugin', 'The plugin, as name or name@marketplace.');
 const acceptance = { yes: 'boolean', 'accept-command': 'hash' } as const;
 const commands: Record<RuntimeSection, Record<string, RuntimeCommand>> = {
   plugins: {
-    list: { min: 0, output: 'json', options: { available: 'boolean', 'data-size': 'optional-string' } },
-    details: { min: 1 },
-    install: { min: 1, scope: true, output: 'json-last-line', options: { ...acceptance, config: 'repeat' } },
-    update: { min: 1, scope: true, managed: true, output: 'json-last-line', options: acceptance },
-    uninstall: { min: 1, scope: true, output: 'json-last-line', options: { 'keep-data': 'boolean', prune: 'boolean', yes: 'boolean' } },
-    enable: { min: 1, scope: true, output: 'json-last-line' },
-    disable: { min: 0, max: 1, scope: true, output: 'json-last-line', options: { all: 'boolean' } },
-    validate: { min: 1, output: 'json', options: { strict: 'boolean' } },
-    configure: { min: 1, output: 'json', options: { 'values-stdin': 'boolean' } },
-    prune: { min: 0, scope: true, options: { yes: 'boolean' } },
-    init: { min: 1, options: { description: 'string', author: 'string', 'author-email': 'string', with: 'list', force: 'boolean' } },
-    tag: { min: 0, max: 1, options: { push: 'boolean', force: 'boolean', message: 'string', remote: 'string' } },
-    test: { min: 0, max: 1 },
-    eval: { min: 0, max: 1, options: {
+    list: { output: 'json', options: { available: 'boolean', 'data-size': 'optional-string' } },
+    details: { operand: plugin },
+    install: { operand: plugin, scope: true, output: 'json-last-line', options: { ...acceptance, config: 'repeat' } },
+    update: { operand: plugin, scope: true, managed: true, output: 'json-last-line', options: acceptance },
+    uninstall: { operand: plugin, scope: true, output: 'json-last-line', options: { 'keep-data': 'boolean', prune: 'boolean', yes: 'boolean' } },
+    enable: { operand: plugin, scope: true, output: 'json-last-line' },
+    disable: { operand: operand('plugin', 'The plugin, as name or name@marketplace; omitted with --all.', false), scope: true, output: 'json-last-line', options: { all: 'boolean' } },
+    validate: { operand: operand('path', 'The plugin or marketplace path.'), output: 'json', options: { strict: 'boolean' } },
+    configure: { operand: operand('plugin', 'The plugin as name@marketplace, from plugins list.'), output: 'json', options: { 'values-stdin': 'boolean' } },
+    prune: { scope: true, options: { yes: 'boolean' } },
+    init: { operand: operand('name', 'The name of the new plugin.'), options: { description: 'string', author: 'string', 'author-email': 'string', with: 'list', force: 'boolean' } },
+    tag: { operand: operand('path', 'The plugin path.', false), options: { push: 'boolean', force: 'boolean', message: 'string', remote: 'string' } },
+    test: { operand: operand('directory', 'The plugin directory.', false) },
+    eval: { operand: operand('target', 'The evaluation target, such as a plugin directory.', false), options: {
       runs: 'integer', concurrency: 'integer', model: 'string', 'judge-model': 'string', ablation: 'string',
       threshold: 'number', 'max-cost-usd': 'number', 'allow-tools': 'list', scaffold: 'boolean', 'no-scaffold': 'boolean',
       'trust-plugin': 'boolean', mocks: 'string', 'eval-dir': 'string', case: 'string', tag: 'list',
@@ -39,19 +41,19 @@ const commands: Record<RuntimeSection, Record<string, RuntimeCommand>> = {
       'no-publish': 'boolean', 'publish-report': 'boolean',
       'native-json': 'boolean', 'native-json-output': 'string',
     } },
-    'eval init': { min: 1, options: { bare: 'boolean', interactive: 'boolean', 'eval-dir': 'string' } },
+    'eval init': { operand: operand('case-name', 'The name of the evaluation case.'), options: { bare: 'boolean', interactive: 'boolean', 'eval-dir': 'string' } },
   },
   marketplaces: {
-    add: { min: 1, scope: true, options: { sparse: 'list', claudeai: 'boolean' } },
-    list: { min: 0, output: 'json' },
-    remove: { min: 1, scope: true },
-    update: { min: 0, max: 1 },
+    add: { operand: operand('source', 'The marketplace source.'), scope: true, options: { sparse: 'list', claudeai: 'boolean' } },
+    list: { output: 'json' },
+    remove: { operand: operand('name', 'The marketplace name.'), scope: true },
+    update: { operand: operand('name', 'The marketplace name; every marketplace when omitted.', false) },
   },
   runtime: {
-    version: { min: 0 },
-    doctor: { min: 0 },
-    install: { min: 0, max: 1 },
-    update: { min: 0 },
+    version: {},
+    doctor: {},
+    install: { operand: operand('target', 'The version or release channel to install.', false) },
+    update: {},
   },
 };
 
@@ -71,10 +73,10 @@ export const claudeRuntimeOptions: Record<string, CommandOption> = (() => {
   } satisfies CommandOption]));
 })();
 
-/** One installed-CLI action, `claude <section> <action>`, with the native options it passes through. */
-export interface ClaudeRuntimeAction { section: RuntimeSection; action: string; scoped: boolean; managed: boolean; options: Record<string, CommandOption> }
+/** One installed-CLI action, `claude <section> <action>`, with its native operand and the native options it passes through. */
+export interface ClaudeRuntimeAction { section: RuntimeSection; action: string; args: readonly CommandArgument[]; scoped: boolean; managed: boolean; options: Record<string, CommandOption> }
 export const claudeRuntimeActions: readonly ClaudeRuntimeAction[] = Object.entries(commands).flatMap(([section, actions]) => Object.entries(actions).map(([action, command]) => ({
-  section: section as RuntimeSection, action, scoped: command.scope === true, managed: command.managed === true,
+  section: section as RuntimeSection, action, args: command.operand ? [command.operand] : [], scoped: command.scope === true, managed: command.managed === true,
   options: Object.fromEntries(Object.keys(command.options ?? {}).map(name => [name, claudeRuntimeOptions[name]!])),
 })));
 
@@ -158,7 +160,6 @@ function commandRules(section: RuntimeSection, action: string, operands: string[
 export function buildClaudeRuntimeArgs(section: RuntimeSection, args: string[], flags: Flags): string[] {
   const { action, operands } = actionArgs(section, args);
   const command = commandDefinition(section, action);
-  arity(operands, command.min, command.max ?? command.min);
   for (const operand of operands) {
     ensureClaude(operand.trim().length > 0 && !operand.startsWith('-') && !operand.includes('\0'), 'INVALID_CLAUDE_ARGUMENT',
       'Claude command operands must be nonempty and cannot start with a dash or contain null bytes. Prefix a dash-leading local path with ./ .');

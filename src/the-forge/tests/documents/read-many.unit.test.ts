@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { CommandContext } from '../../src/application/plugins/registry.ts';
 import { readManyCommand } from '../../src/presentation/documents/read-many-command.ts';
+import { ensureArguments } from '../../src/application/plugins/command-arguments.ts';
 import { invocationPolicy } from '../../src/presentation/cli/invocation-policy.ts';
 import { commandInputSchema, commandOutputSchema, validateCommandMetadata } from '../../src/application/plugins/command-metadata.ts';
 import { validateJsonValue } from '../../src/domain/schema/json-schema.ts';
@@ -28,10 +29,8 @@ describe('read-many contract', () => {
     const data = await command.run(['a.ts', 'b.ts'], {}, fixture.value);
     expect(validateJsonValue(commandOutputSchema(command, [])!, data, 'data').issues).toEqual([]);
   });
-  it.each([{ paths: [] }, { paths: Array.from({ length: 33 }, (_, index) => `${index}.txt`) }])('rejects invalid file count before reading: $paths.length', async ({ paths }) => {
-    const fixture = context();
-    await expect(command.run(paths, {}, fixture.value)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
-    expect(fixture.read).not.toHaveBeenCalled();
+  it.each([{ paths: [], code: 'MISSING_ARGUMENT' }, { paths: Array.from({ length: 33 }, (_, index) => `${index}.txt`), code: 'INVALID_ARGUMENT' }])('declares a file count the host rejects before the command runs: $paths.length', ({ paths, code }) => {
+    expect(() => ensureArguments(command, paths)).toThrow(expect.objectContaining({ code, details: expect.objectContaining({ minimum: 1, maximum: 32, received: paths.length }) }));
   });
   it('accepts exactly 32 paths in supplied order and preserves case-sensitive names', async () => {
     const fixture = context();

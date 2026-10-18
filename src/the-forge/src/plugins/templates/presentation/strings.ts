@@ -7,8 +7,8 @@ export const templatesStrings: PluginStrings = {
     errors: germanTemplateErrors,
     manifest: { name: 'Vorlagen', description: 'Obsidian-Markdown-Vorlagen zu Dokumenten rendern und das Planungs-Workflow-Paket installieren.' },
     descriptions: {
-      'list (default), inspect or install.': 'list (Standard), inspect oder install.',
-      'The template for inspect, or the pack (workflow) for install.': 'Die Vorlage für inspect oder das Paket (workflow) für install.',
+      'The template path inside bin/templates, such as prd.md.': 'Der Pfad der Vorlage in bin/templates, etwa prd.md.',
+      'The template pack; workflow is the only one.': 'Das Vorlagenpaket; workflow ist das einzige.',
       'Markdown template under bin/templates.': 'Markdown-Vorlage unter bin/templates.',
       'Template values as a JSON object.': 'Vorlagenwerte als JSON-Objekt.',
       'Read template values from a JSON file.': 'Vorlagenwerte aus einer JSON-Datei lesen.',

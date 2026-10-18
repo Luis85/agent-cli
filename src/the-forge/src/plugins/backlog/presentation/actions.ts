@@ -15,6 +15,9 @@ const read = { mutating: false };
 const written = { output: changesOutput() };
 /** Writes that converge: repeating the identical invocation finds the target state and changes nothing. */
 const settled = { idempotent: true, ...written };
+/** Items, iterations and releases are named by vault path (with or without .md), link text, title or pbl-id. */
+const item = { name: 'item', description: 'The item: a vault path, link text, title or pbl-id.', required: true } as const;
+const releaseName = { name: 'release', description: 'The release: a vault path, link text, title or pbl-id.', required: true } as const;
 const direction = option.string('Push vault changes, pull remote changes, or both (default).', { enum: ['push', 'pull', 'both'] });
 
 /**
@@ -23,20 +26,21 @@ const direction = option.string('Push vault changes, pull remote changes, or bot
  */
 export const backlogActions: Readonly<Record<string, CommandAction>> = {
   init: {
-    description: 'Write the plugin\'s Product Backlog.base scaffold into a folder (default docs).', usage: 'backlog init [--folder docs]', ...written,
+    description: 'Write the plugin\'s Product Backlog.base scaffold into a folder (default docs).', usage: 'backlog init [--folder docs]', ...written, args: [],
     options: { folder: option.string('The backlog folder (default docs).') },
   },
   list: {
-    description: 'Every item by global rank as JSON.', usage: 'backlog list [--context]', ...read,
+    description: 'Every item by global rank as JSON.', usage: 'backlog list [--context]', ...read, args: [],
     options: { context: option.boolean('Include read-only context rows (ancestors outside the filter).') },
   },
-  tree: { description: 'The hierarchy in sibling rank order, context ancestors included.', usage: 'backlog tree', ...read },
-  board: { description: 'Board columns by state with WIP limits and the no-state column.', usage: 'backlog board', ...read },
-  show: { description: 'One item with its ancestors, children, prerequisites and dependents.', usage: 'backlog show <item>', ...read },
-  check: { description: 'Report parent and dependency cycles, broken links, unresolved memberships, configuration and field problems, rank ties.', usage: 'backlog check', ...read },
+  tree: { description: 'The hierarchy in sibling rank order, context ancestors included.', usage: 'backlog tree', ...read, args: [] },
+  board: { description: 'Board columns by state with WIP limits and the no-state column.', usage: 'backlog board', ...read, args: [] },
+  show: { description: 'One item with its ancestors, children, prerequisites and dependents.', usage: 'backlog show <item>', ...read, args: [item] },
+  check: { description: 'Report parent and dependency cycles, broken links, unresolved memberships, configuration and field problems, rank ties.', usage: 'backlog check', ...read, args: [] },
   add: {
     description: 'Create an item note exactly as the plugin does: sanitized name, type folder, pbl-id, key order and end-of-siblings rank.',
     usage: 'backlog add <type> <title> [--parent item] [--folder directory] [--state state] [--iteration iteration] [--release release] [--assignee resource] [--tags tags]', ...written,
+    args: [{ name: 'type', description: 'The item type, such as Epic or Story.', required: true }, { name: 'title', description: 'The item title; quote a title with spaces.', required: true }],
     options: {
       parent: option.string('The parent item.'),
       folder: option.string('The folder of the new note instead of its type folder.'),
@@ -49,7 +53,7 @@ export const backlogActions: Readonly<Record<string, CommandAction>> = {
   },
   move: {
     description: 'Reparent or reorder one item with the plugin\'s rank arithmetic; writes only its parent and order.',
-    usage: 'backlog move <item> [--parent item | --top] [--before item | --after item | --first | --last] [--if-match revision]', ...settled,
+    usage: 'backlog move <item> [--parent item | --top] [--before item | --after item | --first | --last] [--if-match revision]', ...settled, args: [item],
     options: {
       parent: option.string('The new parent.'),
       top: option.boolean('Make the item a top-level item (no parent).'),
@@ -60,10 +64,11 @@ export const backlogActions: Readonly<Record<string, CommandAction>> = {
       'if-match': ifMatch,
     },
   },
-  ranks: { description: 'seed (tree preorder) or respace (current rank order) ranks 1000 apart.', usage: 'backlog ranks seed|respace', ...settled },
+  ranks: { description: 'seed (tree preorder) or respace (current rank order) ranks 1000 apart.', usage: 'backlog ranks seed|respace', ...settled,
+    args: [{ name: 'mode', description: 'seed or respace.', required: true, enum: ['seed', 'respace'] }] },
   set: {
     description: 'Set state (with started/finished stamps), horizon, priority, risk, dates, assignee or type; an empty value clears.',
-    usage: 'backlog set <item> [--state state] [--horizon horizon] [--priority priority] [--risk risk] [--start date] [--due date] [--assignee resource] [--type type] [--if-match revision]', ...settled,
+    usage: 'backlog set <item> [--state state] [--horizon horizon] [--priority priority] [--risk risk] [--start date] [--due date] [--assignee resource] [--type type] [--if-match revision]', ...settled, args: [item],
     options: {
       state: option.string('The workflow state.'),
       horizon: option.string('The roadmap horizon (Now, Next, Later…).'),
@@ -77,15 +82,15 @@ export const backlogActions: Readonly<Record<string, CommandAction>> = {
     },
   },
   depend: {
-    description: 'Add a dependsOn link unless it closes a dependency loop.', usage: 'backlog depend <item> --on <item> [--if-match revision]', ...settled,
+    description: 'Add a dependsOn link unless it closes a dependency loop.', usage: 'backlog depend <item> --on <item> [--if-match revision]', ...settled, args: [item],
     options: { on: option.string('The prerequisite item.', { required: true }), 'if-match': ifMatch },
   },
   undepend: {
-    description: 'Remove a dependsOn entry; the key is deleted when the list empties.', usage: 'backlog undepend <item> --on <item> [--if-match revision]', ...settled,
+    description: 'Remove a dependsOn entry; the key is deleted when the list empties.', usage: 'backlog undepend <item> --on <item> [--if-match revision]', ...settled, args: [item],
     options: { on: option.string('The prerequisite item.', { required: true }), 'if-match': ifMatch },
   },
   'iteration add': {
-    description: 'Add an iteration with the plugin\'s name and date defaults.', usage: 'backlog iteration add [--name name] [--goal goal] [--start date] [--due date] [--length days]', ...written,
+    description: 'Add an iteration with the plugin\'s name and date defaults.', usage: 'backlog iteration add [--name name] [--goal goal] [--start date] [--due date] [--length days]', ...written, args: [],
     options: {
       name: option.string('The name instead of "<N> - Iteration".'),
       goal: option.string('The iteration goal.'),
@@ -96,10 +101,12 @@ export const backlogActions: Readonly<Record<string, CommandAction>> = {
   },
   'iteration assign': {
     description: 'Plan an item in an iteration.', usage: 'backlog iteration assign <item> <iteration> [--if-match revision]', ...settled,
+    args: [item, { name: 'iteration', description: 'The iteration: a vault path, link text, title or pbl-id.', required: true }],
     options: { 'if-match': ifMatch },
   },
   'release add': {
     description: 'Add a release note.', usage: 'backlog release add <name> [--release-version version] [--target-date date] [--status status] [--description text]', ...written,
+    args: [{ name: 'name', description: 'The release name.', required: true }],
     options: {
       'release-version': option.string('The version (the release view\'s versionProperty).'),
       'target-date': option.string('The target date.'),
@@ -107,22 +114,22 @@ export const backlogActions: Readonly<Record<string, CommandAction>> = {
       description: option.string('The description.'),
     },
   },
-  'release join': { description: 'Plan an item in a release.', usage: 'backlog release join <item> <release> [--if-match revision]', ...settled, options: { 'if-match': ifMatch } },
+  'release join': { description: 'Plan an item in a release.', usage: 'backlog release join <item> <release> [--if-match revision]', ...settled, args: [item, releaseName], options: { 'if-match': ifMatch } },
   // A repeat finds the release released and is refused, so it changes nothing.
-  'release mark-released': { description: 'Mark a release released.', usage: 'backlog release mark-released <release> [--if-match revision]', ...settled, options: { 'if-match': ifMatch } },
-  'release readiness': { description: 'Report how ready a release is.', usage: 'backlog release readiness <release>', ...read },
-  'release notes': { description: 'Write the generated release notes of a release; an unchanged repeat writes nothing.', usage: 'backlog release notes <release>', ...settled },
-  'release list': { description: 'List the releases.', usage: 'backlog release list', ...read },
+  'release mark-released': { description: 'Mark a release released.', usage: 'backlog release mark-released <release> [--if-match revision]', ...settled, args: [releaseName], options: { 'if-match': ifMatch } },
+  'release readiness': { description: 'Report how ready a release is.', usage: 'backlog release readiness <release>', ...read, args: [releaseName] },
+  'release notes': { description: 'Write the generated release notes of a release; an unchanged repeat writes nothing.', usage: 'backlog release notes <release>', ...settled, args: [releaseName] },
+  'release list': { description: 'List the releases.', usage: 'backlog release list', ...read, args: [] },
   sync: {
-    description: 'Two-way sync of every view bound to a connection (view option connection: <id>) with explicit conflicts.', usage: 'backlog sync [--direction push|pull|both]',
+    description: 'Two-way sync of every view bound to a connection (view option connection: <id>) with explicit conflicts.', usage: 'backlog sync [--direction push|pull|both]', args: [],
     options: { direction },
   },
   'sync status': {
-    description: 'Read both sides of every bound view without writing.', usage: 'backlog sync status [--direction push|pull|both]', ...read,
+    description: 'Read both sides of every bound view without writing.', usage: 'backlog sync status [--direction push|pull|both]', ...read, args: [],
     options: { direction },
   },
   'sync resolve': {
-    description: 'Settle a sync conflict of one item with the local or the remote value.', usage: 'backlog sync resolve <item> --take local|remote [--field fields]',
+    description: 'Settle a sync conflict of one item with the local or the remote value.', usage: 'backlog sync resolve <item> --take local|remote [--field fields]', args: [item],
     options: {
       take: option.string('Settle the conflict with the local or the remote value.', { enum: ['local', 'remote'], required: true }),
       field: option.string(`Comma-separated fields to settle (${SYNC_FIELDS.join(', ')}, property:<key>); default every conflicting field.`),

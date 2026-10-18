@@ -62,8 +62,8 @@ describe('discovery for agents without prior knowledge', () => {
   it('names missing arguments, unknown generators and actions, and the edit modes', async () => {
     const missing = await cli(['read']);
     expect(missing.body.error).toMatchObject({
-      code: 'INVALID_ARGUMENT', message: expect.stringMatching(/^Missing <path>\. Expected 1 positional argument, got 0\. Usage: read <path>/),
-      hint: expect.stringContaining('run help read for usage'), details: { minimum: 1, maximum: 1, received: 0, missing: ['path'] },
+      code: 'MISSING_ARGUMENT', message: expect.stringMatching(/^Missing <path>\. Expected 1 positional argument, got 0\. Usage: read <path>/),
+      hint: expect.stringContaining('run help read for usage'), details: { argument: 'path', missing: ['path'], command: 'read', minimum: 1, maximum: 1, received: 0 },
     });
     expect((await cli(['move', 'a.md'])).body.error.details.missing).toEqual(['to']);
     const generator = await cli(['make', 'entiy']);

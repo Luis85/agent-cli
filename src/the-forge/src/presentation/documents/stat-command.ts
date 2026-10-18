@@ -1,5 +1,4 @@
 import type { Command } from '../../application/plugins/registry.ts';
-import { arity } from '../../application/plugins/command-input.ts';
 import { option } from '../../application/plugins/command-metadata.ts';
 import { statOutput } from './stat-output.ts';
 
@@ -13,7 +12,6 @@ export function statCommand(): Command {
     options: { project: option.string('Use this project instead of the selected project.') },
     errors: ['NOT_FOUND', 'CONFLICT'], output: statOutput,
     async run(args, _flags, { workspace }) {
-      arity(args, 1);
       const entry = await workspace.files.stat(args[0]!);
       const identity = { path: entry.path, kind: entry.kind, revision: entry.revision };
       return entry.kind === 'file'

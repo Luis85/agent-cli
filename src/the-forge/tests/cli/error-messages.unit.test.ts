@@ -60,7 +60,9 @@ describe('German error messages with the values of the occurrence', () => {
   });
 
   it('names the missing arguments and counts of an arity failure, and the offending value of other argument failures', () => {
-    expect(german('INVALID_ARGUMENT', { minimum: 2, maximum: 2, received: 1, missing: ['to'] })).toBe('Es fehlt <to>: Falsche Anzahl an Positionsargumenten, erwartet 2, erhalten 1.');
+    expect(german('MISSING_ARGUMENT', { argument: 'to', missing: ['to'], command: 'move', minimum: 2, maximum: 2, received: 1 })).toBe('Es fehlt <to>: erwartet 2 Positionsargumente, erhalten 1.');
+    expect(german('MISSING_ARGUMENT', { argument: 'paths', missing: ['paths'], command: 'tags', minimum: 1, received: 0 })).toBe('Es fehlt <paths>: erwartet mindestens 1 Positionsargumente, erhalten 0.');
+    expect(german('INVALID_ARGUMENT', { unexpected: ['x', 'y z'], command: 'open', minimum: 0, maximum: 1, received: 3 })).toBe('Überzählig: "x" "y z". Falsche Anzahl an Positionsargumenten: erwartet 0 bis 1, erhalten 3.');
     expect(german('INVALID_ARGUMENT', { minimum: 0, maximum: 1, received: 3 })).toBe('Falsche Anzahl an Positionsargumenten: erwartet 0 bis 1, erhalten 3.');
     expect(german('INVALID_ARGUMENT', { action: 'lst', allowed: ['list', 'show'], suggestions: ['list'] })).toBe('Unbekannte Aktion lst; verfügbar sind list, show.');
     expect(german('INVALID_ARGUMENT', { total: 3 })).toBe('--lines beginnt nach der letzten Zeile; der Text hat 3 Zeile(n).');

@@ -1,7 +1,7 @@
 import { ensure } from '../../../domain/shared/errors.ts';
 import type { Command, Generator, PluginContext } from '../../../application/plugins/registry.ts';
 import { generationControls, generationOutputPath, libraryGenerationOptions } from '../../../application/generation/controls.ts';
-import { arity, value } from '../../../application/plugins/command-input.ts';
+import { value } from '../../../application/plugins/command-input.ts';
 import { option, type CommandFlags } from '../../../application/plugins/command-metadata.ts';
 import { libraryMetadata, libraryOptions, localizedLibraryResult } from '../../../application/plugins/library-commands.ts';
 import type { DataSourceLibrary } from '../application/library.ts';
@@ -51,23 +51,22 @@ export function dataSourcesCommand(services: DataSourceServicesFactory): Command
       const { settings, library } = services(context);
       const action = args[0] ?? 'list', directory = value(flags, 'library') ?? settings.library;
       if (action === 'list') {
-        arity(args, 0, 1);
         const definitions = await library.list(directory);
         return localizedLibraryResult('data-sources', context, { directory, count: definitions.length, status: definitions.length ? 'ready' : 'empty',
           ...(!definitions.length ? { nextStep: `Run data-sources init --library ${directory}, or add a Markdown data-source definition.` } : {}),
           sources: definitions.map(definition => ({ id: definition.id, kind: definition.kind, model: definition.model.name, sourcePath: definition.sourcePath, fields: Object.keys(definition.model.fields).sort() })) });
       }
-      if (action === 'init') { arity(args, 1); return { directory, ...await library.init(directory) }; }
-      if (action === 'inspect') { arity(args, 2); return library.inspect(directory, args[1]!); }
-      if (action === 'validate') { arity(args, 1); return localizedLibraryResult('data-sources', context, await library.validate(directory)); }
+      if (action === 'init') return { directory, ...await library.init(directory) };
+      if (action === 'inspect') return library.inspect(directory, args[1]!);
+      if (action === 'validate') return localizedLibraryResult('data-sources', context, await library.validate(directory));
       if (action === 'create') {
-        arity(args, 2); const kind = value(flags, 'kind') ?? 'rest';
+        const kind = value(flags, 'kind') ?? 'rest';
         ensure(kind === 'rest' || kind === 'json', 'INVALID_ARGUMENT', '--kind must be rest or json.');
         return library.create(directory, args[1]!, kind);
       }
-      if (action === 'import') { arity(args, 1); return library.import(value(flags, 'from') ?? settings.imports, directory); }
+      if (action === 'import') return library.import(value(flags, 'from') ?? settings.imports, directory);
       ensure(action === 'export', 'INVALID_ARGUMENT', 'Use data-sources list, init, inspect, validate, create, import, or export.');
-      arity(args, 1); return library.export(directory, value(flags, 'out') ?? settings.exports);
+      return library.export(directory, value(flags, 'out') ?? settings.exports);
     },
   };
 }

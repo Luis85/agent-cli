@@ -41,7 +41,7 @@ export class Localizer {
    * `<command> <action>` in the kernel and plugin catalogs; the actions of a command with `generatorActions` are
    * generators, described by generator id.
    */
-  command<T extends { id: string; description: string; options?: Options; args?: readonly CommandArgument[]; actions?: Readonly<Record<string, Described & { options?: Options }>>; generatorActions?: boolean }>(command: T): T {
+  command<T extends { id: string; description: string; options?: Options; args?: readonly CommandArgument[]; actions?: Readonly<Record<string, Described & { options?: Options; args?: readonly CommandArgument[] }>>; generatorActions?: boolean }>(command: T): T {
     if (this.language !== 'de') return command;
     const description = this.german('commands', command.id);
     const options = this.options(command.options), args = command.args && this.described(command.args);
@@ -49,9 +49,9 @@ export class Localizer {
     const actions = command.actions && Object.fromEntries(Object.entries(command.actions).map(([id, action]) => {
       const key = `${command.id} ${id}`;
       const german = translated(germanActions, key) ?? this.plugins?.text('de', 'actions', key) ?? (command.generatorActions ? this.german('generators', id) : undefined);
-      const actionOptions = this.options(action.options);
-      if (german || actionOptions !== action.options) translatedActions = true;
-      return [id, { ...action, ...(german ? { description: german } : {}), ...(actionOptions ? { options: actionOptions } : {}) }];
+      const actionOptions = this.options(action.options), actionArgs = action.args && this.described(action.args);
+      if (german || actionOptions !== action.options || actionArgs !== action.args) translatedActions = true;
+      return [id, { ...action, ...(german ? { description: german } : {}), ...(actionOptions ? { options: actionOptions } : {}), ...(actionArgs ? { args: actionArgs } : {}) }];
     }));
     if (!description && !translatedActions && options === command.options && args === command.args) return command;
     return { ...command, ...(description ? { description } : {}), ...(options ? { options } : {}), ...(args ? { args } : {}), ...(translatedActions ? { actions } : {}) };

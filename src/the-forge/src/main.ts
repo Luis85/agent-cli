@@ -64,7 +64,7 @@ import { responseDocument, type InvocationResponse } from './presentation/cli/re
 import { forgeIdentity } from './presentation/cli/identity.ts';
 import { invocationPolicy } from './presentation/cli/invocation-policy.ts';
 import { normalizedPathInputs } from './presentation/cli/path-inputs.ts';
-import { runCommand } from './presentation/cli/guidance.ts';
+import { ensureArguments } from './application/plugins/command-arguments.ts';
 import { Localizer } from './presentation/localization/localization.ts';
 import { kernelMessage, type KernelMessage } from './domain/shared/kernel-messages.ts';
 
@@ -153,6 +153,7 @@ async function run(): Promise<void> {
       ensure(!parsed.flags.version, 'INVALID_ARGUMENT', '--version must be used without a command.');
       // help describes a command without running it, so its declared constraints do not apply.
       const flags = parsed.flags.help ? parsed.flags : declaredValues(commandOptions(command, parsed.args.slice(1)), parsed.flags);
+      if (!parsed.flags.help) ensureArguments(command, parsed.args.slice(1));
       if (!parsed.flags.help) lockWait = waitBudget(parsed.flags);
       settings.dryRun = flagSetting(parsed.flags, 'dry-run', settings.dryRun);
       // Environment commits reach the metadata index once the command's scope binds it below.
@@ -199,7 +200,7 @@ async function run(): Promise<void> {
       }, async () => {
         const output = parsed.flags.help
           ? await invokedCommand.run(id === 'help' ? [] : [id], {}, context)
-          : await runCommand(command, ...normalizedPathInputs(command, parsed.args.slice(1), flags, context), context);
+          : await command.run(...normalizedPathInputs(command, parsed.args.slice(1), flags, context), context);
         return localizer().result(registry.commands.get(commandId), output);
       });
       result = { ok: true, data };

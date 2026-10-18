@@ -15,7 +15,11 @@ import { actionSuggestions } from './suggestions.ts';
  *   when they are omitted. An id of several words, such as `iteration add`, names a sub-action: the arguments
  *   select the longest id they start with, so `backlog iteration add` selects `iteration add`. A refinement
  *   inherits every field it does not set and may add its own `options`, which the parser accepts only for that
- *   action (`make <generator>`).
+ *   action (`make <generator>`), and declares its own `args`, the positional arguments after its words.
+ * - `args`: the positional arguments, which the host counts before the command runs (see `argumentBounds`). On a
+ *   command with actions they are those of an invocation that spells no action, so `[{ name: 'action', required:
+ *   true }]` makes the action required; with `unknownAction`, only an invocation without arguments spells none.
+ *   Undeclared `args` leave the count of that invocation unchecked.
  * - `unknownAction`: the code for a first argument that names no declared action, `UNKNOWN_GENERATOR` or
  *   `INVALID_ARGUMENT`. It outranks option errors, so options of an unknown action never read as `UNKNOWN_OPTION`.
  * - `projectOption`: a string option that explicitly selects the project (`make ui --project web`).
@@ -43,7 +47,13 @@ export interface CommandOption {
   type: 'string' | 'boolean'; description: string;
   enum?: readonly string[]; list?: boolean; default?: string | boolean; required?: boolean; schema?: JsonSchema; path?: boolean;
 }
-export interface CommandArgument { name: string; description: string; required?: boolean; enum?: readonly string[]; variadic?: boolean; schema?: JsonSchema; path?: boolean }
+/**
+ * A positional argument. Required arguments precede optional ones, and only the last may be `variadic`: it then
+ * takes one or more values (none when it is optional), at most `maximum` of them when that is set.
+ */
+export interface CommandArgument {
+  name: string; description: string; required?: boolean; enum?: readonly string[]; variadic?: boolean; maximum?: number; schema?: JsonSchema; path?: boolean;
+}
 const documentSchema = (value: unknown) => value === undefined || schemaIssues(value).length === 0;
 export interface CommandMode {
   scope?: CommandScope; discovery?: boolean; mutating?: boolean; projectOption?: string;
@@ -53,6 +63,8 @@ export interface CommandAction extends CommandMode {
   description: string; usage?: string;
   /** Options accepted only with this action, besides the command's own; names never repeat a command option. */
   options?: Readonly<Record<string, CommandOption>>;
+  /** The positional arguments after the action's words; undeclared, their count is unchecked. */
+  args?: readonly CommandArgument[];
   /** JSON Schema of `data` for this action; overrides the command's `output`. */
   output?: JsonSchema;
 }
@@ -84,7 +96,7 @@ export interface CommandMetadata extends CommandMode {
 export type OutputLocalization = 'text' | 'generators' | 'events' | 'errors' | 'options' | 'settings';
 const outputLocalizations: readonly OutputLocalization[] = ['text', 'generators', 'events', 'errors', 'options', 'settings'];
 /** The words of an action id: `iteration add` selects the arguments `iteration`, `add`. */
-const actionWords = (id: string): string[] => id.split(' ');
+export const actionWords = (id: string): string[] => id.split(' ');
 
 /**
  * The id of the action the arguments select: the longest declared id whose words the leading arguments spell, or
@@ -133,6 +145,30 @@ export function commandOptions(command: CommandMetadata, args: readonly string[]
   return { ...command.options, ...selectedAction(command, args)?.options };
 }
 
+/** The positional arguments an invocation is counted against: `words` action words, then `args`. */
+export interface DeclaredArguments { action?: string; words: number; args: readonly CommandArgument[] }
+
+/**
+ * The declared positional arguments of an invocation: those of the action its leading arguments spell, after its
+ * words, else the command's own. `undefined` when they are not declared, so their count goes unchecked.
+ */
+export function declaredArguments(command: CommandMetadata, args: readonly string[]): DeclaredArguments | undefined {
+  const action = args.length === 0 ? undefined : actionId(command, args);
+  const declared = action === undefined ? command.args : command.actions?.[action]?.args;
+  if (declared === undefined) return undefined;
+  return action === undefined ? { words: 0, args: declared } : { action, words: actionWords(action).length, args: declared };
+}
+
+/**
+ * The fewest and most positional arguments of an invocation, its action words included: the required arguments,
+ * and every argument or, for a variadic last one, its `maximum` values; no `maximum` when a variadic one has none.
+ */
+export function argumentBounds({ words, args }: DeclaredArguments): { minimum: number; maximum?: number } {
+  const last = args.at(-1), minimum = words + args.filter(arg => arg.required).length;
+  if (last?.variadic !== true) return { minimum, maximum: words + args.length };
+  return last.maximum === undefined ? { minimum } : { minimum, maximum: words + args.length - 1 + last.maximum };
+}
+
 /** Whether parsing must resolve the action first: some action declares its own options, or unknown actions fail. */
 export function hasActionOptions(command: CommandMetadata): boolean {
   return command.unknownAction !== undefined || Object.values(command.actions ?? {}).some(action => Object.keys(action.options ?? {}).length > 0);
@@ -151,12 +187,20 @@ export function anyActionOptions(command: CommandMetadata): Record<string, 'stri
 }
 
 /**
- * Fails with the command's `unknownAction` code when the leading arguments (not options) select no declared action.
- * The message lists the declared actions, which `details.allowed` holds with the closest in `details.suggestions`.
+ * Fails with the command's `unknownAction` code when the leading arguments (not options) select no declared action,
+ * or follow an action without arguments of its own with a word that spells none of its sub-actions. The message
+ * lists the declared actions, which `details.allowed` holds with the closest in `details.suggestions`.
  */
 export function ensureKnownAction(command: CommandMetadata, args: readonly string[]): void {
   const action = args[0];
-  if (command.unknownAction === undefined || action === undefined || action.startsWith('-') || actionId(command, args) !== undefined) return;
+  if (command.unknownAction === undefined || action === undefined || action.startsWith('-')) return;
+  const id = actionId(command, args);
+  if (id !== undefined) {
+    // An action that takes no arguments of its own spells a sub-action with the next one: `claude agents lst`.
+    const next = args[actionWords(id).length];
+    if (next !== undefined && command.actions?.[id]?.args?.length === 0 && nextWords(command, actionWords(id)).length > 0) unknownAction(command.unknownAction, command, `${id} ${next}`);
+    return;
+  }
   // A first word that only sub-actions start with (`iteration`) is unknown together with the word after it.
   const group = Object.keys(command.actions ?? {}).some(id => id.startsWith(`${action} `)) && args[1] !== undefined && !args[1].startsWith('-');
   unknownAction(command.unknownAction, command, group ? `${action} ${args[1]}` : action);
@@ -207,25 +251,24 @@ const positionalSchema = (arg: CommandArgument): JsonSchema => ({ type: 'string'
 const exceptWords = (words: readonly string[]) => `^(?!(?:${words.map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})$)`;
 
 /**
- * `args` and `options` of one invocation shape; `action` pins the leading arguments to the words of one action id,
- * and the argument after them never spells `extended`, the next words of the longer ids that extend the action.
+ * `args` and `options` of one invocation shape: the words of `action` as leading `const` arguments, then the
+ * declared arguments, counted by `argumentBounds`; the argument after the words never spells one of `excluded`, the
+ * next words of the longer action ids. Undeclared arguments are any number of strings.
  */
-function invocationSchema(usage: string, args: readonly CommandArgument[], options: Readonly<Record<string, CommandOption>>, action?: string, extended: readonly string[] = []): JsonSchema {
+function invocationSchema(usage: string, declared: DeclaredArguments | undefined, options: Readonly<Record<string, CommandOption>>, action?: string, excluded: readonly string[] = []): JsonSchema {
   const required = Object.entries(options).filter(([, schema]) => schema.required).map(([key]) => key);
-  const variadic = args.at(-1)?.variadic === true;
-  const positional = args.map(positionalSchema), rest = variadic ? positional.at(-1)! : { type: 'string' as const };
-  const words = action === undefined || args.length === 0 ? [] : actionWords(action);
-  words.forEach((word, index) => { positional[index] = { type: 'string', const: word, description: (args[index] ?? args.at(-1)!).description }; });
-  if (extended.length > 0) positional[words.length] = { ...(positional[words.length] ?? rest), pattern: exceptWords(extended) };
-  const minimum = Math.max(args.filter(arg => arg.required).length, words.length);
-  const maximum = variadic ? undefined : Math.max(args.length, words.length);
+  const words = action === undefined ? [] : actionWords(action), args = declared?.args ?? [];
+  const positional: JsonSchema[] = [...words.map(word => ({ type: 'string' as const, const: word })), ...args.map(positionalSchema)];
+  const rest = args.at(-1)?.variadic ? positional.at(-1)! : { type: 'string' as const };
+  const bounds = declared === undefined ? { minimum: words.length } : argumentBounds(declared);
+  if (excluded.length > 0 && (bounds.maximum === undefined || bounds.maximum > words.length)) positional[words.length] = { ...(positional[words.length] ?? rest), pattern: exceptWords(excluded) };
   return {
     type: 'object', additionalProperties: false, required: ['args', 'options'],
     properties: {
       args: {
         type: 'array', description: usage, items: rest,
         ...(positional.length > 0 ? { prefixItems: positional } : {}),
-        minItems: minimum, ...(maximum === undefined ? {} : { maxItems: maximum }),
+        minItems: bounds.minimum, ...(bounds.maximum === undefined ? {} : { maxItems: bounds.maximum }),
       },
       options: {
         type: 'object', additionalProperties: false,
@@ -236,27 +279,49 @@ function invocationSchema(usage: string, args: readonly CommandArgument[], optio
   };
 }
 
+/** The next words after `prefix` of the action ids that extend it: the first words of all ids for an empty prefix. */
+function nextWords(command: CommandMetadata, prefix: readonly string[]): string[] {
+  const extending = Object.keys(command.actions ?? {}).map(actionWords).filter(words => words.length > prefix.length && prefix.every((word, index) => words[index] === word));
+  return [...new Set(extending.map(words => words[prefix.length]!))];
+}
+
+/**
+ * An action's usage: its declared `usage`, else, when it declares `args`, the command id, the action words, its
+ * arguments (`<required>`, `[optional]`, `name...` when variadic) and its own options, optional ones in brackets;
+ * otherwise the command's.
+ */
+export function actionUsage(command: CommandMetadata, id: string): string {
+  const action = command.actions?.[id];
+  if (action?.usage !== undefined || action?.args === undefined) return action?.usage ?? command.usage;
+  const args = action.args.map(arg => `${arg.required ? '<' : '['}${arg.name}${arg.variadic ? '...' : ''}${arg.required ? '>' : ']'}`);
+  const options = Object.entries(action.options ?? {}).map(([key, schema]) => {
+    const flag = `--${key}${schema.type === 'string' ? ` ${schema.enum?.join('|') ?? 'value'}` : ''}`;
+    return schema.required ? flag : `[${flag}]`;
+  });
+  return [command.id, id, ...args, ...options].join(' ');
+}
+
 /**
  * JSON Schema 2020-12 of one invocation: `args` are the positional arguments after the command id and `options`
  * the command's own flags (global options are described once in the catalog). A command with actions publishes
- * one `oneOf` branch per action, keyed by the words of its id as `const` leading arguments, with that action's
- * options and required options; when the first argument is optional, a further branch without arguments covers
- * the default action.
+ * one `oneOf` branch per action, keyed by the words of its id as `const` leading arguments and followed by the
+ * action's own `args`, with that action's options and required options. A further branch covers the invocation
+ * that spells no action, with the command's `args`: with `unknownAction` only the invocation without arguments,
+ * unless an argument is required, and otherwise one whose first argument is no action word.
  */
 export function commandInputSchema(command: CommandMetadata): JsonSchema {
   const head = { $schema: jsonSchemaDialect, title: command.id, description: command.description };
-  const args = command.args ?? [];
-  if (!command.actions || args.length === 0) return { ...head, ...invocationSchema(command.usage, args, command.options ?? {}) };
-  const ids = Object.keys(command.actions);
+  const own = command.args && { words: 0, args: command.args };
+  if (!command.actions) return { ...head, ...invocationSchema(command.usage, own, command.options ?? {}) };
   const branches = Object.entries(command.actions).map(([id, action]): JsonSchema => ({
     title: `${command.id} ${id}`, description: action.description,
-    ...invocationSchema(action.usage ?? command.usage, args, { ...command.options, ...action.options }, id,
-      [...new Set(ids.filter(other => other.startsWith(`${id} `)).map(other => actionWords(other)[actionWords(id).length]!))]),
+    ...invocationSchema(actionUsage(command, id), action.args && { words: actionWords(id).length, args: action.args }, { ...command.options, ...action.options }, id, nextWords(command, actionWords(id))),
   }));
-  const omitted: JsonSchema[] = args[0]!.required ? [] : [{
+  const bare = command.unknownAction !== undefined;
+  const omitted: JsonSchema[] = bare && command.args?.some(arg => arg.required) ? [] : [{
     title: command.defaultAction === undefined ? command.id : `${command.id} (${command.defaultAction})`,
     description: command.defaultAction === undefined ? command.description : command.actions[command.defaultAction]!.description,
-    ...invocationSchema(command.usage, [], commandOptions(command, [])),
+    ...invocationSchema(command.usage, bare ? { words: 0, args: [] } : own, commandOptions(command, []), undefined, bare ? [] : nextWords(command, [])),
   }];
   return { ...head, type: 'object', required: ['args', 'options'], oneOf: [...omitted, ...branches] };
 }
@@ -307,7 +372,8 @@ export function commandAnnotations(command: CommandMetadata) {
     ...(command.actions ? { actions: Object.fromEntries(Object.entries(command.actions).map(([id, action]) => {
       const words = actionWords(id), mode = commandMode(command, words);
       return [id, {
-        description: action.description, ...(action.usage ? { usage: action.usage } : {}),
+        description: action.description, ...(action.usage !== undefined || action.args !== undefined ? { usage: actionUsage(command, id) } : {}),
+        ...(action.args ? { args: action.args } : {}),
         scope: mode.scope, discovery: mode.discovery, mutating: mode.mutating, ...modeHints(command, words),
         ...(mode.projectOption ? { projectOption: mode.projectOption } : {}), ...(action.options ? { options: action.options } : {}),
         ...(action.output ? { outputSchema: commandOutputSchema(command, words) } : {}),
@@ -338,6 +404,21 @@ function validateMode(mode: Record<string, unknown>, where: string, options: Com
   ensure(mode.projectOption === undefined || (typeof mode.projectOption === 'string' && options?.[mode.projectOption]?.type === 'string'), 'INVALID_PLUGIN', `${where} projectOption must name a declared string option.`);
 }
 
+/** Whether one declared argument is well formed; `last` allows `variadic` and its `maximum`. */
+function validArgument(arg: unknown, last: boolean): boolean {
+  if (!isRecord(arg) || !text(arg.name) || !text(arg.description)) return false;
+  const flags = ['required', 'variadic', 'path'].every(key => arg[key] === undefined || typeof arg[key] === 'boolean');
+  const values = arg.enum === undefined || (Array.isArray(arg.enum) && arg.enum.length > 0 && arg.enum.every(item => typeof item === 'string'));
+  const variadic = arg.variadic !== true || last;
+  const maximum = arg.maximum === undefined || (arg.variadic === true && typeof arg.maximum === 'number' && Number.isSafeInteger(arg.maximum) && arg.maximum >= 1);
+  return flags && values && variadic && maximum && documentSchema(arg.schema);
+}
+function validateArguments(args: unknown, where: string): void {
+  ensure(args === undefined || (Array.isArray(args) && args.every((arg: unknown, index) => validArgument(arg, index === args.length - 1))
+    && args.every((arg, index) => !(arg as CommandArgument).required || args.slice(0, index).every(before => (before as CommandArgument).required))), 'INVALID_PLUGIN',
+  `${where} args must list named, described arguments with boolean required, variadic and path flags, string enums and supported schemas; required arguments come first, and only the last may be variadic, with a positive integer maximum.`);
+}
+
 /** Validates contributed metadata before registration; every problem is INVALID_PLUGIN. */
 export function validateCommandMetadata(command: Record<string, unknown>): void {
   const where = `Command ${String(command.id)}`;
@@ -346,14 +427,14 @@ export function validateCommandMetadata(command: Record<string, unknown>): void 
   const options = (command.options ?? {}) as Record<string, unknown>;
   validateOptions(options);
   validateMode(command, where, options as CommandMetadata['options']);
-  ensure(command.args === undefined || (Array.isArray(command.args) && command.args.every((arg: unknown, index, all) => isRecord(arg) && text(arg.name) && text(arg.description)
-    && (arg.variadic === undefined || (arg.variadic === true && index === all.length - 1)) && documentSchema(arg.schema) && (arg.path === undefined || typeof arg.path === 'boolean'))), 'INVALID_PLUGIN', `${where} args must list named, described arguments with supported schemas and boolean path flags; only the last may be variadic.`);
+  validateArguments(command.args, where);
   ensure(command.actions === undefined || isRecord(command.actions), 'INVALID_PLUGIN', `${where} actions must be an object.`);
   for (const [id, action] of Object.entries((command.actions ?? {}) as Record<string, unknown>)) {
     ensure(isRecord(action) && text(action.description) && (action.usage === undefined || text(action.usage)), 'INVALID_PLUGIN', `${where} action ${id} requires a description.`);
     ensure(action.options === undefined || isRecord(action.options), 'INVALID_PLUGIN', `${where} action ${id} options must be an object.`);
     validateOptions((action.options ?? {}) as Record<string, unknown>, options);
     validateMode(action, `${where} action ${id}`, { ...options, ...(action.options as object | undefined) } as CommandMetadata['options']);
+    validateArguments(action.args, `${where} action ${id}`);
   }
   ensure(command.defaultAction === undefined || (typeof command.defaultAction === 'string' && isRecord(command.actions) && Object.hasOwn(command.actions, command.defaultAction)), 'INVALID_PLUGIN', `${where} defaultAction must name a declared action.`);
   ensure(command.unknownAction === undefined || (unknownActionCodes.includes(command.unknownAction as UnknownActionCode) && isRecord(command.actions)), 'INVALID_PLUGIN', `${where} unknownAction must be ${unknownActionCodes.join(' or ')} for a command with actions.`);

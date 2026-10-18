@@ -1,63 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { AppError, forgeError } from '../../src/domain/shared/errors.ts';
-import { arity } from '../../src/application/plugins/command-input.ts';
-import { runCommand, unknownOption, unknownOptionGuidance } from '../../src/presentation/cli/guidance.ts';
+import { forgeError } from '../../src/domain/shared/errors.ts';
+import { unknownOption, unknownOptionGuidance } from '../../src/presentation/cli/guidance.ts';
 import { parseArguments } from '../../src/presentation/cli/arguments.ts';
 import { globalOptions } from '../../src/application/plugins/command-input.ts';
 import { guidedHint } from '../../src/presentation/localization/hints.ts';
 import { Localizer } from '../../src/presentation/localization/localization.ts';
-import type { Command, CommandContext } from '../../src/application/plugins/registry.ts';
+import type { Command } from '../../src/application/plugins/registry.ts';
 
 const read: Command = {
   id: 'read', description: 'Read', usage: 'read <path> [--parts body]', mutating: false,
-  args: [{ name: 'path', description: 'Path.', required: true }], options: { parts: { type: 'string', description: 'Parts.' } },
-  run: args => { arity(args, 1); return null; },
-};
-const move: Command = {
-  id: 'move', description: 'Move', usage: 'move <from> <to>', args: [{ name: 'from', description: 'From.' }, { name: 'to', description: 'To.' }],
-  run: args => { arity(args, 2); return null; },
+  args: [{ name: 'path', description: 'Path.', required: true }], options: { parts: { type: 'string', description: 'Parts.' } }, run: () => null,
 };
 const backlog: Command = {
   id: 'backlog', description: 'Backlog', usage: 'backlog list | show <item>', unknownAction: 'INVALID_ARGUMENT',
-  actions: { list: { description: 'List.' }, show: { description: 'Show.', usage: 'backlog show <item>' } },
-  run: args => { arity(args.slice(1), args[0] === 'show' ? 1 : 0); return null; },
+  actions: { list: { description: 'List.' }, show: { description: 'Show.', usage: 'backlog show <item>' } }, run: () => null,
 };
 const plan: Command = {
   id: 'plan', description: 'Plan', usage: 'plan iteration add | iteration assign <item>', unknownAction: 'INVALID_ARGUMENT',
-  actions: { 'iteration add': { description: 'Add.' }, 'iteration assign': { description: 'Assign.', usage: 'plan iteration assign <item>' } },
-  run: args => { arity(args.slice(2), args[1] === 'assign' ? 1 : 0); return null; },
-};
-const context = {} as CommandContext;
-const failure = async (command: Command, args: string[]) => {
-  try { await runCommand(command, args, {}, context); }
-  catch (error) { return error as AppError; }
-  throw new Error('expected a failure');
+  actions: { 'iteration add': { description: 'Add.' }, 'iteration assign': { description: 'Assign.', usage: 'plan iteration assign <item>' } }, run: () => null,
 };
 
 describe('invocation guidance', () => {
-  it('names the missing positional arguments and the usage of a command', async () => {
-    expect(await failure(read, [])).toMatchObject({
-      code: 'INVALID_ARGUMENT', message: 'Missing <path>. Expected 1 positional argument, got 0. Usage: read <path> [--parts body]',
-      details: { minimum: 1, maximum: 1, received: 0, missing: ['path'] },
-    });
-    expect(await failure(move, ['a.md'])).toMatchObject({ message: 'Missing <to>. Expected 2 positional arguments, got 1. Usage: move <from> <to>', details: { missing: ['to'] } });
-    expect(await failure(read, ['a.md', 'b.md'])).toMatchObject({ message: 'Expected 1 positional argument, got 2. Usage: read <path> [--parts body]', details: { minimum: 1, maximum: 1, received: 2 } });
-  });
-
-  it('names the action and its usage for a command with actions, and rejects unknown actions first', async () => {
-    expect(await failure(backlog, ['show'])).toMatchObject({ message: 'backlog show: Expected 1 positional argument, got 0. Usage: backlog show <item>', details: { minimum: 1, maximum: 1, received: 0 } });
-    expect(await failure(backlog, ['sho'])).toMatchObject({ code: 'INVALID_ARGUMENT', message: 'Unknown backlog action sho. Actions: list, show.', details: { action: 'sho', allowed: ['list', 'show'], suggestions: ['show'] } });
-  });
-
-  it('names an action of several words, its usage and its options', async () => {
-    expect(await failure(plan, ['iteration', 'assign'])).toMatchObject({ message: 'plan iteration assign: Expected 1 positional argument, got 0. Usage: plan iteration assign <item>' });
-    expect(await failure(plan, ['iteration', 'asign'])).toMatchObject({ code: 'INVALID_ARGUMENT', details: { action: 'iteration asign', suggestions: ['iteration assign', 'iteration add'] } });
+  it('names an action of several words in an unknown option', () => {
     expect(unknownOptionGuidance(unknownOption("unknown option '--goal'", []), plan, ['iteration', 'add'])).toMatchObject({ message: 'Unknown option --goal for plan iteration add.' });
-  });
-
-  it('leaves other failures unchanged', async () => {
-    const other = forgeError('INVALID_ARGUMENT', 'Bad value.', { option: 'x' });
-    expect(await failure({ ...read, run: () => { throw other; } }, ['a.md'])).toBe(other);
   });
 
   it('reports an unknown option with its name, the command and options the invocation accepts', () => {

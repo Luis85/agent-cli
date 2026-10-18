@@ -1,7 +1,7 @@
 import type { Command, PluginContext } from '../../../application/plugins/registry.ts';
 import { ensure } from '../../../domain/shared/errors.ts';
 import { option } from '../../../application/plugins/command-metadata.ts';
-import { arity, integer, value } from '../../../application/plugins/command-input.ts';
+import { integer, value } from '../../../application/plugins/command-input.ts';
 import type { TutorialBlocks } from '../domain/tutorial.ts';
 import type { BrowserRuntime } from '../application/runtime.ts';
 import { BrowserScreenshot } from '../application/screenshot.ts';
@@ -17,21 +17,22 @@ const revision = option.string('Current output revision from read (screenshot) o
 const noSandbox = option.boolean('Run Chromium without its operating-system sandbox; only for trusted pages where the sandbox cannot start.');
 const projectMode = { scope: 'project', projectOption: 'project', discovery: false } as const;
 
+/** The flow source of validate and tutorial. */
+const source = { name: 'source', description: 'Project-relative flow JSON, Markdown or Canvas source.', required: true };
+
 export function browserCommand(runtime: BrowserRuntime, blocks: TutorialBlocks): Command<PluginContext> {
   const screenshot = new BrowserScreenshot(runtime), tutorial = new BrowserTutorial(runtime, blocks);
   return {
     id: 'browser', description: 'Capture webpage screenshots and repeatable illustrated tutorials through the portable CLI.',
     usage: 'browser [status | install | screenshot <url> --out <image.png> | validate <source> | tutorial <source> --out <directory>]',
     scope: 'workspace', discovery: false, mutating: false, defaultAction: 'status', unknownAction: 'INVALID_ARGUMENT',
-    args: [{ name: 'action', description: 'status (default), install, screenshot, validate or tutorial.', enum: ['status', 'install', 'screenshot', 'validate', 'tutorial'] },
-      { name: 'source', description: 'Absolute HTTP(S) URL for screenshot, or a project-relative flow JSON, Markdown or Canvas source.' }],
     actions: {
-      status: { description: 'Inspect executable-file availability without launching a browser or verifying browser compatibility.', discovery: true, output: browserStatusSchema,
+      status: { description: 'Inspect executable-file availability without launching a browser or verifying browser compatibility.', discovery: true, output: browserStatusSchema, args: [],
         options: { 'browser-executable': executable } },
       install: { description: 'Download the managed Chromium browser explicitly; a dry run does not start the installer.', discovery: true,
-        mutating: true, destructive: false, idempotent: true, output: installSchema },
+        mutating: true, destructive: false, idempotent: true, output: installSchema, args: [] },
       screenshot: { description: 'Save a webpage screenshot as a guarded PNG and return a Markdown image reference.', ...projectMode,
-        mutating: true, destructive: true, idempotent: true, output: screenshotSchema,
+        mutating: true, destructive: true, idempotent: true, output: screenshotSchema, args: [{ name: 'url', description: 'Absolute HTTP(S) URL of the page.', required: true }],
         usage: 'browser screenshot <url> --out <image.png> [--width <pixels>] [--height <pixels>] [--full-page] [--wait-for-selector <selector>] [--timeout-ms <milliseconds>] [--browser-executable <path>] [--if-match <revision>] [--project <id>]',
         options: {
           project, out: option.string('Project-relative PNG output path.', { required: true }),
@@ -41,10 +42,10 @@ export function browserCommand(runtime: BrowserRuntime, blocks: TutorialBlocks):
           'wait-for-selector': option.string('Wait for this selector to become visible before capturing the page.'),
           'timeout-ms': timeout, 'browser-executable': executable, 'if-match': revision, 'no-browser-sandbox': noSandbox,
         } },
-      validate: { description: 'Validate a declared tutorial flow without opening a browser and inspect its output revision.', ...projectMode,
+      validate: { description: 'Validate a declared tutorial flow without opening a browser and inspect its output revision.', ...projectMode, args: [source],
         options: { project, out: option.string('Optional project-relative tutorial directory whose current revision should be inspected.') },
         output: tutorialValidationSchema },
-      tutorial: { description: 'Replay a declared flow and atomically save its manual, screenshots and repeatable plan.', ...projectMode,
+      tutorial: { description: 'Replay a declared flow and atomically save its manual, screenshots and repeatable plan.', ...projectMode, args: [source],
         mutating: true, destructive: true, idempotent: true,
         options: { project, out: option.string('Project-relative tutorial directory for index.md, screenshots and flow.json.', { required: true }),
           'timeout-ms': timeout, 'browser-executable': executable, 'if-match': revision, 'no-browser-sandbox': noSandbox },
@@ -54,13 +55,11 @@ export function browserCommand(runtime: BrowserRuntime, blocks: TutorialBlocks):
     async run(args, flags, context) {
       const action = args[0] ?? 'status';
       ensure(['status', 'install', 'screenshot', 'validate', 'tutorial'].includes(action), 'INVALID_ARGUMENT', 'Use browser status, install, screenshot, validate or tutorial.');
-      if (action === 'status') { arity(args, 0, 1); return browserStatusView(await runtime.status(browserExecutable(value(flags, 'browser-executable'))), context.t); }
+      if (action === 'status') return browserStatusView(await runtime.status(browserExecutable(value(flags, 'browser-executable'))), context.t);
       if (action === 'install') {
-        arity(args, 1);
         if (context.workspace.dryRun) return { dryRun: true, executed: false, plan: { browser: 'chromium', operation: 'install' } };
         return { dryRun: false, executed: true, status: browserStatusView(await runtime.install(), context.t) };
       }
-      arity(args, 2);
       if (action === 'validate') return tutorial.validate(context, args[1]!, value(flags, 'out'));
       const out = value(flags, 'out', true)!;
       const timeoutMs = browserTimeout(integer(flags, 'timeout-ms', 1));

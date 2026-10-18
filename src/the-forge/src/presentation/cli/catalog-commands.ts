@@ -6,7 +6,6 @@ import { eventOutputLevels } from '../../application/plugins/event-output.ts';
 import { hostEventNamespaces } from '../../application/plugins/host-events.ts';
 import { commandAnnotations, commandInputSchema, option, outputDocument } from '../../application/plugins/command-metadata.ts';
 import { jsonSchemaDialect } from '../../domain/schema/json-schema.ts';
-import { arity } from '../../application/plugins/command-input.ts';
 import { ensure } from '../../domain/shared/errors.ts';
 import type { Command, Registry } from '../../application/plugins/registry.ts';
 import { globalOptionMetadata } from './arguments.ts';
@@ -61,7 +60,6 @@ export function catalogCommands(registry: Registry): Command[] {
   return [
     { id: 'help', description: 'Discover commands and usage without prompts.', usage: 'help [command]', ...discovery, args: commandArgument, errors: ['UNKNOWN_COMMAND'],
       localizedOutput: { next: 'text', globalOptions: 'options' }, run(args) {
-      arity(args, 0, 1);
       // The entry index helps an agent choose its next command in under 4 KB; help <command> has the details.
       if (!args[0]) return helpIndex(identity, [...registry.commands.values()], Object.keys(globalOptionMetadata).map(key => `--${key}`), helpNext);
       const command = registry.resolveCommand(args[0]);
@@ -70,7 +68,6 @@ export function catalogCommands(registry: Registry): Command[] {
     { id: 'schema', description: 'Machine-readable contract: JSON Schema 2020-12 input and output schemas, annotations and error codes of one command, or with --all of every command; without either, an index of command, generator and skill ids.', usage: 'schema [command | --all]', ...discovery, args: commandArgument,
       options: { all: option.boolean('Return the complete contract of every command instead of the index.') }, errors: ['UNKNOWN_COMMAND'], output: schemaOutput,
       localizedOutput: { more: 'text', eventOutput: 'text', globalOptions: 'options', generators: 'generators', errors: 'errors' }, run(args, flags) {
-      arity(args, 0, 1);
       ensure(args[0] === undefined || flags.all !== true, 'INVALID_ARGUMENT', 'Pass a command or --all, not both.');
       // The index names every command, generator and skill without schemas; schema <command> or --all returns the contracts.
       if (args[0] === undefined && flags.all !== true) return {
@@ -91,9 +88,9 @@ export function catalogCommands(registry: Registry): Command[] {
       const { generators: _generators, skills: _skills, ...head } = catalog();
       return { ...head, commands: [contract(command)], commonErrors, errors: errors.filter(entry => codes.has(entry.code)) };
     } },
-    { id: 'formats', description: 'Native Obsidian formats and supported operations.', usage: 'formats', ...discovery,
-      localizedOutput: { textFiles: 'text', attachments: 'text', otherFiles: 'text' }, run(args) {
-      arity(args, 0); return { nativeFormats, structured: ['md', 'canvas', 'base'], text: textExtensions, textFilenames, textFiles: 'textFilenames match case-insensitively, including dot suffixes that start with a non-dot character; native extensions take precedence. UTF-8 read, literal edit, append and full replacement with unified dry-run diffs; files that are not valid UTF-8 or contain NUL characters read as base64 attachments.', attachments: 'Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.', otherFiles: 'Opaque bytes; plugins can provide additional processing.' };
+    { id: 'formats', description: 'Native Obsidian formats and supported operations.', usage: 'formats', ...discovery, args: [],
+      localizedOutput: { textFiles: 'text', attachments: 'text', otherFiles: 'text' }, run() {
+      return { nativeFormats, structured: ['md', 'canvas', 'base'], text: textExtensions, textFilenames, textFiles: 'textFilenames match case-insensitively, including dot suffixes that start with a non-dot character; native extensions take precedence. UTF-8 read, literal edit, append and full replacement with unified dry-run diffs; files that are not valid UTF-8 or contain NUL characters read as base64 attachments.', attachments: 'Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.', otherFiles: 'Opaque bytes; plugins can provide additional processing.' };
     } },
   ];
 }
@@ -103,12 +100,10 @@ const eventDelivery = 'Ordered, awaited, per-listener snapshots; failures become
 
 export function extensionCommands(registry: Registry, services: Pick<KernelServices, 'installedPlugins'>): Command[] {
   return [
-    { id: 'events', description: 'List invocation event contracts.', usage: 'events', ...discovery, localizedOutput: { contracts: 'events', delivery: 'text' }, run(args, _, { events }) {
-      arity(args, 0);
+    { id: 'events', description: 'List invocation event contracts.', usage: 'events', ...discovery, args: [], localizedOutput: { contracts: 'events', delivery: 'text' }, run(_args, _, { events }) {
       return { events: events.ids(), contracts: events.catalog(), hostNamespaces, delivery: eventDelivery };
     } },
-    { id: 'plugins', description: 'List core and user plugins with their state and contributions.', usage: 'plugins', ...discovery, async run(args, _, { language }) {
-      arity(args, 0);
+    { id: 'plugins', description: 'List core and user plugins with their state and contributions.', usage: 'plugins', ...discovery, args: [], async run(_args, _, { language }) {
       return { plugins: pluginCatalog(registry, await services.installedPlugins(), new Localizer(language, registry.catalog)) };
     } },
   ];

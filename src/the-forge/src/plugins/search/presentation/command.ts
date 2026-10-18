@@ -1,6 +1,6 @@
 import type { Command, PluginContext } from '../../../application/plugins/registry.ts';
 import { option } from '../../../application/plugins/command-metadata.ts';
-import { arity, integer, value } from '../../../application/plugins/command-input.ts';
+import { integer, value } from '../../../application/plugins/command-input.ts';
 import type { JsonSchema } from '../../../domain/schema/json-schema.ts';
 import { ensure } from '../../../domain/shared/errors.ts';
 import type { SearchFilesResult, SearchResult } from '../application/search.ts';
@@ -73,7 +73,6 @@ export function searchCommand(service: (context: PluginContext) => SearchService
     output,
     errors: ['INVALID_SEARCH_PATTERN', 'SEARCH_TIMEOUT'],
     async run(args, flags, context) {
-      arity(args, 1);
       const scope = value(flags, 'in') ?? 'all', kind = value(flags, 'kind');
       const filters = noteFilters(value(flags, 'tag'), value(flags, 'property'));
       const contextLines = integer(flags, 'context') ?? 0;

@@ -5,7 +5,6 @@ export const vaultCheckStrings: PluginStrings = {
   de: {
     manifest: { name: 'Vault-Prüfung', description: 'Den Vault auf defekte Links, ungültige Dateien und uneinheitliche Eigenschaften prüfen und seine Tags und Eigenschaften auflisten.' },
     descriptions: {
-      'check (default), tags or properties.': 'check (Standard), tags oder properties.',
       'Only files whose root-relative path matches this glob, or that are this file or below this folder.': 'Nur Dateien, deren Pfad relativ zum Stammverzeichnis diesem Glob entspricht oder die diese Datei sind oder unter diesem Ordner liegen.',
       'Only these comma-separated rules: unresolved-link, unresolved-embed, ambiguous-link, unresolved-anchor, invalid-frontmatter, invalid-canvas, invalid-base, property-type-mismatch, duplicate-block-id, empty-file, orphan-attachment.': 'Nur diese kommagetrennten Regeln: unresolved-link, unresolved-embed, ambiguous-link, unresolved-anchor, invalid-frontmatter, invalid-canvas, invalid-base, property-type-mismatch, duplicate-block-id, empty-file, orphan-attachment.',
       'Fail with VAULT_CHECK_FAILED when any finding has error severity.': 'Mit VAULT_CHECK_FAILED fehlschlagen, wenn ein Befund den Schweregrad error hat.',

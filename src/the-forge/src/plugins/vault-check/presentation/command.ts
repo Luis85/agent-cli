@@ -1,6 +1,6 @@
 import type { Command, PluginContext } from '../../../application/plugins/registry.ts';
 import { option, type CommandFlags } from '../../../application/plugins/command-metadata.ts';
-import { arity, value } from '../../../application/plugins/command-input.ts';
+import { value } from '../../../application/plugins/command-input.ts';
 import { pathFilter, pathGlob, recordingFilter } from '../../../domain/documents/path-glob.ts';
 import { kernelMessage } from '../../../domain/shared/kernel-messages.ts';
 import { ensure } from '../../../domain/shared/errors.ts';
@@ -76,7 +76,7 @@ export function vaultCommand(service: (context: PluginContext) => VaultService):
     scope: 'project', projectOption: 'project', discovery: false, mutating: false, defaultAction: 'check', unknownAction: 'INVALID_ARGUMENT',
     actions: {
       check: {
-        output: vaultOutput.check,
+        output: vaultOutput.check, args: [],
         description: 'Report findings of every enabled rule with severity, location, message and hint; --strict fails on error findings.',
         usage: 'vault check [--path glob] [--rule id[,id…]] [--strict]',
         options: {
@@ -85,26 +85,24 @@ export function vaultCommand(service: (context: PluginContext) => VaultService):
         },
       },
       tags: {
-        output: vaultOutput.tags,
+        output: vaultOutput.tags, args: [],
         description: 'List frontmatter and inline tags with the files that use them; nested tags also count for their parents.',
         usage: 'vault tags [--path glob] [--sort name|count]',
         options: { sort: option.string('Order by tag name or by file count, most used first.', { enum: tagSorts, default: 'name' }) },
       },
       properties: {
-        output: vaultOutput.properties,
+        output: vaultOutput.properties, args: [],
         description: 'List frontmatter properties with value counts, inferred types, conflicts and the type declared in .obsidian/types.json.',
         usage: 'vault properties [--path glob] [--name property]',
         options: { name: option.string('Only this property, with the value type of each note.') },
       },
     },
-    args: [{ name: 'action', description: 'check (default), tags or properties.', enum: actions }],
     options: {
       path: option.string('Only files whose root-relative path matches this glob, or that are this file or below this folder.'),
       project: option.string('Use this project instead of the selected project.'),
     },
     errors: ['VAULT_CHECK_FAILED'],
     async run(args, flags, context) {
-      arity(args, 0, 1);
       const action = args[0] ?? 'check';
       ensure((actions as readonly string[]).includes(action), 'INVALID_ARGUMENT', `Use vault ${actions.join(', vault ')}.`);
       const vault = service(context);

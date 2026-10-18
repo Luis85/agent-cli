@@ -11,7 +11,7 @@ const names = (value: unknown) => Array.isArray(value) && value.length > 0 && va
 /**
  * The values German templates name, from an error's details: every text or number detail as given, plus `named` (the
  * argument or option a path came from), `quoted` (the rejected value as JSON), `range` (the expected argument count),
- * `missingArguments` and `allowedValues` (lists joined for the sentence).
+ * `missingArguments`, `unexpectedArguments` and `allowedValues` (lists joined for the sentence).
  */
 function templateValues(details: Details): MessageParams {
   const values: Record<string, string | number> = {};
@@ -20,8 +20,9 @@ function templateValues(details: Details): MessageParams {
   if (typeof details.argument === 'string') values.named = `Argument <${details.argument}>${typeof details.index === 'number' ? ` an Position ${details.index}` : ''}`;
   if (typeof details.value === 'string') values.quoted = JSON.stringify(details.value);
   if (typeof details.minimum === 'number' && typeof details.maximum === 'number') values.range = details.minimum === details.maximum ? details.minimum : `${details.minimum} bis ${details.maximum}`;
-  const missing = names(details.missing), allowed = names(details.allowed);
+  const missing = names(details.missing), allowed = names(details.allowed), unexpected = names(details.unexpected);
   if (missing) values.missingArguments = missing.map(name => `<${name}>`).join(' ');
+  if (unexpected) values.unexpectedArguments = unexpected.map(value => JSON.stringify(value)).join(' ');
   if (allowed) values.allowedValues = allowed.join(', ');
   return values;
 }
@@ -42,12 +43,14 @@ const templates: Partial<Record<ErrorCode, readonly Template[]>> = {
   UNKNOWN_COMMAND: [{ text: 'Der Befehl {command} ist nicht registriert.' }],
   UNKNOWN_OPTION: [{ text: 'Der Befehl {command} akzeptiert die Option {option} nicht.' }, { text: 'Die Option {option} wird nicht akzeptiert.' }],
   MISSING_ARGUMENT: [
+    { text: 'Es fehlt {missingArguments}: erwartet {range} Positionsargumente, erhalten {received}.' },
+    { text: 'Es fehlt {missingArguments}: erwartet mindestens {minimum} Positionsargumente, erhalten {received}.' },
     { text: 'Die Option --{option} benötigt einen Wert, aber {next} folgt ihr; einen Wert, der mit - beginnt, schreiben Sie als --{option}=<Wert>.' },
     { text: '--if-match ist erforderlich: Übergeben Sie die aktuelle Revision, data.revision aus read oder stat (auch ein Probelauf von move, rename oder delete meldet sie).', when: details => details.option === 'if-match' },
     { text: 'Die Option --{option} ist erforderlich.' },
   ],
   INVALID_ARGUMENT: [
-    { text: 'Es fehlt {missingArguments}: Falsche Anzahl an Positionsargumenten, erwartet {range}, erhalten {received}.' },
+    { text: 'Überzählig: {unexpectedArguments}. Falsche Anzahl an Positionsargumenten: erwartet {range}, erhalten {received}.' },
     { text: 'Falsche Anzahl an Positionsargumenten: erwartet {range}, erhalten {received}.' },
     { text: 'Unbekannte Aktion {action}; verfügbar sind {allowedValues}.' },
     { text: 'Jeder Pfad darf nur einmal vorkommen; er steht bereits an Position {duplicateOf}.' },
@@ -100,7 +103,8 @@ export function germanErrorMessage(code: ErrorCode, details: Details | undefined
  */
 function location(details: Details, text: string): string {
   if (typeof details.operation === 'number') return `Vorgang ${details.operation}: `;
-  return typeof details.argument === 'string' && !placeholders(text).includes('named') ? `${templateValues(details).named}: ` : '';
+  // A message that names the missing arguments already names `details.argument`, the first of them.
+  return typeof details.argument === 'string' && !placeholders(text).some(name => name === 'named' || name === 'missingArguments') ? `${templateValues(details).named}: ` : '';
 }
 
 /** A built-in code's German summary, located like a templated message when no template covers the details. */
