@@ -282,7 +282,7 @@ export class Registry {
   pluginContext(plugin: Plugin, context: CommandContext, events: EventBus): PluginContext {
     const pluginId = plugin.manifest.id;
     return {
-      ...context, events: pluginEvents(events, pluginId), settings: this.settings.value(pluginId),
+      ...context, events: pluginEvents(events, pluginId, () => this.plugins.map(entry => entry.manifest.id)), settings: this.settings.value(pluginId),
       services: pluginServices(plugin, this.availableProviders()),
       t: key => this.catalog.message(pluginId, context.language, key),
     };

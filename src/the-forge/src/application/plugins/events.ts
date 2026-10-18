@@ -25,7 +25,8 @@ export interface EventChannel {
   emit(id: string, payload: unknown): Promise<void>;
   /**
    * Records a nonfatal warning for the response: text, or `{code, message, details?}` with the plugin's own
-   * UPPER_SNAKE_CASE code; text without a code reports as PLUGIN_WARNING. Host code passes kernel messages.
+   * UPPER_SNAKE_CASE code, which starts with its id's prefix (`QUALITY_` for `quality`); text without a code, or a
+   * code outside that namespace, reports as PLUGIN_WARNING. Host code passes kernel messages.
    */
   warn(message: string | KernelMessage | Warning): void;
   /** Like Obsidian's `workspace.onLayoutReady`: runs now when plugins are active, otherwise once they are. */
@@ -151,7 +152,7 @@ export class EventBus implements EventChannel {
   }
   /**
    * Records a warning: a host message by code, a plugin warning as captured, and any other value as a plugin warning
-   * (see pluginWarning) without a plugin id, so no value can break the response.
+   * (see pluginWarning) without a plugin, which keeps no code of its own, so no value can break the response.
    */
   warn(message: unknown): void {
     if (this.warningRecords.length < 1000) this.warningRecords.push(isKernelMessage(message) || isPluginWarning(message) ? message : pluginWarning(message));
