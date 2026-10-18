@@ -109,6 +109,16 @@ describe('two-way changes', () => {
     expect(fake.item('contoso', id('work/Draft a trip.md')).fields['Microsoft.VSTS.Common.Priority']).toBe(2);
   });
 
+  it('keeps the file name of a note whose pulled title is a Windows device name and pulls its other fields', async () => {
+    const id = await linked();
+    fake.edit('contoso', id('work/Draft a trip.md'), { 'System.Title': 'Con', 'System.State': 'Active' });
+    const result = await sync();
+    expect(result.data.views[0].pulled).toEqual([expect.objectContaining({ path: 'work/Draft a trip.md', fields: ['state'] })]);
+    expect(result.data.views[0].skipped).toEqual([{ path: 'work/Draft a trip.md', field: 'title', code: 'title-device-name', reason: 'work/Con.md is a Windows reserved device name that no file can have on Windows' }]);
+    expect(await vault!.read('work/Draft a trip.md')).toContain('status: Active');
+    expect(existsSync(join(vault!.root, 'work/Con.md'))).toBe(false);
+  });
+
   it('reads the remote on a dry run but writes nowhere', async () => {
     vault = await backlogVault(planning);
     const created = fake.writes().length;

@@ -1,4 +1,4 @@
-import type { FileChange, PlannedChange, WriteRequest } from '../../../domain/documents/file.ts';
+import { isDeviceName, type FileChange, type PlannedChange, type WriteRequest } from '../../../domain/documents/file.ts';
 import { setOwn, type Frontmatter } from '../domain/fields.ts';
 import type { FieldKey } from '../domain/sync-fields.ts';
 import { UNSETTLED_REV } from '../domain/sync-state.ts';
@@ -33,7 +33,10 @@ export function landings(session: BacklogSession, context: ValueContext, plans: 
     if (note.title !== undefined) {
       const folder = plan.path.includes('/') ? plan.path.slice(0, plan.path.lastIndexOf('/') + 1) : '';
       const target = `${folder}${note.title}.md`;
-      if (target.toLowerCase() !== plan.path.toLowerCase() && pathTaken(session, target)) { pulled.delete('title'); skipped.push({ path: plan.path, field: 'title', code: 'title-taken', reason: fill(syncMessages.titleTaken, { path: target }) }); }
+      const skip = (code: string, reason: string) => { pulled.delete('title'); skipped.push({ path: plan.path, field: 'title', code, reason }); };
+      // A note named after a Windows device cannot exist on Windows, so it keeps its name, as for a taken one.
+      if (isDeviceName(`${note.title}.md`)) skip('title-device-name', fill(syncMessages.titleDeviceName, { path: target }));
+      else if (target.toLowerCase() !== plan.path.toLowerCase() && pathTaken(session, target)) skip('title-taken', fill(syncMessages.titleTaken, { path: target }));
       else if (target !== plan.path) renameTo = target;
     }
     return { plan, note, pulled, renameTo, skipped };
