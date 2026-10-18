@@ -77,6 +77,11 @@ describe('Forge configuration', () => {
     await writeFile(configPath(), JSON.stringify({ ui: { framework: 'react' } }));
     await expect(load()).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
   });
+  // A device-named plugin folder is no vault path: enabling one used to fail every command, --no-plugins too, with INVALID_PATH.
+  it.each(['con', 'nul', 'com1', 'lpt9'])('rejects the Windows device name %s as an enabled plugin id', async id => {
+    await writeFile(configPath(), JSON.stringify({ plugins: { enabled: ['quality', id] } }));
+    await expect(load()).rejects.toMatchObject({ code: 'INVALID_CONFIG', message: 'plugins.enabled.1: A Windows reserved device name cannot be a plugin id.' });
+  });
   it('reports malformed JSON as configuration failure', async () => {
     await writeFile(configPath(), '{oops'); await expect(load()).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
   });

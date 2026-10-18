@@ -47,6 +47,23 @@ export const cacheFolder = '.forge/cache';
  * folder and Windows device names (`con.md`), which no Forge path can address.
  */
 const unlisted = (name: string, path: string) => reservedPathSegment(name) !== undefined || isDeviceName(name) || name.toLowerCase() === 'node_modules' || path.toLowerCase() === cacheFolder;
+/**
+ * The content revision of a Windows device-named entry, which no vault path reaches but a folder move carries: a
+ * file's content revision, or `bytes:<size>` where this platform cannot read it; a folder's digest of its entries'
+ * names and such revisions in name order. Symlinks inside count by target and other special files by kind, unread.
+ */
+async function deviceEntryRevision(absolute: string): Promise<string> {
+  const info = await lstat(absolute);
+  if (info.isSymbolicLink()) return `symlink\0${await readlink(absolute)}`;
+  if (info.isFile()) {
+    try { return revisionOf(await readFile(absolute)); }
+    catch (error) { if (missing(error)) throw error; return `bytes:${info.size}`; }
+  }
+  if (!info.isDirectory()) return 'other';
+  const digest = createHash('sha256');
+  for (const name of (await readdir(absolute)).sort()) digest.update(`${name}\0${await deviceEntryRevision(join(absolute, name))}\n`);
+  return `folder\0${digest.digest('hex')}`;
+}
 /** Concurrent staging lets the filesystem group fsyncs while bounding open handles. */
 const stagingConcurrency = 8;
 
@@ -156,7 +173,8 @@ export class NodeFiles implements FileRepository, BatchHost {
   /**
    * @internal Batch step: the folder's revision and contents. The revision covers every file's path and revision,
    * every subfolder (empty ones too) and each special entry by path and kind: symlinks with their target,
-   * `node_modules` folders without reading them, and other special files. Git and Forge's internal files are skipped;
+   * `node_modules` folders without reading them, Windows device-named entries with their content revision (see
+   * `deviceEntryRevision`), and other special files. Git and Forge's internal files are skipped;
    * writer locks of nested roots are listed in `locks`.
    * Undefined when the folder is missing; an entry that vanishes during the walk is a CONFLICT and an entry name that
    * is not valid UTF-8 is INVALID_PATH.
@@ -173,8 +191,9 @@ export class NodeFiles implements FileRepository, BatchHost {
         if (reserved === 'git') { git = true; continue; }
         if (reserved === 'internal') { if (aliasesName(name, writerLockName)) locks.push(prefix + name); continue; }
         const relative = prefix + name, absolute = join(directory, name);
-        // A Windows device name is no vault path: a moved folder carries it, but no permanent removal deletes it unseen.
-        if (isDeviceName(name)) special.push({ path: relative, kind: 'other' });
+        // A Windows device name is no vault path: a moved folder carries it, but no permanent removal deletes it unseen,
+        // and its content revision keeps the folder revision covering it.
+        if (isDeviceName(name)) special.push({ path: relative, kind: 'other', revision: await deviceEntryRevision(absolute) });
         else if (entry.isSymbolicLink()) special.push({ path: relative, kind: 'symlink', target: await readlink(absolute) });
         else if (entry.isDirectory() && name.toLowerCase() === 'node_modules') special.push({ path: relative, kind: 'node_modules' });
         else if (entry.isDirectory()) { folders.push(relative); await walk(absolute, relative + '/'); }
@@ -195,7 +214,7 @@ export class NodeFiles implements FileRepository, BatchHost {
     const digest = createHash('sha256');
     for (const file of files) digest.update(`${file.path}\0${file.revision}\n`);
     for (const folder of folders) digest.update(`${folder}/\0folder\n`);
-    for (const entry of special) digest.update(`${entry.path}\0${entry.kind}${entry.target === undefined ? '' : `\0${entry.target}`}\n`);
+    for (const entry of special) digest.update(`${entry.path}\0${entry.kind}${entry.target === undefined ? '' : `\0${entry.target}`}${entry.revision === undefined ? '' : `\0${entry.revision}`}\n`);
     return { revision: digest.digest('hex'), files, folders, special, git, locks: locks.sort(order) };
   }
   /** @internal */

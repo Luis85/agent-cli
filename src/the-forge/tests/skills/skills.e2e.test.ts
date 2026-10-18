@@ -96,4 +96,22 @@ describe('the skills core plugin', () => {
     for (const action of Object.values(help.annotations.actions)) expect(action).not.toHaveProperty('outputSchema');
     expect((await cli(['--lang', 'de', 'help', 'skills'])).body.data.description).toBe('Mitgelieferte und von Plugins bereitgestellte Agent-Skills auflisten, lesen oder installieren.');
   });
+  it('refuses a plugin skill whose files would break installation on Windows or case-insensitive filesystems at registration', async () => {
+    const folder = join(fixture.project, 'bin/plugins/portable');
+    await mkdir(folder, { recursive: true });
+    await writeFile(join(folder, 'manifest.json'), JSON.stringify({ id: 'portable', name: 'Portable', version: '1.0.0', minAppVersion: '0.1.0', description: 'Skill path fixture', author: 'Tests' }));
+    const register = (files: Record<string, string>) => writeFile(join(folder, 'main.mjs'), `export default { skills: [{ id: 'portable-review', content: '---\\nname: portable-review\\ndescription: Review. Use before merging.\\n---\\n', files: ${JSON.stringify(files)} }] };`);
+    await config({ plugins: { enabled: ['portable'] } });
+    try {
+      await register({ 'references/aux.md': 'A' });
+      for (const args of [['setup', '--dry-run'], ['skills', 'install', '--dry-run'], ['skills']]) {
+        const failed = await cli(args);
+        expect(failed.body.error, args.join(' ')).toMatchObject({ code: 'INVALID_PLUGIN', message: expect.stringContaining('Skill portable-review file references/aux.md'), details: { skill: 'portable-review', file: 'references/aux.md', reason: 'device-name' } });
+      }
+      await register({ 'references/Steps.md': 'A', 'references/steps.md': 'B' });
+      const duplicate = await cli(['skills', 'install', '--dry-run']);
+      expect(duplicate.body.error).toMatchObject({ code: 'INVALID_PLUGIN', details: { skill: 'portable-review', file: 'references/steps.md', duplicateOf: 'references/Steps.md', reason: 'case-duplicate' } });
+      expect((await cli(['--lang', 'de', 'skills'])).body.error.message).toBe('Die Datei references/steps.md des Skills portable-review bezeichnet dieselbe Datei wie references/Steps.md, wenn Groß- und Kleinschreibung und abschließende Punkte nicht zählen, wie unter Windows und macOS; benennen Sie eine davon um.');
+    } finally { await rm(folder, { recursive: true, force: true }); await rm(join(fixture.project, 'bin/config.json'), { force: true }); }
+  });
 });

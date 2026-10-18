@@ -73,6 +73,12 @@ const templates: Partial<Record<ErrorCode, readonly Template[]>> = {
     { text: 'Der Pfad {path} ist auf diesem Dateisystem nicht verwendbar ({reason}).' },
     { text: 'Der Ordner {path} enthält einen Eintrag, dessen Name kein gültiges UTF-8 ist: {entry}.' },
   ],
+  INVALID_PLUGIN: [
+    { text: 'Die Datei {file} des Skills {skill} trägt den unter Windows reservierten Gerätenamen {segment}, den kein Windows-System installieren kann; benennen Sie sie um.', when: details => details.reason === 'device-name' },
+    { text: 'Die Skill-ID {skill} ist ein unter Windows reservierter Gerätename, den kein Skill-Ordner unter Windows tragen kann; wählen Sie eine andere ID.', when: details => details.reason === 'device-name' },
+    { text: 'Die Datei {file} des Skills {skill} bezeichnet dieselbe Datei wie {duplicateOf}, wenn Groß- und Kleinschreibung und abschließende Punkte nicht zählen, wie unter Windows und macOS; benennen Sie eine davon um.', when: details => details.reason === 'case-duplicate' },
+    { text: 'Die Datei {file} des Skills {skill} ist zugleich der Ordner von {duplicateOf}; ein Pfad kann nicht Datei und Ordner zugleich sein.', when: details => details.reason === 'folder-conflict' },
+  ],
 };
 
 const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map(match => match[1]!);

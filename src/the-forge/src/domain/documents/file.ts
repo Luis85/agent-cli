@@ -7,7 +7,7 @@ export const temporaryPrefix = '.agent-cli-tmp-';
 /** Code points HFS+ ignores in names: zero-width and directional marks, word joiners and the byte order mark. */
 const ignorable = /[\u200b-\u200f\u202a-\u202e\u2060-\u2063\ufeff]/g;
 /** A name as case-insensitive filesystems, Windows trailing-dot/space aliases and HFS+ ignorable code points resolve it. */
-const canonicalName = (segment: string) => segment.replace(ignorable, '').toLowerCase().replace(/[. ]+$/, '');
+export const canonicalName = (segment: string) => segment.replace(ignorable, '').toLowerCase().replace(/[. ]+$/, '');
 /**
  * Whether `canonical` has the shape of a Windows 8.3 short name of `name`: its first six name characters without
  * dots or spaces, `~` and a number, and any extension (`GIT~1` for `.git`, `AGENT-~1.LOC` for the lock).

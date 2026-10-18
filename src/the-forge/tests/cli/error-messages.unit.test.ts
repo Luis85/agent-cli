@@ -38,6 +38,14 @@ describe('German error messages with the values of the occurrence', () => {
     expect(german('INVALID_PATH', { path: 'notes', entry: 'caf�.md' })).toBe('Der Ordner notes enthält einen Eintrag, dessen Name kein gültiges UTF-8 ist: caf�.md.');
   });
 
+  it('names the skill and file of a skill path that no install can write', () => {
+    expect(german('INVALID_PLUGIN', { skill: 'q-review', reason: 'device-name', file: 'references/aux.md', segment: 'aux.md' })).toBe('Die Datei references/aux.md des Skills q-review trägt den unter Windows reservierten Gerätenamen aux.md, den kein Windows-System installieren kann; benennen Sie sie um.');
+    expect(german('INVALID_PLUGIN', { skill: 'con', reason: 'device-name', segment: 'con' })).toBe('Die Skill-ID con ist ein unter Windows reservierter Gerätename, den kein Skill-Ordner unter Windows tragen kann; wählen Sie eine andere ID.');
+    expect(german('INVALID_PLUGIN', { skill: 'q', reason: 'case-duplicate', file: 'b.md', duplicateOf: 'B.md' })).toBe('Die Datei b.md des Skills q bezeichnet dieselbe Datei wie B.md, wenn Groß- und Kleinschreibung und abschließende Punkte nicht zählen, wie unter Windows und macOS; benennen Sie eine davon um.');
+    expect(german('INVALID_PLUGIN', { skill: 'q', reason: 'folder-conflict', file: 'notes', duplicateOf: 'notes/a.md' })).toBe('Die Datei notes des Skills q ist zugleich der Ordner von notes/a.md; ein Pfad kann nicht Datei und Ordner zugleich sein.');
+    expect(german('INVALID_PLUGIN')).toBe(germanErrors.INVALID_PLUGIN.summary);
+  });
+
   it('names the missing arguments and counts of an arity failure, and the offending value of other argument failures', () => {
     expect(german('INVALID_ARGUMENT', { minimum: 2, maximum: 2, received: 1, missing: ['to'] })).toBe('Es fehlt <to>: Falsche Anzahl an Positionsargumenten, erwartet 2, erhalten 1.');
     expect(german('INVALID_ARGUMENT', { minimum: 0, maximum: 1, received: 3 })).toBe('Falsche Anzahl an Positionsargumenten: erwartet 0 bis 1, erhalten 3.');
