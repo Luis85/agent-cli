@@ -235,6 +235,17 @@ function isDeviceName(segment2) {
   const base2 = segment2.replace(ignorable, "").split(".")[0];
   return deviceNames.test(base2.toLowerCase().replace(/ +$/, ""));
 }
+const canonicalPath = (path2) => path2.split("/").map(canonicalName).join("/");
+function portablePathIssues(paths2) {
+  const issues2 = [], written2 = /* @__PURE__ */ new Map();
+  for (const path2 of paths2) {
+    const segment2 = path2.split("/").find(isDeviceName), same2 = written2.get(canonicalPath(path2));
+    if (segment2 !== void 0) issues2.push({ path: path2, reason: "device-name", segment: segment2 });
+    else if (same2 !== void 0) issues2.push({ path: path2, reason: "case-duplicate", duplicateOf: same2 });
+    else written2.set(canonicalPath(path2), path2);
+  }
+  return issues2;
+}
 function vaultPath(input2) {
   ensure(typeof input2 === "string" && input2.length > 0 && !/[\x00-\x1f\x7f\\:]/.test(input2), "INVALID_PATH", "Use a nonempty, relative POSIX path.");
   const parts = input2.split("/");
@@ -2021,6 +2032,8 @@ class PluginCatalog {
           const known2 = kind2 === "messages" || kind2 === "descriptions" || (kind2 === "manifest" ? ["name", "description"].includes(id2) : kind2 === "errors" ? codes.has(id2) : owned[kind2].includes(id2));
           ensure(known2, "PLUGIN_NAMESPACE", `strings.${language2}.${kind2}.${id2} does not name a contribution of plugin ${pluginId}.`);
           ensure(kind2 === "errors" ? isRecord$1(entry2) && text$l(entry2.summary) && text$l(entry2.hint) : text$l(entry2), "INVALID_PLUGIN", `strings.${language2}.${kind2}.${id2} must be ${kind2 === "errors" ? "a summary and hint" : "nonempty text"}.`);
+          const reasons2 = kind2 === "errors" && isRecord$1(entry2) ? entry2.reasons : void 0;
+          ensure(reasons2 === void 0 || isRecord$1(reasons2) && Object.values(reasons2).every(text$l), "INVALID_PLUGIN", `strings.${language2}.errors.${id2}.reasons must map reasons to nonempty messages.`);
         }
       }
     }
@@ -2639,16 +2652,12 @@ function skillFileIssues(id2, files2) {
     ...typeof content2 === "string" ? [] : [`Skill ${id2} file ${path2} must be text.`]
   ]);
 }
-const canonicalPath = (path2) => path2.split("/").map(canonicalName).join("/");
 function skillPathIssues(id2, files2 = {}) {
   if (isDeviceName(id2)) return [{ message: `Skill id ${id2} is a Windows reserved device name, which no skill folder can have on Windows; choose another id.`, details: { skill: id2, reason: "device-name", segment: id2 } }];
-  const issues2 = [], installed = /* @__PURE__ */ new Map([[canonicalPath("SKILL.md"), "SKILL.md"]]);
-  for (const file of Object.keys(files2).sort()) {
-    const segment2 = file.split("/").find(isDeviceName), same2 = installed.get(canonicalPath(file));
-    if (segment2 !== void 0) issues2.push({ message: `Skill ${id2} file ${file} uses the Windows reserved device name ${segment2}, which no Windows system can install; rename it.`, details: { skill: id2, reason: "device-name", file, segment: segment2 } });
-    else if (same2 !== void 0) issues2.push({ message: `Skill ${id2} file ${file} names the same file as ${same2} where letter case and trailing dots are ignored, as on Windows and macOS; rename one of them.`, details: { skill: id2, reason: "case-duplicate", file, duplicateOf: same2 } });
-    else installed.set(canonicalPath(file), file);
-  }
+  const paths2 = ["SKILL.md", ...Object.keys(files2).sort()], found = portablePathIssues(paths2);
+  const issues2 = found.map((issue2) => issue2.reason === "device-name" ? { message: `Skill ${id2} file ${issue2.path} uses the Windows reserved device name ${issue2.segment}, which no Windows system can install; rename it.`, details: { skill: id2, reason: "device-name", file: issue2.path, segment: issue2.segment } } : { message: `Skill ${id2} file ${issue2.path} names the same file as ${issue2.duplicateOf} where letter case and trailing dots are ignored, as on Windows and macOS; rename one of them.`, details: { skill: id2, reason: "case-duplicate", file: issue2.path, duplicateOf: issue2.duplicateOf } });
+  const rejected = new Set(found.map((issue2) => issue2.path));
+  const installed = new Map(paths2.filter((path2) => !rejected.has(path2)).map((path2) => [canonicalPath(path2), path2]));
   for (const [folder, file] of installed) {
     const inside2 = [...installed].find(([path2]) => path2.startsWith(`${folder}/`))?.[1];
     if (inside2 !== void 0) issues2.push({ message: `Skill ${id2} file ${file} is also the folder of ${inside2}; a path cannot be both a file and a folder.`, details: { skill: id2, reason: "folder-conflict", file, duplicateOf: inside2 } });
@@ -19218,11 +19227,11 @@ const basesPlugin = {
   }
 };
 const __vite_glob_0_0$1 = "# Changing The Forge itself\n\nRead this when you change The Forge's own source (`src/the-forge` in the source checkout).\n\n- Work in the project folder: `npm ci` once, then iterate with `npm run check:fast`. `npm run check:contracts` diagnoses command, schema, localization, reference-doc and evaluation-budget failures without a build.\n- Update docs and skills with every user-visible change, then run `npm run check` and commit the rebuilt workspace executable and packaged assets with the source. Do not ship a stale bundle.\n- `npm run check` replays every agent evaluation task in `evals/tasks` with the reference driver. When you add an agent-facing command, add or extend a task with reference steps and deterministic checks, keep the suite within its budget (`docs/how-to/evaluate-agents.md`, at most 35 tasks) and validate it with `npm run eval -- --task <id>`. Keep existing acceptance checks.\n- Measure a real agent with the opt-in `npm run eval -- --driver claude`.\n- Keep the seven `check:contracts` suites source-only. Portable help and artifacts still need the full gate after the build.\n- Mutation testing runs in CI only. To investigate one file's surviving mutants, run `npm run mutate -- --mutate <file>` as `docs/how-to/develop-and-test.md` shows.\n- Preserve local configuration, shared plugins and templates, and project selection.\n- `npm run release` builds a downloadable archive.\n";
-const __vite_glob_0_1 = "# Forge plugins and project CI\n\nRead this when you write a Forge plugin or a project's CI workflows.\n\n## Create a plugin\n- `make plugin MyTools` writes `manifest.json` and `main.mjs` into workspace `bin/plugins/my-tools` (shared by every project; `--out` is not accepted). Review both, then add `my-tools` to `plugins.enabled` in `bin/config.json`.\n- Plugins run trusted Node code with Node's permissions.\n\n## Contributions\n- Namespace commands, generators, events and services as `<plugin-id>.…`, skills as `<plugin-id>-…`, and error codes with the UPPER_SNAKE_CASE prefix.\n- Declare each command's metadata: `scope`, `mutating`, described `options` and `args`, `errors`, and `destructive` or `idempotent` where the derived hints are wrong. `help`, `schema` and the invocation policy read it.\n- Declare `output`, the JSON Schema of `data`, on the command or per action. Put options on the action that takes them. Add `schema` to a string option or argument that holds or names a JSON document.\n- Settings: a JSON Schema read from `plugins.settings.<id>` through `context.settings`.\n- German text in `strings.de`: descriptions of commands, actions, options, arguments and settings, the manifest name and description, error summaries and hints, and messages read with `context.t`.\n- A skill is `{id, content}` with optional `files` (`{\"references/x.md\": \"…\"}`) that ship next to its SKILL.md. Registration refuses Windows device names (`aux.md`) and paths that differ only in letter case with `INVALID_PLUGIN`.\n- Share capabilities through `provides` and `requires`, never imports.\n\n## Runtime rules\n- Write through `context.workspace.write` so guards, dry runs and events apply.\n- `onload(context)` and `onunload()` acquire and release resources, including after partial failures. `onUserEnable(context)` runs idempotent one-time setup at least once. `context.events.onLayoutReady` and `onQuit` run after activation and at invocation end.\n- Emit only `<plugin-id>.*` events. Host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`) and other plugins' events fail with `EVENT_OWNERSHIP`.\n- To run the installed Claude Code CLI, require the `claude.lifecycle` service.\n- Never log to stdout. Return JSON data and emit only JSON-safe event payloads.\n- See `bin/data/docs/reference/plugins.md`.\n\n## Project CI workflows\n- Each project authors its workflows in `src/infrastructure/workflows/<concern>/*.yml`.\n- From the workspace: `workflows sync --dry-run`, review, then `workflows sync` to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints.\n- Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ.\n";
+const __vite_glob_0_1 = "# Forge plugins and project CI\n\nRead this when you write a Forge plugin or a project's CI workflows.\n\n## Create a plugin\n- `make plugin MyTools` writes `manifest.json` and `main.mjs` into workspace `bin/plugins/my-tools` (shared by every project; `--out` is not accepted). Review both, then add `my-tools` to `plugins.enabled` in `bin/config.json`.\n- Plugins run trusted Node code with Node's permissions.\n\n## Contributions\n- Namespace commands, generators, events and services as `<plugin-id>.…`, skills as `<plugin-id>-…`, and error codes with the UPPER_SNAKE_CASE prefix.\n- Declare each command's metadata: `scope`, `mutating`, described `options` and `args`, `errors`, and `destructive` or `idempotent` where the derived hints are wrong. `help`, `schema` and the invocation policy read it.\n- Declare `output`, the JSON Schema of `data`, on the command or per action. Put options on the action that takes them. Add `schema` to a string option or argument that holds or names a JSON document.\n- Settings: a JSON Schema read from `plugins.settings.<id>` through `context.settings`.\n- German text in `strings.de`: descriptions of commands, actions, options, arguments and settings, the manifest name and description, error summaries and hints (plus `reasons`, messages by `details.reason` with `{detail}` placeholders), and messages read with `context.t`.\n- A skill is `{id, content}` with optional `files` (`{\"references/x.md\": \"…\"}`) that ship next to its SKILL.md. Registration refuses Windows device names (`aux.md`) and paths that differ only in letter case with `INVALID_PLUGIN`.\n- Share capabilities through `provides` and `requires`, never imports.\n\n## Runtime rules\n- Write through `context.workspace.write` so guards, dry runs and events apply.\n- `onload(context)` and `onunload()` acquire and release resources, including after partial failures. `onUserEnable(context)` runs idempotent one-time setup at least once. `context.events.onLayoutReady` and `onQuit` run after activation and at invocation end.\n- Emit only `<plugin-id>.*` events. Host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`) and other plugins' events fail with `EVENT_OWNERSHIP`.\n- To run the installed Claude Code CLI, require the `claude.lifecycle` service.\n- Never log to stdout. Return JSON data and emit only JSON-safe event payloads.\n- See `bin/data/docs/reference/plugins.md`.\n\n## Project CI workflows\n- Each project authors its workflows in `src/infrastructure/workflows/<concern>/*.yml`.\n- From the workspace: `workflows sync --dry-run`, review, then `workflows sync` to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints.\n- Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ.\n";
 const __vite_glob_0_2 = '# Editing vault files\n\nRead this for precise edits, apply plans, frontmatter, Canvas, Bases, text files, attachments and templates. Every mutation takes `--dry-run`; review `data.changes[].diff` (a unified diff, `null` for binary files). A stale `--if-match` fails with `CONFLICT` already in the preview. `node bin/forge.js formats` lists the supported formats.\n\n## Precise edits\nEach edit changes only what it addresses, in memory, with one guarded write.\n- Section: `edit notes/plan.md --section "Plan > Risks" --append --content "- Staffing" --if-match <rev>`; also `--prepend --content` or `--replace <text>`. List headings outermost first, separated by ` > `; write a ` > ` inside a heading as ` \\> `. The section runs to the next heading of the same or higher level.\n- `SECTION_NOT_FOUND` lists `details.headings` or `details.blocks`. `AMBIGUOUS_SECTION` lists `details.candidates`: add an ancestor heading, or pass the candidate\'s `line` as `--section-line <n>` (`sectionLine` in a plan).\n- Block: `edit notes/plan.md --block ship --replace "New text" --if-match <rev>` addresses `^ship` and keeps the marker. A list item keeps its indentation, marker, checkbox and nested items; start the text with a marker (`- [x] Done`) to change the checkbox. `--append` or `--prepend --content` add a separate block; next to a list item the content must start with a list marker, else `INVALID_INPUT`.\n- Several literal replacements: `edit <file> --edits \'[{"find":"a","replace":"b"},{"find":"x","replace":"y","all":true}]\' --if-match <rev>`, or `--edits @edits.json` or `--edits -`. They apply in order; a failure names `details.edit` and writes nothing.\n- `NO_MATCH` has `details.matches: 0`, `details.lineEndings` and possibly `details.nearMatch`. Reread and copy the exact text, including CRLF or LF line endings.\n- `AMBIGUOUS_EDIT` counts every match in `details.matches`, lists `details.lines` and `details.snippets`. Extend `--find` with surrounding text.\n- An edit that would change nothing reports `operation: "unchanged"` and writes nothing. `--content` holding a literal `\\n` but no line break adds a warning: use `--stdin` for multiline text.\n\n## Apply plans\n- A plan is `{"version":1,"operations":[...]}` with `write`, `edit` (`edits`, `append`, or `section`/`block` with `replace`/`append`/`prepend`), `frontmatter` (`set`, `unset`), `move` (`from`, `to`) and `delete` (to `.trash`) operations.\n- Every operation on a path that existed before the plan needs the `ifMatch` from your reads; a repeated plan then fails with `CONFLICT` instead of applying twice. Only paths the plan creates take none.\n- Run `apply plan.json --dry-run`, then `apply plan.json` (or pipe the plan to `apply -`). Operations see earlier ones: edit a moved note by its new path. The plan commits as one batch or not at all.\n- A failure keeps its code and adds `details.operation`; `INVALID_PLAN` lists `details.issues`. `schema apply` publishes the plan schema as the argument\'s `contentSchema`.\n- Split a plan that writes to a path it also moves or deletes.\n\n## Frontmatter\n- `properties <note> --set \'<json>\' --unset a,b --if-match <rev>`. `null` in `--set` stores YAML `null`; `--unset` removes the key.\n- Only touched entries are rewritten: untouched YAML keeps its bytes and comments, and new frontmatter is block style.\n- Before setting a property, `vault properties --name <property>` shows its inferred and declared type, so values keep one type.\n\n## Canvas and Bases\n- Canvas: `create planning.canvas`, read its revision, then `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <rev>`. Edge endpoints must already exist. For a larger change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` makes a table view; edit it with pointers such as `/views/0/name`. `bases query tasks.base --view "Table"` returns the view\'s matching files without Obsidian. `bases capabilities` describes the evaluator\'s limits; a query that takes too long fails with `BASE_TIMEOUT`.\n- Unknown Canvas and Base keys are kept. Structural validation does not run formulas.\n\n## Text files and attachments\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.txt`, `.csv`, `Dockerfile` and others; see `formats` `textFilenames`) read as `document: {kind: "text", content}`. Edit them with `edit --find` or `--append`, or replace them with `write --stdin --if-match <rev>`.\n- A file that is not valid UTF-8 or holds NUL characters reads as base64 and cannot be edited.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root; pipe outside bytes with `--stdin`, or pass `--encoding base64`. `read` returns attachments as base64 with size and hash.\n- Embed an attachment in a note with `![[assets/diagram.png]]`.\n\n## Templates\n- `templates inspect <template.md>`, then `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply every non-built-in placeholder; `--date <ISO>` makes dates repeatable. Output defaults to `notes` in the active scope, or `--out`.\n- Templates live in workspace `bin/templates` and cannot run code.\n';
 const __vite_glob_0_3 = '# Finding and checking vault files\n\nRead this for bounded reads, search and list paging, link reports and vault checks.\n\n## Reads\n- Markdown `read` returns `content` and `properties`; `--parts properties` returns only the frontmatter and `--parts body` only the body.\n- Text and attachment content beyond 256 KiB (`--max-bytes`) is cut with `truncated: true`, `lines: {start, end, total}` and a warning. `--lines <start>-<end>` (1-based, inclusive; also `<start>-` or `<start>`) reads a range; `search` hits report the line numbers. When one line alone exceeds the limit (warning `READ_LINE_TRUNCATED`), `--lines` returns the same prefix again: raise `--max-bytes` to `details.lineBytes`.\n- `read-many <paths…>` reads 1-32 paths in order, each counting at most `--max-bytes` toward an 8 MiB total. Any failure rejects the whole bundle, with `details.index` and `details.path`. It is not an atomic snapshot.\n- `stat <path>` returns a file\'s revision and byte count, or a folder\'s revision and counts, without parsing. It also works when `read` fails on malformed frontmatter.\n\n## Search and list\n- `search "release plan"` returns `data.hits` (`path`, 1-based `line` and `column`, `match`, `snippet`, `revision`) in path, line and column order, with `total`. A hit\'s `revision` is the `--if-match` for an `edit` of that file.\n- Narrow with `--path notes` (a folder path selects everything below it; globs such as `notes/**/*.md` work too), `--kind markdown`, `--tag project`, `--property status=active`, `--in body`, `--skip-code` and `--context 2`.\n- `--exclude "**/{dist,coverage}/**"` skips files before they are read and wins over `--path`. Search ignores `.gitignore`.\n- Matching ignores case unless `--case-sensitive`; `--regex` takes a JavaScript regular expression per line. `SEARCH_TIMEOUT` means the expression backtracks too much.\n- `--files-only` returns `files: [{path, revision, hits}]` and `--count` only `total` and `fileCount`.\n- `list --path notes --kind markdown` lists files; `list --tag` and `--property` find notes without a pattern. `.trash` is hidden unless `--include-trash`.\n- Pages hold 500 files or 100 hits: repeat the same command with `--cursor <nextCursor>` until it is absent. A `--path` that matches nothing adds a warning.\n\n## Links\n- `links back <note>` lists every file that links to it (`source`, `line`, `column`, `original`); `links out <note>` lists its links with `status` and `target`.\n- `links unresolved --path "notes/**"` reports broken links with `reason` `missing`, or `ambiguous` with `candidates`: use a longer link path.\n- `links orphans` lists notes nothing links to and `links deadends` notes that link nowhere; list intended entry notes in `plugins.settings.links.roots`.\n- Every report has `issues`: files whose metadata could not be parsed. Fix those first.\n\n## Vault check\n- `vault check` returns `data.findings` (`rule`, `severity`, `path`, `line`, `column`, `message`, `hint`, and `suggestion` for a missing target) and `summary` counts.\n- Rules: `unresolved-link`, `unresolved-embed`, `ambiguous-link`, `unresolved-anchor`, `invalid-frontmatter`, `invalid-canvas`, `invalid-base`, `property-type-mismatch`, `duplicate-block-id`, `empty-file`, `orphan-attachment`.\n- Narrow with `--path "notes/**"` and `--rule unresolved-link,invalid-frontmatter`.\n- `vault check --strict` fails with `VAULT_CHECK_FAILED` (exit 2) while an `error` finding remains, listed in `error.details.findings`.\n- `vault tags --sort count` lists tags with their files; `vault properties --name <property>` shows a property\'s types. Severities and ignore globs live in `plugins.settings.vault-check`.\n';
 const __vite_glob_0_4 = '# Moving, deleting and the writer lock\n\nRead this before restructuring notes, and when a write fails with `WORKSPACE_BUSY` or `ROLLBACK_FAILED`.\n\n## Move and rename\n- Always use the link-aware commands, never a copy plus delete.\n- `move notes/plan.md specs/plan.md --dry-run`, or `rename notes/plan.md Roadmap --dry-run` (a file keeps its extension), returns `data.revision` and a `diff` for every file whose links change.\n- Wikilinks and embeds keep `#Heading`, `#^block` and `|display` text; relative Markdown links are recomputed; frontmatter links and Canvas `file` nodes follow.\n- Review `data.links.unrewritten`, then repeat without `--dry-run` and with `--if-match <revision>`. One batch commits the move and every rewritten file.\n- A `<to>` that ends with `/` or names an existing folder moves the source into it under its own name. Moving a file with an extension to an extensionless name adds a warning.\n- `DESTINATION_EXISTS`: Forge never overwrites the target.\n- A folder moves the same way; its `--if-match` is the folder revision the dry run reports.\n- A repeated move whose source is gone and whose destination holds the revision succeeds with `alreadyApplied: true`.\n\n## Delete\n- `delete notes/scratch.md --if-match <revision>` moves the file to `.trash/` (numbered ` 1`, ` 2`… when taken). A folder needs `--recursive`; `--permanent` removes instead of trashing.\n- `HAS_BACKLINKS` lists the linking files in `details.backlinks`: rewrite or remove those links first, or move the note instead. Pass `--allow-broken-links` only when broken links are intended.\n- `PROTECTED_PATH`: `.obsidian`, `.forge` and, at workspace scope, `bin` are protected in any letter case. `--permanent` also refuses folders with symlinks or `node_modules`: trash them instead.\n- `data.deleted` lists every removed file and folder. A repeated delete fails with `NOT_FOUND`; `details.alreadyDeleted: true` and `details.trashPath` show where the first one put it.\n\n## The writer lock\n- All writers in a workspace share one lock, `.agent-cli.lock`, whatever their project.\n- `WORKSPACE_BUSY` (exit 4): `details.lock` names the holder (pid, hostname, startedAt, command), `details.path` the lock file and `details.stale` is `active`, `unknown` or `stale`.\n- `active` (`retryable: true`): wait `details.retryAfterMs` and retry, or rerun with the global `--wait <ms>`. Never delete an active lock.\n- `details.nestedWriter: "running"`: a moved or deleted folder contains a nested root whose writer runs. `--wait` does not wait for it; retry once that writer finished.\n- `unknown` (`retryable: false`): another host, container or boot, or an unreadable lock. Do not retry in a loop. Delete the file in `details.path` only after you verify the recorded process is not a running Forge writer and inspect its changes.\n- `stale` (`retryable: false`): the holder no longer runs but Forge could not remove the file. Confirm no Forge process uses it, delete the file and retry.\n- When Forge removes a stale lock itself, it adds a warning: inspect the interrupted changes with `git status` and read-back before continuing.\n- `ROLLBACK_FAILED`: inspect every listed path and the saved contents before doing more work.\n';
-const __vite_glob_0_5 = "# Generated output and feature commands\n\nRead this when you generate UI or data-source code, manage agents, skills or Claude Code configuration, sync CI workflows, or build webviews and browser evidence. Each feature also has its own skill or reference page.\n\n## UI components and data sources\n- Inspect `components list`, `components inspect <id>` and `plugins.settings.ui` in `config --json` (framework and folders). The `ui` core plugin owns `components`, `interactions`, `make ui` and `make stories`; `data-sources` owns `data-sources` and `make data-source`.\n- Component definitions are workspace-scoped; generated UI uses the active project or `--project <id>`. Start with `components init --dry-run` if there are none, and run `components validate` after edits.\n- Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, check `context.root` and review the generated text.\n- `--plan` compares proposed and current output, `--check` detects drift read-only (exit 5, `UI_DRIFT`) and `--plan-out <file.json>` writes a revision map. Intentional regeneration takes `--revisions-from <file.json>` with the inspected hashes.\n- Generic file commands follow the open project: close it before guarded edits to the shared workspace library.\n- CLI generation does not prove browser behavior or accessibility; test with the project's own toolchain. See `bin/data/docs/reference/ui-components.md`.\n\n## Agents and skills\n- Agent definitions are docker-agent YAML in `agents/*.yaml`: follow the `forge-agents` skill. `agents generate --target claude` maintains `.claude/agents/`; never hand-edit generated agents.\n- `skills list` names the registered skills. `skills show <id>` returns SKILL.md and the list of the skill's `files`; `--file references/<name>.md` returns one of them.\n- `skills install [--target both|claude|agents | --out <dir>]` writes each skill folder into the selected project's `.claude/skills` and `.agents/skills`. Existing different files are refused, so an edited skill is never overwritten.\n\n## Claude Code configuration\n- Use the `claude` command instead of hand-written JSON. `claude capabilities` lists hook events, handler types, plugin components and runtime operations.\n- `claude hooks inspect` returns the settings document (`--scope project|local|user|plugin`, default `project`) with its `revision`; `hooks check` validates it; `hooks add|set|remove|enable|disable|configure` need `--if-match <revision>` once the file exists.\n- `claude agents …` manages `.claude/agents/*.md`; `claude plugins create|inspect|manifest|check|asset|write-asset|remove-asset <dir>` authors a plugin folder without running Claude.\n- `claude plugins list|install|…`, `claude marketplaces …` and `claude runtime …` run the installed `claude` executable and can change the user's installation: preview with `--dry-run`, keep `--scope project` and never pass `--scope user` without consent.\n- Hooks and plugins run commands: review them like code. See `bin/data/docs/reference/claude.md`.\n\n## CI workflows\n- Each project authors workflows in its `src/infrastructure/workflows/<concern>/*.yml`. From the workspace run `workflows sync --dry-run`, review, then `workflows sync`.\n- Never edit the generated `.github/workflows` entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ.\n\n## Webviews and browser evidence\n- Prototype: follow the `forge-webviews` skill. `project create <id> --type webview`, build and test inside that project, `webview inspect --project <id>`, `webview publish --project <id> --dry-run`, then `server start --webview <id>`.\n- Screenshots and illustrated tutorials: follow the `forge-browser` skill and `schema browser`. Dry runs validate without launching a browser.\n";
+const __vite_glob_0_5 = "# Generated output and feature commands\n\nRead this when you generate UI or data-source code, manage agents, skills or Claude Code configuration, sync CI workflows, or build webviews and browser evidence. Each feature also has its own skill or reference page.\n\n## UI components and data sources\n- Inspect `components list`, `components inspect <id>` and `plugins.settings.ui` in `config --json` (framework and folders). The `ui` core plugin owns `components`, `interactions`, `make ui` and `make stories`; `data-sources` owns `data-sources` and `make data-source`.\n- Component definitions are workspace-scoped; generated UI uses the active project or `--project <id>`. Start with `components init --dry-run` if there are none, and run `components validate` after edits; it also refuses IDs that would name generated files after Windows devices (`con`, `aux`, `com1`; `INVALID_UI`, `details.reason: \"device-name\"`), as `data-sources validate` does for data sources.\n- Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, check `context.root` and review the generated text.\n- `--plan` compares proposed and current output, `--check` detects drift read-only (exit 5, `UI_DRIFT`) and `--plan-out <file.json>` writes a revision map. Intentional regeneration takes `--revisions-from <file.json>` with the inspected hashes.\n- Generic file commands follow the open project: close it before guarded edits to the shared workspace library.\n- CLI generation does not prove browser behavior or accessibility; test with the project's own toolchain. See `bin/data/docs/reference/ui-components.md`.\n\n## Agents and skills\n- Agent definitions are docker-agent YAML in `agents/*.yaml`: follow the `forge-agents` skill. `agents generate --target claude` maintains `.claude/agents/`; never hand-edit generated agents.\n- `skills list` names the registered skills. `skills show <id>` returns SKILL.md and the list of the skill's `files`; `--file references/<name>.md` returns one of them.\n- `skills install [--target both|claude|agents | --out <dir>]` writes each skill folder into the selected project's `.claude/skills` and `.agents/skills`. Existing different files are refused, so an edited skill is never overwritten.\n\n## Claude Code configuration\n- Use the `claude` command instead of hand-written JSON. `claude capabilities` lists hook events, handler types, plugin components and runtime operations.\n- `claude hooks inspect` returns the settings document (`--scope project|local|user|plugin`, default `project`) with its `revision`; `hooks check` validates it; `hooks add|set|remove|enable|disable|configure` need `--if-match <revision>` once the file exists.\n- `claude agents …` manages `.claude/agents/*.md`; `claude plugins create|inspect|manifest|check|asset|write-asset|remove-asset <dir>` authors a plugin folder without running Claude.\n- `claude plugins list|install|…`, `claude marketplaces …` and `claude runtime …` run the installed `claude` executable and can change the user's installation: preview with `--dry-run`, keep `--scope project` and never pass `--scope user` without consent.\n- Hooks and plugins run commands: review them like code. See `bin/data/docs/reference/claude.md`.\n\n## CI workflows\n- Each project authors workflows in its `src/infrastructure/workflows/<concern>/*.yml`. From the workspace run `workflows sync --dry-run`, review, then `workflows sync`.\n- Never edit the generated `.github/workflows` entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ.\n\n## Webviews and browser evidence\n- Prototype: follow the `forge-webviews` skill. `project create <id> --type webview`, build and test inside that project, `webview inspect --project <id>`, `webview publish --project <id> --dry-run`, then `server start --webview <id>`.\n- Screenshots and illustrated tutorials: follow the `forge-browser` skill and `schema browser`. Dry runs validate without launching a browser.\n";
 const __vite_glob_0_6 = '# Forge protocol\n\nRead this when you need more than the core loop in [SKILL.md](../SKILL.md): the response envelope, discovery details, events, warnings, language and plugins.\n\n## Envelope\n- Success: `{ok: true, data, context, events, warnings}`. Failure: `{ok: false, error: {code, message, hint?, retryable?, details?}, context?, events, warnings}`; built-in codes always carry `hint` and `retryable`.\n- `context.workspaceRoot` is the workspace, `context.root` the root this command used and `context.project` the selected project or `null`. Check `context.root` before reading paths in `changes` or `events`.\n- `--json` prints compact JSON and `--no-json` indented JSON; both are JSON.\n- Exit codes: 0 success, 1 runtime, I/O, plugin or Claude failure, 2 invalid input or conflict, 3 missing file, project or workspace root, 4 writer or server lock busy, 5 generated output drift, 130 (SIGINT) or 143 (SIGTERM) interrupted.\n- `bin/data/docs/reference/errors.md` lists every code with its exit status, hint and `retryable` flag. `schema <command>` publishes its codes in `data.commands[0].errors` and `data.commonErrors`, and `data.errors` describes them.\n\n## Discovery\n- `help` (also no arguments, `--help` and `-h`) returns `{name, version, apiVersion, commands, mutating, globalOptions, next}`: one line per command and the ids of the mutating commands. Every command id is always listed; when many plugin commands would outgrow 4 KB, later ids map to an empty description and `omitted` counts them, so run `help <command>` for those.\n- `help <command>` adds usage, 1-3 `examples`, options, arguments, `annotations.actions` and error codes. Options marked `path: true` accept `./x`, `x\\y` and absolute paths inside the root.\n- `schema <command>` returns the command\'s JSON Schema 2020-12 `inputSchema`, the `outputSchema` of `data` (or `annotations.actions.<action>.outputSchema`), `errors` and `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `scope`), plus the response `envelope` schema. `schema` alone is a compact index of ids; `schema --all` is the complete catalog.\n- Actions declare their own options: an option of another action fails with `UNKNOWN_OPTION`. Typos and common words (`ls`, `cat`, `grep`, `mv`, `rm`, `--force`) fail with suggestions such as `list` or `--if-match`.\n- Treat `destructiveHint: true` commands as needing a reviewed `--dry-run` first.\n- `config --json` shows the effective configuration: the projects path, defaults, enabled plugins and `plugins.settings.<plugin-id>`.\n\n## Events and warnings\n- `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`, with `kind: "folder"` records for new folders). Reads, dry runs and unchanged writes return `[]`.\n- `--events all` adds lifecycle records for this invocation; `--events none` drops them. Never rerun a mutation to get more events.\n- `warnings` never mean failure. They report, for example, a `--path` that matched nothing, a truncated read, literal `\\n` in `--content`, an empty `--stdin`, a dropped extension on `move`, a working directory outside the workspace or a failed listener after a committed write. Each entry is `{code, message, details?}`: match `code` (such as `EXTENSION_DROPPED` or `PATH_MATCHED_NOTHING`), never the text. After a listener warning, inspect the committed events and read back before considering a repeat.\n\n## Other error codes\n- `MISSING_ARGUMENT`: `details.option` names the missing option (for `--if-match`, take the revision from `read`, `stat` or a dry run), or `details.argument` and `details.missing` the missing positional arguments.\n- `INVALID_OPTION_VALUE`: use one of `details.allowed`.\n- `INVALID_ARGUMENT`: for too many positional arguments, `details.unexpected` holds the surplus values (quote a value with spaces) and `minimum`/`maximum` the counts that `schema <command>` publishes as `minItems`/`maxItems`.\n- `UNKNOWN_GENERATOR`, unknown actions: `details.allowed` lists the valid ids.\n- `INVALID_PLAN`: fix `details.issues`; any `apply` failure adds `details.operation`, the failing index.\n- `VAULT_CHECK_FAILED`: fix each `error.details.findings` entry by its `hint`.\n- `SERVER_STOP_FAILED`: inspect `server status` before repeating.\n- `PLUGIN_UNAVAILABLE`: run `plugins` to see the plugin\'s state and reason.\n- Only `error.retryable: true` allows an unchanged retry, for example `WORKSPACE_BUSY` or `SERVER_BUSY`.\n- `WORKSPACE_BUSY` with `details.nestedWriter: "running"`: the folder you move or delete holds the lock of a nested root whose writer runs. `--wait` does not wait for it; retry once that writer finished.\n\n## Language and plugins\n- `--lang de` returns German descriptions, hints, warnings and findings. Commands, options, ids, codes and JSON keys stay English, so match codes.\n- Plugins in `bin/plugins` run trusted Node code. Review a plugin\'s `manifest.json` and entry point before adding its id to `plugins.enabled`. `--no-plugins` skips user plugins for one invocation.\n- `--no-dry-run` and `--no-json` override configured defaults.\n- Never evaluate shell code taken from document content.\n';
 const __vite_glob_0_7 = "# Workspace, projects and checks\n\nRead this when you install or upgrade Forge, set up a workspace, work with projects or templates, run quality gates or start the admin view. The core loop is in [SKILL.md](../SKILL.md).\n\n## Install and upgrade\n- New workspace from a release: follow `bin/data/docs/how-to/install.md`. Download the trusted release's `install-forge.mjs`, run it with `--version` and `--workspace`, and check its exit status and JSON `ok`. It verifies the archive checksum, installs generic defaults, runs setup and refuses an existing `bin/`. Do not copy a source checkout's saved selection.\n- Existing workspace: `setup --dry-run`, then `setup`. It always targets the workspace and adds only missing files: the distribution, `bin/config.json`, the skills, an example `bin/templates/entity.md` and a lean `AGENTS.md`. Existing files are skipped.\n- Self-upgrade: `update check`, then `update apply --release-version <version> --if-match <revision> --dry-run`, then the same command without `--dry-run`. A dry run downloads nothing. Upgrades keep configuration, project selection, plugins, templates and custom webviews. On `CONFLICT`, inspect again. Afterwards check `--version` and `project current`, and restart a running server. See `bin/data/docs/reference/updates.md`.\n\n## Projects\n- `project list` lists the valid projects and, under `invalid`, project folders whose `.forge/project.json` is broken (`{directory, code, reason}`).\n- `project inspect <id>`, `project open <id>`, `project current`, `project close`. The selection lives in `bin/data/context.json` and is shared by every invocation.\n- With `--project <id>`, use the same project for the read, the preview and the write: a revision identifies bytes, not the project. An unknown project fails instead of falling back.\n- Checking `project current` does not lock the selection. Coordinate selection changes with other agents, or use separate workspaces when agents need different selections.\n- `STALE_PROJECT_CONTEXT` names the selected `project` and `directory` with the cause: open a valid project or `project close`.\n- New code project: `project create <kebab-name> --dry-run` (`--type webview` for a prototype). New domain or application file: `project component [id] <PascalName> --kind domain|application --dry-run`; omit the id for the open project.\n- Shared templates always live in workspace `bin/templates` and plugins in `bin/plugins`.\n\n## Templates and documents\n- `templates list`, then `templates inspect <name.md>` for its required values.\n- `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`; review the full text before applying. `--date <ISO>` makes dates repeatable.\n- Workflow stages: `templates inspect workflow/prd.md`, `templates install workflow --dry-run`, then `make document <Title> --template workflow/<kind>.md --values '{\"owner\":\"Team\"}' --dry-run`. See `bin/data/docs/tutorials/idea-to-production.md`. A drafted document is not a completed requirement.\n- When the `templates` or `scaffolds` core plugin is disabled, its commands and generators are unknown, `setup` skips the templates with a warning and `project create` fails with `PLUGIN_UNAVAILABLE`.\n\n## Checks and reporting\n- For generated TypeScript projects, run `npm run check:fast` from the project folder while you work, fix the cause of each failure, rerun the failed stage and finish with `npm run check`. For other projects, read their scripts first.\n- Never weaken a gate to hide a failure.\n- Summarize changed files, acceptance evidence, checks run and remaining limits.\n\n## Admin view\n- Only after the user agrees: `server start --webview admin` and share `data.url`. The CLI never opens a browser.\n- `server status` is read-only, `server start` reuses a running server and `server stop` ends it. Start and stop support `--dry-run`.\n- The URL fragment holds a bearer token: treat it as local session access, and fetch a fresh link after a restart. See `bin/data/docs/reference/server.md`.\n";
 const workflow = '---\nname: forge-workflow\ndescription: Drive the portable Forge CLI (node bin/forge.js) safely. Discover commands with help and schema, pick the workspace and project, preview writes with --dry-run, guard them with --if-match, retry lost writes and recover from error codes. Use when a workspace has bin/forge.js, when starting any Forge task, or when a Forge command fails.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nEvery command prints one JSON envelope and never prompts. Check the exit code and `ok`; match `error.code`, never message text.\n\n## Root and scope\n- The workspace is the folder holding `bin/`, not your working directory. Pick another with `--root <dir>` or `FORGE_ROOT=<dir>`; `--root` wins; a missing root fails with `INVALID_ROOT`.\n- Paths are relative to `context.root`: the open project, or the workspace. Check `project current`. `project open <id>` changes the selection for every agent, and `project close` clears it.\n- With parallel agents, leave the selection alone and pass `--project <id>` to file commands (`read`, `search`, `edit`, `apply`…).\n\n## Discover\n- `help` lists commands. `help <command>` gives usage, examples, options and error codes. `schema <command>` gives the JSON Schema input and output.\n- Avoid `schema --all` (every command at once).\n- Global flags such as `--root`, `--dry-run` and `--wait` may come before or after the command.\n\n## Safe edit loop\n1. `read <path>` and keep `data.revision`.\n2. Run the change with `--dry-run --if-match <revision>` and review `data.changes[].diff`.\n3. Rerun it without `--dry-run`, then read the file back.\n4. Change several files at once with one `apply <plan.json>`: all or nothing, with `ifMatch` on every existing path.\n5. After note changes, run `vault check --strict` until it passes.\n\n## Arguments\n- Quote every value, and quote empty variables (`--replace "$X"`). An option never takes the next flag as its value: it fails with `MISSING_ARGUMENT`.\n- Write a value that starts with `-` as `--key=value` (`--find=--draft`). Pass multiline or shell-sensitive text with `--stdin`.\n\n## Bounded output\n- `read` truncates at 256 KiB (`truncated: true`); read on with `--lines <a>-<b>`.\n- `list` returns 500 files per page and `search` 100 hits. Repeat with `--cursor <nextCursor>` until it is absent.\n- Narrow with `--path <folder or glob>`, `--kind`, or `search --files-only` / `--count`. Check `warnings` too.\n\n## Retries\n- Lost track of a write? Run it again. `operation: "unchanged"` or `alreadyApplied: true` means it already happened.\n- A repeated `delete` fails with `NOT_FOUND`; `details.alreadyDeleted` and `details.trashPath` show it already succeeded.\n- Retry an unchanged command only when `error.retryable` is true.\n\n## Errors\nExit codes: 1 runtime, 2 input or conflict, 3 not found, 4 busy, 5 drift, 130/143 interrupted. Every error has a `hint`.\n- `CONFLICT`: reread the file and reapply your change to its current content; `details.alreadyApplied: true` means it is already there. Never resend the old change unchanged.\n- `NO_MATCH`: copy the exact text, using `details.nearMatch` and `details.lineEndings`.\n- `AMBIGUOUS_EDIT`: extend `--find` until it matches once (`details.lines`).\n- `UNKNOWN_COMMAND`, `UNKNOWN_OPTION`: see `details.suggestions` and `help <command>`.\n- `INVALID_PATH`: use `details.suggestion`.\n- `NOT_FOUND`: check `details.path` and `project current`.\n- `WORKSPACE_BUSY`: wait `details.retryAfterMs` or pass `--wait <ms>` (not for `nestedWriter`).\n- `ROLLBACK_FAILED`: inspect every listed file before continuing.\n\n## Reference\n- [Protocol](references/protocol.md): envelope, events, warnings, language, plugins and other error codes.\n- [Workspace](references/workspace.md): install, setup, updates, projects, templates, quality gates and the admin server.\n- [Generation](references/generation.md): UI, data sources, agents, skills, Claude Code, workflows, webviews and browser.\n- Notes, Canvas, Bases and attachments: the `forge-vault` skill.\n';
@@ -21409,272 +21418,6 @@ function forceHandoffDiagnostics(config2) {
   }
   return problems;
 }
-function agentError(code2, message2, details) {
-  return new PluginFailure(code2, message2, details);
-}
-const agentMessages = {
-  // Toolsets (claude-tools, claude-mcp).
-  toolFilterNone: "The tools filter {filter} is approximated by the Claude tools (none).",
-  toolFilter: "The tools filter {filter} is approximated by the Claude tools {tools}.",
-  toolsetFieldUnsupported: "{label} (the field {field}) have no Claude equivalent and are not emitted.",
-  filesystemApproximated: "The filesystem toolset is approximated by the Claude tools {tools}.",
-  allowListUnsupported: "allow_list limits the filesystem toolset to these directories; Claude Code cannot confine an agent's file tools to paths, so the limit is not emitted. Add deny rules for paths the agent must not reach (the project settings permissions.additionalDirectories only widens access).",
-  denyListApproximated: "deny_list becomes Read and Edit deny rules in project settings with --settings.",
-  readonlyShell: "A read-only shell toolset exposes no tools in docker-agent; Bash is not granted.",
-  allowedDomainsUnsupported: "allowed_domains limits fetch to these domains; Claude permission rules cannot allow WebFetch only for some domains, so the limit is not emitted.",
-  blockedDomainsApproximated: "blocked_domains becomes WebFetch(domain:…) deny rules in project settings with --settings; CIDR ranges are not emitted.",
-  taskToolsetApproximated: "The {type} toolset is approximated by Claude's task tools {tools}.",
-  memoryApproximated: "The memory toolset is approximated by memory: project; its database path is not used.",
-  userPromptApproximated: "The user_prompt toolset is approximated by AskUserQuestion.",
-  thinkNotEmitted: "The think toolset is not emitted; Claude models think natively, tuned by effort.",
-  mcpReadonly: "Claude cannot select read-only tools of MCP server {server}; every granted tool is emitted.",
-  toolsetUnsupported: "The {type} toolset has no Claude equivalent and is not emitted.",
-  readonlyApproximated: "readonly keeps read-only tools and disallows {tools}.",
-  mcpTemplateLiteral: "The template expression {expression} has no Claude MCP equivalent and is kept literally.",
-  oauthUnsupported: "OAuth {field} is not emitted; Claude Code asks for client secrets interactively and negotiates scopes and redirects itself.",
-  dockerGateway: "{ref} runs through the Docker MCP Gateway: {command}.",
-  mcpToolsetUnsupported: "The MCP toolset has no command, remote URL or Docker ref and is not emitted.",
-  // Models (claude-models).
-  modelAlias: "Model {id} is emitted as the alias {alias}, which Claude Code resolves to the newest model of that family.",
-  modelNoAlias: "Model {id} has no Claude alias; its id is emitted.",
-  effortLevel: "thinking_budget {budget} is emitted as effort: {effort}.",
-  effortBudget: "A thinking budget of {budget} tokens is approximated as effort: {effort}.",
-  effortNone: "thinking_budget {budget} disables or minimizes thinking; no effort is emitted.",
-  modelSettingUnsupported: "Model setting {key} has no Claude agent equivalent and is not emitted.",
-  harnessUnsupported: "The {type} harness has no Claude agent equivalent; the agent inherits the session model.",
-  harnessApproximated: "The claude-code harness runs the agent in Claude Code; its model and effort are emitted on the generated agent.",
-  modelMissing: "The agent names no model; the Claude agent inherits the session model.",
-  modelNoAnthropic: "Model {reference} has no Anthropic candidate; the Claude agent inherits the session model.",
-  modelSelected: "Model {reference} selects among several models; the first Anthropic candidate {candidate} is emitted.",
-  // Hooks and commands (claude-hooks, claude-commands, claude-execution).
-  hookTypeUnsupported: "A {type} hook has no Claude equivalent and is not emitted.",
-  hookFieldUnsupported: "Hook {field} is not emitted.",
-  hookEventUnsupported: "The {event} hook event has no Claude equivalent and is not emitted.",
-  hookMatcherApproximated: "Matcher alternatives {matchers} have no known Claude tool and are kept literally.",
-  preemptYolo: "preempt_yolo is not emitted.",
-  hookApproximated: "{event} hooks run on Claude's {target} event, which sends Claude Code's hook input; check each command's input and decision format.",
-  commandUrl: "The /{command} command opens a URL, which a Claude skill cannot do; it is not emitted.",
-  commandTemplateLiteral: "The template expression {expression} is kept literally; Claude skills do not evaluate docker-agent expressions.",
-  bangToolCall: "The bang tool call {call} is kept literally.",
-  commandDescription: 'The /{command} command has no description; "{description}" is emitted.',
-  commandForked: "docker-agent switches the conversation to {target}; the Claude skill runs in a forked {agent} subagent instead.",
-  mcpNotGenerated: "MCP server {server} is not generated and its tools are not granted; pass --mcp inline or --mcp project to write it. Its command or URL: {target}",
-  mcpExecutes: "MCP server {server} (written to {file}) runs the command: {command}",
-  hooksNotGenerated: "Hooks run commands and are generated only with --hooks; skipped {hooks}.",
-  hookExecutes: "The {event} hook of {agent} runs the command: {command}",
-  toolsNone: "No toolset grants a Claude tool, so {agent} gets tools: [] and disallows {tools} instead of inheriting every tool.",
-  // Permissions (claude-permissions); the reasons are fragments of permissionPartial and permissionDropped.
-  reasonNoBuiltin: "names no docker-agent built-in tool with a Claude permission rule",
-  reasonUnmappedOne: "matches {tools}, which has no Claude permission rule of the same reach",
-  reasonUnmapped: "matches {tools}, which have no Claude permission rule of the same reach",
-  reasonMcpNone: "names an MCP server, and no MCP server is generated without --mcp inline or --mcp project",
-  reasonMcpUnknown: "names the MCP server {server}, which no generated agent defines",
-  reasonArguments: "matches tool arguments, which Claude permission rules express only for shell commands",
-  permissionPartial: "The {list} pattern {pattern} {reason}; only {rules} is emitted.",
-  permissionDropped: "The {list} pattern {pattern} {reason}; it is not emitted.",
-  permissionApproximated: "permissions.{list} becomes Claude permission rules in .claude/settings.json; argument matching is approximated.",
-  broadPermission: "The rule {rule} would auto-approve every use of its tool; pass --allow-broad-permissions to write it to permissions.allow, or narrow the docker-agent pattern.",
-  grantsPermissionBroad: ".claude/settings.json permissions.{list} gets the rule {rule} (broad, allowed by --allow-broad-permissions).",
-  grantsPermission: ".claude/settings.json permissions.{list} gets the rule {rule}.",
-  revokesPermission: ".claude/settings.json permissions.{list} loses the rule {rule}, which Forge wrote and no definition grants any more.",
-  // Agents (claude-agent).
-  envTemplateLiteral: "{expression} is kept literally; Claude Code does not expand docker-agent environment expressions in agents.",
-  templateLiteral: "{expression} is kept literally; Claude Code cannot evaluate docker-agent template expressions.",
-  addDate: "Claude Code adds the current date to its system prompt itself.",
-  addEnvironment: "Claude Code adds working directory, platform and Git information to its system prompt itself.",
-  promptFilesUnsupported: "{field} is not emitted; Claude Code loads CLAUDE.md files instead.",
-  welcomeMessage: "Claude agents have no welcome message.",
-  externalSubAgent: "The external sub-agent {agent} is not generated.",
-  subAgentsApproximated: "Sub-agents become Agent(…) entries in tools, which Claude Code enforces only when {agent} runs as the main thread.",
-  delegationUnsupported: "{field} is not emitted; Claude delegates only through the Agent tool.",
-  skillsDiscovered: "Claude Code discovers project and user skills itself.",
-  skillsDisabled: "Skills are disabled; Claude agents cannot disable skill discovery.",
-  inlineSkill: "The inline skill {skill} is not generated; write it as .claude/skills/{skill}/SKILL.md.",
-  skillSource: "The skill source {source} is not emitted; Claude Code loads skills from .claude/skills.",
-  namedSkills: "Named skills are preloaded through the skills frontmatter; Claude Code resolves them by name.",
-  nameSanitized: "Agent {name} is generated as {claude}.",
-  agentDescription: 'The agent has no description; "{description}" is emitted so Claude Code can delegate to it.',
-  maxIterations: "max_iterations is emitted as maxTurns: {turns}; Claude counts agentic turns, not model calls.",
-  settingUnsupported: "{field} has no Claude agent equivalent and is not emitted.",
-  // Import (claude-import).
-  importAlias: "The alias {alias} is imported as anthropic/{model}.",
-  importOmittedModel: "An omitted model is imported as the configured default {default}.",
-  importModel: "Model {model} is imported as the configured default {default}.",
-  serverReference: "The server reference {server} names a server configured outside the agent; add it as an mcp toolset or mcps definition.",
-  transportUnsupported: "The {type} transport has no docker-agent equivalent; the server is not imported.",
-  toolsInherited: "The Claude agent inherits every tool; filesystem, shell, fetch, todo and user_prompt toolsets are imported.",
-  fileToolsReadonly: "File tools are imported as a read-only filesystem toolset.",
-  fileTools: "File tools are imported as a filesystem toolset.",
-  taskTools: "Task tools are imported as a todo toolset.",
-  askUser: "AskUserQuestion is imported as a user_prompt toolset.",
-  toolUnsupported: "The Claude tool {tool} has no docker-agent toolset and is not imported.",
-  disallowedUnsupported: "Disallowing {tool} has no docker-agent equivalent.",
-  memoryImported: "memory: {memory} is imported as a memory toolset.",
-  importHookUnsupported: "The {event} hook event has no docker-agent equivalent.",
-  importHookApproximated: "{event} command hooks are imported as {target}; only command hooks are kept and docker-agent sends its own hook input.",
-  importNameSanitized: "Agent {name} is imported as {imported}.",
-  generatedAgent: "This agent was generated from {source}; edit that definition instead, since an import is lossy.",
-  subAgentsImported: "Agent(…) entries become sub_agents: {agents}.",
-  subAgentMissing: "Agent({agent}) is not imported because {agent} is not defined in the target file; import it first.",
-  importFieldUnsupported: "{field} has no docker-agent equivalent and is not imported.",
-  unknownField: "The unknown field {field} is not imported.",
-  maxTurnsImported: "maxTurns is imported as max_iterations, which counts model calls.",
-  skillsImported: "Preloaded skills are imported as skill names; docker-agent loads them on demand.",
-  // Generation (claude-generation) and definition files.
-  mcpServerConflict: ".mcp.json already defines the server {server}, which Forge did not generate; rename the toolset's server or pass --rename-conflicts.",
-  mcpServerRenamed: ".mcp.json already defines a different server {server}; this one is generated as {name}.",
-  commandsNotGenerated: "Commands become Claude skills with --commands.",
-  topLevelUnsupported: "The top-level {key} section has no Claude equivalent and is not emitted.",
-  permissionsNotGenerated: "Permissions become project settings rules with --settings.",
-  commandLabel: "/{command} command of agent {agent}",
-  commandCollision: "The {label} would generate .claude/skills/{name}/SKILL.md, which the {owner} already generates; rename one of the commands.",
-  commandRenamed: "Several agents define a different /{command}; this one becomes the skill {name}.",
-  agentCollision: "Agent {name} would generate .claude/agents/{claude}.md, which {owner} already generates.",
-  mainAgent: `The default agent {agent} becomes the project's main agent ("agent": "{claude}").`,
-  settingsAgentConflict: ".claude/settings.json already sets agent to {agent}, which Forge did not generate; remove it to let Forge set {claude}.",
-  encoding: "Definition files must be valid UTF-8."
-};
-const reasons = ["reasonNoBuiltin", "reasonUnmappedOne", "reasonUnmapped", "reasonMcpNone", "reasonMcpUnknown", "reasonArguments"];
-const agentFragments = {
-  permissionPartial: { reason: reasons },
-  permissionDropped: { reason: reasons },
-  commandCollision: { label: ["commandLabel"], owner: ["commandLabel"] }
-};
-const say = (key, params = {}) => fill(agentMessages[key], params);
-const definitionFile = /\.ya?ml$/;
-const byPosition = (left, right) => (left.line ?? 0) - (right.line ?? 0) || (left.column ?? 0) - (right.column ?? 0);
-const parent = (path2) => path2.includes("/") ? path2.slice(0, path2.lastIndexOf("/") + 1) : "";
-class AgentDefinitions {
-  constructor(files2, ports2, directory) {
-    this.files = files2;
-    this.ports = ports2;
-    this.directory = directory;
-    vaultPath(directory);
-  }
-  files;
-  ports;
-  directory;
-  /** Definition files directly in the directory, sorted. */
-  async paths() {
-    const prefix = `${this.directory}/`;
-    return (await this.files.list()).filter((path2) => path2.startsWith(prefix) && !path2.slice(prefix.length).includes("/") && definitionFile.test(path2)).sort();
-  }
-  /** A command's file argument: a bare file name lives in the definitions directory; a path is scope-relative. */
-  resolve(file) {
-    return vaultPath(file.includes("/") ? file : `${this.directory}/${file}`);
-  }
-  /**
-   * The file `agents create` and `agents import` write: a definition file directly in the definitions directory
-   * (`.yaml` or `.yml`), never another scope path such as `.github/workflows/ci.yaml`.
-   */
-  target(file) {
-    const path2 = this.resolve(file), prefix = `${this.directory}/`;
-    ensure(
-      path2.startsWith(prefix) && !path2.slice(prefix.length).includes("/") && definitionFile.test(path2),
-      "INVALID_PATH",
-      `Definition files are written directly in ${prefix} with a .yaml or .yml extension; ${file} is not such a file.`,
-      { path: path2, directory: this.directory }
-    );
-    return path2;
-  }
-  /** Parse, schema and semantic diagnostics for definition text; positions come from the YAML source. */
-  check(text2) {
-    const parsed2 = this.ports.codec.parse(text2);
-    if (parsed2.value === void 0) return { diagnostics: parsed2.diagnostics, locate: parsed2.locate };
-    const value2 = normalizedDocument(parsed2.value);
-    const schema2 = this.ports.schema.validate(value2);
-    const config2 = isObject$1(value2) ? value2 : void 0;
-    const semantic = config2 ? semanticDiagnostics(config2, this.ports.schema.configVersion) : [];
-    const diagnostics2 = [...schema2, ...semantic].map((entry2) => ({ ...entry2, ...parsed2.locate(entry2.pointer) }));
-    return { ...config2 ? { config: config2 } : {}, diagnostics: diagnostics2.sort(byPosition), locate: parsed2.locate };
-  }
-  async load(path2) {
-    const snapshot = await this.files.read(path2);
-    let text2;
-    try {
-      text2 = decodeUtf8(snapshot.bytes);
-    } catch {
-      return { path: path2, revision: snapshot.revision, text: "", diagnostics: [diagnostic("error", "encoding", "", say("encoding"))], instructions: {} };
-    }
-    const checked2 = this.check(text2);
-    const instructions2 = {}, missing2 = [];
-    if (checked2.config && !hasErrors(checked2.diagnostics)) {
-      for (const [name2, agent] of agentEntries(checked2.config)) {
-        const files2 = instructionFiles(agent);
-        if (files2.length === 0) continue;
-        const parts = [];
-        for (const [index2, file] of files2.entries()) {
-          const at = typeof agent.instruction_file === "string" ? pointer("agents", name2, "instruction_file") : pointer("agents", name2, "instruction_file", index2);
-          try {
-            parts.push(decodeUtf8((await this.files.read(vaultPath(`${parent(path2)}${localPath(file)}`))).bytes));
-          } catch (error2) {
-            const reason = isNotFound(error2) ? "does not exist" : `cannot be read: ${errorMessage(error2).replace(/\.$/, "")}`;
-            missing2.push({ ...diagnostic("error", "instruction-file-missing", at, `instruction_file "${file}" ${reason}.`), ...checked2.locate(at) });
-          }
-        }
-        instructions2[name2] = parts.join("\n\n");
-      }
-    }
-    return { path: path2, revision: snapshot.revision, text: text2, ...checked2.config ? { config: checked2.config } : {}, diagnostics: [...checked2.diagnostics, ...missing2].sort(byPosition), instructions: instructions2 };
-  }
-  /** Every definition file with its agents, the default agent and diagnostic counts. */
-  async list() {
-    const files2 = await Promise.all((await this.paths()).map(async (path2) => {
-      const loaded = await this.load(path2);
-      const config2 = loaded.config;
-      return {
-        path: path2,
-        revision: loaded.revision,
-        valid: !hasErrors(loaded.diagnostics),
-        ...config2 && config2.version !== void 0 ? { version: config2.version } : {},
-        default: config2 ? defaultAgent(config2) ?? null : null,
-        agents: config2 ? agentEntries(config2).map(([name2, agent]) => ({
-          name: name2,
-          ...typeof agent.description === "string" ? { description: agent.description } : {},
-          ...typeof agent.model === "string" ? { model: agent.model } : {},
-          subAgents: Array.isArray(agent.sub_agents) ? agent.sub_agents : []
-        })) : [],
-        errors: loaded.diagnostics.filter((entry2) => entry2.severity === "error").length,
-        warnings: loaded.diagnostics.filter((entry2) => entry2.severity === "warning").length
-      };
-    }));
-    return { directory: this.directory, files: files2 };
-  }
-  /** One file, or one agent of it with `file#agent`. */
-  async inspect(target2) {
-    const hash = target2.indexOf("#");
-    const path2 = this.resolve(hash < 0 ? target2 : target2.slice(0, hash)), name2 = hash < 0 ? void 0 : target2.slice(hash + 1);
-    const loaded = await this.load(path2);
-    const config2 = loaded.config;
-    if (name2 === void 0) {
-      return { path: path2, revision: loaded.revision, valid: !hasErrors(loaded.diagnostics), default: config2 ? defaultAgent(config2) ?? null : null, config: config2 ?? null, diagnostics: loaded.diagnostics };
-    }
-    const agents2 = record$4(config2?.agents);
-    if (!Object.hasOwn(agents2, name2)) throw agentError("AGENT_NOT_FOUND", `${path2} defines no agent ${name2}; defined: ${Object.keys(agents2).join(", ") || "none"}.`, { path: path2, agent: name2, agents: Object.keys(agents2) });
-    return {
-      path: path2,
-      revision: loaded.revision,
-      agent: name2,
-      default: defaultAgent(config2) === name2,
-      definition: agents2[name2],
-      ...Object.hasOwn(loaded.instructions, name2) ? { instruction: loaded.instructions[name2] } : {},
-      diagnostics: loaded.diagnostics.filter((entry2) => entry2.pointer === "" || !entry2.pointer.startsWith("/agents/") || entry2.pointer.startsWith(pointer("agents", name2)))
-    };
-  }
-  /** Validates one file or every file; any error-severity diagnostic fails with INVALID_AGENT_DEFINITION. */
-  async validate(file) {
-    const paths2 = file === void 0 ? await this.paths() : [this.resolve(file)];
-    const files2 = await Promise.all(paths2.map(async (path2) => {
-      const loaded = await this.load(path2);
-      return { path: path2, revision: loaded.revision, valid: !hasErrors(loaded.diagnostics), diagnostics: loaded.diagnostics };
-    }));
-    const invalid2 = files2.filter((entry2) => !entry2.valid);
-    if (invalid2.length > 0) {
-      throw agentError("INVALID_AGENT_DEFINITION", `${invalid2.map((entry2) => `${entry2.path} (${entry2.diagnostics.filter((item2) => item2.severity === "error").length} errors)`).join(", ")} failed validation; see details.files[].diagnostics.`, { files: invalid2 });
-    }
-    return { directory: this.directory, valid: true, files: files2 };
-  }
-}
 const execution = ["command", "http", "mcp_tool"];
 const evaluation = [...execution, "prompt", "agent"];
 const claudeHookEvents = {
@@ -21913,320 +21656,138 @@ function translateMatcher(matcher) {
   }
   return { matcher: [...new Set(translated2)].join("|"), unknown: unknown2 };
 }
-const fileTools = ["Read", "Glob", "Grep", "Write", "Edit", "MultiEdit", "NotebookEdit"];
-const writing$1 = ["Write", "Edit", "MultiEdit", "NotebookEdit"];
-const taskTools = ["TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "TaskOutput", "TaskStop", "TodoWrite"];
-const unsupportedFields$1 = ["permissionMode", "background", "isolation", "color", "initialPrompt", "omitClaudeMd", "experimental", "effort"];
-const known = ["name", "description", "model", "tools", "disallowedTools", "mcpServers", "maxTurns", "skills", "memory", "hooks", "x-forge-source", ...unsupportedFields$1];
-const reverseTools = { Read: "read_file", Write: "write_file", Edit: "edit_file", Glob: "list_directory", Grep: "search_files_content", Bash: "shell", WebFetch: "fetch", AskUserQuestion: "user_prompt" };
-const reverseEvents = Object.fromEntries(Object.entries(hookEvents).filter(([event]) => !["before_compaction", "after_compaction"].includes(event)).map(([event, claude]) => [claude, event]));
-const toolList = (value2) => (typeof value2 === "string" ? value2.split(",") : stringList(value2)).map((tool) => tool.trim()).filter((tool) => tool !== "");
-function model(value2, defaultModel, diagnostics2) {
-  if (typeof value2 === "string" && /^claude-[a-z0-9.-]+$/.test(value2)) return `anthropic/${value2}`;
-  const alias = typeof value2 === "string" ? modelAlias(value2) : void 0;
-  if (alias && value2 === alias) {
-    diagnostics2.push(diagnostic("warning", "model-approximated", "/model", say("importAlias", { alias, model: aliasModels[alias] }), "A"));
-    return `anthropic/${aliasModels[alias]}`;
-  }
-  diagnostics2.push(diagnostic("warning", "model-approximated", "/model", value2 === void 0 ? say("importOmittedModel", { default: defaultModel }) : say("importModel", { model: String(value2), default: defaultModel }), "A"));
-  return defaultModel;
-}
-function mcpToolsets(metadata2, grants, diagnostics2) {
-  return (Array.isArray(metadata2.mcpServers) ? metadata2.mcpServers : []).flatMap((entry2, index2) => {
-    const at = pointer("mcpServers", index2);
-    if (typeof entry2 === "string") {
-      diagnostics2.push(diagnostic("warning", "mcp-reference-unsupported", at, say("serverReference", { server: entry2 }), "U"));
-      return [];
-    }
-    return Object.entries(record$4(entry2)).flatMap(([name2, value2]) => {
-      const server = record$4(value2), type2 = server.type ?? "stdio", tools = grants.get(name2)?.filter((tool) => tool !== "*") ?? [];
-      const filter = tools.length > 0 ? { tools } : {};
-      if (type2 === "stdio") return [{ type: "mcp", name: name2, command: server.command, ...stringList(server.args).length > 0 ? { args: stringList(server.args) } : {}, ...isObject$1(server.env) ? { env: server.env } : {}, ...filter }];
-      if (type2 === "http" || type2 === "sse") {
-        const remote = { url: server.url, transport_type: type2 === "sse" ? "sse" : "streamable", ...isObject$1(server.headers) ? { headers: server.headers } : {} };
-        return [{ type: "mcp", name: name2, remote, ...filter }];
-      }
-      diagnostics2.push(diagnostic("warning", "mcp-transport-unsupported", `${at}${pointer(name2)}`, say("transportUnsupported", { type: String(type2) }), "U"));
-      return [];
-    });
-  });
-}
-function toolsets$1(metadata2, diagnostics2) {
-  const granted = metadata2.tools === void 0 ? void 0 : toolList(metadata2.tools);
-  const disallowed = toolList(metadata2.disallowedTools);
-  const tools = granted ?? ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "WebFetch", "TaskCreate", "AskUserQuestion"];
-  if (granted === void 0) diagnostics2.push(diagnostic("warning", "tools-inherited", "/tools", say("toolsInherited"), "A"));
-  const result = [], subAgents = [], grants = /* @__PURE__ */ new Map();
-  const has = (names2) => tools.some((tool) => names2.includes(tool) && !disallowed.includes(tool));
-  if (has(fileTools)) {
-    const readonly2 = !has(writing$1);
-    result.push({ type: "filesystem", ...readonly2 ? { readonly: true } : {} });
-    diagnostics2.push(diagnostic("warning", "toolset-approximated", "/tools", say(readonly2 ? "fileToolsReadonly" : "fileTools"), "A"));
-  }
-  if (has(["Bash"])) result.push({ type: "shell" });
-  if (has(["WebFetch"])) result.push({ type: "fetch" });
-  if (has(taskTools)) {
-    result.push({ type: "todo" });
-    diagnostics2.push(diagnostic("warning", "toolset-approximated", "/tools", say("taskTools"), "A"));
-  }
-  if (has(["AskUserQuestion"])) {
-    result.push({ type: "user_prompt" });
-    diagnostics2.push(diagnostic("warning", "toolset-approximated", "/tools", say("askUser"), "A"));
-  }
-  for (const tool of tools) {
-    const agent = /^Agent\((.+)\)$/.exec(tool), mcp = /^mcp__([^_]+(?:_[^_]+)*)__(.+)$/.exec(tool);
-    if (agent) subAgents.push(agent[1]);
-    else if (mcp) grants.set(mcp[1], [...grants.get(mcp[1]) ?? [], mcp[2]]);
-    else if (![...fileTools, ...taskTools, "Bash", "WebFetch", "AskUserQuestion"].includes(tool)) diagnostics2.push(diagnostic("warning", "tool-unsupported", "/tools", say("toolUnsupported", { tool }), "U"));
-  }
-  for (const tool of disallowed) if (!fileTools.includes(tool)) diagnostics2.push(diagnostic("info", "tool-unsupported", "/disallowedTools", say("disallowedUnsupported", { tool }), "U"));
-  if (metadata2.memory !== void 0) {
-    result.push({ type: "memory" });
-    diagnostics2.push(diagnostic("warning", "toolset-approximated", "/memory", say("memoryImported", { memory: String(metadata2.memory) }), "A"));
-  }
-  return { toolsets: [...result, ...mcpToolsets(metadata2, grants, diagnostics2)], subAgents };
-}
-function hooks$3(value2, diagnostics2) {
-  const result = {};
-  for (const [event, groups] of Object.entries(record$4(value2))) {
-    const target2 = reverseEvents[event];
-    if (!target2) {
-      diagnostics2.push(diagnostic("warning", "hook-unsupported", pointer("hooks", event), say("importHookUnsupported", { event }), "U"));
-      continue;
-    }
-    const tool = ["pre_tool_use", "post_tool_use", "permission_request"].includes(target2);
-    for (const group of Array.isArray(groups) ? groups.map(record$4) : []) {
-      const handlers = (Array.isArray(group.hooks) ? group.hooks.map(record$4) : []).filter((handler2) => handler2.type === "command" && text$f(handler2.command)).map((handler2) => ({ type: "command", command: handler2.command, ...typeof handler2.timeout === "number" ? { timeout: Math.max(1, Math.round(handler2.timeout)) } : {} }));
-      if (handlers.length === 0) continue;
-      const matcher = typeof group.matcher === "string" ? group.matcher.split("|").map((name2) => reverseTools[name2] ?? name2).join("|") : "*";
-      result[target2] = [...result[target2] ?? [], ...tool ? [{ matcher, hooks: handlers }] : handlers];
-    }
-    diagnostics2.push(diagnostic("warning", "hook-approximated", pointer("hooks", event), say("importHookApproximated", { event, target: target2 }), "A"));
-  }
-  return Object.keys(result).length > 0 ? result : void 0;
-}
-function importedName(name2) {
-  return String(name2).replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "agent";
-}
-function importClaudeAgent(metadata2, prompt, defaultModel, knownAgents) {
-  const diagnostics2 = [];
-  const name2 = importedName(metadata2.name);
-  if (name2 !== metadata2.name) diagnostics2.push(diagnostic("info", "name-sanitized", "/name", say("importNameSanitized", { name: String(metadata2.name), imported: name2 }), "E"));
-  const source2 = record$4(metadata2["x-forge-source"]);
-  if (text$f(source2.path)) diagnostics2.push(diagnostic("warning", "generated-agent", "/x-forge-source", say("generatedAgent", { source: `${String(source2.path)}#${String(source2.agent)}` }), "A"));
-  const { toolsets: imported, subAgents: delegates } = toolsets$1(metadata2, diagnostics2);
-  const subAgents = delegates.filter((agent2) => knownAgents.includes(agent2));
-  if (subAgents.length > 0) diagnostics2.push(diagnostic("warning", "delegation-approximated", "/tools", say("subAgentsImported", { agents: subAgents.join(", ") }), "A"));
-  for (const agent2 of delegates.filter((entry2) => !subAgents.includes(entry2))) {
-    diagnostics2.push(diagnostic("warning", "delegation-unsupported", "/tools", say("subAgentMissing", { agent: agent2 }), "U"));
-  }
-  const mappedHooks = hooks$3(metadata2.hooks, diagnostics2);
-  for (const field2 of unsupportedFields$1) if (metadata2[field2] !== void 0) diagnostics2.push(diagnostic("info", "field-unsupported", pointer(field2), say("importFieldUnsupported", { field: field2 }), "U"));
-  for (const field2 of Object.keys(metadata2)) if (!known.includes(field2)) diagnostics2.push(diagnostic("info", "field-unsupported", pointer(field2), say("unknownField", { field: field2 }), "U"));
-  if (metadata2.maxTurns !== void 0) diagnostics2.push(diagnostic("warning", "max-iterations-approximated", "/maxTurns", say("maxTurnsImported"), "A"));
-  const skills2 = stringList(metadata2.skills);
-  if (skills2.length > 0) diagnostics2.push(diagnostic("warning", "skills-approximated", "/skills", say("skillsImported"), "A"));
-  const agent = {
-    model: model(metadata2.model, defaultModel, diagnostics2),
-    description: metadata2.description,
-    instruction: prompt,
-    ...subAgents.length > 0 ? { sub_agents: subAgents } : {},
-    ...imported.length > 0 ? { toolsets: imported } : {},
-    ...skills2.length > 0 ? { skills: skills2 } : {},
-    ...typeof metadata2.maxTurns === "number" ? { max_iterations: metadata2.maxTurns } : {},
-    ...mappedHooks ? { hooks: mappedHooks } : {}
-  };
-  return { name: name2, agent, diagnostics: diagnostics2 };
-}
-const agentTemplates = ["basic", "team", "mcp"];
-const text$e = (value2) => `${value2.trimEnd()}
-`;
-function templateAgents(template, name2, model2, main) {
-  const agent = (description2, instruction, toolsets2, extra = {}) => ({ model: model2, description: main.description ?? description2, instruction: text$e(main.instruction ?? main.description ?? instruction), ...extra, toolsets: toolsets2 });
-  if (template === "basic") {
-    return [[name2, agent(`The ${name2} agent.`, "Read the relevant files, think the task through, track your steps and report what you found.", [{ type: "filesystem", readonly: true }, { type: "think" }, { type: "todo" }])]];
-  }
-  if (template === "mcp") {
-    return [[name2, agent(`Searches the web for ${name2} through an MCP server.`, "Search the web with the DuckDuckGo tools, compare the sources and answer with links.", [{ type: "mcp", ref: "docker:duckduckgo" }, { type: "think" }])]];
-  }
-  const researcher = `${name2}-researcher`, writer = `${name2}-writer`;
-  return [
-    [name2, agent(`Coordinates the ${name2} team.`, `Plan the work, delegate research to ${researcher} and writing to ${writer}, then review and summarize their results.`, [{ type: "todo" }], { sub_agents: [researcher, writer] })],
-    [researcher, { model: model2, description: `Researches questions for ${name2}.`, instruction: text$e("Research the question with web fetches, think it through and report findings with sources."), toolsets: [{ type: "fetch" }, { type: "think" }] }],
-    [writer, { model: model2, description: `Writes and edits files for ${name2}.`, instruction: text$e("Write and edit the requested files; keep changes small and report every file you changed."), toolsets: [{ type: "filesystem" }] }]
-  ];
-}
-const simpleToolsets = [
-  "filesystem",
-  "shell",
-  "fetch",
-  "think",
-  "todo",
-  "tasks",
-  "memory",
-  "user_prompt",
-  "calculator",
-  "random",
-  "datetime",
-  "environment",
-  "git",
-  "plan",
-  "session_context",
-  "background_jobs",
-  "background_agents",
-  "scheduler",
-  "mcp_catalog",
-  "file"
-];
-const agentName = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
-class AgentAuthoring {
-  constructor(workspace2, definitions2, ports2, defaultModel) {
-    this.workspace = workspace2;
-    this.definitions = definitions2;
-    this.ports = ports2;
-    this.defaultModel = defaultModel;
-  }
-  workspace;
-  definitions;
-  ports;
-  defaultModel;
-  /**
-   * `agents create`: a valid docker-agent agent in a new file, or added to an existing team file; with a template,
-   * the template's agents (`team` adds `<name>-researcher` and `<name>-writer` sub-agents).
-   */
-  async create(request) {
-    ensure(agentName.test(request.name), "INVALID_NAME", "Agent names start with a letter or digit and contain only letters, digits, hyphens and underscores.");
-    const model2 = request.model ?? this.defaultModel;
-    const text2 = { ...request.description ? { description: request.description } : {}, ...request.instruction ? { instruction: request.instruction } : {} };
-    if (request.template) return this.add(request.file ?? `${request.name}.yaml`, templateAgents(request.template, request.name, model2, text2), request.ifMatch, []);
-    const description2 = request.description ?? `The ${request.name} agent.`;
-    const agent = {
-      model: model2,
-      description: description2,
-      instruction: `${(request.instruction ?? description2).trimEnd()}
-`,
-      ...request.toolsets && request.toolsets.length > 0 ? { toolsets: request.toolsets.map((type2) => ({ type: type2 })) } : {}
-    };
-    return this.add(request.file ?? `${request.name}.yaml`, [[request.name, agent]], request.ifMatch, []);
-  }
-  /**
-   * `agents import --from claude`: converts `.claude/agents/<name>.md` (or a Markdown path) into a docker-agent
-   * agent. The conversion is approximate; its diagnostics point into the Claude agent's frontmatter.
-   */
-  async importClaude(source2, options2) {
-    const path2 = vaultPath(source2.includes("/") || source2.endsWith(".md") ? source2 : `.claude/agents/${source2}.md`);
-    const snapshot = await this.workspace.files.read(path2);
-    const { metadata: metadata2, body } = this.ports.markdown.parse(decodeUtf8(snapshot.bytes));
-    validateClaudeAgent(metadata2, body);
-    const file = options2.file ?? `${importedName(metadata2.name)}.yaml`;
-    const known2 = await this.knownAgents(this.definitions.target(file));
-    const imported = importClaudeAgent(metadata2, body, this.defaultModel, known2);
-    const diagnostics2 = imported.diagnostics.map((entry2) => ({ ...entry2, path: path2 }));
-    return { from: { target: "claude", path: path2, revision: snapshot.revision }, ...await this.add(file, [[imported.name, imported.agent]], options2.ifMatch, diagnostics2) };
-  }
-  async knownAgents(path2) {
-    const current = await this.current(path2);
-    if (!current) return [];
-    return Object.keys(record$4(this.definitions.check(decodeUtf8(current.bytes)).config?.agents));
-  }
-  current(path2) {
-    return readOrMissing(() => this.workspace.files.read(path2));
-  }
-  /** Adds `entries` (the first is the main agent) to a new file, or to an existing one at its `--if-match` revision. */
-  async add(file, entries2, ifMatch2, extra) {
-    const path2 = this.definitions.target(file), current = await this.current(path2), names2 = entries2.map(([name22]) => name22), name2 = names2[0];
-    let text2;
-    if (current) {
-      ensure(ifMatch2 !== void 0, "CONFLICT", `${path2} exists; pass its current revision with --if-match to add ${names2.join(", ")} to it.`, revisionConflict(path2, null, current.revision));
-      ensure(ifMatch2 === current.revision, "CONFLICT", `${path2} changed; read it again and pass its current revision with --if-match.`, revisionConflict(path2, ifMatch2, current.revision));
-      text2 = decodeUtf8(current.bytes);
-      const defined = record$4(this.definitions.check(text2).config?.agents), existing = names2.find((entry2) => Object.hasOwn(defined, entry2));
-      if (existing !== void 0) throw agentError("AGENT_EXISTS", `${path2} already defines agent ${existing}.`, { path: path2, agent: existing });
-      for (const [entry2, agent] of entries2) text2 = this.ports.codec.addAgent(text2, entry2, agent);
-    } else {
-      ensure(ifMatch2 === void 0, "CONFLICT", `${path2} does not exist; omit --if-match to create it.`, revisionConflict(path2, ifMatch2, null));
-      text2 = this.ports.codec.render({ version: this.ports.schema.configVersion, agents: Object.fromEntries(entries2) });
-    }
-    const checked2 = this.definitions.check(text2);
-    if (hasErrors(checked2.diagnostics)) {
-      throw agentError("INVALID_AGENT_DEFINITION", `Adding ${names2.join(", ")} would leave ${path2} invalid; see details.files[].diagnostics.`, { files: [{ path: path2, diagnostics: checked2.diagnostics }] });
-    }
-    const result = await this.workspace.write([{ path: path2, bytes: new TextEncoder().encode(text2), ...current ? { expectedRevision: current.revision } : {} }], { diff: true });
-    return { path: path2, agent: name2, agents: names2, created: !current, diagnostics: [...extra, ...checked2.diagnostics.map((entry2) => ({ ...entry2, path: path2 }))], ...result };
-  }
-}
-const generationDrift = (message2, details) => forgeError("GENERATION_DRIFT", message2, details);
-class GenerationService {
-  constructor(workspace2) {
-    this.workspace = workspace2;
-  }
-  workspace;
-  async commit(writes, revisions) {
-    const paths2 = this.validate(writes);
-    for (const [path2, revision2] of Object.entries(revisions ?? {})) {
-      vaultPath(path2);
-      ensure(paths2.has(path2), "INVALID_GENERATION_REVISIONS", `Revision path is outside this generation plan: ${path2}.`);
-      ensure(typeof revision2 === "string" && /^[a-f0-9]{64}$/.test(revision2), "INVALID_GENERATION_REVISIONS", `Revision must be a SHA-256 hash: ${path2}.`);
-    }
-    const plan = writes.map((write) => ({ ...write, ...revisions && Object.hasOwn(revisions, write.path) ? { expectedRevision: revisions[write.path] } : {} }));
-    try {
-      return await this.write(plan);
-    } catch (error2) {
-      if (error2 instanceof AppError && error2.code === "CONFLICT") throw forgeError("CONFLICT", "Generated output already exists or changed after review. Rerun the same generation command with --plan-out <new-file.json>, review its outputs, then regenerate with --revisions-from <new-file.json>.", error2.details);
-      throw error2;
-    }
-  }
-  /** Snapshot revisions independently from the later explicit write authorization. */
-  async plan(writes, manifestPath2) {
-    const paths2 = this.validate(writes);
-    const revisions = /* @__PURE__ */ Object.create(null);
-    const outputs = await Promise.all(writes.map(async (write) => {
-      const content2 = new TextDecoder().decode(write.bytes);
-      try {
-        const current = await this.workspace.files.read(write.path);
-        revisions[write.path] = current.revision;
-        const unchanged = current.bytes.length === write.bytes.length && current.bytes.every((byte, index2) => byte === write.bytes[index2]);
-        return { path: write.path, status: unchanged ? "unchanged" : "changed", revision: current.revision, content: content2, ...!unchanged ? { currentContent: new TextDecoder().decode(current.bytes) } : {} };
-      } catch (error2) {
-        if (error2 instanceof AppError && error2.code === "NOT_FOUND") return { path: write.path, status: "missing", content: content2 };
-        throw error2;
-      }
-    }));
-    const orderedRevisions = Object.fromEntries(Object.entries(revisions).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0));
-    let manifest;
-    if (manifestPath2 !== void 0) {
-      vaultPath(manifestPath2);
-      ensure(![...paths2].some((path2) => this.overlaps(path2, manifestPath2)), "INVALID_GENERATION_PLAN", "The revision manifest must be separate from generated outputs and their parent directories.");
-      manifest = { path: manifestPath2, ...await this.write([{ path: manifestPath2, bytes: new TextEncoder().encode(JSON.stringify(orderedRevisions, null, 2) + "\n") }]) };
-    }
-    return { matches: outputs.every((output2) => output2.status === "unchanged"), revisions: orderedRevisions, outputs, ...manifest ? { manifest } : {} };
-  }
-  /**
-   * The plan when every output matches; otherwise the drift failure `drift` builds from the message and details
-   * (`details.outputs`): GENERATION_DRIFT for `make`, or the code of the plugin that generates the files.
-   */
-  async check(writes, drift = generationDrift) {
-    const plan = await this.plan(writes);
-    if (!plan.matches) throw drift("Generated outputs are missing or differ from their definitions. Run the same command with --plan to review changes.", { outputs: plan.outputs.map(({ path: path2, status: status2 }) => ({ path: path2, status: status2 })) });
-    return plan;
-  }
-  validate(writes) {
-    const paths2 = /* @__PURE__ */ new Set();
-    for (const write of writes) {
-      vaultPath(write.path);
-      ensure(![...paths2].some((path2) => this.overlaps(path2, write.path)), "INVALID_GENERATION_PLAN", `Generated outputs overlap at ${write.path}.`);
-      paths2.add(write.path);
-    }
-    return paths2;
-  }
-  overlaps(left, right) {
-    return left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
-  }
-  async write(plan) {
-    const result = await this.workspace.write(plan);
-    return { ...result, ...this.workspace.dryRun ? { preview: plan.map((file) => ({ path: file.path, content: new TextDecoder().decode(file.bytes) })) } : {} };
-  }
-}
+const agentMessages = {
+  // Toolsets (claude-tools, claude-mcp).
+  toolFilterNone: "The tools filter {filter} is approximated by the Claude tools (none).",
+  toolFilter: "The tools filter {filter} is approximated by the Claude tools {tools}.",
+  toolsetFieldUnsupported: "{label} (the field {field}) have no Claude equivalent and are not emitted.",
+  filesystemApproximated: "The filesystem toolset is approximated by the Claude tools {tools}.",
+  allowListUnsupported: "allow_list limits the filesystem toolset to these directories; Claude Code cannot confine an agent's file tools to paths, so the limit is not emitted. Add deny rules for paths the agent must not reach (the project settings permissions.additionalDirectories only widens access).",
+  denyListApproximated: "deny_list becomes Read and Edit deny rules in project settings with --settings.",
+  readonlyShell: "A read-only shell toolset exposes no tools in docker-agent; Bash is not granted.",
+  allowedDomainsUnsupported: "allowed_domains limits fetch to these domains; Claude permission rules cannot allow WebFetch only for some domains, so the limit is not emitted.",
+  blockedDomainsApproximated: "blocked_domains becomes WebFetch(domain:…) deny rules in project settings with --settings; CIDR ranges are not emitted.",
+  taskToolsetApproximated: "The {type} toolset is approximated by Claude's task tools {tools}.",
+  memoryApproximated: "The memory toolset is approximated by memory: project; its database path is not used.",
+  userPromptApproximated: "The user_prompt toolset is approximated by AskUserQuestion.",
+  thinkNotEmitted: "The think toolset is not emitted; Claude models think natively, tuned by effort.",
+  mcpReadonly: "Claude cannot select read-only tools of MCP server {server}; every granted tool is emitted.",
+  toolsetUnsupported: "The {type} toolset has no Claude equivalent and is not emitted.",
+  readonlyApproximated: "readonly keeps read-only tools and disallows {tools}.",
+  mcpTemplateLiteral: "The template expression {expression} has no Claude MCP equivalent and is kept literally.",
+  oauthUnsupported: "OAuth {field} is not emitted; Claude Code asks for client secrets interactively and negotiates scopes and redirects itself.",
+  dockerGateway: "{ref} runs through the Docker MCP Gateway: {command}.",
+  mcpToolsetUnsupported: "The MCP toolset has no command, remote URL or Docker ref and is not emitted.",
+  // Models (claude-models).
+  modelAlias: "Model {id} is emitted as the alias {alias}, which Claude Code resolves to the newest model of that family.",
+  modelNoAlias: "Model {id} has no Claude alias; its id is emitted.",
+  effortLevel: "thinking_budget {budget} is emitted as effort: {effort}.",
+  effortBudget: "A thinking budget of {budget} tokens is approximated as effort: {effort}.",
+  effortNone: "thinking_budget {budget} disables or minimizes thinking; no effort is emitted.",
+  modelSettingUnsupported: "Model setting {key} has no Claude agent equivalent and is not emitted.",
+  harnessUnsupported: "The {type} harness has no Claude agent equivalent; the agent inherits the session model.",
+  harnessApproximated: "The claude-code harness runs the agent in Claude Code; its model and effort are emitted on the generated agent.",
+  modelMissing: "The agent names no model; the Claude agent inherits the session model.",
+  modelNoAnthropic: "Model {reference} has no Anthropic candidate; the Claude agent inherits the session model.",
+  modelSelected: "Model {reference} selects among several models; the first Anthropic candidate {candidate} is emitted.",
+  // Hooks and commands (claude-hooks, claude-commands, claude-execution).
+  hookTypeUnsupported: "A {type} hook has no Claude equivalent and is not emitted.",
+  hookFieldUnsupported: "Hook {field} is not emitted.",
+  hookEventUnsupported: "The {event} hook event has no Claude equivalent and is not emitted.",
+  hookMatcherApproximated: "Matcher alternatives {matchers} have no known Claude tool and are kept literally.",
+  preemptYolo: "preempt_yolo is not emitted.",
+  hookApproximated: "{event} hooks run on Claude's {target} event, which sends Claude Code's hook input; check each command's input and decision format.",
+  commandUrl: "The /{command} command opens a URL, which a Claude skill cannot do; it is not emitted.",
+  commandTemplateLiteral: "The template expression {expression} is kept literally; Claude skills do not evaluate docker-agent expressions.",
+  bangToolCall: "The bang tool call {call} is kept literally.",
+  commandDescription: 'The /{command} command has no description; "{description}" is emitted.',
+  commandForked: "docker-agent switches the conversation to {target}; the Claude skill runs in a forked {agent} subagent instead.",
+  mcpNotGenerated: "MCP server {server} is not generated and its tools are not granted; pass --mcp inline or --mcp project to write it. Its command or URL: {target}",
+  mcpExecutes: "MCP server {server} (written to {file}) runs the command: {command}",
+  hooksNotGenerated: "Hooks run commands and are generated only with --hooks; skipped {hooks}.",
+  hookExecutes: "The {event} hook of {agent} runs the command: {command}",
+  toolsNone: "No toolset grants a Claude tool, so {agent} gets tools: [] and disallows {tools} instead of inheriting every tool.",
+  // Permissions (claude-permissions); the reasons are fragments of permissionPartial and permissionDropped.
+  reasonNoBuiltin: "names no docker-agent built-in tool with a Claude permission rule",
+  reasonUnmappedOne: "matches {tools}, which has no Claude permission rule of the same reach",
+  reasonUnmapped: "matches {tools}, which have no Claude permission rule of the same reach",
+  reasonMcpNone: "names an MCP server, and no MCP server is generated without --mcp inline or --mcp project",
+  reasonMcpUnknown: "names the MCP server {server}, which no generated agent defines",
+  reasonArguments: "matches tool arguments, which Claude permission rules express only for shell commands",
+  permissionPartial: "The {list} pattern {pattern} {reason}; only {rules} is emitted.",
+  permissionDropped: "The {list} pattern {pattern} {reason}; it is not emitted.",
+  permissionApproximated: "permissions.{list} becomes Claude permission rules in .claude/settings.json; argument matching is approximated.",
+  broadPermission: "The rule {rule} would auto-approve every use of its tool; pass --allow-broad-permissions to write it to permissions.allow, or narrow the docker-agent pattern.",
+  grantsPermissionBroad: ".claude/settings.json permissions.{list} gets the rule {rule} (broad, allowed by --allow-broad-permissions).",
+  grantsPermission: ".claude/settings.json permissions.{list} gets the rule {rule}.",
+  revokesPermission: ".claude/settings.json permissions.{list} loses the rule {rule}, which Forge wrote and no definition grants any more.",
+  // Agents (claude-agent).
+  envTemplateLiteral: "{expression} is kept literally; Claude Code does not expand docker-agent environment expressions in agents.",
+  templateLiteral: "{expression} is kept literally; Claude Code cannot evaluate docker-agent template expressions.",
+  addDate: "Claude Code adds the current date to its system prompt itself.",
+  addEnvironment: "Claude Code adds working directory, platform and Git information to its system prompt itself.",
+  promptFilesUnsupported: "{field} is not emitted; Claude Code loads CLAUDE.md files instead.",
+  welcomeMessage: "Claude agents have no welcome message.",
+  externalSubAgent: "The external sub-agent {agent} is not generated.",
+  subAgentsApproximated: "Sub-agents become Agent(…) entries in tools, which Claude Code enforces only when {agent} runs as the main thread.",
+  delegationUnsupported: "{field} is not emitted; Claude delegates only through the Agent tool.",
+  skillsDiscovered: "Claude Code discovers project and user skills itself.",
+  skillsDisabled: "Skills are disabled; Claude agents cannot disable skill discovery.",
+  inlineSkill: "The inline skill {skill} is not generated; write it as .claude/skills/{skill}/SKILL.md.",
+  skillSource: "The skill source {source} is not emitted; Claude Code loads skills from .claude/skills.",
+  namedSkills: "Named skills are preloaded through the skills frontmatter; Claude Code resolves them by name.",
+  nameSanitized: "Agent {name} is generated as {claude}.",
+  agentDescription: 'The agent has no description; "{description}" is emitted so Claude Code can delegate to it.',
+  maxIterations: "max_iterations is emitted as maxTurns: {turns}; Claude counts agentic turns, not model calls.",
+  settingUnsupported: "{field} has no Claude agent equivalent and is not emitted.",
+  // Import (claude-import).
+  importAlias: "The alias {alias} is imported as anthropic/{model}.",
+  importOmittedModel: "An omitted model is imported as the configured default {default}.",
+  importModel: "Model {model} is imported as the configured default {default}.",
+  serverReference: "The server reference {server} names a server configured outside the agent; add it as an mcp toolset or mcps definition.",
+  transportUnsupported: "The {type} transport has no docker-agent equivalent; the server is not imported.",
+  toolsInherited: "The Claude agent inherits every tool; filesystem, shell, fetch, todo and user_prompt toolsets are imported.",
+  fileToolsReadonly: "File tools are imported as a read-only filesystem toolset.",
+  fileTools: "File tools are imported as a filesystem toolset.",
+  taskTools: "Task tools are imported as a todo toolset.",
+  askUser: "AskUserQuestion is imported as a user_prompt toolset.",
+  toolUnsupported: "The Claude tool {tool} has no docker-agent toolset and is not imported.",
+  disallowedUnsupported: "Disallowing {tool} has no docker-agent equivalent.",
+  memoryImported: "memory: {memory} is imported as a memory toolset.",
+  importHookUnsupported: "The {event} hook event has no docker-agent equivalent.",
+  importHookApproximated: "{event} command hooks are imported as {target}; only command hooks are kept and docker-agent sends its own hook input.",
+  importNameSanitized: "Agent {name} is imported as {imported}.",
+  generatedAgent: "This agent was generated from {source}; edit that definition instead, since an import is lossy.",
+  subAgentsImported: "Agent(…) entries become sub_agents: {agents}.",
+  subAgentMissing: "Agent({agent}) is not imported because {agent} is not defined in the target file; import it first.",
+  importFieldUnsupported: "{field} has no docker-agent equivalent and is not imported.",
+  unknownField: "The unknown field {field} is not imported.",
+  maxTurnsImported: "maxTurns is imported as max_iterations, which counts model calls.",
+  skillsImported: "Preloaded skills are imported as skill names; docker-agent loads them on demand.",
+  // Generation (claude-generation) and definition files.
+  mcpServerConflict: ".mcp.json already defines the server {server}, which Forge did not generate; rename the toolset's server or pass --rename-conflicts.",
+  mcpServerRenamed: ".mcp.json already defines a different server {server}; this one is generated as {name}.",
+  commandsNotGenerated: "Commands become Claude skills with --commands.",
+  topLevelUnsupported: "The top-level {key} section has no Claude equivalent and is not emitted.",
+  permissionsNotGenerated: "Permissions become project settings rules with --settings.",
+  commandLabel: "/{command} command of agent {agent}",
+  commandCollision: "The {label} would generate .claude/skills/{name}/SKILL.md, which the {owner} already generates; rename one of the commands.",
+  commandRenamed: "Several agents define a different /{command}; this one becomes the skill {name}.",
+  agentCollision: "Agent {name} would generate .claude/agents/{claude}.md, which {owner} already generates.",
+  agentDeviceName: "Agent {name} would generate {file}, a Windows reserved device name that no file can have on Windows; rename the agent.",
+  commandDeviceName: "The {label} would generate {file}, whose folder is a Windows reserved device name that no folder can have on Windows; rename the command.",
+  mainAgent: `The default agent {agent} becomes the project's main agent ("agent": "{claude}").`,
+  settingsAgentConflict: ".claude/settings.json already sets agent to {agent}, which Forge did not generate; remove it to let Forge set {claude}.",
+  encoding: "Definition files must be valid UTF-8."
+};
+const reasons = ["reasonNoBuiltin", "reasonUnmappedOne", "reasonUnmapped", "reasonMcpNone", "reasonMcpUnknown", "reasonArguments"];
+const agentFragments = {
+  permissionPartial: { reason: reasons },
+  permissionDropped: { reason: reasons },
+  commandCollision: { label: ["commandLabel"], owner: ["commandLabel"] },
+  commandDeviceName: { label: ["commandLabel"] }
+};
+const say = (key, params = {}) => fill(agentMessages[key], params);
 const efforts = ["low", "medium", "high", "xhigh", "max"];
 const mappedModelKeys = ["provider", "model", "description", "thinking_budget"];
 function candidates$1(config2, reference, seen = /* @__PURE__ */ new Set()) {
@@ -22583,7 +22144,7 @@ function claudeHooks(name2, hooks2) {
   }
   return { ...Object.keys(result).length > 0 ? { hooks: result } : {}, commands: commands2, diagnostics: diagnostics2 };
 }
-const unsupportedFields = [
+const unsupportedFields$1 = [
   "fallback",
   "code_mode_tools",
   "add_description_parameter",
@@ -22651,7 +22212,7 @@ function claudeAgent(config2, name2, instructions2, names2, style) {
   const granted = [...tools.tools, ...delegates.agents.map((agentName2) => `Agent(${agentName2})`)];
   const maxTurns = agent.max_iterations;
   if (typeof maxTurns === "number" && maxTurns > 0) diagnostics2.push(diagnostic("warning", "max-iterations-approximated", `${at}/max_iterations`, say("maxIterations", { turns: maxTurns }), "A"));
-  for (const field2 of unsupportedFields) if (agent[field2] !== void 0) diagnostics2.push(diagnostic("info", "setting-unsupported", `${at}/${field2}`, say("settingUnsupported", { field: field2 }), "U"));
+  for (const field2 of unsupportedFields$1) if (agent[field2] !== void 0) diagnostics2.push(diagnostic("info", "setting-unsupported", `${at}/${field2}`, say("settingUnsupported", { field: field2 }), "U"));
   const metadata2 = {
     name: claude,
     description: description2,
@@ -22720,7 +22281,7 @@ function servers(draft, mode, diagnostics2) {
   }
   return draft.servers;
 }
-function hooks$2(draft, enabled2, diagnostics2) {
+function hooks$3(draft, enabled2, diagnostics2) {
   if (!draft.hooks) return void 0;
   if (!enabled2) {
     const skipped = draft.hookCommands.map((entry2) => `${entry2.event}: ${entry2.command}`).join("; ");
@@ -22733,7 +22294,7 @@ function hooks$2(draft, enabled2, diagnostics2) {
   return draft.hooks;
 }
 function completeAgent(draft, options2, diagnostics2) {
-  const emitted = servers(draft, options2.mcp, diagnostics2), mapped = hooks$2(draft, options2.hooks, diagnostics2);
+  const emitted = servers(draft, options2.mcp, diagnostics2), mapped = hooks$3(draft, options2.hooks, diagnostics2);
   const tools = [...new Set(draft.grants.filter((grant) => typeof grant === "string" || emitted.includes(grant.server)).map(toolName))];
   const disallowed = [...draft.disallowed];
   if (tools.length === 0) {
@@ -22903,6 +22464,14 @@ function reconcileRules(list2, before, recorded2, granted, coverage) {
   });
   return { rules: rules2, owned, revoked };
 }
+const agentFile = (name2) => `.claude/agents/${name2}.md`;
+const skillFile = (name2) => `.claude/skills/${name2}/SKILL.md`;
+function agentFileDiagnostics(config2) {
+  return agentEntries(config2).flatMap(([name2]) => {
+    const claude = claudeName(name2), file = agentFile(claude);
+    return isDeviceName(claude) ? [{ ...diagnostic("error", "device-name", pointer("agents", name2), say("agentDeviceName", { name: name2, file })), file }] : [];
+  });
+}
 const frontmatterOrder = ["name", "description", "tools", "disallowedTools", "model", "effort", "maxTurns", "skills", "memory", "mcpServers", "hooks", "x-forge-source"];
 const ordered$1 = (metadata2) => Object.fromEntries(frontmatterOrder.filter((key) => metadata2[key] !== void 0).map((key) => [key, metadata2[key]]));
 const unsupportedTopLevel = ["metadata", "runtime", "budget", "budgets", "flavors", "evaluators", "providers"];
@@ -22954,6 +22523,10 @@ function uniqueSkills(skills2, diagnostics2) {
     return (identical ? [group[0]] : group).flatMap((skill) => {
       const name2 = identical ? skill.name : claudeName(`${skill.agent}-${skill.command}`), at = pointer("agents", skill.agent, "commands", skill.command);
       const owner = owners.get(name2), label2 = say("commandLabel", { command: skill.command, agent: skill.agent });
+      if (isDeviceName(name2)) {
+        diagnostics2.push({ ...diagnostic("error", "device-name", at, say("commandDeviceName", { label: label2, file: skillFile(name2) })), file: skillFile(name2), path: skill.source.path });
+        return [];
+      }
       if (owner !== void 0) {
         diagnostics2.push({ ...diagnostic("error", "command-name-collision", at, say("commandCollision", { label: label2, name: name2, owner })), path: skill.source.path });
         return [];
@@ -22961,7 +22534,7 @@ function uniqueSkills(skills2, diagnostics2) {
       owners.set(name2, label2);
       if (!identical) diagnostics2.push({ ...diagnostic("warning", "command-renamed", at, say("commandRenamed", { command: skill.command, name: name2 }), "A"), path: skill.source.path });
       const metadata2 = { ...skill.metadata, name: name2, "x-forge-source": { path: skill.source.path, agent: skill.agent, command: skill.command, sourceHash: skill.source.sourceHash } };
-      return [{ path: `.claude/skills/${name2}/SKILL.md`, metadata: metadata2, body: skill.body }];
+      return [{ path: skillFile(name2), metadata: metadata2, body: skill.body }];
     });
   });
 }
@@ -22982,7 +22555,7 @@ function generateClaude(sources, options2) {
     for (const draft of generated.drafts) {
       const metadata2 = ordered$1({ ...completeAgent(draft, options2, generated.diagnostics), "x-forge-source": { path: source2.path, agent: draft.agent, sourceHash: source2.sourceHash, ...options2.optionsHash ? { optionsHash: options2.optionsHash } : {} } });
       validateClaudeAgent(metadata2, draft.prompt);
-      output2.agents.push({ path: `.claude/agents/${draft.name}.md`, name: draft.name, agent: draft.agent, source: source2.path, metadata: metadata2, body: draft.prompt });
+      output2.agents.push({ path: agentFile(draft.name), name: draft.name, agent: draft.agent, source: source2.path, metadata: metadata2, body: draft.prompt });
     }
     skills2.push(...generated.skills.map((skill) => ({ ...skill, source: source2 })));
     if (options2.settings) {
@@ -23016,6 +22589,460 @@ function dedupe(diagnostics2) {
     seen.add(key);
     return true;
   });
+}
+function agentError(code2, message2, details) {
+  return new PluginFailure(code2, message2, details);
+}
+const definitionFile = /\.ya?ml$/;
+const byPosition = (left, right) => (left.line ?? 0) - (right.line ?? 0) || (left.column ?? 0) - (right.column ?? 0);
+const parent = (path2) => path2.includes("/") ? path2.slice(0, path2.lastIndexOf("/") + 1) : "";
+class AgentDefinitions {
+  constructor(files2, ports2, directory) {
+    this.files = files2;
+    this.ports = ports2;
+    this.directory = directory;
+    vaultPath(directory);
+  }
+  files;
+  ports;
+  directory;
+  /** Definition files directly in the directory, sorted. */
+  async paths() {
+    const prefix = `${this.directory}/`;
+    return (await this.files.list()).filter((path2) => path2.startsWith(prefix) && !path2.slice(prefix.length).includes("/") && definitionFile.test(path2)).sort();
+  }
+  /** A command's file argument: a bare file name lives in the definitions directory; a path is scope-relative. */
+  resolve(file) {
+    return vaultPath(file.includes("/") ? file : `${this.directory}/${file}`);
+  }
+  /**
+   * The file `agents create` and `agents import` write: a definition file directly in the definitions directory
+   * (`.yaml` or `.yml`), never another scope path such as `.github/workflows/ci.yaml`.
+   */
+  target(file) {
+    const path2 = this.resolve(file), prefix = `${this.directory}/`;
+    ensure(
+      path2.startsWith(prefix) && !path2.slice(prefix.length).includes("/") && definitionFile.test(path2),
+      "INVALID_PATH",
+      `Definition files are written directly in ${prefix} with a .yaml or .yml extension; ${file} is not such a file.`,
+      { path: path2, directory: this.directory }
+    );
+    return path2;
+  }
+  /**
+   * Parse, schema and semantic diagnostics for definition text, and agents whose generated Claude file no Windows
+   * system can write; positions come from the YAML source.
+   */
+  check(text2) {
+    const parsed2 = this.ports.codec.parse(text2);
+    if (parsed2.value === void 0) return { diagnostics: parsed2.diagnostics, locate: parsed2.locate };
+    const value2 = normalizedDocument(parsed2.value);
+    const schema2 = this.ports.schema.validate(value2);
+    const config2 = isObject$1(value2) ? value2 : void 0;
+    const semantic = config2 ? [...semanticDiagnostics(config2, this.ports.schema.configVersion), ...agentFileDiagnostics(config2)] : [];
+    const diagnostics2 = [...schema2, ...semantic].map((entry2) => ({ ...entry2, ...parsed2.locate(entry2.pointer) }));
+    return { ...config2 ? { config: config2 } : {}, diagnostics: diagnostics2.sort(byPosition), locate: parsed2.locate };
+  }
+  async load(path2) {
+    const snapshot = await this.files.read(path2);
+    let text2;
+    try {
+      text2 = decodeUtf8(snapshot.bytes);
+    } catch {
+      return { path: path2, revision: snapshot.revision, text: "", diagnostics: [diagnostic("error", "encoding", "", say("encoding"))], instructions: {} };
+    }
+    const checked2 = this.check(text2);
+    const instructions2 = {}, missing2 = [];
+    if (checked2.config && !hasErrors(checked2.diagnostics)) {
+      for (const [name2, agent] of agentEntries(checked2.config)) {
+        const files2 = instructionFiles(agent);
+        if (files2.length === 0) continue;
+        const parts = [];
+        for (const [index2, file] of files2.entries()) {
+          const at = typeof agent.instruction_file === "string" ? pointer("agents", name2, "instruction_file") : pointer("agents", name2, "instruction_file", index2);
+          try {
+            parts.push(decodeUtf8((await this.files.read(vaultPath(`${parent(path2)}${localPath(file)}`))).bytes));
+          } catch (error2) {
+            const reason = isNotFound(error2) ? "does not exist" : `cannot be read: ${errorMessage(error2).replace(/\.$/, "")}`;
+            missing2.push({ ...diagnostic("error", "instruction-file-missing", at, `instruction_file "${file}" ${reason}.`), ...checked2.locate(at) });
+          }
+        }
+        instructions2[name2] = parts.join("\n\n");
+      }
+    }
+    return { path: path2, revision: snapshot.revision, text: text2, ...checked2.config ? { config: checked2.config } : {}, diagnostics: [...checked2.diagnostics, ...missing2].sort(byPosition), instructions: instructions2 };
+  }
+  /** Every definition file with its agents, the default agent and diagnostic counts. */
+  async list() {
+    const files2 = await Promise.all((await this.paths()).map(async (path2) => {
+      const loaded = await this.load(path2);
+      const config2 = loaded.config;
+      return {
+        path: path2,
+        revision: loaded.revision,
+        valid: !hasErrors(loaded.diagnostics),
+        ...config2 && config2.version !== void 0 ? { version: config2.version } : {},
+        default: config2 ? defaultAgent(config2) ?? null : null,
+        agents: config2 ? agentEntries(config2).map(([name2, agent]) => ({
+          name: name2,
+          ...typeof agent.description === "string" ? { description: agent.description } : {},
+          ...typeof agent.model === "string" ? { model: agent.model } : {},
+          subAgents: Array.isArray(agent.sub_agents) ? agent.sub_agents : []
+        })) : [],
+        errors: loaded.diagnostics.filter((entry2) => entry2.severity === "error").length,
+        warnings: loaded.diagnostics.filter((entry2) => entry2.severity === "warning").length
+      };
+    }));
+    return { directory: this.directory, files: files2 };
+  }
+  /** One file, or one agent of it with `file#agent`. */
+  async inspect(target2) {
+    const hash = target2.indexOf("#");
+    const path2 = this.resolve(hash < 0 ? target2 : target2.slice(0, hash)), name2 = hash < 0 ? void 0 : target2.slice(hash + 1);
+    const loaded = await this.load(path2);
+    const config2 = loaded.config;
+    if (name2 === void 0) {
+      return { path: path2, revision: loaded.revision, valid: !hasErrors(loaded.diagnostics), default: config2 ? defaultAgent(config2) ?? null : null, config: config2 ?? null, diagnostics: loaded.diagnostics };
+    }
+    const agents2 = record$4(config2?.agents);
+    if (!Object.hasOwn(agents2, name2)) throw agentError("AGENT_NOT_FOUND", `${path2} defines no agent ${name2}; defined: ${Object.keys(agents2).join(", ") || "none"}.`, { path: path2, agent: name2, agents: Object.keys(agents2) });
+    return {
+      path: path2,
+      revision: loaded.revision,
+      agent: name2,
+      default: defaultAgent(config2) === name2,
+      definition: agents2[name2],
+      ...Object.hasOwn(loaded.instructions, name2) ? { instruction: loaded.instructions[name2] } : {},
+      diagnostics: loaded.diagnostics.filter((entry2) => entry2.pointer === "" || !entry2.pointer.startsWith("/agents/") || entry2.pointer.startsWith(pointer("agents", name2)))
+    };
+  }
+  /** Validates one file or every file; any error-severity diagnostic fails with INVALID_AGENT_DEFINITION. */
+  async validate(file) {
+    const paths2 = file === void 0 ? await this.paths() : [this.resolve(file)];
+    const files2 = await Promise.all(paths2.map(async (path2) => {
+      const loaded = await this.load(path2);
+      return { path: path2, revision: loaded.revision, valid: !hasErrors(loaded.diagnostics), diagnostics: loaded.diagnostics };
+    }));
+    const invalid2 = files2.filter((entry2) => !entry2.valid);
+    if (invalid2.length > 0) {
+      throw agentError("INVALID_AGENT_DEFINITION", `${invalid2.map((entry2) => `${entry2.path} (${entry2.diagnostics.filter((item2) => item2.severity === "error").length} errors)`).join(", ")} failed validation; see details.files[].diagnostics.`, { files: invalid2 });
+    }
+    return { directory: this.directory, valid: true, files: files2 };
+  }
+}
+const fileTools = ["Read", "Glob", "Grep", "Write", "Edit", "MultiEdit", "NotebookEdit"];
+const writing$1 = ["Write", "Edit", "MultiEdit", "NotebookEdit"];
+const taskTools = ["TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "TaskOutput", "TaskStop", "TodoWrite"];
+const unsupportedFields = ["permissionMode", "background", "isolation", "color", "initialPrompt", "omitClaudeMd", "experimental", "effort"];
+const known = ["name", "description", "model", "tools", "disallowedTools", "mcpServers", "maxTurns", "skills", "memory", "hooks", "x-forge-source", ...unsupportedFields];
+const reverseTools = { Read: "read_file", Write: "write_file", Edit: "edit_file", Glob: "list_directory", Grep: "search_files_content", Bash: "shell", WebFetch: "fetch", AskUserQuestion: "user_prompt" };
+const reverseEvents = Object.fromEntries(Object.entries(hookEvents).filter(([event]) => !["before_compaction", "after_compaction"].includes(event)).map(([event, claude]) => [claude, event]));
+const toolList = (value2) => (typeof value2 === "string" ? value2.split(",") : stringList(value2)).map((tool) => tool.trim()).filter((tool) => tool !== "");
+function model(value2, defaultModel, diagnostics2) {
+  if (typeof value2 === "string" && /^claude-[a-z0-9.-]+$/.test(value2)) return `anthropic/${value2}`;
+  const alias = typeof value2 === "string" ? modelAlias(value2) : void 0;
+  if (alias && value2 === alias) {
+    diagnostics2.push(diagnostic("warning", "model-approximated", "/model", say("importAlias", { alias, model: aliasModels[alias] }), "A"));
+    return `anthropic/${aliasModels[alias]}`;
+  }
+  diagnostics2.push(diagnostic("warning", "model-approximated", "/model", value2 === void 0 ? say("importOmittedModel", { default: defaultModel }) : say("importModel", { model: String(value2), default: defaultModel }), "A"));
+  return defaultModel;
+}
+function mcpToolsets(metadata2, grants, diagnostics2) {
+  return (Array.isArray(metadata2.mcpServers) ? metadata2.mcpServers : []).flatMap((entry2, index2) => {
+    const at = pointer("mcpServers", index2);
+    if (typeof entry2 === "string") {
+      diagnostics2.push(diagnostic("warning", "mcp-reference-unsupported", at, say("serverReference", { server: entry2 }), "U"));
+      return [];
+    }
+    return Object.entries(record$4(entry2)).flatMap(([name2, value2]) => {
+      const server = record$4(value2), type2 = server.type ?? "stdio", tools = grants.get(name2)?.filter((tool) => tool !== "*") ?? [];
+      const filter = tools.length > 0 ? { tools } : {};
+      if (type2 === "stdio") return [{ type: "mcp", name: name2, command: server.command, ...stringList(server.args).length > 0 ? { args: stringList(server.args) } : {}, ...isObject$1(server.env) ? { env: server.env } : {}, ...filter }];
+      if (type2 === "http" || type2 === "sse") {
+        const remote = { url: server.url, transport_type: type2 === "sse" ? "sse" : "streamable", ...isObject$1(server.headers) ? { headers: server.headers } : {} };
+        return [{ type: "mcp", name: name2, remote, ...filter }];
+      }
+      diagnostics2.push(diagnostic("warning", "mcp-transport-unsupported", `${at}${pointer(name2)}`, say("transportUnsupported", { type: String(type2) }), "U"));
+      return [];
+    });
+  });
+}
+function toolsets$1(metadata2, diagnostics2) {
+  const granted = metadata2.tools === void 0 ? void 0 : toolList(metadata2.tools);
+  const disallowed = toolList(metadata2.disallowedTools);
+  const tools = granted ?? ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "WebFetch", "TaskCreate", "AskUserQuestion"];
+  if (granted === void 0) diagnostics2.push(diagnostic("warning", "tools-inherited", "/tools", say("toolsInherited"), "A"));
+  const result = [], subAgents = [], grants = /* @__PURE__ */ new Map();
+  const has = (names2) => tools.some((tool) => names2.includes(tool) && !disallowed.includes(tool));
+  if (has(fileTools)) {
+    const readonly2 = !has(writing$1);
+    result.push({ type: "filesystem", ...readonly2 ? { readonly: true } : {} });
+    diagnostics2.push(diagnostic("warning", "toolset-approximated", "/tools", say(readonly2 ? "fileToolsReadonly" : "fileTools"), "A"));
+  }
+  if (has(["Bash"])) result.push({ type: "shell" });
+  if (has(["WebFetch"])) result.push({ type: "fetch" });
+  if (has(taskTools)) {
+    result.push({ type: "todo" });
+    diagnostics2.push(diagnostic("warning", "toolset-approximated", "/tools", say("taskTools"), "A"));
+  }
+  if (has(["AskUserQuestion"])) {
+    result.push({ type: "user_prompt" });
+    diagnostics2.push(diagnostic("warning", "toolset-approximated", "/tools", say("askUser"), "A"));
+  }
+  for (const tool of tools) {
+    const agent = /^Agent\((.+)\)$/.exec(tool), mcp = /^mcp__([^_]+(?:_[^_]+)*)__(.+)$/.exec(tool);
+    if (agent) subAgents.push(agent[1]);
+    else if (mcp) grants.set(mcp[1], [...grants.get(mcp[1]) ?? [], mcp[2]]);
+    else if (![...fileTools, ...taskTools, "Bash", "WebFetch", "AskUserQuestion"].includes(tool)) diagnostics2.push(diagnostic("warning", "tool-unsupported", "/tools", say("toolUnsupported", { tool }), "U"));
+  }
+  for (const tool of disallowed) if (!fileTools.includes(tool)) diagnostics2.push(diagnostic("info", "tool-unsupported", "/disallowedTools", say("disallowedUnsupported", { tool }), "U"));
+  if (metadata2.memory !== void 0) {
+    result.push({ type: "memory" });
+    diagnostics2.push(diagnostic("warning", "toolset-approximated", "/memory", say("memoryImported", { memory: String(metadata2.memory) }), "A"));
+  }
+  return { toolsets: [...result, ...mcpToolsets(metadata2, grants, diagnostics2)], subAgents };
+}
+function hooks$2(value2, diagnostics2) {
+  const result = {};
+  for (const [event, groups] of Object.entries(record$4(value2))) {
+    const target2 = reverseEvents[event];
+    if (!target2) {
+      diagnostics2.push(diagnostic("warning", "hook-unsupported", pointer("hooks", event), say("importHookUnsupported", { event }), "U"));
+      continue;
+    }
+    const tool = ["pre_tool_use", "post_tool_use", "permission_request"].includes(target2);
+    for (const group of Array.isArray(groups) ? groups.map(record$4) : []) {
+      const handlers = (Array.isArray(group.hooks) ? group.hooks.map(record$4) : []).filter((handler2) => handler2.type === "command" && text$f(handler2.command)).map((handler2) => ({ type: "command", command: handler2.command, ...typeof handler2.timeout === "number" ? { timeout: Math.max(1, Math.round(handler2.timeout)) } : {} }));
+      if (handlers.length === 0) continue;
+      const matcher = typeof group.matcher === "string" ? group.matcher.split("|").map((name2) => reverseTools[name2] ?? name2).join("|") : "*";
+      result[target2] = [...result[target2] ?? [], ...tool ? [{ matcher, hooks: handlers }] : handlers];
+    }
+    diagnostics2.push(diagnostic("warning", "hook-approximated", pointer("hooks", event), say("importHookApproximated", { event, target: target2 }), "A"));
+  }
+  return Object.keys(result).length > 0 ? result : void 0;
+}
+function importedName(name2) {
+  return String(name2).replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "agent";
+}
+function importClaudeAgent(metadata2, prompt, defaultModel, knownAgents) {
+  const diagnostics2 = [];
+  const name2 = importedName(metadata2.name);
+  if (name2 !== metadata2.name) diagnostics2.push(diagnostic("info", "name-sanitized", "/name", say("importNameSanitized", { name: String(metadata2.name), imported: name2 }), "E"));
+  const source2 = record$4(metadata2["x-forge-source"]);
+  if (text$f(source2.path)) diagnostics2.push(diagnostic("warning", "generated-agent", "/x-forge-source", say("generatedAgent", { source: `${String(source2.path)}#${String(source2.agent)}` }), "A"));
+  const { toolsets: imported, subAgents: delegates } = toolsets$1(metadata2, diagnostics2);
+  const subAgents = delegates.filter((agent2) => knownAgents.includes(agent2));
+  if (subAgents.length > 0) diagnostics2.push(diagnostic("warning", "delegation-approximated", "/tools", say("subAgentsImported", { agents: subAgents.join(", ") }), "A"));
+  for (const agent2 of delegates.filter((entry2) => !subAgents.includes(entry2))) {
+    diagnostics2.push(diagnostic("warning", "delegation-unsupported", "/tools", say("subAgentMissing", { agent: agent2 }), "U"));
+  }
+  const mappedHooks = hooks$2(metadata2.hooks, diagnostics2);
+  for (const field2 of unsupportedFields) if (metadata2[field2] !== void 0) diagnostics2.push(diagnostic("info", "field-unsupported", pointer(field2), say("importFieldUnsupported", { field: field2 }), "U"));
+  for (const field2 of Object.keys(metadata2)) if (!known.includes(field2)) diagnostics2.push(diagnostic("info", "field-unsupported", pointer(field2), say("unknownField", { field: field2 }), "U"));
+  if (metadata2.maxTurns !== void 0) diagnostics2.push(diagnostic("warning", "max-iterations-approximated", "/maxTurns", say("maxTurnsImported"), "A"));
+  const skills2 = stringList(metadata2.skills);
+  if (skills2.length > 0) diagnostics2.push(diagnostic("warning", "skills-approximated", "/skills", say("skillsImported"), "A"));
+  const agent = {
+    model: model(metadata2.model, defaultModel, diagnostics2),
+    description: metadata2.description,
+    instruction: prompt,
+    ...subAgents.length > 0 ? { sub_agents: subAgents } : {},
+    ...imported.length > 0 ? { toolsets: imported } : {},
+    ...skills2.length > 0 ? { skills: skills2 } : {},
+    ...typeof metadata2.maxTurns === "number" ? { max_iterations: metadata2.maxTurns } : {},
+    ...mappedHooks ? { hooks: mappedHooks } : {}
+  };
+  return { name: name2, agent, diagnostics: diagnostics2 };
+}
+const agentTemplates = ["basic", "team", "mcp"];
+const text$e = (value2) => `${value2.trimEnd()}
+`;
+function templateAgents(template, name2, model2, main) {
+  const agent = (description2, instruction, toolsets2, extra = {}) => ({ model: model2, description: main.description ?? description2, instruction: text$e(main.instruction ?? main.description ?? instruction), ...extra, toolsets: toolsets2 });
+  if (template === "basic") {
+    return [[name2, agent(`The ${name2} agent.`, "Read the relevant files, think the task through, track your steps and report what you found.", [{ type: "filesystem", readonly: true }, { type: "think" }, { type: "todo" }])]];
+  }
+  if (template === "mcp") {
+    return [[name2, agent(`Searches the web for ${name2} through an MCP server.`, "Search the web with the DuckDuckGo tools, compare the sources and answer with links.", [{ type: "mcp", ref: "docker:duckduckgo" }, { type: "think" }])]];
+  }
+  const researcher = `${name2}-researcher`, writer = `${name2}-writer`;
+  return [
+    [name2, agent(`Coordinates the ${name2} team.`, `Plan the work, delegate research to ${researcher} and writing to ${writer}, then review and summarize their results.`, [{ type: "todo" }], { sub_agents: [researcher, writer] })],
+    [researcher, { model: model2, description: `Researches questions for ${name2}.`, instruction: text$e("Research the question with web fetches, think it through and report findings with sources."), toolsets: [{ type: "fetch" }, { type: "think" }] }],
+    [writer, { model: model2, description: `Writes and edits files for ${name2}.`, instruction: text$e("Write and edit the requested files; keep changes small and report every file you changed."), toolsets: [{ type: "filesystem" }] }]
+  ];
+}
+const simpleToolsets = [
+  "filesystem",
+  "shell",
+  "fetch",
+  "think",
+  "todo",
+  "tasks",
+  "memory",
+  "user_prompt",
+  "calculator",
+  "random",
+  "datetime",
+  "environment",
+  "git",
+  "plan",
+  "session_context",
+  "background_jobs",
+  "background_agents",
+  "scheduler",
+  "mcp_catalog",
+  "file"
+];
+const agentName = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+class AgentAuthoring {
+  constructor(workspace2, definitions2, ports2, defaultModel) {
+    this.workspace = workspace2;
+    this.definitions = definitions2;
+    this.ports = ports2;
+    this.defaultModel = defaultModel;
+  }
+  workspace;
+  definitions;
+  ports;
+  defaultModel;
+  /**
+   * `agents create`: a valid docker-agent agent in a new file, or added to an existing team file; with a template,
+   * the template's agents (`team` adds `<name>-researcher` and `<name>-writer` sub-agents).
+   */
+  async create(request) {
+    ensure(agentName.test(request.name), "INVALID_NAME", "Agent names start with a letter or digit and contain only letters, digits, hyphens and underscores.");
+    const model2 = request.model ?? this.defaultModel;
+    const text2 = { ...request.description ? { description: request.description } : {}, ...request.instruction ? { instruction: request.instruction } : {} };
+    if (request.template) return this.add(request.file ?? `${request.name}.yaml`, templateAgents(request.template, request.name, model2, text2), request.ifMatch, []);
+    const description2 = request.description ?? `The ${request.name} agent.`;
+    const agent = {
+      model: model2,
+      description: description2,
+      instruction: `${(request.instruction ?? description2).trimEnd()}
+`,
+      ...request.toolsets && request.toolsets.length > 0 ? { toolsets: request.toolsets.map((type2) => ({ type: type2 })) } : {}
+    };
+    return this.add(request.file ?? `${request.name}.yaml`, [[request.name, agent]], request.ifMatch, []);
+  }
+  /**
+   * `agents import --from claude`: converts `.claude/agents/<name>.md` (or a Markdown path) into a docker-agent
+   * agent. The conversion is approximate; its diagnostics point into the Claude agent's frontmatter.
+   */
+  async importClaude(source2, options2) {
+    const path2 = vaultPath(source2.includes("/") || source2.endsWith(".md") ? source2 : `.claude/agents/${source2}.md`);
+    const snapshot = await this.workspace.files.read(path2);
+    const { metadata: metadata2, body } = this.ports.markdown.parse(decodeUtf8(snapshot.bytes));
+    validateClaudeAgent(metadata2, body);
+    const file = options2.file ?? `${importedName(metadata2.name)}.yaml`;
+    const known2 = await this.knownAgents(this.definitions.target(file));
+    const imported = importClaudeAgent(metadata2, body, this.defaultModel, known2);
+    const diagnostics2 = imported.diagnostics.map((entry2) => ({ ...entry2, path: path2 }));
+    return { from: { target: "claude", path: path2, revision: snapshot.revision }, ...await this.add(file, [[imported.name, imported.agent]], options2.ifMatch, diagnostics2) };
+  }
+  async knownAgents(path2) {
+    const current = await this.current(path2);
+    if (!current) return [];
+    return Object.keys(record$4(this.definitions.check(decodeUtf8(current.bytes)).config?.agents));
+  }
+  current(path2) {
+    return readOrMissing(() => this.workspace.files.read(path2));
+  }
+  /** Adds `entries` (the first is the main agent) to a new file, or to an existing one at its `--if-match` revision. */
+  async add(file, entries2, ifMatch2, extra) {
+    const path2 = this.definitions.target(file), current = await this.current(path2), names2 = entries2.map(([name22]) => name22), name2 = names2[0];
+    let text2;
+    if (current) {
+      ensure(ifMatch2 !== void 0, "CONFLICT", `${path2} exists; pass its current revision with --if-match to add ${names2.join(", ")} to it.`, revisionConflict(path2, null, current.revision));
+      ensure(ifMatch2 === current.revision, "CONFLICT", `${path2} changed; read it again and pass its current revision with --if-match.`, revisionConflict(path2, ifMatch2, current.revision));
+      text2 = decodeUtf8(current.bytes);
+      const defined = record$4(this.definitions.check(text2).config?.agents), existing = names2.find((entry2) => Object.hasOwn(defined, entry2));
+      if (existing !== void 0) throw agentError("AGENT_EXISTS", `${path2} already defines agent ${existing}.`, { path: path2, agent: existing });
+      for (const [entry2, agent] of entries2) text2 = this.ports.codec.addAgent(text2, entry2, agent);
+    } else {
+      ensure(ifMatch2 === void 0, "CONFLICT", `${path2} does not exist; omit --if-match to create it.`, revisionConflict(path2, ifMatch2, null));
+      text2 = this.ports.codec.render({ version: this.ports.schema.configVersion, agents: Object.fromEntries(entries2) });
+    }
+    const checked2 = this.definitions.check(text2);
+    if (hasErrors(checked2.diagnostics)) {
+      throw agentError("INVALID_AGENT_DEFINITION", `Adding ${names2.join(", ")} would leave ${path2} invalid; see details.files[].diagnostics.`, { files: [{ path: path2, diagnostics: checked2.diagnostics }] });
+    }
+    const result = await this.workspace.write([{ path: path2, bytes: new TextEncoder().encode(text2), ...current ? { expectedRevision: current.revision } : {} }], { diff: true });
+    return { path: path2, agent: name2, agents: names2, created: !current, diagnostics: [...extra, ...checked2.diagnostics.map((entry2) => ({ ...entry2, path: path2 }))], ...result };
+  }
+}
+const generationDrift = (message2, details) => forgeError("GENERATION_DRIFT", message2, details);
+class GenerationService {
+  constructor(workspace2) {
+    this.workspace = workspace2;
+  }
+  workspace;
+  async commit(writes, revisions) {
+    const paths2 = this.validate(writes);
+    for (const [path2, revision2] of Object.entries(revisions ?? {})) {
+      vaultPath(path2);
+      ensure(paths2.has(path2), "INVALID_GENERATION_REVISIONS", `Revision path is outside this generation plan: ${path2}.`);
+      ensure(typeof revision2 === "string" && /^[a-f0-9]{64}$/.test(revision2), "INVALID_GENERATION_REVISIONS", `Revision must be a SHA-256 hash: ${path2}.`);
+    }
+    const plan = writes.map((write) => ({ ...write, ...revisions && Object.hasOwn(revisions, write.path) ? { expectedRevision: revisions[write.path] } : {} }));
+    try {
+      return await this.write(plan);
+    } catch (error2) {
+      if (error2 instanceof AppError && error2.code === "CONFLICT") throw forgeError("CONFLICT", "Generated output already exists or changed after review. Rerun the same generation command with --plan-out <new-file.json>, review its outputs, then regenerate with --revisions-from <new-file.json>.", error2.details);
+      throw error2;
+    }
+  }
+  /** Snapshot revisions independently from the later explicit write authorization. */
+  async plan(writes, manifestPath2) {
+    const paths2 = this.validate(writes);
+    const revisions = /* @__PURE__ */ Object.create(null);
+    const outputs = await Promise.all(writes.map(async (write) => {
+      const content2 = new TextDecoder().decode(write.bytes);
+      try {
+        const current = await this.workspace.files.read(write.path);
+        revisions[write.path] = current.revision;
+        const unchanged = current.bytes.length === write.bytes.length && current.bytes.every((byte, index2) => byte === write.bytes[index2]);
+        return { path: write.path, status: unchanged ? "unchanged" : "changed", revision: current.revision, content: content2, ...!unchanged ? { currentContent: new TextDecoder().decode(current.bytes) } : {} };
+      } catch (error2) {
+        if (error2 instanceof AppError && error2.code === "NOT_FOUND") return { path: write.path, status: "missing", content: content2 };
+        throw error2;
+      }
+    }));
+    const orderedRevisions = Object.fromEntries(Object.entries(revisions).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0));
+    let manifest;
+    if (manifestPath2 !== void 0) {
+      vaultPath(manifestPath2);
+      ensure(![...paths2].some((path2) => this.overlaps(path2, manifestPath2)), "INVALID_GENERATION_PLAN", "The revision manifest must be separate from generated outputs and their parent directories.");
+      manifest = { path: manifestPath2, ...await this.write([{ path: manifestPath2, bytes: new TextEncoder().encode(JSON.stringify(orderedRevisions, null, 2) + "\n") }]) };
+    }
+    return { matches: outputs.every((output2) => output2.status === "unchanged"), revisions: orderedRevisions, outputs, ...manifest ? { manifest } : {} };
+  }
+  /**
+   * The plan when every output matches; otherwise the drift failure `drift` builds from the message and details
+   * (`details.outputs`): GENERATION_DRIFT for `make`, or the code of the plugin that generates the files.
+   */
+  async check(writes, drift = generationDrift) {
+    const plan = await this.plan(writes);
+    if (!plan.matches) throw drift("Generated outputs are missing or differ from their definitions. Run the same command with --plan to review changes.", { outputs: plan.outputs.map(({ path: path2, status: status2 }) => ({ path: path2, status: status2 })) });
+    return plan;
+  }
+  validate(writes) {
+    const paths2 = /* @__PURE__ */ new Set();
+    for (const write of writes) {
+      vaultPath(write.path);
+      ensure(![...paths2].some((path2) => this.overlaps(path2, write.path)), "INVALID_GENERATION_PLAN", `Generated outputs overlap at ${write.path}.`);
+      paths2.add(write.path);
+    }
+    return paths2;
+  }
+  overlaps(left, right) {
+    return left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
+  }
+  async write(plan) {
+    const result = await this.workspace.write(plan);
+    return { ...result, ...this.workspace.dryRun ? { preview: plan.map((file) => ({ path: file.path, content: new TextDecoder().decode(file.bytes) })) } : {} };
+  }
 }
 const manifestPath$1 = ".claude/forge-generated.json";
 const same$2 = (left, right) => JSON.stringify(left) === JSON.stringify(right);
@@ -30164,7 +30191,7 @@ ${body}`;
   }
 };
 const sha256Digest = (text2) => node_crypto.createHash("sha256").update(text2, "utf8").digest("hex");
-const content$5 = '---\nname: forge-agents\ndescription: Maintain docker-agent definitions in agents/*.yaml and validate, create, import and generate Claude Code agents, skills and MCP settings from them with drift checks. Use when editing agent teams, generating .claude/agents, or when agents validate or agents generate --check reports problems.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nAgent definitions are [docker-agent](https://github.com/docker/docker-agent) YAML files in the scope\'s `agents/` folder (`plugins.settings.agents.directory`). The YAML is the source of truth; generated `.claude/agents/*.md` files are outputs. Never edit a generated agent: change the definition and regenerate.\n\n## Inspect\n- `agents list` returns each file\'s `revision`, agents, `default` agent and error and warning counts.\n- `agents inspect team.yaml` returns the parsed `config` and `diagnostics`; `agents inspect team.yaml#reviewer` returns one agent and its resolved `instruction`.\n- `agents validate [team.yaml]` checks the docker-agent schema and semantic rules. Errors fail with `INVALID_AGENT_DEFINITION`; `details.files[].diagnostics` give `severity`, `code`, JSON `pointer`, `line`, `column` and `message`.\n- `instruction_file` paths are relative to the definition and must stay in its folder or below.\n\n## Author\n- `agents create reviewer --file team.yaml --description "Reviews changes" --instruction "..." --toolset filesystem,shell --if-match <revision> --dry-run` adds an agent without touching other lines or comments. Omit `--if-match` for a new file. `--from-template basic|team|mcp` starts from a template.\n- MCP, LSP, API and similar toolsets need settings: `edit agents/team.yaml --find … --replace … --if-match <revision>`, then `agents validate`.\n- `agents import code-reviewer --from claude --file team.yaml` converts `.claude/agents/code-reviewer.md`. The conversion is approximate: read every diagnostic (`fidelity` `A` approximated, `U` dropped) and fix the YAML.\n- `create` and `import` write only `.yaml` or `.yml` files directly in the definitions folder.\n\n## Generate\n- `agents generate --target claude --plan` reports each output\'s `status` (`missing`, `changed`, `hand-edited`, `unchanged`) and mapping `diagnostics`. Models other than Anthropic become `inherit`; unsupported toolsets and limits are dropped with warnings.\n- `agents generate --target claude` writes new files. To replace existing outputs: `--plan-out review.json`, review, then `--revisions-from review.json`.\n- Nothing that runs commands or grants permissions is written without opt-in: `--mcp inline|project`, `--hooks`, `--settings`, and `--allow-broad-permissions` for whole-tool rules. Read every `executes-command` and `grants-permission` diagnostic first.\n- `--commands` writes commands as `.claude/skills/<name>/SKILL.md`; `--model-style alias` emits `opus`, `sonnet`, `haiku` or `fable`.\n- Merges change only entries Forge recorded in `.claude/forge-generated.json`. A server name or main agent you set yourself fails with `AGENT_MERGE_CONFLICT`; `--rename-conflicts` (with `--mcp project`) renames the generated server.\n- `agents generate --target claude --check` exits 5 with `AGENT_DRIFT` for `missing`, `changed`, `hand-edited` or `stale` outputs. Pass the same options as the generating run, and run it in CI.\n\n## Know the limits\n- Generated files carry `x-forge-source` provenance and pass `claude agents inspect <name>`.\n- A docker-agent → Claude → docker-agent round trip is lossy; the YAML keeps what Claude cannot represent. See `bin/data/docs/reference/agents.md`.\n';
+const content$5 = '---\nname: forge-agents\ndescription: Maintain docker-agent definitions in agents/*.yaml and validate, create, import and generate Claude Code agents, skills and MCP settings from them with drift checks. Use when editing agent teams, generating .claude/agents, or when agents validate or agents generate --check reports problems.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nAgent definitions are [docker-agent](https://github.com/docker/docker-agent) YAML files in the scope\'s `agents/` folder (`plugins.settings.agents.directory`). The YAML is the source of truth; generated `.claude/agents/*.md` files are outputs. Never edit a generated agent: change the definition and regenerate.\n\n## Inspect\n- `agents list` returns each file\'s `revision`, agents, `default` agent and error and warning counts.\n- `agents inspect team.yaml` returns the parsed `config` and `diagnostics`; `agents inspect team.yaml#reviewer` returns one agent and its resolved `instruction`.\n- `agents validate [team.yaml]` checks the docker-agent schema and semantic rules, and that no agent\'s generated `.claude/agents/<name>.md` is a Windows device name (`device-name`, with the output in `file`). Errors fail with `INVALID_AGENT_DEFINITION`; `details.files[].diagnostics` give `severity`, `code`, JSON `pointer`, `line`, `column` and `message`.\n- `instruction_file` paths are relative to the definition and must stay in its folder or below.\n\n## Author\n- `agents create reviewer --file team.yaml --description "Reviews changes" --instruction "..." --toolset filesystem,shell --if-match <revision> --dry-run` adds an agent without touching other lines or comments. Omit `--if-match` for a new file. `--from-template basic|team|mcp` starts from a template.\n- MCP, LSP, API and similar toolsets need settings: `edit agents/team.yaml --find … --replace … --if-match <revision>`, then `agents validate`.\n- `agents import code-reviewer --from claude --file team.yaml` converts `.claude/agents/code-reviewer.md`. The conversion is approximate: read every diagnostic (`fidelity` `A` approximated, `U` dropped) and fix the YAML.\n- `create` and `import` write only `.yaml` or `.yml` files directly in the definitions folder.\n\n## Generate\n- `agents generate --target claude --plan` reports each output\'s `status` (`missing`, `changed`, `hand-edited`, `unchanged`) and mapping `diagnostics`. Models other than Anthropic become `inherit`; unsupported toolsets and limits are dropped with warnings.\n- `agents generate --target claude` writes new files. To replace existing outputs: `--plan-out review.json`, review, then `--revisions-from review.json`.\n- Nothing that runs commands or grants permissions is written without opt-in: `--mcp inline|project`, `--hooks`, `--settings`, and `--allow-broad-permissions` for whole-tool rules. Read every `executes-command` and `grants-permission` diagnostic first.\n- `--commands` writes commands as `.claude/skills/<name>/SKILL.md`; `--model-style alias` emits `opus`, `sonnet`, `haiku` or `fable`.\n- Merges change only entries Forge recorded in `.claude/forge-generated.json`. A server name or main agent you set yourself fails with `AGENT_MERGE_CONFLICT`; `--rename-conflicts` (with `--mcp project`) renames the generated server.\n- `agents generate --target claude --check` exits 5 with `AGENT_DRIFT` for `missing`, `changed`, `hand-edited` or `stale` outputs. Pass the same options as the generating run, and run it in CI.\n\n## Know the limits\n- Generated files carry `x-forge-source` provenance and pass `claude agents inspect <name>`.\n- A docker-agent → Claude → docker-agent round trip is lossy; the YAML keeps what Claude cannot represent. See `bin/data/docs/reference/agents.md`.\n';
 const agentsSkill = { id: "forge-agents", content: content$5 };
 const germanAgentMessages = {
   toolFilterNone: "Der Werkzeugfilter {filter} wird durch keine Claude-Werkzeuge angenähert.",
@@ -30277,6 +30304,8 @@ const germanAgentMessages = {
   commandCollision: "Der Befehl {label} würde .claude/skills/{name}/SKILL.md generieren, die bereits der Befehl {owner} generiert; benennen Sie einen der Befehle um.",
   commandRenamed: "Mehrere Agenten definieren ein abweichendes /{command}; dieses wird zum Skill {name}.",
   agentCollision: "Der Agent {name} würde .claude/agents/{claude}.md generieren, die bereits {owner} generiert.",
+  agentDeviceName: "Der Agent {name} würde {file} generieren, einen unter Windows reservierten Gerätenamen, den keine Datei unter Windows tragen kann; benennen Sie den Agenten um.",
+  commandDeviceName: "Der Befehl {label} würde {file} generieren, dessen Ordner einen unter Windows reservierten Gerätenamen trägt, den kein Ordner unter Windows tragen kann; benennen Sie den Befehl um.",
   mainAgent: 'Der Standardagent {agent} wird zum Hauptagenten des Projekts ("agent": "{claude}").',
   settingsAgentConflict: ".claude/settings.json setzt agent bereits auf {agent}, das Forge nicht generiert hat; entfernen Sie es, damit Forge {claude} setzen kann.",
   encoding: "Definitionsdateien müssen gültiges UTF-8 sein."
@@ -30993,6 +31022,7 @@ const syncMessages = {
   unsyncedDependency: "remote predecessor {ids} is not synced on this connection",
   missingIteration: "no iteration note named {name}",
   titleTaken: "{path} already exists",
+  titleDeviceName: "{path} is a Windows reserved device name that no file can have on Windows",
   remoteChanged: "The remote item changed during the sync; run the sync again.",
   linksChanged: "The remote item's links changed on the other end during the update, so a link may have been removed in place of another. The next sync reports the parent and dependencies as conflicts where the two sides differ; compare them and run backlog sync resolve."
 };
@@ -33604,10 +33634,13 @@ function landings(session, context, plans, pathOfRemote2) {
     if (note2.title !== void 0) {
       const folder = plan.path.includes("/") ? plan.path.slice(0, plan.path.lastIndexOf("/") + 1) : "";
       const target2 = `${folder}${note2.title}.md`;
-      if (target2.toLowerCase() !== plan.path.toLowerCase() && pathTaken(session, target2)) {
+      const skip = (code2, reason) => {
         pulled.delete("title");
-        skipped.push({ path: plan.path, field: "title", code: "title-taken", reason: fill(syncMessages.titleTaken, { path: target2 }) });
-      } else if (target2 !== plan.path) renameTo = target2;
+        skipped.push({ path: plan.path, field: "title", code: code2, reason });
+      };
+      if (isDeviceName(`${note2.title}.md`)) skip("title-device-name", fill(syncMessages.titleDeviceName, { path: target2 }));
+      else if (target2.toLowerCase() !== plan.path.toLowerCase() && pathTaken(session, target2)) skip("title-taken", fill(syncMessages.titleTaken, { path: target2 }));
+      else if (target2 !== plan.path) renameTo = target2;
     }
     return { plan, note: note2, pulled, renameTo, skipped };
   });
@@ -33935,6 +33968,7 @@ const germanSyncMessages = {
   unsyncedDependency: "der Remote-Vorgänger {ids} wird auf dieser Verbindung nicht synchronisiert",
   missingIteration: "keine Iteration-Notiz heißt {name}",
   titleTaken: "{path} existiert bereits",
+  titleDeviceName: "{path} ist ein unter Windows reservierter Gerätename, den keine Datei unter Windows tragen kann",
   remoteChanged: "Das Remote-Element wurde während der Synchronisierung geändert; führen Sie die Synchronisierung erneut aus.",
   linksChanged: "Die Verknüpfungen des Remote-Elements wurden während der Aktualisierung auf der anderen Seite geändert, sodass möglicherweise eine Verknüpfung anstelle einer anderen entfernt wurde. Die nächste Synchronisierung meldet den übergeordneten Eintrag und die Abhängigkeiten als Konflikte, wo sich beide Seiten unterscheiden; vergleichen Sie sie und führen Sie backlog sync resolve aus."
 };
@@ -35666,6 +35700,7 @@ const scaffoldsPlugin = {
   })
 };
 const uiFrameworks = ["html", "htmx", "vanilla", "vue", "svelte", "react", "angular"];
+const uiArtifactExtensions = { html: "js", htmx: "js", vanilla: "js", react: "tsx", vue: "vue", svelte: "svelte", angular: "ts" };
 function uiError(code2, message2, details) {
   return new PluginFailure(code2, message2, details);
 }
@@ -35802,12 +35837,23 @@ function componentInteractionIds(definition2) {
 function checkValue(value2, type2, label2) {
   ensureUi(typeof value2 === type2, "INVALID_UI", `${label2} must be ${type2}.`);
 }
-function validateUiLibrary(definitions2, interactions = []) {
+function uiGeneratedFiles(id2, framework) {
+  const dom = framework === "html" || framework === "htmx" || framework === "vanilla";
+  return [`${id2}.${uiArtifactExtensions[framework]}`, ...dom ? [`${id2}.html`, `${id2}.d.ts`] : [], `${id2}.stories.ts`];
+}
+function validateGeneratedFiles(definitions2, framework) {
+  for (const definition2 of definitions2) {
+    const issue2 = portablePathIssues(uiGeneratedFiles(definition2.id, framework))[0];
+    if (issue2?.reason === "device-name") throw uiError("INVALID_UI", `Component ${definition2.id} would generate ${issue2.path}, a Windows reserved device name that no file can have on Windows; choose another id.`, { component: definition2.id, file: issue2.path, reason: issue2.reason, segment: issue2.segment });
+  }
+}
+function validateUiLibrary(definitions2, interactions = [], framework = "html") {
   const byId2 = /* @__PURE__ */ new Map();
   for (const definition2 of definitions2) {
     ensureUi(!byId2.has(definition2.id), "DUPLICATE_UI_COMPONENT", `Duplicate component ${definition2.id}.`);
     byId2.set(definition2.id, definition2);
   }
+  validateGeneratedFiles(definitions2, framework);
   const edges = /* @__PURE__ */ new Map();
   for (const definition2 of definitions2) {
     const references2 = /* @__PURE__ */ new Set();
@@ -35886,13 +35932,14 @@ function selectUiComponents(definitions2, id2) {
   return definitions2.filter((definition2) => selected2.has(definition2.id));
 }
 class UiLibrary {
-  constructor(workspace2, codec, catalog, renderer2, interactionSource, interactionDirectory = "interactions") {
+  constructor(workspace2, codec, catalog, renderer2, interactionSource, interactionDirectory = "interactions", framework = "html") {
     this.workspace = workspace2;
     this.codec = codec;
     this.catalog = catalog;
     this.renderer = renderer2;
     this.interactionSource = interactionSource;
     this.interactionDirectory = interactionDirectory;
+    this.framework = framework;
   }
   workspace;
   codec;
@@ -35900,6 +35947,7 @@ class UiLibrary {
   renderer;
   interactionSource;
   interactionDirectory;
+  framework;
   async list(directory, interactionDirectory) {
     const definitions2 = await this.discover(directory);
     await this.validateDefinitions(definitions2, interactionDirectory);
@@ -35951,8 +35999,8 @@ Describe this component.
     ensureSeparateDirectories(directory, outputDirectory);
     const sources = await this.sources(directory), definitions2 = sources.map((source2) => source2.definition);
     const interactions = await this.interactions(interactionDirectory);
-    validateUiLibrary(definitions2, interactions);
-    validateUiLibrary([...await this.discover(outputDirectory), ...definitions2], interactions);
+    validateUiLibrary(definitions2, interactions, this.framework);
+    validateUiLibrary([...await this.discover(outputDirectory), ...definitions2], interactions, this.framework);
     const plan = sources.map(({ definition: definition2, bytes: bytes2 }) => ({ path: `${outputDirectory}/${definition2.sourcePath.slice(directory.length + 1)}`, bytes: bytes2 }));
     return { components: definitions2.map((definition2) => definition2.id), ...await this.commit(plan) };
   }
@@ -35975,7 +36023,7 @@ Describe this component.
     ensureUi(!(options2.storybook || options2.storiesOnly) || options2.storiesDirectory, "INVALID_UI", "Storybook generation requires a stories directory.");
     const interactions = await this.interactions(options2.interactionDirectory);
     let definitions2 = await this.discover(directory);
-    validateUiLibrary(definitions2, interactions);
+    validateUiLibrary(definitions2, interactions, options2.framework);
     ensureUi(definitions2.length, "EMPTY_UI_LIBRARY", `No component definitions in ${directory}. Run components init --library ${directory}, or add a Markdown component definition.`);
     if (options2.component) ensureUi(definitions2.some((definition2) => definition2.id === options2.component), "UNKNOWN_UI_COMPONENT", `No component ${options2.component} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
     if (options2.component) definitions2 = selectUiComponents(definitions2, options2.component);
@@ -36000,7 +36048,7 @@ Describe this component.
     return this.interactionSource ? this.interactionSource.list(directory) : [];
   }
   async validateDefinitions(definitions2, interactionDirectory) {
-    validateUiLibrary(definitions2, await this.interactions(interactionDirectory));
+    validateUiLibrary(definitions2, await this.interactions(interactionDirectory), this.framework);
   }
   async discover(directory) {
     return (await this.sources(directory)).map((source2) => source2.definition);
@@ -42217,8 +42265,7 @@ const html = (value2) => String(value2 ?? "").replace(/&/g, "&amp;").replace(/</
 const className = (definition2) => definition2.name ?? definition2.id.split("-").map((part) => part[0].toUpperCase() + part.slice(1)).join("");
 const defaults$1 = (definition2) => Object.fromEntries(ordered(definition2.props).filter(([, prop2]) => prop2.default !== void 0).map(([key, prop2]) => [key, prop2.default]));
 function componentArtifact(definition2, framework) {
-  const extension2 = { html: "js", htmx: "js", vanilla: "js", react: "tsx", vue: "vue", svelte: "svelte", angular: "ts" }[framework];
-  return { fileName: `${definition2.id}.${extension2}`, exportName: framework === "angular" ? `${className(definition2)}Component` : ["html", "htmx", "vanilla"].includes(framework) ? `create${className(definition2)}` : className(definition2), namedExport: framework === "angular" };
+  return { fileName: `${definition2.id}.${uiArtifactExtensions[framework]}`, exportName: framework === "angular" ? `${className(definition2)}Component` : ["html", "htmx", "vanilla"].includes(framework) ? `create${className(definition2)}` : className(definition2), namedExport: framework === "angular" };
 }
 function expression(value2, scope2 = "props", stateScope = "_uiState") {
   if (typeof value2 !== "string") return json$3(value2);
@@ -43233,7 +43280,11 @@ const uiErrors = [
 ];
 const germanUiErrors = {
   UI_DRIFT: { summary: "Generierte UI-Dateien fehlen oder weichen von den Definitionen ab.", hint: germanRegenerateHint$1 },
-  INVALID_UI: { summary: "Eine Komponentendefinition ist ungültig.", hint: "Korrigieren Sie die genannte Definition; prüfen Sie mit components validate." },
+  INVALID_UI: {
+    summary: "Eine Komponentendefinition ist ungültig.",
+    hint: "Korrigieren Sie die genannte Definition; prüfen Sie mit components validate.",
+    reasons: { "device-name": "Die Komponente {component} würde {file} generieren, einen unter Windows reservierten Gerätenamen, den keine Datei unter Windows tragen kann; wählen Sie eine andere ID." }
+  },
   INVALID_UI_LIBRARY: { summary: "Die Komponentenbibliothek ist ungültig.", hint: "Führen Sie components validate aus und korrigieren Sie die gemeldeten Definitionen." },
   INVALID_UI_FRAMEWORK: { summary: "Das UI-Ziel wird nicht unterstützt.", hint: "Verwenden Sie html, htmx, vanilla, vue, svelte, react oder angular." },
   EMPTY_UI_LIBRARY: { summary: "Die Komponentenbibliothek enthält keine Definitionen.", hint: "Führen Sie components init aus oder fügen Sie eine Markdown-Definition hinzu." },
@@ -43303,7 +43354,7 @@ const renderer = {
 const services$1 = (context) => {
   const settings2 = uiSettings(context.settings), workspace2 = context.environment;
   const interactions = new InteractionLibrary(workspace2, new MarkdownInteractionDefinitions(workspace2.codec));
-  const components = new UiLibrary(workspace2, new MarkdownUiDefinitions(workspace2.codec), standardUiCatalog, renderer, interactions, settings2.interactions);
+  const components = new UiLibrary(workspace2, new MarkdownUiDefinitions(workspace2.codec), standardUiCatalog, renderer, interactions, settings2.interactions, settings2.framework);
   return { settings: settings2, components, interactions };
 };
 const uiPlugin = {
@@ -43326,6 +43377,7 @@ const uiPlugin = {
     strings: { de: de$2 }
   })
 };
+const dataSourceFiles = (id2) => ({ adapter: `${id2}.ts`, testData: `${id2}.fixtures.json` });
 function dataSourceError(code2, message2, details) {
   return new PluginFailure(code2, message2, details);
 }
@@ -43338,6 +43390,8 @@ function validateLibrary(definitions2) {
   for (const definition2 of definitions2) {
     ensureDataSource(!ids.has(definition2.id), "DUPLICATE_DATA_SOURCE", `Duplicate data source ${definition2.id}.`);
     ids.add(definition2.id);
+    const files2 = dataSourceFiles(definition2.id), issue2 = portablePathIssues([files2.adapter, files2.testData])[0];
+    if (issue2?.reason === "device-name") throw dataSourceError("INVALID_DATA_SOURCE", `Data source ${definition2.id} would generate ${issue2.path}, a Windows reserved device name that no file can have on Windows; choose another id.`, { source: definition2.id, file: issue2.path, reason: issue2.reason, segment: issue2.segment });
   }
 }
 function starter(directory, id2, kind2) {
@@ -43742,10 +43796,13 @@ class TypeScriptDataSourceRenderer {
   generate(definitions2, options2) {
     vaultPath(options2.outputDirectory);
     vaultPath(options2.testDataDirectory);
-    return [...definitions2].sort((left, right) => compare(left.id, right.id)).flatMap((definition2) => [
-      { path: `${options2.outputDirectory}/${definition2.id}.ts`, bytes: new TextEncoder().encode(modelSource(definition2) + (definition2.kind === "rest" ? restSource(definition2) : jsonSource(definition2))) },
-      { path: `${options2.testDataDirectory}/${definition2.id}.fixtures.json`, bytes: new TextEncoder().encode(canonicalJson(fixtureRecords(definition2), 2) + "\n") }
-    ]);
+    return [...definitions2].sort((left, right) => compare(left.id, right.id)).flatMap((definition2) => {
+      const files2 = dataSourceFiles(definition2.id);
+      return [
+        { path: `${options2.outputDirectory}/${files2.adapter}`, bytes: new TextEncoder().encode(modelSource(definition2) + (definition2.kind === "rest" ? restSource(definition2) : jsonSource(definition2))) },
+        { path: `${options2.testDataDirectory}/${files2.testData}`, bytes: new TextEncoder().encode(canonicalJson(fixtureRecords(definition2), 2) + "\n") }
+      ];
+    });
   }
 }
 async function makeDataSource(id2, flags, context, services2) {
@@ -43824,7 +43881,11 @@ const dataSourceErrors = [
 ];
 const germanDataSourceErrors = {
   DATA_SOURCE_DRIFT: { summary: "Generierte Datenquellendateien fehlen oder weichen von den Definitionen ab.", hint: germanRegenerateHint },
-  INVALID_DATA_SOURCE: { summary: "Eine Datenquellendefinition ist ungültig.", hint: "Korrigieren Sie die genannten Felder; prüfen Sie mit data-sources validate." },
+  INVALID_DATA_SOURCE: {
+    summary: "Eine Datenquellendefinition ist ungültig.",
+    hint: "Korrigieren Sie die genannten Felder; prüfen Sie mit data-sources validate.",
+    reasons: { "device-name": "Die Datenquelle {source} würde {file} generieren, einen unter Windows reservierten Gerätenamen, den keine Datei unter Windows tragen kann; wählen Sie eine andere ID." }
+  },
   DUPLICATE_DATA_SOURCE: { summary: "Zwei Datenquellendefinitionen haben dieselbe ID.", hint: "Vergeben Sie für jede Datenquelle eine eindeutige ID." },
   EMPTY_DATA_SOURCE_LIBRARY: { summary: "Die Datenquellenbibliothek enthält keine Definitionen.", hint: "Führen Sie data-sources init aus oder fügen Sie eine Markdown-Definition hinzu." },
   UNKNOWN_DATA_SOURCE: { summary: "Die Datenquelle ist nicht definiert.", hint: "Führen Sie data-sources list aus und verwenden Sie eine vorhandene ID." },
@@ -70036,6 +70097,12 @@ function location(details, text2) {
 function locatedGermanSummary(details, summary) {
   return details === void 0 ? summary : location(details, summary) + summary;
 }
+function reasonMessage(reasons2, details) {
+  const reason = details?.reason;
+  if (reasons2 === void 0 || typeof reason !== "string" || !Object.hasOwn(reasons2, reason)) return void 0;
+  const text2 = reasons2[reason], values2 = templateValues(details);
+  return placeholders(text2).every((name2) => Object.hasOwn(values2, name2)) ? fill(text2, values2) : void 0;
+}
 const suggestionCodes = /* @__PURE__ */ new Set(["UNKNOWN_COMMAND", "UNKNOWN_OPTION", "UNKNOWN_GENERATOR", "INVALID_ARGUMENT"]);
 const phrases = {
   en: {
@@ -70207,7 +70274,7 @@ class Localizer {
     const refined = builtIn?.variants?.details.map((key) => details?.[key]).find((value2) => typeof value2 === "string" && Object.hasOwn(hints2, value2));
     if (!german) return { code: code2, message: diagnostic2, hint: guidedHint(refined ? builtIn.variants.hints[refined] : definition2.hint, code2, details, "en", this.invoked), retryable: retryable2, ...details ? { details } : {} };
     const germanHint = refined === void 0 ? void 0 : germanHintVariant(code2, refined);
-    const message2 = builtIn ? germanErrorMessage(code2, details) ?? locatedGermanSummary(details, german.summary) : german.summary;
+    const message2 = builtIn ? germanErrorMessage(code2, details) ?? locatedGermanSummary(details, german.summary) : reasonMessage(this.plugins?.localizedError(code2, "de")?.reasons, details) ?? german.summary;
     return { code: code2, message: message2, hint: guidedHint(germanHint ?? german.hint, code2, details, "de", this.invoked), retryable: retryable2, details: { ...details, localization: { originalMessage: diagnostic2, ...details?.localization !== void 0 ? { originalDetails: details.localization } : {} } } };
   }
 }

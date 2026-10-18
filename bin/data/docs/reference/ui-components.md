@@ -9,7 +9,7 @@ Markdown files describe a framework-neutral component tree; YAML frontmatter is 
 | Field | Meaning |
 | --- | --- |
 | `schemaVersion` | Required literal `1` |
-| `id` | Required unique lowercase kebab-case ID used for references and output filenames |
+| `id` | Required unique lowercase kebab-case ID used for references and output filenames; an ID that is a Windows device name (`con`, `aux`, `com1`, …) is rejected with `INVALID_UI` |
 | `name` | Optional generated component/export name; PascalCase letters/digits starting with an uppercase letter |
 | `props` | Optional map of prop declarations with `type: string`, `number` or `boolean`, plus optional `default`, `required`, `description` |
 | `state` | Optional component-local scalar declarations with required typed defaults; see [interactions](interactions.md) |

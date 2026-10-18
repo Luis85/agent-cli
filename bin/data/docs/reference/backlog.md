@@ -151,6 +151,7 @@ The result is `{dryRun, mode, direction, counts, views, left, changes}`. Each vi
 | `unmapped-remote-type` | The remote type has no local type mapping; the note keeps its type |
 | `unsynced-parent`, `unsynced-dependency`, `missing-iteration` | A pulled parent, predecessor or iteration has no local counterpart; or a predecessor this run should have created was not, so the links wait for the next sync |
 | `title-taken` | A pulled title's file name is taken |
+| `title-device-name` | A pulled title's file name is a Windows device name (`Con.md`, `aux.md`, …); the note keeps its name and its other fields are pulled |
 | `server-kept` | The platform stored another value than the one pushed (a rule); the note keeps its value and the next sync pushes it again |
 | `server-applied` | On a push-only run, the platform filled a field the note leaves empty (a default or rule); the next two-way sync pulls it |
 

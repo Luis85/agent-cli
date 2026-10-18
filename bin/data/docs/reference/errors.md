@@ -86,6 +86,8 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 
 **`INVALID_PLUGIN`** for a skill path (exit 2): registration refuses a plugin skill that no `setup` or `skills install` could write on every platform. `details` is `{skill, reason, file?, segment?, duplicateOf?}`: `reason` is `device-name` (the skill id or the `segment` of `file` is a Windows device name), `case-duplicate` (`file` names the same file as `duplicateOf` once letter case and trailing dots are ignored) or `folder-conflict` (`file` is also the folder of `duplicateOf`); the message lists every such path. Rename the file or skill in the plugin, or disable the plugin with `--no-plugins`.
 
+**`INVALID_UI`** and **`INVALID_DATA_SOURCE`** for a generated file name (exit 2): a component or data-source ID that names a generated file after a Windows device name fails wherever its library is read (`list`, `inspect`, `validate`, `import`, `export` and generation) before anything is written. `details` is `{component | source, file, reason: "device-name", segment}`; `file` is the component file of the requested UI target (of `plugins.settings.ui.framework` outside generation, such as `con.js`) or the data-source adapter (`nul.ts`). Choose another ID.
+
 ## Codes
 
 | Code | Exit | Category | Retryable | Summary | Hint |

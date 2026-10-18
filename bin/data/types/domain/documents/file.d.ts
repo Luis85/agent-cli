@@ -2,8 +2,6 @@
 export declare const writerLockName = ".agent-cli.lock";
 /** The prefix of Forge's temporary files: staged writes, parked removals, lock records and break guards. */
 export declare const temporaryPrefix = ".agent-cli-tmp-";
-/** A name as case-insensitive filesystems, Windows trailing-dot/space aliases and HFS+ ignorable code points resolve it. */
-export declare const canonicalName: (segment: string) => string;
 /**
  * Whether `segment` names `name` (lower case) on some filesystem: in another letter case, with trailing dots or
  * spaces (Windows), with ignorable code points (HFS+), or as a Windows 8.3 short name.
@@ -16,6 +14,27 @@ export declare function reservedPathSegment(segment: string): 'git' | 'internal'
  * trailing dots or spaces before or after the extension (`con`, `NUL.md`, `Com1 .txt`, `lpt9.tar.gz.`).
  */
 export declare function isDeviceName(segment: string): boolean;
+/** A path as case-insensitive filesystems and Windows resolve it. */
+export declare const canonicalPath: (path: string) => string;
+/**
+ * A relative path that one operation writes and some filesystem cannot: a segment is a Windows device name
+ * (`device-name`, with that `segment`), or the path names the same file as the earlier `duplicateOf` where letter
+ * case and trailing dots are ignored, as on Windows and macOS (`case-duplicate`).
+ */
+export type PortablePathIssue = {
+    path: string;
+    reason: 'device-name';
+    segment: string;
+} | {
+    path: string;
+    reason: 'case-duplicate';
+    duplicateOf: string;
+};
+/**
+ * Problems of the relative paths one operation writes, in their given order, so definitions that generate files
+ * fail where they are validated instead of in the write. A path with a problem is not compared with later paths.
+ */
+export declare function portablePathIssues(paths: readonly string[]): PortablePathIssue[];
 export declare function vaultPath(input: string): string;
 /** Obsidian's vault trash: `delete` moves files here unless `--permanent` is passed. It is hidden from the metadata cache. */
 export declare const trashFolder = ".trash";

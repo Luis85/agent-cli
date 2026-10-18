@@ -7,9 +7,14 @@ export interface PluginStringTable {
     actions?: Record<string, string>;
     generators?: Record<string, string>;
     events?: Record<string, string>;
+    /**
+     * Summaries and next steps of the plugin's error codes. `reasons` holds the messages of occurrences by their
+     * `details.reason`, with `{name}` placeholders for their text and number details.
+     */
     errors?: Record<string, {
         summary: string;
         hint: string;
+        reasons?: Record<string, string>;
     }>;
     /** Free-form guidance a plugin reads back through `context.t(key)`. */
     messages?: Record<string, string>;
@@ -91,6 +96,7 @@ export declare class PluginCatalog {
     localizedError(code: string, language: Language): {
         summary: string;
         hint: string;
+        reasons?: Record<string, string>;
     } | undefined;
     errors(): CatalogedError[];
     /**

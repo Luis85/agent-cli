@@ -4,7 +4,7 @@ Read this when you generate UI or data-source code, manage agents, skills or Cla
 
 ## UI components and data sources
 - Inspect `components list`, `components inspect <id>` and `plugins.settings.ui` in `config --json` (framework and folders). The `ui` core plugin owns `components`, `interactions`, `make ui` and `make stories`; `data-sources` owns `data-sources` and `make data-source`.
-- Component definitions are workspace-scoped; generated UI uses the active project or `--project <id>`. Start with `components init --dry-run` if there are none, and run `components validate` after edits.
+- Component definitions are workspace-scoped; generated UI uses the active project or `--project <id>`. Start with `components init --dry-run` if there are none, and run `components validate` after edits; it also refuses IDs that would name generated files after Windows devices (`con`, `aux`, `com1`; `INVALID_UI`, `details.reason: "device-name"`), as `data-sources validate` does for data sources.
 - Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, check `context.root` and review the generated text.
 - `--plan` compares proposed and current output, `--check` detects drift read-only (exit 5, `UI_DRIFT`) and `--plan-out <file.json>` writes a revision map. Intentional regeneration takes `--revisions-from <file.json>` with the inspected hashes.
 - Generic file commands follow the open project: close it before guarded edits to the shared workspace library.
