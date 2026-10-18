@@ -1,20 +1,45 @@
-import type { UiDefinition, UiNode, UiValue } from './definition.ts';
+import { portablePathIssues } from '../../../../domain/documents/file.ts';
+import { uiArtifactExtensions, type UiDefinition, type UiFramework, type UiNode, type UiValue } from './definition.ts';
 import type { InteractionDefinition } from '../interactions/definition.ts';
 import { validateUiInteractions } from './interactions.ts';
 import { uiBindings, uiWholeBinding, uiBindingSource, validateUiBindings } from './syntax.ts';
-import { ensureUi } from '../errors.ts';
+import { ensureUi, uiError } from '../errors.ts';
 
 function checkValue(value: UiValue, type: string, label: string) {
   ensureUi(typeof value === type, 'INVALID_UI', `${label} must be ${type}.`);
 }
 
-/** Validate the complete graph before rendering or accepting imported definitions. */
-export function validateUiLibrary(definitions: readonly UiDefinition[], interactions: readonly InteractionDefinition[] = []): void {
+/**
+ * The files `make ui` and `make stories` generate for a component and `framework`, named after its id: the importable
+ * component, the static markup and declarations of the DOM targets, and the Storybook stories.
+ */
+export function uiGeneratedFiles(id: string, framework: UiFramework): string[] {
+  const dom = framework === 'html' || framework === 'htmx' || framework === 'vanilla';
+  return [`${id}.${uiArtifactExtensions[framework]}`, ...(dom ? [`${id}.html`, `${id}.d.ts`] : []), `${id}.stories.ts`];
+}
+
+/**
+ * Fails with INVALID_UI when a component's generated file is a Windows device name. Ids are unique lowercase names,
+ * so generated files never differ only in letter case.
+ */
+function validateGeneratedFiles(definitions: readonly UiDefinition[], framework: UiFramework): void {
+  for (const definition of definitions) {
+    const issue = portablePathIssues(uiGeneratedFiles(definition.id, framework))[0];
+    if (issue?.reason === 'device-name') throw uiError('INVALID_UI', `Component ${definition.id} would generate ${issue.path}, a Windows reserved device name that no file can have on Windows; choose another id.`, { component: definition.id, file: issue.path, reason: issue.reason, segment: issue.segment });
+  }
+}
+
+/**
+ * Validate the complete graph and the files it generates for `framework` before rendering or accepting imported
+ * definitions.
+ */
+export function validateUiLibrary(definitions: readonly UiDefinition[], interactions: readonly InteractionDefinition[] = [], framework: UiFramework = 'html'): void {
   const byId = new Map<string, UiDefinition>();
   for (const definition of definitions) {
     ensureUi(!byId.has(definition.id), 'DUPLICATE_UI_COMPONENT', `Duplicate component ${definition.id}.`);
     byId.set(definition.id, definition);
   }
+  validateGeneratedFiles(definitions, framework);
   const edges = new Map<string, Set<string>>();
   for (const definition of definitions) {
     const references = new Set<string>(); edges.set(definition.id, references);

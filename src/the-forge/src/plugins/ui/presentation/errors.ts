@@ -20,9 +20,12 @@ export const uiErrors: PluginErrorDefinition[] = [
 ];
 
 /** German summaries and next steps of the ui plugin's failure codes. */
-export const germanUiErrors: Record<string, { summary: string; hint: string }> = {
+export const germanUiErrors: Record<string, { summary: string; hint: string; reasons?: Record<string, string> }> = {
   UI_DRIFT: { summary: 'Generierte UI-Dateien fehlen oder weichen von den Definitionen ab.', hint: germanRegenerateHint },
-  INVALID_UI: { summary: 'Eine Komponentendefinition ist ungültig.', hint: 'Korrigieren Sie die genannte Definition; prüfen Sie mit components validate.' },
+  INVALID_UI: {
+    summary: 'Eine Komponentendefinition ist ungültig.', hint: 'Korrigieren Sie die genannte Definition; prüfen Sie mit components validate.',
+    reasons: { 'device-name': 'Die Komponente {component} würde {file} generieren, einen unter Windows reservierten Gerätenamen, den keine Datei unter Windows tragen kann; wählen Sie eine andere ID.' },
+  },
   INVALID_UI_LIBRARY: { summary: 'Die Komponentenbibliothek ist ungültig.', hint: 'Führen Sie components validate aus und korrigieren Sie die gemeldeten Definitionen.' },
   INVALID_UI_FRAMEWORK: { summary: 'Das UI-Ziel wird nicht unterstützt.', hint: 'Verwenden Sie html, htmx, vanilla, vue, svelte, react oder angular.' },
   EMPTY_UI_LIBRARY: { summary: 'Die Komponentenbibliothek enthält keine Definitionen.', hint: 'Führen Sie components init aus oder fügen Sie eine Markdown-Definition hinzu.' },
