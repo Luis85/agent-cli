@@ -200,7 +200,8 @@ export declare class Registry {
     service<T>(id: string): T | undefined;
     /**
      * Like `service`, but a missing service fails with PLUGIN_UNAVAILABLE for `command` (`project create`), with
-     * `details` `{command, plugin, service, reason, issues}`. The provider is the plugin the service id names.
+     * `details` `{command, plugin, service, reason, issues}`. The provider is the plugin the service id names; `reason`
+     * is a host message, which the response reports as `{code, message, details?}` in its language.
      */
     requireService<T>(id: string, command: string): T;
     /** Marks every plugin unavailable whose required service has a disabled, missing or unavailable provider, transitively. */

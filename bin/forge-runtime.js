@@ -81,7 +81,8 @@ const errorCatalog = {
   UNSAFE_PATH: entry("input", "The path leaves the workspace or crosses a symbolic link.", "Use a path inside the workspace that does not traverse symbolic links."),
   NOT_FOUND: entry("not-found", "The file or resource does not exist.", "Check the path and the selected project (project current); run list to find files. error.details.alreadyDeleted true means a delete already moved the file to error.details.trashPath."),
   CONFLICT: { ...entry("conflict", "The file already exists or its revision changed since it was read.", "The message names the case. An existing file (error.details.expectedRevision null): replace it with write --if-match or change it with edit. A missing file (error.details.currentRevision null): check the path, or drop the guard to create it. A changed file: reread it, reconcile your change with the current content and retry with error.details.currentRevision through the command's revision guard (--if-match, ifMatch in a plan, or --revisions-from). error.details.alreadyApplied true means the file already holds the requested change, so no retry is needed."), variants: { details: ["reason"], hints: {
-    "changed-while-planning": "A note linking to the moved path (error.details.path) changed while Forge planned the link updates, and nothing was written: rerun the same move; read that note first if you are editing it too."
+    "changed-while-planning": "A note linking to the moved path (error.details.path) changed while Forge planned the link updates, and nothing was written: rerun the same move; read that note first if you are editing it too.",
+    "revision-required": "The request named error.details.path with an empty revision, so nothing was written: check that it is the file you mean to change or delete, then retry with error.details.currentRevision as --if-match (ifMatch in an apply plan); read, stat and a dry run report it too."
   } } },
   NO_MATCH: entry("input", "The --find text does not occur in the file.", "Read the file again and copy the exact current text into --find, including whitespace and line endings; error.details.lineEndings names the file's line endings and error.details.nearMatch a line that matches when whitespace and case are ignored."),
   AMBIGUOUS_EDIT: entry("input", "The --find text occurs more than once, counting overlapping matches.", "Extend --find with surrounding text so it matches exactly once; error.details.lines lists the matching lines and error.details.snippets their text."),
@@ -827,11 +828,11 @@ async function ensureStateIgnored(root) {
   if (entries2.every((entry2, index2) => lines2.at(index2 - entries2.length) === entry2)) return;
   const newline = original.includes(Buffer.from("\r\n")) ? "\r\n" : "\n";
   const separator = original.length && original.at(-1) !== 10 ? newline : "";
-  const bytes = Buffer.concat([original, Buffer.from(separator + entries2.join(newline) + newline)]);
+  const bytes2 = Buffer.concat([original, Buffer.from(separator + entries2.join(newline) + newline)]);
   const temporary2 = path$3.join(directory, `.server-${node_crypto.randomUUID()}.tmp`);
   const target2 = await promises.open(temporary2, "wx", mode);
   try {
-    await target2.writeFile(bytes);
+    await target2.writeFile(bytes2);
     await target2.sync();
     await target2.close();
     await promises.rename(temporary2, path2);
@@ -1126,23 +1127,23 @@ function jsonRecord(value2) {
     return void 0;
   }
 }
-function codedWarning(value2) {
+function codedWarning(value2, source2) {
   try {
     if (!isRecord$1(value2) || Object.getPrototypeOf(value2) !== Object.prototype || !Object.hasOwn(value2, "code")) return void 0;
     const { code: code2, message: message2, details } = value2;
     if (typeof message2 !== "string") return void 0;
     const copied = details === void 0 ? {} : jsonRecord(details);
-    const own2 = copied !== void 0 && typeof code2 === "string" && warningCode.test(code2) && !Object.hasOwn(kernelMessages, code2);
+    const own2 = copied !== void 0 && typeof code2 === "string" && warningCode.test(code2) && !Object.hasOwn(kernelMessages, code2) && source2?.owns(code2) === true;
     const kept = own2 ? copied : { ...copied, ...typeof code2 === "string" ? { requestedCode: code2 } : {} };
     return { code: own2 ? code2 : pluginWarningCode, message: message2, ...Object.keys(kept).length > 0 ? { details: kept } : {} };
   } catch {
     return void 0;
   }
 }
-function pluginWarning(value2, plugin2) {
-  const coded = codedWarning(value2);
+function pluginWarning(value2, source2) {
+  const coded = codedWarning(value2, source2);
   const base2 = coded ?? { code: pluginWarningCode, message: warningText(value2) };
-  const details = { ...base2.details, ...plugin2 === void 0 ? {} : { plugin: plugin2 } };
+  const details = { ...base2.details, ...source2 === void 0 ? {} : { plugin: source2.id } };
   const warning2 = Object.freeze({ code: base2.code, message: base2.message, ...Object.keys(details).length > 0 ? { details } : {} });
   recorded.add(warning2);
   return warning2;
@@ -1299,7 +1300,7 @@ class EventBus {
   }
   /**
    * Records a warning: a host message by code, a plugin warning as captured, and any other value as a plugin warning
-   * (see pluginWarning) without a plugin id, so no value can break the response.
+   * (see pluginWarning) without a plugin, which keeps no code of its own, so no value can break the response.
    */
   warn(message2) {
     if (this.warningRecords.length < 1e3) this.warningRecords.push(isKernelMessage(message2) || isPluginWarning(message2) ? message2 : pluginWarning(message2));
@@ -1584,10 +1585,12 @@ function snapshotWriteRequests(writes) {
   return writes.map((write) => ({ path: vaultPath(write.path), bytes: Uint8Array.from(write.bytes), expectedRevision: write.expectedRevision }));
 }
 function revisionConflict(path2, expectedRevision2, currentRevision) {
-  return { path: path2, expectedRevision: expectedRevision2 ?? null, currentRevision: currentRevision ?? null };
+  const unguarded = expectedRevision2 === "" && typeof currentRevision === "string";
+  return { path: path2, expectedRevision: expectedRevision2 ?? null, currentRevision: currentRevision ?? null, ...unguarded ? { reason: "revision-required" } : {} };
 }
 function conflictMessage(conflict2, alreadyApplied = false) {
   const { path: path2, expectedRevision: expectedRevision2, currentRevision } = conflict2;
+  if (conflict2.reason === "revision-required") return `No revision guards ${path2}: pass its currentRevision as --if-match (ifMatch in an apply plan) to change or delete it.`;
   if (expectedRevision2 === null) return `File already exists: ${path2}. Replace it with write --if-match and its currentRevision, or change it with edit.`;
   if (currentRevision === null) return `File not found: ${path2}; the --if-match revision guards a file that no longer exists. Check the path, or omit --if-match to create it.`;
   if (alreadyApplied) return `File changed since it was read: ${path2}, but it already holds the requested change; nothing was written. Continue from its currentRevision.`;
@@ -1704,20 +1707,20 @@ function snapshotBatch(batch) {
 }
 const stripping = new TextDecoder("utf-8", { fatal: true });
 const keeping = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
-function decodeUtf8(bytes, bom = "strip") {
-  return (bom === "keep" ? keeping : stripping).decode(bytes);
+function decodeUtf8(bytes2, bom = "strip") {
+  return (bom === "keep" ? keeping : stripping).decode(bytes2);
 }
 const vaultEvents = { created: "vault.create", updated: "vault.modify", deleted: "vault.delete" };
 const changeSummary = (result) => ({
-  changes: result.changes.map(({ path: path2, revision: revision2, operation: operation2, bytes }) => ({ path: path2, revision: revision2, operation: operation2, bytes })),
+  changes: result.changes.map(({ path: path2, revision: revision2, operation: operation2, bytes: bytes2 }) => ({ path: path2, revision: revision2, operation: operation2, bytes: bytes2 })),
   bytes: result.changes.reduce((total2, change2) => total2 + change2.bytes, 0),
   ...result.renames ? { renames: result.renames.map(({ from, to, kind: kind2 }) => ({ from, to, kind: kind2 })) } : {}
 });
 const into = (path2, folder) => path2 === folder || path2.startsWith(`${folder}/`);
-const utf8 = (path2, bytes) => {
+const utf8 = (path2, bytes2) => {
   let text2;
   try {
-    text2 = decodeUtf8(bytes, "keep");
+    text2 = decodeUtf8(bytes2, "keep");
   } catch {
     return void 0;
   }
@@ -1835,7 +1838,7 @@ class Workspace {
     const { renames, folders: folders2, removedFolders } = result;
     const changes2 = result.changes.filter((change2) => change2.operation !== "unchanged");
     if (this.dryRun) {
-      for (const { path: path2, operation: operation2, bytes } of changes2) await publishHostEvent(this.events, "workspace.quick-preview", { path: path2, operation: operation2, bytes });
+      for (const { path: path2, operation: operation2, bytes: bytes2 } of changes2) await publishHostEvent(this.events, "workspace.quick-preview", { path: path2, operation: operation2, bytes: bytes2 });
       return;
     }
     const trashed = (rename2) => trash.some((destination2) => into(rename2.to, destination2));
@@ -1843,7 +1846,7 @@ class Workspace {
     for (const rename2 of renames) if (!trashed(rename2)) await this.notify(rename2.to, "vault.rename", { path: rename2.to, oldPath: rename2.from, kind: rename2.kind, ...rename2.kind === "file" ? { revision: rename2.revision } : {} });
     for (const rename2 of renames) if (trashed(rename2) && rename2.kind === "file") await this.notify(rename2.from, "vault.delete", { path: rename2.from, kind: "file", revision: rename2.revision, bytes: rename2.bytes, operation: "deleted" });
     for (const rename2 of [...renames].reverse()) if (trashed(rename2) && rename2.kind === "folder") await this.notify(rename2.from, "vault.delete", { path: rename2.from, kind: "folder", operation: "deleted" });
-    for (const { path: path2, revision: revision2, operation: operation2, bytes } of changes2) await this.notify(path2, vaultEvents[operation2], { path: path2, kind: "file", revision: revision2, bytes, operation: operation2 });
+    for (const { path: path2, revision: revision2, operation: operation2, bytes: bytes2 } of changes2) await this.notify(path2, vaultEvents[operation2], { path: path2, kind: "file", revision: revision2, bytes: bytes2, operation: operation2 });
     for (const path2 of removedFolders) await this.notify(path2, "vault.delete", { path: path2, kind: "folder", operation: "deleted" });
     const moved2 = renames.filter((rename2) => rename2.kind === "file");
     if (this.observer && moved2.length + changes2.length > 0) {
@@ -1988,11 +1991,151 @@ function scopedCommitObserver(observer, directory) {
     }
   };
 }
+const languages$1 = ["en", "de"];
+const text$l = (value2) => typeof value2 === "string" && value2.trim().length > 0;
+const errorCode = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
+const errorPrefix = (pluginId) => `${pluginId.replaceAll("-", "_").toUpperCase()}_`;
+class PluginCatalog {
+  tables = /* @__PURE__ */ new Map();
+  codes = /* @__PURE__ */ new Map();
+  /** Error code prefixes of registered user plugins, by plugin id. */
+  prefixes = /* @__PURE__ */ new Map();
+  /** Validates one plugin's contributions; `prefix` restricts user plugin codes to `<ID>_…`. */
+  static validate(pluginId, strings2, errors2, owned, prefix) {
+    ensure(errors2 === void 0 || Array.isArray(errors2), "INVALID_PLUGIN", "errors must be an array.");
+    const codes = /* @__PURE__ */ new Set();
+    for (const entry2 of errors2 ?? []) {
+      ensure(isRecord$1(entry2) && typeof entry2.code === "string" && errorCode.test(entry2.code), "INVALID_PLUGIN", "Plugin error codes must be UPPER_SNAKE_CASE.");
+      ensure(prefix === null || entry2.code.startsWith(prefix), "PLUGIN_NAMESPACE", `Error code ${entry2.code} must start with ${prefix}.`);
+      ensure(!errorDefinition(entry2.code) && !codes.has(entry2.code), "DUPLICATE_OR_INVALID_ID", entry2.code);
+      ensure(Object.hasOwn(categoryExitCodes, String(entry2.category)) && text$l(entry2.summary) && text$l(entry2.hint), "INVALID_PLUGIN", `Error ${entry2.code} requires a known category, a summary and a hint.`);
+      ensure(entry2.retryable === void 0 || typeof entry2.retryable === "boolean", "INVALID_PLUGIN", `Error ${entry2.code} retryable must be a boolean.`);
+      codes.add(entry2.code);
+    }
+    ensure(strings2 === void 0 || isRecord$1(strings2), "INVALID_PLUGIN", "strings must map languages to string tables.");
+    for (const [language2, table] of Object.entries(strings2 ?? {})) {
+      ensure(languages$1.includes(language2) && isRecord$1(table), "INVALID_PLUGIN", `strings.${language2} is not a supported language table (en, de).`);
+      for (const [kind2, entries2] of Object.entries(table)) {
+        ensure(["commands", "actions", "generators", "events", "errors", "messages", "descriptions", "manifest"].includes(kind2) && isRecord$1(entries2), "INVALID_PLUGIN", `strings.${language2}.${kind2} is not a string table.`);
+        for (const [id2, entry2] of Object.entries(entries2)) {
+          const known2 = kind2 === "messages" || kind2 === "descriptions" || (kind2 === "manifest" ? ["name", "description"].includes(id2) : kind2 === "errors" ? codes.has(id2) : owned[kind2].includes(id2));
+          ensure(known2, "PLUGIN_NAMESPACE", `strings.${language2}.${kind2}.${id2} does not name a contribution of plugin ${pluginId}.`);
+          ensure(kind2 === "errors" ? isRecord$1(entry2) && text$l(entry2.summary) && text$l(entry2.hint) : text$l(entry2), "INVALID_PLUGIN", `strings.${language2}.${kind2}.${id2} must be ${kind2 === "errors" ? "a summary and hint" : "nonempty text"}.`);
+        }
+      }
+    }
+  }
+  /**
+   * Checks, before anything registers, that one plugin's codes are new and that user plugin codes stay owned: a
+   * code belongs to the registered user plugin with the longest matching prefix, so plugin `a` (`A_`) cannot
+   * register `A_B_X` while plugin `a-b` (`A_B_`) is registered, and `a-b` cannot register after `a` registered
+   * `A_B_X`. The later plugin fails with PLUGIN_NAMESPACE. `prefix` is null for core plugins.
+   */
+  ensureRegistrable(pluginId, errors2, prefix) {
+    for (const entry2 of errors2 ?? []) ensure(!this.codes.has(entry2.code), "DUPLICATE_OR_INVALID_ID", entry2.code);
+    if (prefix === null) return;
+    const prefixes = new Map([...this.prefixes, [pluginId, prefix]]);
+    const owned = [
+      ...[...this.codes.values()].filter((entry2) => this.prefixes.has(entry2.pluginId)).map((entry2) => [entry2.code, entry2.pluginId]),
+      ...(errors2 ?? []).map((entry2) => [entry2.code, pluginId])
+    ];
+    for (const [code2, owner] of owned) {
+      const [claimant, claimed] = [...prefixes].filter(([, candidate]) => code2.startsWith(candidate)).sort((a, b) => b[1].length - a[1].length)[0];
+      ensure(claimant === owner, "PLUGIN_NAMESPACE", `Error code ${code2} of plugin ${owner} falls in the namespace ${claimed} of plugin ${claimant}; plugin ${pluginId} cannot register.`);
+    }
+  }
+  /** Registers a plugin that passed `ensureRegistrable` with the same `prefix`. */
+  add(pluginId, strings2, errors2, prefix = null) {
+    this.ensureRegistrable(pluginId, errors2, prefix);
+    if (prefix !== null) this.prefixes.set(pluginId, prefix);
+    if (strings2) this.tables.set(pluginId, strings2);
+    for (const entry2 of errors2 ?? []) {
+      this.codes.set(entry2.code, { pluginId, code: entry2.code, exitCode: categoryExitCodes[entry2.category], category: entry2.category, summary: entry2.summary, hint: entry2.hint, retryable: entry2.retryable ?? false });
+    }
+  }
+  /** Contributed text for a command, generator or event id in `language`, if any. */
+  text(language2, kind2, id2) {
+    for (const table of this.tables.values()) {
+      const entries2 = table[language2]?.[kind2];
+      if (entries2 && Object.hasOwn(entries2, id2)) return entries2[id2];
+    }
+    return void 0;
+  }
+  /**
+   * The translation of an option, argument or settings description in `language`, by its English text. Plugins
+   * translate the texts they declare; a text several plugins declare reads the same in each.
+   */
+  description(language2, english) {
+    for (const table of this.tables.values()) {
+      const entries2 = table[language2]?.descriptions;
+      if (entries2 && Object.hasOwn(entries2, english)) return entries2[english];
+    }
+    return void 0;
+  }
+  /** A plugin's localized manifest fields, also for a bundled core plugin that `plugins.disabled` lists. */
+  manifest(pluginId, language2) {
+    return this.tables.get(pluginId)?.[language2]?.manifest;
+  }
+  /**
+   * Records the manifest strings of a bundled core plugin that `plugins.disabled` lists: it contributes nothing,
+   * but `plugins` still lists its name and description in the response language.
+   */
+  addDisabled(pluginId, strings2) {
+    const table = (language2) => {
+      const manifest = strings2[language2]?.manifest;
+      return manifest ? { manifest } : {};
+    };
+    this.tables.set(pluginId, { en: table("en"), de: table("de") });
+  }
+  /** A plugin message in `language`, falling back to English and then to the key itself. */
+  message(pluginId, language2, key) {
+    const table = this.tables.get(pluginId);
+    const pick2 = (tableLanguage) => {
+      const messages2 = table?.[tableLanguage]?.messages;
+      return messages2 && Object.hasOwn(messages2, key) ? messages2[key] : void 0;
+    };
+    return pick2(language2) ?? pick2("en") ?? key;
+  }
+  error(code2) {
+    return this.codes.get(code2);
+  }
+  localizedError(code2, language2) {
+    const entry2 = this.codes.get(code2);
+    const localized2 = entry2 ? this.tables.get(entry2.pluginId)?.[language2]?.errors?.[code2] : void 0;
+    return localized2 ?? (entry2 && language2 === "en" ? { summary: entry2.summary, hint: entry2.hint } : void 0);
+  }
+  errors() {
+    return [...this.codes.values()];
+  }
+  /**
+   * Plugin code cannot construct host errors, so it throws an `Error` with a `code` (and optional `details`). This
+   * turns a code that `pluginId` registered itself, or a built-in catalog code, into a coded failure with its
+   * category's exit status. A code of one of `providers`, the plugins providing services that `pluginId` declared,
+   * maps too, since their failures surface through their consumer's calls. Any other plugin's code stays an uncoded
+   * error: a plugin cannot borrow a code it does not own. Anything else is unchanged. An `interrupted` code thrown
+   * with `exitCode: 143` (SIGTERM) keeps it.
+   */
+  normalize(error2, pluginId, providers = []) {
+    if (error2 instanceof AppError || !(error2 instanceof Error) || !("code" in error2) || typeof error2.code !== "string") return error2;
+    const details = "details" in error2 && isRecord$1(error2.details) ? error2.details : void 0;
+    const builtIn = errorDefinition(error2.code);
+    if (builtIn) return codedError(error2.code, error2.message, builtIn.exitCode, details);
+    const entry2 = this.codes.get(error2.code);
+    if (!entry2 || entry2.pluginId !== pluginId && !providers.includes(entry2.pluginId)) return error2;
+    const exitCode = entry2.category === "interrupted" && "exitCode" in error2 && error2.exitCode === 143 ? 143 : entry2.exitCode;
+    return codedError(entry2.code, error2.message, exitCode, details);
+  }
+}
 const isHostNamespace = (namespace) => hostEventNamespaces.includes(namespace);
 function ensurePluginNamespace(pluginId) {
   ensure(!isHostNamespace(pluginId), "PLUGIN_NAMESPACE", `Plugin id ${pluginId} is reserved for host events (${hostEventNamespaces.join(", ")}).`);
 }
-function pluginEvents(bus, pluginId) {
+function ownsWarningCode(pluginId, code2, pluginIds2) {
+  const prefix = errorPrefix(pluginId);
+  return code2.startsWith(prefix) && ![...pluginIds2].some((other) => errorPrefix(other).length > prefix.length && code2.startsWith(errorPrefix(other)));
+}
+function pluginEvents(bus, pluginId, pluginIds2 = () => [pluginId]) {
+  const source2 = { id: pluginId, owns: (code2) => ownsWarningCode(pluginId, code2, pluginIds2()) };
   return {
     ids: () => bus.ids(),
     catalog: () => bus.catalog(),
@@ -2003,7 +2146,7 @@ function pluginEvents(bus, pluginId) {
     // Plugins are plain JavaScript and may pass any value; it is reported with the plugin's id, as its own coded warning
     // or as PLUGIN_WARNING text. Only a message the host created with kernelMessage (which core plugins import from
     // the kernel domain) renders from the host catalog.
-    warn: (message2) => bus.warn(isKernelMessage(message2) ? message2 : pluginWarning(message2, pluginId)),
+    warn: (message2) => bus.warn(isKernelMessage(message2) ? message2 : pluginWarning(message2, source2)),
     onLayoutReady: (callback) => bus.onLayoutReady(callback),
     onQuit: (task2) => bus.onQuit(task2),
     async emit(id2, payload2) {
@@ -2393,11 +2536,11 @@ function commandAnnotations(command2) {
 }
 const reservedOptions = ["root", "lang", "events", "json", "no-json", "dry-run", "no-dry-run", "no-plugins", "wait", "help", "version"];
 const flag$1 = /^[a-z][a-z0-9-]*$/;
-const text$l = (value2) => typeof value2 === "string" && value2.trim().length > 0;
+const text$k = (value2) => typeof value2 === "string" && value2.trim().length > 0;
 function validateOptions(options2, shared = {}) {
   for (const [key, schema2] of Object.entries(options2)) {
     ensure(flag$1.test(key) && !reservedOptions.includes(key) && !Object.hasOwn(shared, key), "INVALID_PLUGIN", `Invalid command option ${key}.`);
-    ensure(isRecord$1(schema2) && (schema2.type === "string" || schema2.type === "boolean") && text$l(schema2.description), "INVALID_PLUGIN", `Command option ${key} requires type string or boolean and a description.`);
+    ensure(isRecord$1(schema2) && (schema2.type === "string" || schema2.type === "boolean") && text$k(schema2.description), "INVALID_PLUGIN", `Command option ${key} requires type string or boolean and a description.`);
     ensure(schema2.enum === void 0 || Array.isArray(schema2.enum) && schema2.enum.length > 0 && schema2.enum.every((item) => typeof item === "string"), "INVALID_PLUGIN", `Command option ${key} enum must list strings.`);
     ensure(schema2.list === void 0 || typeof schema2.list === "boolean" && (!schema2.list || schema2.type === "string" && schema2.enum !== void 0 && schema2.enum.every((item) => item.length > 0 && !item.includes(","))), "INVALID_PLUGIN", `Command option ${key} list must be a boolean, and a list option needs an enum of values without commas.`);
     ensure(schema2.default === void 0 || typeof schema2.default === schema2.type, "INVALID_PLUGIN", `Command option ${key} default must match its type.`);
@@ -2414,15 +2557,15 @@ function validateMode(mode, where2, options2) {
 }
 function validateCommandMetadata(command2) {
   const where2 = `Command ${String(command2.id)}`;
-  ensure(text$l(command2.description) && text$l(command2.usage), "INVALID_PLUGIN", `${where2} requires a description and usage.`);
+  ensure(text$k(command2.description) && text$k(command2.usage), "INVALID_PLUGIN", `${where2} requires a description and usage.`);
   ensure(command2.options === void 0 || isRecord$1(command2.options), "INVALID_PLUGIN", `${where2} options must be an object.`);
   const options2 = command2.options ?? {};
   validateOptions(options2);
   validateMode(command2, where2, options2);
-  ensure(command2.args === void 0 || Array.isArray(command2.args) && command2.args.every((arg, index2, all2) => isRecord$1(arg) && text$l(arg.name) && text$l(arg.description) && (arg.variadic === void 0 || arg.variadic === true && index2 === all2.length - 1) && documentSchema(arg.schema) && (arg.path === void 0 || typeof arg.path === "boolean")), "INVALID_PLUGIN", `${where2} args must list named, described arguments with supported schemas and boolean path flags; only the last may be variadic.`);
+  ensure(command2.args === void 0 || Array.isArray(command2.args) && command2.args.every((arg, index2, all2) => isRecord$1(arg) && text$k(arg.name) && text$k(arg.description) && (arg.variadic === void 0 || arg.variadic === true && index2 === all2.length - 1) && documentSchema(arg.schema) && (arg.path === void 0 || typeof arg.path === "boolean")), "INVALID_PLUGIN", `${where2} args must list named, described arguments with supported schemas and boolean path flags; only the last may be variadic.`);
   ensure(command2.actions === void 0 || isRecord$1(command2.actions), "INVALID_PLUGIN", `${where2} actions must be an object.`);
   for (const [id2, action2] of Object.entries(command2.actions ?? {})) {
-    ensure(isRecord$1(action2) && text$l(action2.description) && (action2.usage === void 0 || text$l(action2.usage)), "INVALID_PLUGIN", `${where2} action ${id2} requires a description.`);
+    ensure(isRecord$1(action2) && text$k(action2.description) && (action2.usage === void 0 || text$k(action2.usage)), "INVALID_PLUGIN", `${where2} action ${id2} requires a description.`);
     ensure(action2.options === void 0 || isRecord$1(action2.options), "INVALID_PLUGIN", `${where2} action ${id2} options must be an object.`);
     validateOptions(action2.options ?? {}, options2);
     validateMode(action2, `${where2} action ${id2}`, { ...options2, ...action2.options });
@@ -2433,141 +2576,6 @@ function validateCommandMetadata(command2) {
   ensure(command2.generatorActions === void 0 || typeof command2.generatorActions === "boolean", "INVALID_PLUGIN", `${where2} generatorActions must be a boolean.`);
   ensure(command2.localizedOutput === void 0 || isRecord$1(command2.localizedOutput) && Object.values(command2.localizedOutput).every((kind2) => outputLocalizations.includes(kind2)), "INVALID_PLUGIN", `${where2} localizedOutput must map result fields to ${outputLocalizations.join(", ")}.`);
   ensure(command2.errors === void 0 || Array.isArray(command2.errors) && command2.errors.every((code2) => typeof code2 === "string" && /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code2)), "INVALID_PLUGIN", `${where2} errors must list UPPER_SNAKE_CASE codes.`);
-}
-const languages = ["en", "de"];
-const text$k = (value2) => typeof value2 === "string" && value2.trim().length > 0;
-const errorCode = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
-const errorPrefix = (pluginId) => `${pluginId.replaceAll("-", "_").toUpperCase()}_`;
-class PluginCatalog {
-  tables = /* @__PURE__ */ new Map();
-  codes = /* @__PURE__ */ new Map();
-  /** Error code prefixes of registered user plugins, by plugin id. */
-  prefixes = /* @__PURE__ */ new Map();
-  /** Validates one plugin's contributions; `prefix` restricts user plugin codes to `<ID>_…`. */
-  static validate(pluginId, strings2, errors2, owned, prefix) {
-    ensure(errors2 === void 0 || Array.isArray(errors2), "INVALID_PLUGIN", "errors must be an array.");
-    const codes = /* @__PURE__ */ new Set();
-    for (const entry2 of errors2 ?? []) {
-      ensure(isRecord$1(entry2) && typeof entry2.code === "string" && errorCode.test(entry2.code), "INVALID_PLUGIN", "Plugin error codes must be UPPER_SNAKE_CASE.");
-      ensure(prefix === null || entry2.code.startsWith(prefix), "PLUGIN_NAMESPACE", `Error code ${entry2.code} must start with ${prefix}.`);
-      ensure(!errorDefinition(entry2.code) && !codes.has(entry2.code), "DUPLICATE_OR_INVALID_ID", entry2.code);
-      ensure(Object.hasOwn(categoryExitCodes, String(entry2.category)) && text$k(entry2.summary) && text$k(entry2.hint), "INVALID_PLUGIN", `Error ${entry2.code} requires a known category, a summary and a hint.`);
-      ensure(entry2.retryable === void 0 || typeof entry2.retryable === "boolean", "INVALID_PLUGIN", `Error ${entry2.code} retryable must be a boolean.`);
-      codes.add(entry2.code);
-    }
-    ensure(strings2 === void 0 || isRecord$1(strings2), "INVALID_PLUGIN", "strings must map languages to string tables.");
-    for (const [language2, table] of Object.entries(strings2 ?? {})) {
-      ensure(languages.includes(language2) && isRecord$1(table), "INVALID_PLUGIN", `strings.${language2} is not a supported language table (en, de).`);
-      for (const [kind2, entries2] of Object.entries(table)) {
-        ensure(["commands", "actions", "generators", "events", "errors", "messages", "descriptions", "manifest"].includes(kind2) && isRecord$1(entries2), "INVALID_PLUGIN", `strings.${language2}.${kind2} is not a string table.`);
-        for (const [id2, entry2] of Object.entries(entries2)) {
-          const known2 = kind2 === "messages" || kind2 === "descriptions" || (kind2 === "manifest" ? ["name", "description"].includes(id2) : kind2 === "errors" ? codes.has(id2) : owned[kind2].includes(id2));
-          ensure(known2, "PLUGIN_NAMESPACE", `strings.${language2}.${kind2}.${id2} does not name a contribution of plugin ${pluginId}.`);
-          ensure(kind2 === "errors" ? isRecord$1(entry2) && text$k(entry2.summary) && text$k(entry2.hint) : text$k(entry2), "INVALID_PLUGIN", `strings.${language2}.${kind2}.${id2} must be ${kind2 === "errors" ? "a summary and hint" : "nonempty text"}.`);
-        }
-      }
-    }
-  }
-  /**
-   * Checks, before anything registers, that one plugin's codes are new and that user plugin codes stay owned: a
-   * code belongs to the registered user plugin with the longest matching prefix, so plugin `a` (`A_`) cannot
-   * register `A_B_X` while plugin `a-b` (`A_B_`) is registered, and `a-b` cannot register after `a` registered
-   * `A_B_X`. The later plugin fails with PLUGIN_NAMESPACE. `prefix` is null for core plugins.
-   */
-  ensureRegistrable(pluginId, errors2, prefix) {
-    for (const entry2 of errors2 ?? []) ensure(!this.codes.has(entry2.code), "DUPLICATE_OR_INVALID_ID", entry2.code);
-    if (prefix === null) return;
-    const prefixes = new Map([...this.prefixes, [pluginId, prefix]]);
-    const owned = [
-      ...[...this.codes.values()].filter((entry2) => this.prefixes.has(entry2.pluginId)).map((entry2) => [entry2.code, entry2.pluginId]),
-      ...(errors2 ?? []).map((entry2) => [entry2.code, pluginId])
-    ];
-    for (const [code2, owner] of owned) {
-      const [claimant, claimed] = [...prefixes].filter(([, candidate]) => code2.startsWith(candidate)).sort((a, b) => b[1].length - a[1].length)[0];
-      ensure(claimant === owner, "PLUGIN_NAMESPACE", `Error code ${code2} of plugin ${owner} falls in the namespace ${claimed} of plugin ${claimant}; plugin ${pluginId} cannot register.`);
-    }
-  }
-  /** Registers a plugin that passed `ensureRegistrable` with the same `prefix`. */
-  add(pluginId, strings2, errors2, prefix = null) {
-    this.ensureRegistrable(pluginId, errors2, prefix);
-    if (prefix !== null) this.prefixes.set(pluginId, prefix);
-    if (strings2) this.tables.set(pluginId, strings2);
-    for (const entry2 of errors2 ?? []) {
-      this.codes.set(entry2.code, { pluginId, code: entry2.code, exitCode: categoryExitCodes[entry2.category], category: entry2.category, summary: entry2.summary, hint: entry2.hint, retryable: entry2.retryable ?? false });
-    }
-  }
-  /** Contributed text for a command, generator or event id in `language`, if any. */
-  text(language2, kind2, id2) {
-    for (const table of this.tables.values()) {
-      const entries2 = table[language2]?.[kind2];
-      if (entries2 && Object.hasOwn(entries2, id2)) return entries2[id2];
-    }
-    return void 0;
-  }
-  /**
-   * The translation of an option, argument or settings description in `language`, by its English text. Plugins
-   * translate the texts they declare; a text several plugins declare reads the same in each.
-   */
-  description(language2, english) {
-    for (const table of this.tables.values()) {
-      const entries2 = table[language2]?.descriptions;
-      if (entries2 && Object.hasOwn(entries2, english)) return entries2[english];
-    }
-    return void 0;
-  }
-  /** A plugin's localized manifest fields, also for a bundled core plugin that `plugins.disabled` lists. */
-  manifest(pluginId, language2) {
-    return this.tables.get(pluginId)?.[language2]?.manifest;
-  }
-  /**
-   * Records the manifest strings of a bundled core plugin that `plugins.disabled` lists: it contributes nothing,
-   * but `plugins` still lists its name and description in the response language.
-   */
-  addDisabled(pluginId, strings2) {
-    const table = (language2) => {
-      const manifest = strings2[language2]?.manifest;
-      return manifest ? { manifest } : {};
-    };
-    this.tables.set(pluginId, { en: table("en"), de: table("de") });
-  }
-  /** A plugin message in `language`, falling back to English and then to the key itself. */
-  message(pluginId, language2, key) {
-    const table = this.tables.get(pluginId);
-    const pick2 = (tableLanguage) => {
-      const messages2 = table?.[tableLanguage]?.messages;
-      return messages2 && Object.hasOwn(messages2, key) ? messages2[key] : void 0;
-    };
-    return pick2(language2) ?? pick2("en") ?? key;
-  }
-  error(code2) {
-    return this.codes.get(code2);
-  }
-  localizedError(code2, language2) {
-    const entry2 = this.codes.get(code2);
-    const localized2 = entry2 ? this.tables.get(entry2.pluginId)?.[language2]?.errors?.[code2] : void 0;
-    return localized2 ?? (entry2 && language2 === "en" ? { summary: entry2.summary, hint: entry2.hint } : void 0);
-  }
-  errors() {
-    return [...this.codes.values()];
-  }
-  /**
-   * Plugin code cannot construct host errors, so it throws an `Error` with a `code` (and optional `details`). This
-   * turns a code that `pluginId` registered itself, or a built-in catalog code, into a coded failure with its
-   * category's exit status. A code of one of `providers`, the plugins providing services that `pluginId` declared,
-   * maps too, since their failures surface through their consumer's calls. Any other plugin's code stays an uncoded
-   * error: a plugin cannot borrow a code it does not own. Anything else is unchanged. An `interrupted` code thrown
-   * with `exitCode: 143` (SIGTERM) keeps it.
-   */
-  normalize(error2, pluginId, providers = []) {
-    if (error2 instanceof AppError || !(error2 instanceof Error) || !("code" in error2) || typeof error2.code !== "string") return error2;
-    const details = "details" in error2 && isRecord$1(error2.details) ? error2.details : void 0;
-    const builtIn = errorDefinition(error2.code);
-    if (builtIn) return codedError(error2.code, error2.message, builtIn.exitCode, details);
-    const entry2 = this.codes.get(error2.code);
-    if (!entry2 || entry2.pluginId !== pluginId && !providers.includes(entry2.pluginId)) return error2;
-    const exitCode = entry2.category === "interrupted" && "exitCode" in error2 && error2.exitCode === 143 ? 143 : entry2.exitCode;
-    return codedError(entry2.code, error2.message, exitCode, details);
-  }
 }
 const skillTargets = { claude: ".claude/skills", agents: ".agents/skills" };
 const skillTargetChoices = ["both", ...Object.keys(skillTargets)];
@@ -3093,15 +3101,16 @@ class Registry {
   }
   /**
    * Like `service`, but a missing service fails with PLUGIN_UNAVAILABLE for `command` (`project create`), with
-   * `details` `{command, plugin, service, reason, issues}`. The provider is the plugin the service id names.
+   * `details` `{command, plugin, service, reason, issues}`. The provider is the plugin the service id names; `reason`
+   * is a host message, which the response reports as `{code, message, details?}` in its language.
    */
   requireService(id2, command2) {
     const service = this.service(id2);
     if (service !== void 0) return service;
     const pluginId = id2.split(".")[0];
     const unavailable = this.unavailable.get(pluginId);
-    const reason = unavailable ? renderKernelMessage(unavailable.reason) : this.disabled.some((manifest) => manifest.id === pluginId) ? `Plugin ${pluginId} is disabled (plugins.disabled).` : `No enabled plugin provides service ${id2}.`;
-    throw forgeError("PLUGIN_UNAVAILABLE", `Command ${command2} is unavailable because it needs service ${id2} of plugin ${pluginId}: ${reason}`, { command: command2, plugin: pluginId, service: id2, reason, issues: unavailable?.issues ?? [] });
+    const reason = unavailable?.reason ?? kernelMessage(this.disabled.some((manifest) => manifest.id === pluginId) ? "PLUGIN_PROVIDER_DISABLED" : "PLUGIN_PROVIDER_MISSING", { service: id2, provider: pluginId });
+    throw forgeError("PLUGIN_UNAVAILABLE", `Command ${command2} is unavailable because it needs service ${id2} of plugin ${pluginId}: ${renderKernelMessage(reason)}`, { command: command2, plugin: pluginId, service: id2, reason, issues: unavailable?.issues ?? [] });
   }
   /** Marks every plugin unavailable whose required service has a disabled, missing or unavailable provider, transitively. */
   cascadeUnavailable() {
@@ -3135,7 +3144,7 @@ class Registry {
     const pluginId = plugin2.manifest.id;
     return {
       ...context,
-      events: pluginEvents(events2, pluginId),
+      events: pluginEvents(events2, pluginId, () => this.plugins.map((entry2) => entry2.manifest.id)),
       settings: this.settings.value(pluginId),
       services: pluginServices(plugin2, this.availableProviders()),
       t: (key) => this.catalog.message(pluginId, context.language, key)
@@ -3217,8 +3226,7 @@ class Registry {
     const unavailable = this.unavailable.get(plugin2.manifest.id);
     if (!unavailable) return;
     const label2 = "command" in contribution ? `Command ${contribution.command}` : `Generator ${contribution.generator}`;
-    const reason = renderKernelMessage(unavailable.reason);
-    throw forgeError("PLUGIN_UNAVAILABLE", `${label2} is unavailable because plugin ${plugin2.manifest.id} is unavailable: ${reason}`, { ...contribution, plugin: plugin2.manifest.id, reason, issues: unavailable.issues });
+    throw forgeError("PLUGIN_UNAVAILABLE", `${label2} is unavailable because plugin ${plugin2.manifest.id} is unavailable: ${renderKernelMessage(unavailable.reason)}`, { ...contribution, plugin: plugin2.manifest.id, reason: unavailable.reason, issues: unavailable.issues });
   }
   /** Plugin commands run with their plugin's context, so they can emit only their own events; coded errors resolve through the catalog. */
   ownedCommand(plugin2, command2, events2) {
@@ -10886,7 +10894,7 @@ function ensureDistinctTargets(sources) {
   }
 }
 const equalBytes = (left, right) => left.length === right.length && left.every((byte, index2) => byte === right[index2]);
-const decode$5 = (bytes) => new TextDecoder().decode(bytes);
+const decode$5 = (bytes2) => new TextDecoder().decode(bytes2);
 const byTarget = (left, right) => left.target < right.target ? -1 : left.target > right.target ? 1 : 0;
 class WorkflowSync {
   constructor(workspace2, projects2, renderer2) {
@@ -10933,11 +10941,11 @@ class WorkflowSync {
     ensureDistinctTargets(sources);
     const desired = new Set(sources.map((source2) => source2.target));
     const planned = await Promise.all(sources.map(async (source2) => {
-      const bytes = this.renderer.render((await this.workspace.files.read(source2.source)).bytes, source2);
+      const bytes2 = this.renderer.render((await this.workspace.files.read(source2.source)).bytes, source2);
       const current = await this.current(source2.target);
       ensure(current === void 0 || isGeneratedWorkflow(decode$5(current.bytes)), "CONFLICT", `${source2.target} exists but was not generated by workflows sync. Move or delete it, then run workflows sync.`, { path: source2.target });
-      const status2 = current === void 0 ? "missing" : equalBytes(current.bytes, bytes) ? "unchanged" : "changed";
-      return { project: source2.project, concern: source2.concern, source: source2.source, target: source2.target, status: status2, bytes, ...current ? { revision: current.revision } : {} };
+      const status2 = current === void 0 ? "missing" : equalBytes(current.bytes, bytes2) ? "unchanged" : "changed";
+      return { project: source2.project, concern: source2.concern, source: source2.source, target: source2.target, status: status2, bytes: bytes2, ...current ? { revision: current.revision } : {} };
     }));
     const prefix = `${generatedWorkflowDirectory}/`;
     const stale = await Promise.all(paths2.filter((path2) => path2.startsWith(prefix) && !path2.slice(prefix.length).includes("/") && !desired.has(path2)).map(async (path2) => {
@@ -11032,10 +11040,10 @@ class ScopedWorkflow {
   }
 }
 const yamlWorkflowRenderer = {
-  render(bytes, source2) {
+  render(bytes2, source2) {
     let text2;
     try {
-      text2 = decodeUtf8(bytes);
+      text2 = decodeUtf8(bytes2);
     } catch {
       ensure(false, "INVALID_WORKFLOW", `${source2.source}: the file is not valid UTF-8.`);
     }
@@ -11120,7 +11128,7 @@ class Transaction {
     const removes = await this.planRemoves(conflicts2);
     const [conflict2] = conflicts2, steps = renames.length + writes.length + removes.length;
     if (conflict2 !== void 0) {
-      const message2 = steps === 1 && removes.length === 1 ? `File changed; read again before removing: ${conflict2.path}` : conflictMessage(conflict2) + (conflicts2.length > 1 ? ` Conflicting paths: ${conflicts2.map((item) => item.path).join(", ")}.` : "");
+      const message2 = steps === 1 && removes.length === 1 && conflict2.reason === void 0 ? `File changed; read again before removing: ${conflict2.path}` : conflictMessage(conflict2) + (conflicts2.length > 1 ? ` Conflicting paths: ${conflicts2.map((item) => item.path).join(", ")}.` : "");
       throw forgeError("CONFLICT", message2, { ...conflict2, ...steps > 1 ? { conflicts: conflicts2 } : {} });
     }
     const pending = writes.filter((plan) => !plan.unchanged);
@@ -11221,7 +11229,7 @@ class Transaction {
       const special = entry2.kind === "folder" ? entry2.snapshot.special : [];
       ensure(special.length === 0, "PROTECTED_PATH", `Folder ${request.path} contains symlinks, node_modules or special files; Forge permanently removes only regular files and folders. Move it to the trash instead, or remove those entries first.`, { path: request.path, entries: special.slice(0, 20).map((item) => ({ path: `${request.path}/${item.path}`, kind: item.kind })) });
       const current = entryRevision(entry2);
-      ensure(request.expectedRevision.length > 0, "CONFLICT", `Removing a file requires its current --if-match revision: ${request.path}`, revisionConflict(request.path, null, current));
+      ensure(request.expectedRevision.length > 0, "CONFLICT", `Removing a file requires its current --if-match revision: ${request.path}`, revisionConflict(request.path, request.expectedRevision, current));
       if (current !== request.expectedRevision) conflicts2.push(revisionConflict(request.path, request.expectedRevision, current));
       plans.push({ request, target: await this.host.resolvePath(request.path, true), entry: entry2 });
     }
@@ -11484,7 +11492,7 @@ async function syncDirectory(path2, openDirectory = (directory) => promises.open
     await handle.close();
   }
 }
-const revisionOf = (bytes) => node_crypto.createHash("sha256").update(bytes).digest("hex");
+const revisionOf = (bytes2) => node_crypto.createHash("sha256").update(bytes2).digest("hex");
 const missing = (error2) => error2.code === "ENOENT";
 const unusablePath = /* @__PURE__ */ new Set(["ENAMETOOLONG", "ENOTDIR", "ELOOP"]);
 function pathFailure(error2, path2) {
@@ -11565,8 +11573,8 @@ class NodeFiles {
   }
   async read(path2) {
     try {
-      const bytes = await promises.readFile(await this.resolvePath(path2));
-      return { path: path2, bytes, revision: revisionOf(bytes) };
+      const bytes2 = await promises.readFile(await this.resolvePath(path2));
+      return { path: path2, bytes: bytes2, revision: revisionOf(bytes2) };
     } catch (error2) {
       if (missing(error2)) throw forgeError("NOT_FOUND", `File not found: ${path2}`, { path: path2 });
       throw pathFailure(error2, path2);
@@ -11590,8 +11598,8 @@ class NodeFiles {
     const target2 = await this.resolvePath(path2);
     try {
       const mode = (await promises.lstat(target2)).mode & 4095;
-      const bytes = await promises.readFile(target2);
-      return { bytes, mode, revision: revisionOf(bytes) };
+      const bytes2 = await promises.readFile(target2);
+      return { bytes: bytes2, mode, revision: revisionOf(bytes2) };
     } catch (error2) {
       if (!missing(error2)) throw pathFailure(error2, path2);
       return void 0;
@@ -11685,8 +11693,8 @@ class NodeFiles {
           folders2.push(relative);
           await walk2(absolute, relative + "/");
         } else if (entry2.isFile()) {
-          const bytes = await promises.readFile(absolute);
-          files2.push({ path: relative, revision: revisionOf(bytes), bytes: bytes.length });
+          const bytes2 = await promises.readFile(absolute);
+          files2.push({ path: relative, revision: revisionOf(bytes2), bytes: bytes2.length });
         } else special.push({ path: relative, kind: "other" });
       }
     };
@@ -11711,8 +11719,8 @@ class NodeFiles {
     return { revision: digest.digest("hex"), files: files2, folders: folders2, special, git, locks: locks.sort(order2) };
   }
   /** @internal */
-  revision(bytes) {
-    return revisionOf(bytes);
+  revision(bytes2) {
+    return revisionOf(bytes2);
   }
   /** @internal */
   warn(message2) {
@@ -11761,12 +11769,12 @@ class NodeFiles {
     if (failures.length) throw failures[0];
   }
   /** Write a temporary file for `target`, in its folder unless `directory` is given, whose data is durable before any rename publishes it. */
-  async stage(target2, bytes, mode, directory = path$3.dirname(target2)) {
+  async stage(target2, bytes2, mode, directory = path$3.dirname(target2)) {
     const temp = path$3.join(directory, `${temporaryPrefix}${node_crypto.randomUUID()}`);
     const handle = await promises.open(temp, "wx", mode ?? 438);
     try {
       try {
-        await handle.writeFile(bytes);
+        await handle.writeFile(bytes2);
         if (mode !== void 0) await handle.chmod(mode);
         await handle.sync();
       } finally {
@@ -11781,8 +11789,8 @@ class NodeFiles {
   }
   /** Publish `staged` (or freshly staged bytes) over the target; the caller fsyncs the directory entry. */
   /** @internal */
-  async replace(target2, bytes, mode, verify, staged) {
-    const temp = staged ?? await this.stage(target2, bytes, mode);
+  async replace(target2, bytes2, mode, verify, staged) {
+    const temp = staged ?? await this.stage(target2, bytes2, mode);
     let renamed = false;
     try {
       await verify?.();
@@ -12014,15 +12022,15 @@ function jsonValueIssue(value2, ancestors = /* @__PURE__ */ new Set(), depth2 = 
   return void 0;
 }
 const encode$3 = (text2) => new TextEncoder().encode(text2);
-function textOf$1(bytes) {
+function textOf$1(bytes2) {
   try {
-    return decodeUtf8(bytes, "keep");
+    return decodeUtf8(bytes2, "keep");
   } catch {
     throw forgeError("INVALID_ENCODING", "Structured documents and text files must be valid UTF-8.");
   }
 }
-function textFileOf(path2, bytes) {
-  const text2 = textOf$1(bytes);
+function textFileOf(path2, bytes2) {
+  const text2 = textOf$1(bytes2);
   ensure(isTextContent(path2, text2), "INVALID_ENCODING", "Text files must be UTF-8 without NUL characters; UTF-16 and other binary content stay attachments.");
   return text2;
 }
@@ -12111,19 +12119,19 @@ class ObsidianDocuments {
   markdownParts(text2) {
     return parseMarkdownParts(text2);
   }
-  inspect(path2, bytes, options2 = {}) {
+  inspect(path2, bytes2, options2 = {}) {
     const kind2 = fileKind(path2);
-    const attachment = () => ({ kind: "attachment", encoding: "base64", content: Buffer.from(bytes).toString("base64") });
+    const attachment = () => ({ kind: "attachment", encoding: "base64", content: Buffer.from(bytes2).toString("base64") });
     if (kind2 === "text") {
       try {
-        return { kind: kind2, content: textFileOf(path2, bytes) };
+        return { kind: kind2, content: textFileOf(path2, bytes2) };
       } catch {
         return attachment();
       }
     }
-    if (!["markdown", "canvas", "base"].includes(kind2)) return { kind: kind2, encoding: "base64", content: Buffer.from(bytes).toString("base64") };
-    if (options2.tolerant === true) return this.tolerantInspect(path2, bytes, attachment);
-    const text2 = textOf$1(bytes);
+    if (!["markdown", "canvas", "base"].includes(kind2)) return { kind: kind2, encoding: "base64", content: Buffer.from(bytes2).toString("base64") };
+    if (options2.tolerant === true) return this.tolerantInspect(path2, bytes2, attachment);
+    const text2 = textOf$1(bytes2);
     if (kind2 === "markdown") {
       const parts = parseMarkdownParts(text2), properties2 = yamlValue(yamlDocument(parts.yaml));
       ensure(properties2 === null || isRecord$1(properties2), "INVALID_FRONTMATTER", "Frontmatter must be a mapping.");
@@ -12147,16 +12155,16 @@ class ObsidianDocuments {
    * a note whose frontmatter does not parse returns its content with `properties: null` and the `issue` that a
    * strict inspection reports. Canvas and Base structure failures stay errors.
    */
-  tolerantInspect(path2, bytes, attachment) {
+  tolerantInspect(path2, bytes2, attachment) {
     let text2;
     try {
-      text2 = textOf$1(bytes);
+      text2 = textOf$1(bytes2);
     } catch {
       return attachment();
     }
-    if (fileKind(path2) !== "markdown") return this.inspect(path2, bytes);
+    if (fileKind(path2) !== "markdown") return this.inspect(path2, bytes2);
     try {
-      return this.inspect(path2, bytes);
+      return this.inspect(path2, bytes2);
     } catch (error2) {
       if (!(error2 instanceof AppError) || !["INVALID_YAML", "INVALID_FRONTMATTER"].includes(error2.code)) throw error2;
       let body;
@@ -12167,16 +12175,16 @@ class ObsidianDocuments {
       return { kind: "markdown", content: text2, properties: null, ...body === void 0 ? {} : { body }, issue: { code: error2.code, message: error2.message } };
     }
   }
-  validate(path2, bytes) {
-    if (fileKind(path2) === "text") textFileOf(path2, bytes);
-    else this.inspect(path2, bytes);
+  validate(path2, bytes2) {
+    if (fileKind(path2) === "text") textFileOf(path2, bytes2);
+    else this.inspect(path2, bytes2);
   }
   /**
    * Rewrites only the touched top-level entries of block-style frontmatter (see `editTopLevelEntries`); other YAML,
    * or a minimal edit whose result would not parse to the expected properties, is serialized as a whole in block style.
    */
-  properties(bytes, changes2, remove2 = []) {
-    const parts = parseMarkdownParts(textOf$1(bytes));
+  properties(bytes2, changes2, remove2 = []) {
+    const parts = parseMarkdownParts(textOf$1(bytes2));
     const doc = yamlDocument(parts.yaml);
     yamlValue(doc);
     jsonValue$2(changes2, "INVALID_FRONTMATTER");
@@ -12202,10 +12210,10 @@ class ObsidianDocuments {
       return void 0;
     }
   }
-  patch(path2, bytes, pointer2, value2) {
+  patch(path2, bytes2, pointer2, value2) {
     const kind2 = fileKind(path2);
     ensure(kind2 === "canvas" || kind2 === "base", "UNSUPPORTED_EDIT", "Pointer edits support Canvas and Bases.");
-    const parsed2 = this.inspect(path2, bytes);
+    const parsed2 = this.inspect(path2, bytes2);
     jsonValue$2(value2, kind2 === "canvas" ? "INVALID_CANVAS" : "INVALID_BASE");
     ensure(pointer2.startsWith("/") && !/~(?![01])/g.test(pointer2), "INVALID_POINTER", "Use a JSON Pointer such as /views/0/name.");
     const keys = pointer2.slice(1).split("/").map((k) => k.replace(/~1/g, "/").replace(/~0/g, "~"));
@@ -12224,9 +12232,9 @@ class ObsidianDocuments {
     } else parent2[key] = value2;
     let result;
     if (kind2 === "base") {
-      const doc = yamlDocument(textOf$1(bytes));
+      const doc = yamlDocument(textOf$1(bytes2));
       const pathKeys = [];
-      let cursor = this.inspect(path2, bytes).data;
+      let cursor = this.inspect(path2, bytes2).data;
       for (const segment2 of keys) {
         ensure(!distExports.isAlias(doc.getIn(pathKeys, true)), "INVALID_POINTER", "Cannot edit through a YAML alias; replace the alias value or edit its anchor.");
         const part = Array.isArray(cursor) ? segment2 === "-" ? cursor.length : Number(segment2) : segment2;
@@ -12234,8 +12242,8 @@ class ObsidianDocuments {
         cursor = cursor && typeof cursor === "object" ? cursor[String(part)] : void 0;
       }
       doc.setIn(pathKeys, value2);
-      result = styledText(doc.toString({ lineWidth: 0 }), textOf$1(bytes));
-    } else result = styledText(JSON.stringify(parsed2.data, null, 2) + "\n", textOf$1(bytes));
+      result = styledText(doc.toString({ lineWidth: 0 }), textOf$1(bytes2));
+    } else result = styledText(JSON.stringify(parsed2.data, null, 2) + "\n", textOf$1(bytes2));
     this.validate(path2, result);
     return result;
   }
@@ -19068,10 +19076,10 @@ function basesCommand(service) {
   };
 }
 async function validateBaseFile(files2, codec, definitionIssues, path2) {
-  const { bytes } = await files2.read(path2);
+  const { bytes: bytes2 } = await files2.read(path2);
   let base2;
   try {
-    base2 = codec.inspect(path2, bytes).data;
+    base2 = codec.inspect(path2, bytes2).data;
   } catch (error2) {
     return [{ code: failureCode(error2) ?? "INVALID_BASE", message: errorMessage(error2) }];
   }
@@ -19574,25 +19582,25 @@ function noteFilters(tag, property) {
   return { ...tag === void 0 ? {} : { tag }, ...filter === void 0 ? {} : { property: filter } };
 }
 const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-function base64url$1(bytes) {
+function base64url$1(bytes2) {
   let text2 = "";
-  for (let index2 = 0; index2 < bytes.length; index2 += 3) {
-    const chunk = bytes[index2] << 16 | (bytes[index2 + 1] ?? 0) << 8 | (bytes[index2 + 2] ?? 0);
-    const length = Math.min(3, bytes.length - index2) + 1;
+  for (let index2 = 0; index2 < bytes2.length; index2 += 3) {
+    const chunk = bytes2[index2] << 16 | (bytes2[index2 + 1] ?? 0) << 8 | (bytes2[index2 + 2] ?? 0);
+    const length = Math.min(3, bytes2.length - index2) + 1;
     for (let position2 = 0; position2 < length; position2++) text2 += alphabet[chunk >> 18 - position2 * 6 & 63];
   }
   return text2;
 }
 function fromBase64url(text2) {
   if (!/^[A-Za-z0-9_-]*$/.test(text2) || text2.length % 4 === 1) return void 0;
-  const bytes = [];
+  const bytes2 = [];
   for (let index2 = 0; index2 < text2.length; index2 += 4) {
     const group = text2.slice(index2, index2 + 4);
     let chunk = 0;
     for (let position2 = 0; position2 < 4; position2++) chunk = chunk << 6 | (position2 < group.length ? alphabet.indexOf(group[position2]) : 0);
-    for (let position2 = 0; position2 < group.length - 1; position2++) bytes.push(chunk >> 16 - position2 * 8 & 255);
+    for (let position2 = 0; position2 < group.length - 1; position2++) bytes2.push(chunk >> 16 - position2 * 8 & 255);
   }
-  return Uint8Array.from(bytes);
+  return Uint8Array.from(bytes2);
 }
 function fingerprint(query) {
   let hash = 2166136261;
@@ -19706,10 +19714,10 @@ function clipAround(text2, start2, end2, radius = snippetRadius) {
 }
 const clipLine = (text2) => text2.length <= maxLineText ? text2 : `${text2.slice(0, maxLineText)}…`;
 const batchSize = 32;
-function decode$4({ path: path2, bytes }) {
+function decode$4({ path: path2, bytes: bytes2 }) {
   let text2;
   try {
-    text2 = decodeUtf8(bytes);
+    text2 = decodeUtf8(bytes2);
   } catch {
     return void 0;
   }
@@ -34850,9 +34858,9 @@ function ensureTemplate(condition, code2, message2, details) {
 dayjs.extend(utc);
 dayjs.extend(advancedFormat);
 dayjs.extend(localizedFormat);
-function textOf(bytes) {
+function textOf(bytes2) {
   try {
-    return decodeUtf8(bytes, "keep");
+    return decodeUtf8(bytes2, "keep");
   } catch {
     throw forgeError("INVALID_ENCODING", "Templates must be valid UTF-8.");
   }
@@ -34962,8 +34970,8 @@ class MarkdownTemplates {
     this.parts = parts;
   }
   parts;
-  inspect(bytes) {
-    const parts = this.parts(textOf(bytes));
+  inspect(bytes2) {
+    const parts = this.parts(textOf(bytes2));
     const tokens = [...placeholders$1(parts.yaml), ...placeholders$1(parts.body)];
     if (parts.exists) renderYaml(parts.yaml, (token) => `{{${token.expression}}}`);
     const builtin = (token) => ["title", "date", "time"].includes(token.key);
@@ -34973,7 +34981,7 @@ class MarkdownTemplates {
       builtins: [...new Set(tokens.filter(builtin).map((token) => token.expression))].sort()
     };
   }
-  render(bytes, options2) {
+  render(bytes2, options2) {
     ensureTemplate(typeof options2.title === "string" && options2.title.trim().length > 0, "INVALID_TEMPLATE_VALUES", "A nonempty template title is required.");
     const values2 = options2.values ?? {};
     ensureTemplate(isRecord$1(values2), "INVALID_TEMPLATE_VALUES", "Template values must be a JSON object.");
@@ -34994,7 +35002,7 @@ class MarkdownTemplates {
       ensureTemplate(Object.hasOwn(values2, token.key), "UNKNOWN_TEMPLATE_VARIABLE", `Missing template value: ${token.key}.`);
       return values2[token.key];
     };
-    const parts = this.parts(textOf(bytes));
+    const parts = this.parts(textOf(bytes2));
     const body = replaceTokens(parts.body, placeholders$1(parts.body), (token) => asText(resolve2(token)));
     const frontmatter = parts.exists ? `---${parts.newline}${renderYaml(parts.yaml, resolve2).replace(/\r?\n/g, parts.newline)}---${parts.newline}` : "";
     return new TextEncoder().encode(parts.prefix + frontmatter + body);
@@ -35126,10 +35134,10 @@ function documentGenerator(templates2) {
       const data = from === void 0 ? parseJson(inline2 ?? "{}") : parseJson(decodeUtf8((await context.workspace.files.read(from)).bytes));
       ensure(isRecord$1(data), "INVALID_INPUT", "Template values must be a JSON object.");
       const settings2 = context.settings ?? {};
-      const bytes = templates2(context).render(source2.bytes, { title: title2, values: data, date: value$2(flags, "date"), dateFormat: settings2.dateFormat, timeFormat: settings2.timeFormat });
+      const bytes2 = templates2(context).render(source2.bytes, { title: title2, values: data, date: value$2(flags, "date"), dateFormat: settings2.dateFormat, timeFormat: settings2.timeFormat });
       const path2 = `${value$2(flags, "out") ?? "notes"}/${title2}.md`;
-      const result = await context.workspace.write([{ path: path2, bytes }]);
-      return { generator: "document", template: source2.path, ...result, ...context.workspace.dryRun ? { preview: [{ path: path2, content: new TextDecoder().decode(bytes) }] } : {} };
+      const result = await context.workspace.write([{ path: path2, bytes: bytes2 }]);
+      return { generator: "document", template: source2.path, ...result, ...context.workspace.dryRun ? { preview: [{ path: path2, content: new TextDecoder().decode(bytes2) }] } : {} };
     }
   };
 }
@@ -35917,9 +35925,9 @@ class UiLibrary {
 
 Describe this component.
 `, props: {}, root: { tag, ...!voidElement ? { children: [{ slot: "children" }] } : {} } };
-    const bytes = this.codec.serialize(definition2);
-    await this.validateDefinitions([...await this.discover(directory), this.codec.parse(bytes, definition2.sourcePath)], interactionDirectory);
-    return { component: id2, ...await this.commit([{ path: definition2.sourcePath, bytes }]) };
+    const bytes2 = this.codec.serialize(definition2);
+    await this.validateDefinitions([...await this.discover(directory), this.codec.parse(bytes2, definition2.sourcePath)], interactionDirectory);
+    return { component: id2, ...await this.commit([{ path: definition2.sourcePath, bytes: bytes2 }]) };
   }
   async init(directory, interactionDirectory) {
     vaultPath(directory);
@@ -35936,7 +35944,7 @@ Describe this component.
     const sources = await this.sources(sourceDirectory), imported = sources.map((source2) => source2.definition), existing = await this.discover(directory);
     ensureUi(imported.length, "EMPTY_UI_LIBRARY", `No component definitions in ${sourceDirectory}.`);
     await this.validateDefinitions([...existing, ...imported], interactionDirectory);
-    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${directory}/${definition2.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
+    const plan = sources.map(({ definition: definition2, bytes: bytes2 }) => ({ path: `${directory}/${definition2.sourcePath.slice(sourceDirectory.length + 1)}`, bytes: bytes2 }));
     return { components: imported.map((definition2) => definition2.id), ...await this.commit(plan) };
   }
   async export(directory, outputDirectory, interactionDirectory) {
@@ -35947,7 +35955,7 @@ Describe this component.
     const interactions = await this.interactions(interactionDirectory);
     validateUiLibrary(definitions2, interactions);
     validateUiLibrary([...await this.discover(outputDirectory), ...definitions2], interactions);
-    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${outputDirectory}/${definition2.sourcePath.slice(directory.length + 1)}`, bytes }));
+    const plan = sources.map(({ definition: definition2, bytes: bytes2 }) => ({ path: `${outputDirectory}/${definition2.sourcePath.slice(directory.length + 1)}`, bytes: bytes2 }));
     return { components: definitions2.map((definition2) => definition2.id), ...await this.commit(plan) };
   }
   async generate(directory, options2) {
@@ -36003,8 +36011,8 @@ Describe this component.
     vaultPath(directory);
     const paths2 = (await this.workspace.files.list()).filter((path2) => path2.startsWith(`${directory}/`) && /\.md$/i.test(path2)).sort();
     return Promise.all(paths2.map(async (path2) => {
-      const { bytes, revision: revision2 } = await this.workspace.files.read(path2);
-      return { bytes, revision: revision2, definition: this.codec.parse(bytes, path2) };
+      const { bytes: bytes2, revision: revision2 } = await this.workspace.files.read(path2);
+      return { bytes: bytes2, revision: revision2, definition: this.codec.parse(bytes2, path2) };
     }));
   }
   async commit(plan) {
@@ -36080,9 +36088,9 @@ class InteractionLibrary {
   }
   async create(directory, id2, event) {
     vaultPath(directory);
-    const definition2 = starterInteraction(directory, id2, event), bytes = this.codec.serialize(definition2);
-    validateInteractionLibrary([...await this.list(directory), this.codec.parse(bytes, definition2.sourcePath)]);
-    return { interaction: id2, ...await this.commit([{ path: definition2.sourcePath, bytes }]) };
+    const definition2 = starterInteraction(directory, id2, event), bytes2 = this.codec.serialize(definition2);
+    validateInteractionLibrary([...await this.list(directory), this.codec.parse(bytes2, definition2.sourcePath)]);
+    return { interaction: id2, ...await this.commit([{ path: definition2.sourcePath, bytes: bytes2 }]) };
   }
   async init(directory) {
     vaultPath(directory);
@@ -36096,22 +36104,22 @@ class InteractionLibrary {
     const sources = await this.sources(sourceDirectory);
     ensureUi(sources.length, "EMPTY_INTERACTION_LIBRARY", `No interaction definitions in ${sourceDirectory}.`);
     validateInteractionLibrary([...await this.list(directory), ...sources.map((source2) => source2.definition)]);
-    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${directory}/${definition2.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
+    const plan = sources.map(({ definition: definition2, bytes: bytes2 }) => ({ path: `${directory}/${definition2.sourcePath.slice(sourceDirectory.length + 1)}`, bytes: bytes2 }));
     return { interactions: sources.map((source2) => source2.definition.id), ...await this.commit(plan) };
   }
   async export(directory, outputDirectory) {
     ensureSeparateDirectories(directory, outputDirectory);
     const sources = await this.sources(directory), definitions2 = sources.map((source2) => source2.definition);
     validateInteractionLibrary([...await this.list(outputDirectory), ...definitions2]);
-    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${outputDirectory}/${definition2.sourcePath.slice(directory.length + 1)}`, bytes }));
+    const plan = sources.map(({ definition: definition2, bytes: bytes2 }) => ({ path: `${outputDirectory}/${definition2.sourcePath.slice(directory.length + 1)}`, bytes: bytes2 }));
     return { interactions: definitions2.map((definition2) => definition2.id), ...await this.commit(plan) };
   }
   async sources(directory) {
     vaultPath(directory);
     const paths2 = (await this.workspace.files.list()).filter((path2) => path2.startsWith(`${directory}/`) && /\.md$/i.test(path2)).sort();
     return Promise.all(paths2.map(async (path2) => {
-      const { bytes, revision: revision2 } = await this.workspace.files.read(path2);
-      return { bytes, revision: revision2, definition: this.codec.parse(bytes, path2) };
+      const { bytes: bytes2, revision: revision2 } = await this.workspace.files.read(path2);
+      return { bytes: bytes2, revision: revision2, definition: this.codec.parse(bytes2, path2) };
     }));
   }
   async commit(plan) {
@@ -42125,10 +42133,10 @@ class MarkdownUiDefinitions {
     this.documents = documents;
   }
   documents;
-  parse(bytes, path2) {
+  parse(bytes2, path2) {
     vaultPath(path2);
     try {
-      const document2 = this.documents.inspect("definition.md", bytes);
+      const document2 = this.documents.inspect("definition.md", bytes2);
       const result = schema$2.safeParse(document2.properties);
       ensureUi(result.success, "INVALID_UI", `${path2}: ${result.success ? "" : result.error.issues.map((issue2) => `${issue2.path.join(".")}: ${issue2.message}`).join("; ")}`);
       const extension2 = result.data.storybook?.extension;
@@ -42144,11 +42152,11 @@ class MarkdownUiDefinitions {
   }
   serialize(definition2) {
     const { description: description2, sourcePath, ...frontmatter } = definition2;
-    const bytes = new TextEncoder().encode(`---
+    const bytes2 = new TextEncoder().encode(`---
 ${distExports.stringify(frontmatter)}---
 ${description2}`);
-    this.parse(bytes, sourcePath || `${definition2.id}.md`);
-    return bytes;
+    this.parse(bytes2, sourcePath || `${definition2.id}.md`);
+    return bytes2;
   }
 }
 const slot = { slot: "children" };
@@ -43008,10 +43016,10 @@ class MarkdownInteractionDefinitions {
     this.documents = documents;
   }
   documents;
-  parse(bytes, path2) {
+  parse(bytes2, path2) {
     vaultPath(path2);
     try {
-      const document2 = this.documents.inspect("interaction.md", bytes);
+      const document2 = this.documents.inspect("interaction.md", bytes2);
       const result = schema$1.safeParse(document2.properties);
       ensureUi(result.success, "INVALID_INTERACTION", `${path2}: ${result.success ? "" : result.error.issues.map((issue2) => `${issue2.path.join(".")}: ${issue2.message}`).join("; ")}`);
       return { ...result.data, description: document2.body, sourcePath: path2 };
@@ -43022,11 +43030,11 @@ class MarkdownInteractionDefinitions {
   }
   serialize(definition2) {
     const { sourcePath, description: description2, ...frontmatter } = definition2;
-    const bytes = new TextEncoder().encode(`---
+    const bytes2 = new TextEncoder().encode(`---
 ${distExports.stringify(frontmatter)}---
 ${description2}`);
-    this.parse(bytes, sourcePath || `${definition2.id}.md`);
-    return bytes;
+    this.parse(bytes2, sourcePath || `${definition2.id}.md`);
+    return bytes2;
   }
 }
 const createOnly = { destructive: false, idempotent: true, output: changesOutput() };
@@ -43408,9 +43416,9 @@ class DataSourceLibrary {
   }
   async create(directory, id2, kind2 = "rest") {
     vaultPath(directory);
-    const definition2 = starter(directory, id2, kind2), bytes = this.codec.serialize(definition2);
-    validateLibrary([...await this.list(directory), this.codec.parse(bytes, definition2.sourcePath)]);
-    return { source: id2, ...await this.commit([{ path: definition2.sourcePath, bytes }]) };
+    const definition2 = starter(directory, id2, kind2), bytes2 = this.codec.serialize(definition2);
+    validateLibrary([...await this.list(directory), this.codec.parse(bytes2, definition2.sourcePath)]);
+    return { source: id2, ...await this.commit([{ path: definition2.sourcePath, bytes: bytes2 }]) };
   }
   async init(directory) {
     vaultPath(directory);
@@ -43424,14 +43432,14 @@ class DataSourceLibrary {
     const sources = await this.sources(sourceDirectory);
     ensureDataSource(sources.length, "EMPTY_DATA_SOURCE_LIBRARY", `No data-source definitions in ${sourceDirectory}.`);
     validateLibrary([...await this.list(directory), ...sources.map((source2) => source2.definition)]);
-    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${directory}/${definition2.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
+    const plan = sources.map(({ definition: definition2, bytes: bytes2 }) => ({ path: `${directory}/${definition2.sourcePath.slice(sourceDirectory.length + 1)}`, bytes: bytes2 }));
     return { sources: sources.map((source2) => source2.definition.id), ...await this.commit(plan) };
   }
   async export(directory, outputDirectory) {
     ensureSeparateDirectories(directory, outputDirectory);
     const sources = await this.sources(directory), definitions2 = sources.map((source2) => source2.definition);
     validateLibrary([...await this.list(outputDirectory), ...definitions2]);
-    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${outputDirectory}/${definition2.sourcePath.slice(directory.length + 1)}`, bytes }));
+    const plan = sources.map(({ definition: definition2, bytes: bytes2 }) => ({ path: `${outputDirectory}/${definition2.sourcePath.slice(directory.length + 1)}`, bytes: bytes2 }));
     return { sources: definitions2.map((definition2) => definition2.id), ...await this.commit(plan) };
   }
   async generate(directory, options2) {
@@ -43462,8 +43470,8 @@ class DataSourceLibrary {
     vaultPath(directory);
     const paths2 = (await this.workspace.files.list()).filter((path2) => path2.startsWith(`${directory}/`) && /\.md$/i.test(path2)).sort();
     return Promise.all(paths2.map(async (path2) => {
-      const { bytes, revision: revision2 } = await this.workspace.files.read(path2);
-      return { bytes, revision: revision2, definition: this.codec.parse(bytes, path2) };
+      const { bytes: bytes2, revision: revision2 } = await this.workspace.files.read(path2);
+      return { bytes: bytes2, revision: revision2, definition: this.codec.parse(bytes2, path2) };
     }));
   }
   async commit(plan) {
@@ -43579,10 +43587,10 @@ class MarkdownDataSourceDefinitions {
     this.documents = documents;
   }
   documents;
-  parse(bytes, path2) {
+  parse(bytes2, path2) {
     vaultPath(path2);
     try {
-      const document2 = this.documents.inspect("definition.md", bytes);
+      const document2 = this.documents.inspect("definition.md", bytes2);
       const result = schema.safeParse(document2.properties);
       ensureDataSource(result.success, "INVALID_DATA_SOURCE", `${path2}: ${result.success ? "" : result.error.issues.map((issue2) => `${issue2.path.join(".")}: ${issue2.message}`).join("; ")}`);
       if (result.data.json) {
@@ -43597,11 +43605,11 @@ class MarkdownDataSourceDefinitions {
   }
   serialize(definition2) {
     const { description: description2, sourcePath, ...frontmatter } = definition2;
-    const bytes = new TextEncoder().encode(`---
+    const bytes2 = new TextEncoder().encode(`---
 ${distExports.stringify(frontmatter)}---
 ${description2}`);
-    this.parse(bytes, sourcePath || `${definition2.id}.md`);
-    return bytes;
+    this.parse(bytes2, sourcePath || `${definition2.id}.md`);
+    return bytes2;
   }
 }
 const compare = (left, right) => left < right ? -1 : left > right ? 1 : 0;
@@ -44305,9 +44313,9 @@ class NodeClaudeRuntime {
     });
   }
 }
-function text$b(bytes) {
+function text$b(bytes2) {
   try {
-    return decodeUtf8(bytes, "keep");
+    return decodeUtf8(bytes2, "keep");
   } catch {
     throw forgeError("INVALID_ENCODING", "Agent definitions must be valid UTF-8.");
   }
@@ -44855,17 +44863,17 @@ function validateClaudePlugin(value2) {
   }
 }
 const manifestPath = ".claude-plugin/plugin.json";
-function decode$2(bytes) {
+function decode$2(bytes2) {
   try {
-    return decodeUtf8(bytes, "keep");
+    return decodeUtf8(bytes2, "keep");
   } catch {
     throw forgeError("INVALID_ENCODING", "Claude plugin text assets must be valid UTF-8.");
   }
 }
-function json$2(bytes, path2) {
+function json$2(bytes2, path2) {
   let value2;
   try {
-    value2 = JSON.parse(decode$2(bytes));
+    value2 = JSON.parse(decode$2(bytes2));
   } catch (error2) {
     throw claudeError("INVALID_CLAUDE_PLUGIN", `${path2}: ${errorMessage(error2)}`);
   }
@@ -44938,10 +44946,10 @@ class ClaudePluginService {
       return result;
     }
   }
-  async writeAsset(directory, path2, bytes, revision2) {
+  async writeAsset(directory, path2, bytes2, revision2) {
     const target2 = this.path(directory, path2);
     if (revision2 !== void 0) this.requireRevision(revision2);
-    const snapshot = Uint8Array.from(bytes);
+    const snapshot = Uint8Array.from(bytes2);
     if (path2 === manifestPath) validateClaudePlugin(json$2(snapshot, path2));
     else {
       const { manifest } = await this.inspect(directory);
@@ -45000,10 +45008,10 @@ class ClaudePluginService {
     const result = await this.workspace.write([{ path: path2, bytes: new TextEncoder().encode(content2), expectedRevision: revision2 }]);
     return { directory, manifest, ...result, ...this.workspace.dryRun ? { preview: [{ path: path2, content: content2 }] } : {} };
   }
-  validateAsset(path2, bytes, references2) {
+  validateAsset(path2, bytes2, references2) {
     const warnings = [];
     if (path2 === manifestPath) {
-      validateClaudePlugin(json$2(bytes, path2));
+      validateClaudePlugin(json$2(bytes2, path2));
       return warnings;
     }
     const kinds = new Set(references2.filter((reference) => reference.path === path2).map((reference) => reference.kind));
@@ -45013,24 +45021,24 @@ class ClaudePluginService {
     if (path2 === ".lsp.json") kinds.add("lsp");
     if (path2 === "settings.json") kinds.add("settings");
     if (kinds.has("agent")) {
-      const { metadata: metadata2 } = this.agentCodec.parse(decode$2(bytes));
+      const { metadata: metadata2 } = this.agentCodec.parse(decode$2(bytes2));
       for (const key of claudePluginCapabilities.ignoredPluginAgentFields) {
         if (Object.hasOwn(metadata2, key)) warnings.push(fill(claudeMessages.ignoredAgentField, { key }));
       }
     }
     if (kinds.has("hooks")) {
-      const config2 = json$2(bytes, path2);
+      const config2 = json$2(bytes2, path2);
       ensureClaude(config2.hooks !== void 0 || config2.modules !== void 0, "INVALID_CLAUDE_PLUGIN", `${path2}: hook files require a hooks wrapper, or modules for a Claude mod.`);
       if (config2.hooks !== void 0) validateClaudeHooks(config2.hooks);
       if (config2.modules !== void 0) ensureClaude(Array.isArray(config2.modules) && config2.modules.every((entry2) => typeof entry2 === "string"), "INVALID_CLAUDE_PLUGIN", `${path2}: modules must be an array of module paths.`);
     }
     if (kinds.has("mcp") && !/\.(mcpb|dxt)$/.test(path2)) {
-      const config2 = json$2(bytes, path2);
+      const config2 = json$2(bytes2, path2);
       validateClaudePlugin({ name: "asset-validation", mcpServers: config2.mcpServers ?? config2 });
     }
-    if (kinds.has("lsp")) validateClaudePlugin({ name: "asset-validation", lspServers: json$2(bytes, path2) });
-    if (kinds.has("settings")) validateClaudePlugin({ name: "asset-validation", settings: json$2(bytes, path2) });
-    this.workspace.codec.validate(path2, bytes);
+    if (kinds.has("lsp")) validateClaudePlugin({ name: "asset-validation", lspServers: json$2(bytes2, path2) });
+    if (kinds.has("settings")) validateClaudePlugin({ name: "asset-validation", settings: json$2(bytes2, path2) });
+    this.workspace.codec.validate(path2, bytes2);
     return warnings;
   }
 }
@@ -46549,8 +46557,8 @@ const readWebviewAssets = async (root, relative) => {
       const handle = await promises.open(target2, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0) | (fs.constants.O_NONBLOCK ?? 0));
       try {
         ensureWebview((await handle.stat()).isFile(), "WEBVIEW_INVALID", `Build asset is not a regular file: ${path2}`);
-        const bytes = await handle.readFile();
-        files2.push({ path: path2, bytes, revision: node_crypto.createHash("sha256").update(bytes).digest("hex") });
+        const bytes2 = await handle.readFile();
+        files2.push({ path: path2, bytes: bytes2, revision: node_crypto.createHash("sha256").update(bytes2).digest("hex") });
       } finally {
         await handle.close();
       }
@@ -46809,8 +46817,8 @@ function createBrowserRuntime(distributionPath) {
   }
   async function capture(page, fullPage, timeout2, mask = []) {
     const url2 = publicUrl(page.url());
-    const bytes = await page.screenshot({ type: "png", fullPage, animations: "disabled", timeout: timeout2, ...mask.length > 0 ? { mask } : {} });
-    return { bytes, width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20), url: url2, title: await page.title(), capturedAt: (/* @__PURE__ */ new Date()).toISOString() };
+    const bytes2 = await page.screenshot({ type: "png", fullPage, animations: "disabled", timeout: timeout2, ...mask.length > 0 ? { mask } : {} });
+    return { bytes: bytes2, width: bytes2.readUInt32BE(16), height: bytes2.readUInt32BE(20), url: url2, title: await page.title(), capturedAt: (/* @__PURE__ */ new Date()).toISOString() };
   }
   return {
     status: status2,
@@ -55775,9 +55783,9 @@ class BrowserTutorial {
 `)],
       ...captured.screenshots.map((image) => [`screenshots/${image.stepId}.png`, image.bytes])
     ]);
-    const writes = [...contents].map(([path2, bytes]) => ({
+    const writes = [...contents].map(([path2, bytes2]) => ({
       path: `${out2}/${path2}`,
-      bytes,
+      bytes: bytes2,
       ...previous2.has(path2) ? { expectedRevision: previous2.get(path2).revision } : {}
     }));
     const removes = [...previous2].filter(([path2]) => !contents.has(path2)).map(([, file]) => ({ path: file.path, expectedRevision: file.revision }));
@@ -56090,9 +56098,9 @@ function updateError(code2, message2) {
 function requireUpdate(condition, message2) {
   if (!condition) throw updateError("UPDATE_INVALID", message2);
 }
-function releaseJson(bytes) {
+function releaseJson(bytes2) {
   try {
-    return JSON.parse(decodeUtf8(bytes));
+    return JSON.parse(decodeUtf8(bytes2));
   } catch {
     throw updateError("UPDATE_INVALID", "A release package or distribution manifest is not valid UTF-8 JSON.");
   }
@@ -56238,7 +56246,7 @@ function githubReleases(policy, run2 = runTool) {
       try {
         const name2 = `forge-${version2}.tar.gz`, archive = path$3.join(staging, name2);
         for (const filename of [name2, `${name2}.sha256`]) await run2("curl", [...curl, `${base}/download/v${version2}/${filename}`, "--output", path$3.join(staging, filename)], { timeout: 19e4 });
-        const bytes = await promises.readFile(archive), checksum = node_crypto.createHash("sha256").update(bytes).digest("hex");
+        const bytes2 = await promises.readFile(archive), checksum = node_crypto.createHash("sha256").update(bytes2).digest("hex");
         requireUpdate((await promises.readFile(`${archive}.sha256`, "utf8")).trim() === `${checksum}  ${name2}`, "Release checksum verification failed; no app files were changed.");
         const { stdout: listing } = await run2("tar", ["-tzf", name2], { cwd: staging, maxBuffer: 8 * 1024 * 1024 });
         requireUpdate(listing.trim().split(/\r?\n/).every((path2) => path2.startsWith("bin/") && !path2.includes("\\") && !path2.includes(":") && !path2.split("/").some((part) => part === "." || part === "..")), "Release archive contains an unsafe path.");
@@ -56255,8 +56263,8 @@ function githubReleases(policy, run2 = runTool) {
         for (const path2 of paths2) {
           const entry2 = await promises.lstat(path$3.join(root, path2));
           requireUpdate(entry2.isFile() && !entry2.isSymbolicLink(), "A release asset is not a regular file.");
-          const bytes2 = await promises.readFile(path$3.join(root, path2));
-          files2.push({ path: path2, bytes: bytes2, revision: node_crypto.createHash("sha256").update(bytes2).digest("hex") });
+          const bytes22 = await promises.readFile(path$3.join(root, path2));
+          files2.push({ path: path2, bytes: bytes22, revision: node_crypto.createHash("sha256").update(bytes22).digest("hex") });
         }
         return { version: version2, checksum, files: files2 };
       } catch (error2) {
@@ -56827,8 +56835,8 @@ class VaultMetadata {
     });
     return { paths: [...this.paths], aliases: this.aliases, sources: Object.fromEntries(sources) };
   }
-  parseContent(path2, bytes) {
-    return this.parser.indexes(path2) ? this.parser.parse(path2, bytes) : null;
+  parseContent(path2, bytes2) {
+    return this.parser.indexes(path2) ? this.parser.parse(path2, bytes2) : null;
   }
   async fork(repository) {
     const fork = new VaultMetadata(repository, this.parser, { workspaceRoot: this.workspaceRoot, ...this.revisionOf ? { revisionOf: this.revisionOf } : {} });
@@ -56909,9 +56917,9 @@ class VaultMetadata {
     const stored = await this.results.links(this.paths, this.aliases);
     for (const source2 of this.sources()) this.resolve(source2, stored(source2));
   }
-  outcome(path2, bytes) {
+  outcome(path2, bytes2) {
     try {
-      return { metadata: this.parser.parse(path2, bytes) };
+      return { metadata: this.parser.parse(path2, bytes2) };
     } catch (error2) {
       return { issue: { code: error2 instanceof AppError ? error2.code : "INVALID_FILE", message: errorMessage(error2) } };
     }
@@ -65153,9 +65161,9 @@ class ObsidianMetadataParser {
   indexes(path2) {
     return ["markdown", "canvas"].includes(fileKind(path2));
   }
-  parse(path2, bytes) {
-    if (fileKind(path2) === "canvas") return canvasMetadata(this.codec.inspect(path2, bytes).data);
-    const document2 = this.codec.inspect(path2, bytes);
+  parse(path2, bytes2) {
+    if (fileKind(path2) === "canvas") return canvasMetadata(this.codec.inspect(path2, bytes2).data);
+    const document2 = this.codec.inspect(path2, bytes2);
     return markdownMetadata(document2.content, document2.properties, document2.body);
   }
 }
@@ -65164,7 +65172,7 @@ function snapshotFile(projectDirectory) {
   const scope2 = projectDirectory === null ? "workspace" : `project.${encodeURIComponent(projectDirectory)}`;
   return `${cacheFolder}/metadata.v${snapshotFormat}.${scope2}.json`;
 }
-const sha256 = (bytes) => node_crypto.createHash("sha256").update(bytes).digest("hex");
+const sha256 = (bytes2) => node_crypto.createHash("sha256").update(bytes2).digest("hex");
 class NodeMetadataSnapshotStore {
   /**
    * `file` is relative to the workspace `root` (see `snapshotFile`); `program` is the running bundle, whose size and
@@ -65186,11 +65194,11 @@ class NodeMetadataSnapshotStore {
   }
   async load() {
     try {
-      const bytes = await promises.readFile(await this.folder(false).then((folder) => path$3.join(folder, this.name)));
-      const end2 = bytes.indexOf(10);
+      const bytes2 = await promises.readFile(await this.folder(false).then((folder) => path$3.join(folder, this.name)));
+      const end2 = bytes2.indexOf(10);
       if (end2 < 0) return null;
-      const header2 = JSON.parse(bytes.toString("utf8", 0, end2));
-      const body = bytes.subarray(end2 + 1);
+      const header2 = JSON.parse(bytes2.toString("utf8", 0, end2));
+      const body = bytes2.subarray(end2 + 1);
       if (!isRecord$1(header2) || header2.type !== documentType || header2.build !== await this.identity() || header2.digest !== sha256(body)) return null;
       return JSON.parse(body.toString("utf8"));
     } catch {
@@ -65458,9 +65466,9 @@ function applyTextEdit(text2, request, metadata2) {
       return editBlock(text2, metadata2(), request.block, request.mode, request.content);
   }
 }
-function decodeText(bytes) {
+function decodeText(bytes2) {
   try {
-    return decodeUtf8(bytes, "keep");
+    return decodeUtf8(bytes2, "keep");
   } catch {
     throw forgeError("INVALID_ENCODING", "Edits require valid UTF-8 text; use write for binary content.");
   }
@@ -65470,11 +65478,11 @@ function ensureEditable(path2, request) {
   ensure(["markdown", "text"].includes(kind2), "UNSUPPORTED_EDIT", "Use edit for Markdown and text files, patch for Canvas/Bases, and write for attachments.");
   ensure(!targetsStructure(request) || kind2 === "markdown", "UNSUPPORTED_EDIT", "Section and block edits require a Markdown note.");
 }
-function editBytes(path2, bytes, request, metadata2) {
+function editBytes(path2, bytes2, request, metadata2) {
   ensureEditable(path2, request);
-  const text2 = decodeText(bytes);
+  const text2 = decodeText(bytes2);
   ensure(isTextContent(path2, text2), "INVALID_ENCODING", "Text file edits require UTF-8 without NUL characters; use write for UTF-16 or binary content.");
-  const edited = applyTextEdit(text2, request, () => metadata2.parseContent(path2, bytes));
+  const edited = applyTextEdit(text2, request, () => metadata2.parseContent(path2, bytes2));
   ensure(isTextContent(path2, edited), "INVALID_ENCODING", "Text file edits cannot introduce NUL characters; use write for binary content.");
   return new TextEncoder().encode(edited);
 }
@@ -65800,7 +65808,7 @@ class FileManager {
     const expectedRevision2 = options2.ifMatch ?? entry2.revision;
     if (options2.permanent === true) {
       const result2 = await this.workspace.commit({ removes: [{ path: path2, expectedRevision: expectedRevision2 }] }, { operation: "delete" });
-      const deleted2 = [...result2.changes.map(({ path: file, revision: revision2, bytes }) => ({ path: file, kind: "file", revision: revision2, bytes })), ...folders(result2.removedFolders)];
+      const deleted2 = [...result2.changes.map(({ path: file, revision: revision2, bytes: bytes2 }) => ({ path: file, kind: "file", revision: revision2, bytes: bytes2 })), ...folders(result2.removedFolders)];
       return { dryRun: result2.dryRun, path: path2, kind: entry2.kind, revision: entry2.revision, permanent: true, trashPath: null, deleted: deleted2, brokenLinks };
     }
     const trashPath = await this.trashDestination(path2, entry2.kind);
@@ -65840,7 +65848,7 @@ class FileManager {
     const changes2 = Object.fromEntries(Object.entries(after).filter(([key, value2]) => json(value2) !== json(before[key])));
     const removed = Object.keys(before).filter((key) => !Object.hasOwn(after, key));
     if (Object.keys(changes2).length + removed.length === 0) return { dryRun: this.workspace.dryRun, changes: [] };
-    return this.workspace.edit(path2, revision2, (bytes) => this.workspace.codec.properties(bytes, changes2, removed));
+    return this.workspace.edit(path2, revision2, (bytes2) => this.workspace.codec.properties(bytes2, changes2, removed));
   }
   /** Links from outside `path` that resolve to it or into it. */
   async brokenLinks(path2, entry2) {
@@ -65954,8 +65962,8 @@ class FileManager {
   }
 }
 const encode = (data) => typeof data === "string" ? new TextEncoder().encode(data) : data;
-function decode(path2, bytes) {
-  const text2 = decodeText(bytes);
+function decode(path2, bytes2) {
+  const text2 = decodeText(bytes2);
   ensure(isTextContent(path2, text2), "INVALID_ENCODING", "Text file edits require UTF-8 without NUL characters; use write for UTF-16 or binary content.");
   return text2;
 }
@@ -65968,8 +65976,8 @@ function createApp({ workspace: workspace2, metadata: metadata2, events: events2
   const fileManager = new FileManager(workspace2, metadata2, { workspace: project2 === null });
   const revision2 = async (path2, options2 = {}) => options2.ifMatch ?? (await workspace2.files.read(path2)).revision;
   const single = async (result) => {
-    const { path: path2, revision: changed, operation: operation2, bytes } = (await result).changes[0];
-    return { path: path2, revision: changed, operation: operation2, bytes };
+    const { path: path2, revision: changed, operation: operation2, bytes: bytes2 } = (await result).changes[0];
+    return { path: path2, revision: changed, operation: operation2, bytes: bytes2 };
   };
   const files2 = async () => (await metadata2.load()).files().slice();
   const vault2 = {
@@ -65983,7 +65991,7 @@ function createApp({ workspace: workspace2, metadata: metadata2, events: events2
       await workspace2.edit(path2, options2.ifMatch ?? snapshot.revision, () => encode(text2));
       return text2;
     },
-    append: async (path2, data, options2) => single(workspace2.edit(path2, await revision2(path2, options2), (bytes) => encode(decode(path2, bytes) + data))),
+    append: async (path2, data, options2) => single(workspace2.edit(path2, await revision2(path2, options2), (bytes2) => encode(decode(path2, bytes2) + data))),
     trash: (path2, options2 = {}) => fileManager.delete(path2, { ...options2, recursive: true, allowBrokenLinks: true }),
     delete: (path2, options2 = {}) => fileManager.delete(path2, { ...options2, permanent: true, allowBrokenLinks: true }),
     rename: (path2, newPath, options2 = {}) => fileManager.move(path2, newPath, { ...options2, updateLinks: false }),
@@ -69944,7 +69952,8 @@ const germanErrors = {
   UNSAFE_PATH: { summary: "Der Pfad verlässt den Workspace oder durchquert eine symbolische Verknüpfung.", hint: "Verwenden Sie einen Pfad innerhalb des Workspace ohne symbolische Verknüpfungen." },
   NOT_FOUND: { summary: "Die Datei oder Ressource wurde nicht gefunden.", hint: "Prüfen Sie Pfad und ausgewähltes Projekt (project current); list zeigt vorhandene Dateien. error.details.alreadyDeleted true bedeutet, dass ein Löschvorgang die Datei bereits nach error.details.trashPath verschoben hat." },
   CONFLICT: { summary: "Die Datei existiert bereits oder ihre Revision hat sich seit dem Lesen geändert.", hint: "Die Meldung nennt den Fall. Eine vorhandene Datei (error.details.expectedRevision null): ersetzen Sie sie mit write --if-match oder ändern Sie sie mit edit. Eine fehlende Datei (error.details.currentRevision null): prüfen Sie den Pfad oder lassen Sie den Schutz weg, um sie anzulegen. Eine geänderte Datei: lesen Sie sie erneut, gleichen Sie Ihre Änderung mit dem aktuellen Inhalt ab und versuchen Sie es mit error.details.currentRevision über den Revisionsschutz des Befehls erneut (--if-match, ifMatch in einem Plan oder --revisions-from). error.details.alreadyApplied true bedeutet, dass die Datei die angeforderte Änderung bereits enthält; ein erneuter Versuch ist nicht nötig.", variants: {
-    "changed-while-planning": "Eine Notiz, die auf den verschobenen Pfad verlinkt (error.details.path), wurde geändert, während Forge die Linkaktualisierungen plante, und nichts wurde geschrieben: Wiederholen Sie dasselbe Verschieben; lesen Sie diese Notiz vorher, wenn Sie sie ebenfalls bearbeiten."
+    "changed-while-planning": "Eine Notiz, die auf den verschobenen Pfad verlinkt (error.details.path), wurde geändert, während Forge die Linkaktualisierungen plante, und nichts wurde geschrieben: Wiederholen Sie dasselbe Verschieben; lesen Sie diese Notiz vorher, wenn Sie sie ebenfalls bearbeiten.",
+    "revision-required": "Die Anfrage nannte error.details.path mit einer leeren Revision, daher wurde nichts geschrieben: Prüfen Sie, ob das die Datei ist, die Sie ändern oder löschen wollen, und wiederholen Sie den Befehl mit error.details.currentRevision als --if-match (ifMatch in einem apply-Plan); auch read, stat und ein Probelauf melden sie."
   } },
   NO_MATCH: { summary: "Der --find-Text kommt in der Datei nicht vor.", hint: "Lesen Sie die Datei erneut und übernehmen Sie den exakten aktuellen Text einschließlich Leerraum und Zeilenenden in --find; error.details.lineEndings nennt die Zeilenenden der Datei und error.details.nearMatch eine Zeile, die ohne Beachtung von Leerraum und Groß- und Kleinschreibung passt." },
   AMBIGUOUS_EDIT: { summary: "Der --find-Text kommt mehrfach vor; überlappende Treffer zählen mit.", hint: "Erweitern Sie --find um umgebenden Text, bis er genau einmal passt; error.details.lines nennt die Trefferzeilen und error.details.snippets ihren Text." },
@@ -70056,6 +70065,7 @@ const templates = {
   UNKNOWN_GENERATOR: [{ text: "Unbekannter Generator {generator}; verfügbar sind {allowedValues}." }],
   CONFLICT: [
     { text: "{path} wurde geändert, während die Linkaktualisierungen geplant wurden; wiederholen Sie den Befehl.", when: (details) => details.reason === "changed-while-planning" },
+    { text: "Keine Revision schützt {path}: Übergeben Sie die aktuelle Revision {currentRevision} mit --if-match (ifMatch in einem apply-Plan), um die Datei zu ändern oder zu löschen.", when: (details) => details.reason === "revision-required" },
     { text: "{path} enthält die angeforderte Änderung bereits (Revision {currentRevision}); ein erneuter Versuch ist nicht nötig.", when: (details) => details.alreadyApplied === true },
     { text: "{path} existiert bereits mit der Revision {currentRevision}.", when: (details) => details.expectedRevision === null },
     { text: "{path} existiert nicht, erwartet wurde die Revision {expectedRevision}.", when: (details) => details.currentRevision === null },
@@ -70251,7 +70261,7 @@ class Localizer {
     let details = error2 instanceof AppError ? error2.details : void 0;
     if (details) {
       try {
-        details = JSON.parse(JSON.stringify(details));
+        details = JSON.parse(JSON.stringify(Object.fromEntries(Object.entries(details).map(([key, value2]) => [key, isKernelMessage(value2) ? this.warning(value2) : value2]))));
       } catch {
         details = { diagnostic: "Error details were not JSON-serializable." };
       }
@@ -70276,7 +70286,7 @@ function pluginCatalog(registry2, installed, localizer = new Localizer("en", reg
     return {
       ...localizer.manifest(plugin2.manifest),
       core: registry2.origins.get(plugin2.manifest.id) === "core",
-      ...unavailable ? { state: "unavailable", reason: localizer.warning(unavailable.reason).message } : { state: "enabled", reason: null },
+      ...unavailable ? { state: "unavailable", reason: localizer.warning(unavailable.reason) } : { state: "enabled", reason: null },
       contributions: {
         commands: (plugin2.commands ?? []).map((command2) => command2.id),
         generators: (plugin2.generators ?? []).map((generator) => generator.id),
@@ -70289,15 +70299,15 @@ function pluginCatalog(registry2, installed, localizer = new Localizer("en", reg
       }
     };
   });
-  const disabledCore = registry2.disabled.map((manifest) => ({ ...localizer.manifest(manifest), core: true, state: "disabled", reason: localizer.warning(registry2.disabledReason(manifest.id) ?? kernelMessage("PLUGIN_LISTED_DISABLED")).message, contributions: null }));
+  const disabledCore = registry2.disabled.map((manifest) => ({ ...localizer.manifest(manifest), core: true, state: "disabled", reason: localizer.warning(registry2.disabledReason(manifest.id) ?? kernelMessage("PLUGIN_LISTED_DISABLED")), contributions: null }));
   const coreIds = /* @__PURE__ */ new Set([...registry2.disabled.map((manifest) => manifest.id), ...[...registry2.origins].filter(([, origin]) => origin === "core").map(([id2]) => id2)]);
   const others = installed.filter((entry2) => coreIds.has(entry2.manifest.id) || !registry2.origins.has(entry2.manifest.id)).map((entry2) => ({
     ...entry2.manifest,
     core: false,
-    ...coreIds.has(entry2.manifest.id) ? { state: "rejected", reason: localizer.warning(kernelMessage("PLUGIN_ID_RESERVED", { plugin: entry2.manifest.id })).message } : entry2.skipped ? { state: "skipped", reason: localizer.warning(kernelMessage("PLUGIN_SKIPPED")).message } : { state: "disabled", reason: localizer.warning(kernelMessage("PLUGIN_NOT_ENABLED")).message },
+    ...coreIds.has(entry2.manifest.id) ? { state: "rejected", reason: localizer.warning(kernelMessage("PLUGIN_ID_RESERVED", { plugin: entry2.manifest.id })) } : entry2.skipped ? { state: "skipped", reason: localizer.warning(kernelMessage("PLUGIN_SKIPPED")) } : { state: "disabled", reason: localizer.warning(kernelMessage("PLUGIN_NOT_ENABLED")) },
     contributions: null
   }));
-  const missing2 = [...registry2.missing].map(([id2, reason]) => ({ id: id2, core: false, state: "missing", reason: localizer.warning(reason).message, contributions: null }));
+  const missing2 = [...registry2.missing].map(([id2, reason]) => ({ id: id2, core: false, state: "missing", reason: localizer.warning(reason), contributions: null }));
   return [...loaded.filter((plugin2) => plugin2.core), ...disabledCore, ...loaded.filter((plugin2) => !plugin2.core), ...missing2, ...others];
 }
 const text$3 = { type: "string" };
@@ -70378,6 +70388,34 @@ const envelopeSchema = {
     }
   ]
 };
+const helpIndexBudget = 4096;
+const indexDescriptionLength = 76;
+const shortestIndexDescription = 24;
+const languages = ["en", "de"];
+const bytes = (value2) => new TextEncoder().encode(JSON.stringify(value2)).length;
+function indexDescription(description2, length = indexDescriptionLength) {
+  const sentence = /^(.*?)[.;](?:\s|$)/s.exec(description2)?.[1]?.concat(".") ?? description2;
+  if (sentence.length <= length) return sentence;
+  const cut = sentence.slice(0, length);
+  return `${cut.slice(0, cut.lastIndexOf(" ")).replace(/[\s,;:(]+$/, "")}…`;
+}
+function helpIndex(identity2, commands2, globalOptions2, next) {
+  const translations = languages.map((language2) => new Localizer(language2).result({ localizedOutput: { next: "text" } }, { next }).next);
+  const longestNext = translations.reduce((longest, text2) => bytes(text2) > bytes(longest) ? text2 : longest, next);
+  const mutating = commands2.filter((command2) => commandAnnotations(command2).mutating).map((command2) => command2.id);
+  const index2 = (length2, nextText = next) => ({
+    name: identity2.name,
+    version: identity2.version,
+    apiVersion: identity2.apiVersion,
+    commands: Object.fromEntries(commands2.map((command2) => [command2.id, indexDescription(command2.description, length2)])),
+    mutating,
+    globalOptions: globalOptions2,
+    next: nextText
+  });
+  let length = indexDescriptionLength;
+  while (length > shortestIndexDescription && bytes(index2(length, longestNext)) > helpIndexBudget) length--;
+  return index2(length);
+}
 const text$2 = { type: "string" };
 const texts = { type: "array", items: text$2 };
 const flag = { type: "boolean" };
@@ -70497,13 +70535,6 @@ const commonErrors = [
   "INVALID_RESULT",
   "OPERATION_FAILED"
 ];
-const indexDescriptionLength = 76;
-function indexDescription(description2) {
-  const sentence = /^(.*?)[.;](?:\s|$)/s.exec(description2)?.[1]?.concat(".") ?? description2;
-  if (sentence.length <= indexDescriptionLength) return sentence;
-  const cut = sentence.slice(0, indexDescriptionLength);
-  return `${cut.slice(0, cut.lastIndexOf(" ")).replace(/[\s,;:(]+$/, "")}…`;
-}
 function describe(command2, includeOutput = true) {
   const { id: id2, description: description2, usage, options: options2, args, output: output2, examples } = command2;
   const annotations2 = commandAnnotations(command2);
@@ -70548,18 +70579,7 @@ function catalogCommands(registry2) {
       localizedOutput: { next: "text", globalOptions: "options" },
       run(args) {
         arity(args, 0, 1);
-        if (!args[0]) {
-          const commands2 = [...registry2.commands.values()];
-          return {
-            name: identity2.name,
-            version: identity2.version,
-            apiVersion: identity2.apiVersion,
-            commands: Object.fromEntries(commands2.map((command22) => [command22.id, indexDescription(command22.description)])),
-            mutating: commands2.filter((command22) => commandAnnotations(command22).mutating).map((command22) => command22.id),
-            globalOptions: Object.keys(globalOptionMetadata).map((key) => `--${key}`),
-            next: helpNext
-          };
-        }
+        if (!args[0]) return helpIndex(identity2, [...registry2.commands.values()], Object.keys(globalOptionMetadata).map((key) => `--${key}`), helpNext);
         const command2 = registry2.resolveCommand(args[0]);
         return { ...describe(command2, false), globalOptions: globalOptionMetadata };
       }
@@ -70794,11 +70814,11 @@ function lineRange(text2) {
 }
 const textLines = (text2) => text2.match(/[^\r\n]*(?:\r\n|\n|\r)|[^\r\n]+$/g) ?? [];
 function bytePrefix(text2, maxBytes2) {
-  let bytes = 0, end2 = 0;
+  let bytes2 = 0, end2 = 0;
   for (const char of text2) {
     const size = utf8Bytes(char);
-    if (bytes + size > maxBytes2) break;
-    bytes += size;
+    if (bytes2 + size > maxBytes2) break;
+    bytes2 += size;
     end2 += char.length;
   }
   return text2.slice(0, end2);
@@ -70807,23 +70827,23 @@ function textWindow(text2, maxBytes2, range2 = { start: 1 }) {
   const lines2 = textLines(text2), total2 = lines2.length;
   ensure(range2.start <= Math.max(total2, 1), "INVALID_ARGUMENT", `--lines starts after the last line; the text has ${total2} line${total2 === 1 ? "" : "s"}.`, { total: total2 });
   const last = Math.min(range2.end ?? total2, total2);
-  let content2 = "", bytes = 0, end2 = range2.start - 1;
+  let content2 = "", bytes2 = 0, end2 = range2.start - 1;
   for (let line = range2.start; line <= last; line++) {
     const size = utf8Bytes(lines2[line - 1]);
-    if (bytes + size > maxBytes2) {
+    if (bytes2 + size > maxBytes2) {
       const partial2 = line === range2.start;
       if (partial2) {
         content2 = bytePrefix(lines2[line - 1], maxBytes2);
-        bytes = utf8Bytes(content2);
+        bytes2 = utf8Bytes(content2);
         end2 = line;
       }
-      return { content: content2, truncated: true, partial: partial2, bytes, lines: { start: range2.start, end: end2, total: total2 }, ...partial2 ? { lineBytes: size } : {} };
+      return { content: content2, truncated: true, partial: partial2, bytes: bytes2, lines: { start: range2.start, end: end2, total: total2 }, ...partial2 ? { lineBytes: size } : {} };
     }
     content2 += lines2[line - 1];
-    bytes += size;
+    bytes2 += size;
     end2 = line;
   }
-  return { content: content2, truncated: false, partial: false, bytes, lines: { start: range2.start, end: end2, total: total2 } };
+  return { content: content2, truncated: false, partial: false, bytes: bytes2, lines: { start: range2.start, end: end2, total: total2 } };
 }
 const text$1 = { type: "string" };
 const kind = (...kinds) => kinds.length === 1 ? { type: "string", const: kinds[0] } : { type: "string", enum: kinds };
@@ -70964,7 +70984,7 @@ function readView(result, selection2, warn) {
   const { kind: kind2 } = document2, textual = kind2 === "markdown" || kind2 === "text";
   ensure(selection2.parts === void 0 || kind2 === "markdown", "INVALID_ARGUMENT", "--parts requires a Markdown file.");
   ensure(selection2.lines === void 0 || textual, "INVALID_ARGUMENT", "--lines requires a Markdown or UTF-8 text file.");
-  const cut = (returned, bytes) => warn(kernelMessage("READ_BYTES_TRUNCATED", { path: result.path, returned, bytes }));
+  const cut = (returned, bytes2) => warn(kernelMessage("READ_BYTES_TRUNCATED", { path: result.path, returned, bytes: bytes2 }));
   if (document2.encoding === "base64" && result.bytes > selection2.maxBytes) {
     cut(selection2.maxBytes, result.bytes);
     const content2 = Buffer.from(String(document2.content), "base64").subarray(0, selection2.maxBytes).toString("base64");
@@ -71088,9 +71108,9 @@ function readManyCommand() {
         }
       }
       const files2 = [];
-      let bytes = 0, counted = 0;
+      let bytes2 = 0, counted = 0;
       const budget = (size) => {
-        bytes += size;
+        bytes2 += size;
         counted += Math.min(size, limit);
         ensure(counted <= maxBytes, "INVALID_ARGUMENT", "read-many exceeds its 8 MiB aggregate limit; lower --max-bytes or read fewer files.", { aggregateLimit: maxBytes, maxBytes: limit, bytes: counted });
       };
@@ -71101,7 +71121,7 @@ function readManyCommand() {
           throw atPath(error2, index2, path2);
         }
       }
-      return { files: files2, bytes };
+      return { files: files2, bytes: bytes2 };
     }
   };
 }
@@ -71114,12 +71134,12 @@ function base64Bytes(text2, message2) {
 function encodeText(text2) {
   return new TextEncoder().encode(text2);
 }
-function inputWarnings(path2, flags, bytes, options2, workspace2) {
+function inputWarnings(path2, flags, bytes2, options2, workspace2) {
   for (const option2 of options2) {
     const text2 = flags[option2];
     if (typeof text2 === "string" && text2.includes("\\n") && !/[\r\n]/.test(text2)) workspace2.warn(kernelMessage("LITERAL_NEWLINE", { option: option2 }));
   }
-  if (flags.stdin === true && bytes?.length === 0) workspace2.warn(kernelMessage("EMPTY_STDIN", { path: path2 }));
+  if (flags.stdin === true && bytes2?.length === 0) workspace2.warn(kernelMessage("EMPTY_STDIN", { path: path2 }));
 }
 const reportedIssues = 20;
 const literalEditsSchema = {
@@ -71524,7 +71544,7 @@ class PlanRunner {
       case "edit": {
         const { revision: revision2 } = await workspace2.files.read(item.path);
         await this.guard(item.path, item.ifMatch);
-        await workspace2.edit(item.path, revision2, (bytes) => editBytes(item.path, bytes, editRequest$1(item), this.scope.metadata));
+        await workspace2.edit(item.path, revision2, (bytes2) => editBytes(item.path, bytes2, editRequest$1(item), this.scope.metadata));
         return { op: "edit", path: item.path };
       }
       case "frontmatter": {
@@ -71623,7 +71643,7 @@ function editCommand() {
       const request = await editRequest(flags, context);
       ensureEditable(path2, request);
       inputWarnings(path2, flags, void 0, ["content", "replace"], context.workspace);
-      return context.workspace.edit(path2, value$2(flags, "if-match", true), (bytes) => editBytes(path2, bytes, request, context.metadata));
+      return context.workspace.edit(path2, value$2(flags, "if-match", true), (bytes2) => editBytes(path2, bytes2, request, context.metadata));
     }
   };
 }
@@ -71695,10 +71715,10 @@ function listCommand() {
   };
 }
 async function content(path2, flags, context) {
-  const bytes = await readInputBytes(flags, context, "Choose exactly one of --content, --from, or --stdin.");
-  inputWarnings(path2, flags, bytes, ["content"], context.workspace);
+  const bytes2 = await readInputBytes(flags, context, "Choose exactly one of --content, --from, or --stdin.");
+  inputWarnings(path2, flags, bytes2, ["content"], context.workspace);
   const encoding = value$2(flags, "encoding") ?? "utf8";
-  return encoding === "base64" ? base64Bytes(new TextDecoder().decode(bytes), "Invalid base64 input.") : bytes;
+  return encoding === "base64" ? base64Bytes(new TextDecoder().decode(bytes2), "Invalid base64 input.") : bytes2;
 }
 const contentOptions = {
   content: option$1.string("Literal content."),
@@ -71747,8 +71767,8 @@ function documentCommands() {
         const kind2 = fileKind(path2);
         ensure(hasInput || flags.encoding === void 0, "INVALID_INPUT", "--encoding requires an input source.");
         ensure(hasInput || defaultable.includes(kind2), "INVALID_INPUT", "Attachments require content, from, or stdin.");
-        const bytes = hasInput ? await content(path2, flags, context) : defaultDocument(kind2);
-        return context.workspace.write([{ path: path2, bytes }], { diff: true });
+        const bytes2 = hasInput ? await content(path2, flags, context) : defaultDocument(kind2);
+        return context.workspace.write([{ path: path2, bytes: bytes2 }], { diff: true });
       }
     },
     // Idempotent although --if-match is optional: it is required once the file exists, so a repeat is refused with
@@ -71794,7 +71814,7 @@ function documentCommands() {
         ensure(isRecord$1(changes2), "INVALID_INPUT", "--set must be a JSON object.");
         const removed = unset === void 0 ? [] : listOptionItems(unset);
         ensure(removed.every((key) => key.length > 0) && removed.every((key) => !Object.hasOwn(changes2, key)), "INVALID_INPUT", "--unset lists nonempty property names that --set does not also set.");
-        return workspace2.edit(args[0], value$2(flags, "if-match", true), (bytes) => workspace2.codec.properties(bytes, changes2, removed));
+        return workspace2.edit(args[0], value$2(flags, "if-match", true), (bytes2) => workspace2.codec.properties(bytes2, changes2, removed));
       }
     },
     {
@@ -71809,7 +71829,7 @@ function documentCommands() {
       async run(args, flags, { workspace: workspace2 }) {
         arity(args, 1);
         const pointer2 = value$2(flags, "pointer", true), data = parseJson(value$2(flags, "value", true));
-        return workspace2.edit(args[0], value$2(flags, "if-match", true), (bytes) => workspace2.codec.patch(args[0], bytes, pointer2, data));
+        return workspace2.edit(args[0], value$2(flags, "if-match", true), (bytes2) => workspace2.codec.patch(args[0], bytes2, pointer2, data));
       }
     },
     applyCommand()

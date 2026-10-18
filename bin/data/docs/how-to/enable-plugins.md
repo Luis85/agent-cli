@@ -10,7 +10,7 @@ Use this guide to scaffold, review and activate a trusted user plugin, to config
 node bin/forge.js plugins --json
 ```
 
-Core plugins such as `skills` come first with `core: true`; user plugins follow. `state` is `enabled`, `unavailable`, `disabled`, `missing`, `skipped` or `rejected` with a `reason` for every state but `enabled`, and `contributions` lists what each enabled plugin adds.
+Core plugins such as `skills` come first with `core: true`; user plugins follow. `state` is `enabled`, `unavailable`, `disabled`, `missing`, `skipped` or `rejected` with a `reason` for every state but `enabled` (`{code, message, details?}`: match `reason.code`, such as `PLUGIN_NOT_ENABLED`), and `contributions` lists what each enabled plugin adds.
 
 ## Enable a user plugin
 

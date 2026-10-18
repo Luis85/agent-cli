@@ -57,6 +57,7 @@ export declare const errorCatalog: {
             readonly details: readonly ["reason"];
             readonly hints: {
                 readonly 'changed-while-planning': "A note linking to the moved path (error.details.path) changed while Forge planned the link updates, and nothing was written: rerun the same move; read that note first if you are editing it too.";
+                readonly 'revision-required': "The request named error.details.path with an empty revision, so nothing was written: check that it is the file you mean to change or delete, then retry with error.details.currentRevision as --if-match (ifMatch in an apply plan); read, stat and a dry run report it too.";
             };
         };
         readonly exitCode: number;
