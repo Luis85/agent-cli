@@ -64,6 +64,28 @@ describe('path forms agents pass', () => {
     expect((await cli(['delete', 'devices', '--recursive', '--permanent', '--if-match', revision])).body.error).toMatchObject({ code: 'PROTECTED_PATH', details: { entries: [{ path: 'devices/nul.txt', kind: 'other' }] } });
   });
 
+  it.skipIf(process.platform === 'win32')('refuses a guarded folder move after another tool edits a device-named file inside it', async () => {
+    await mkdir(join(fixture.project, 'ports/aux'), { recursive: true });
+    await writeFile(join(fixture.project, 'ports/con.md'), 'one\n');
+    await writeFile(join(fixture.project, 'ports/aux/inner.md'), 'one\n');
+    await writeFile(join(fixture.project, 'ports/plain.md'), '# Plain\n');
+    const stat = async () => (await cli(['stat', 'ports'])).body.data.revision as string;
+    const before = await stat();
+    // Same size, new content: only the content revision tells the edits apart.
+    for (const file of ['ports/con.md', 'ports/aux/inner.md']) {
+      const revision = await stat();
+      await writeFile(join(fixture.project, file), 'two\n');
+      const changed = await stat();
+      expect(changed, file).not.toBe(revision);
+      expect((await cli(['move', 'ports', 'harbor', '--if-match', revision])).body.error, file).toMatchObject({ code: 'CONFLICT', details: { path: 'ports', expectedRevision: revision, currentRevision: changed } });
+    }
+    expect(await stat()).not.toBe(before);
+    const moved = await cli(['move', 'ports', 'harbor', '--if-match', await stat()]);
+    expect(moved.status).toBe(0);
+    expect(await readFile(join(fixture.project, 'harbor/con.md'), 'utf8')).toBe('two\n');
+    expect(await readFile(join(fixture.project, 'harbor/aux/inner.md'), 'utf8')).toBe('two\n');
+  });
+
   // Creating symlinks needs extra privileges on Windows.
   it.skipIf(process.platform === 'win32')('refuses symlinked components and other spellings of the root in absolute paths', async () => {
     const outside = await mkdtemp(join(tmpdir(), 'forge-alias-'));

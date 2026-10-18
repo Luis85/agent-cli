@@ -17,8 +17,11 @@ export interface StoredFile { bytes: Buffer; mode: number; revision: string }
  * `unchanged` writes carry the stored bytes and are skipped; `alreadyApplied` marks one whose guard did not match.
  */
 export interface FilePlan { write: WriteRequest; target: string; before?: StoredFile; stagingDirectory?: string; unchanged?: boolean; alreadyApplied?: boolean }
-/** A folder entry that is neither a regular file nor a folder Forge walks: a symlink (with its target), a `node_modules` folder or another special file. */
-export interface SpecialEntry { path: string; kind: 'symlink' | 'node_modules' | 'other'; target?: string }
+/**
+ * A folder entry that is neither a regular file nor a folder Forge walks: a symlink (with its target), a
+ * `node_modules` folder or another special file; a Windows device-named entry carries its content `revision`.
+ */
+export interface SpecialEntry { path: string; kind: 'symlink' | 'node_modules' | 'other'; target?: string; revision?: string }
 /**
  * A folder's revision and contents; paths are relative to the folder. `special` lists symlinks, `node_modules`
  * folders (never read) and other special files; `git` reports a nested `.git` entry and `locks` the writer locks
