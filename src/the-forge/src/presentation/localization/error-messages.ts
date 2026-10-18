@@ -114,3 +114,14 @@ export function locatedGermanSummary(details: Details | undefined, summary: stri
 
 /** The codes with German message templates, for tests. */
 export const templatedErrorCodes = Object.keys(templates) as ErrorCode[];
+
+/**
+ * A plugin code's message in the response language for the occurrence's `details.reason`, from the plugin's localized
+ * `reasons`, when every placeholder of that message has a value.
+ */
+export function reasonMessage(reasons: Readonly<Record<string, string>> | undefined, details: Details | undefined): string | undefined {
+  const reason = details?.reason;
+  if (reasons === undefined || typeof reason !== 'string' || !Object.hasOwn(reasons, reason)) return undefined;
+  const text = reasons[reason]!, values = templateValues(details!);
+  return placeholders(text).every(name => Object.hasOwn(values, name)) ? fill(text, values) : undefined;
+}

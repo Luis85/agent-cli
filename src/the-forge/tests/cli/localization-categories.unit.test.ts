@@ -63,6 +63,22 @@ describe('German output by category', () => {
     expect(() => Object.assign(message.params, { event: null })).toThrow(TypeError);
   });
 
+  it('words a plugin failure by its reason where the plugin translates it, else by the code summary', () => {
+    const errors = [{ code: 'QUALITY_INVALID', category: 'input' as const, summary: 'A check is invalid.', hint: 'Fix the check.' }];
+    const strings = { de: { errors: { QUALITY_INVALID: { summary: 'Eine Prüfung ist ungültig.', hint: 'Korrigieren Sie die Prüfung.', reasons: { 'device-name': 'Die Prüfung {check} würde {file} schreiben.' } } } } };
+    PluginCatalog.validate('quality', strings, errors, owned, 'QUALITY_');
+    const catalog = new PluginCatalog();
+    catalog.add('quality', strings, errors, 'QUALITY_');
+    const failure = (details: Record<string, unknown>) => catalog.normalize(Object.assign(new Error('Check con would write con.md.'), { code: 'QUALITY_INVALID', details }), 'quality');
+    const german = new Localizer('de', catalog);
+    expect(german.error(failure({ check: 'con', file: 'con.md', reason: 'device-name' }))).toMatchObject({ message: 'Die Prüfung con würde con.md schreiben.', details: { localization: { originalMessage: 'Check con would write con.md.' } } });
+    for (const details of [{ check: 'con', reason: 'device-name' }, { check: 'con', file: 'con.md', reason: 'other' }, { check: 'con', file: 'con.md' }]) expect(german.error(failure(details)).message).toBe('Eine Prüfung ist ungültig.');
+    expect(new Localizer('en', catalog).error(failure({ check: 'con', file: 'con.md', reason: 'device-name' })).message).toBe('Check con would write con.md.');
+    for (const reasons of [[], { 'device-name': '' }, { 'device-name': 7 }]) {
+      expect(() => PluginCatalog.validate('quality', { de: { errors: { QUALITY_INVALID: { ...strings.de.errors.QUALITY_INVALID, reasons } } } }, errors, owned, 'QUALITY_')).toThrowError(expect.objectContaining({ code: 'INVALID_PLUGIN', message: 'strings.de.errors.QUALITY_INVALID.reasons must map reasons to nonempty messages.' }));
+    }
+  });
+
   it('lists plugin names and descriptions in the response language', () => {
     const manifest = { id: 'quality', name: 'Quality', description: 'Check quality.', version: '1.0.0' };
     expect(new Localizer('de', pluginCatalog()).manifest(manifest)).toEqual({ ...manifest, name: 'Qualität', description: 'Qualität prüfen.' });

@@ -1,6 +1,6 @@
 import { ensure } from '../../../domain/shared/errors.ts';
-import { vaultPath, ensureSeparateDirectories, type WriteRequest } from '../../../domain/documents/file.ts';
-import type { DataSourceDefinition } from '../domain/definition.ts';
+import { vaultPath, ensureSeparateDirectories, portablePathIssues, type WriteRequest } from '../../../domain/documents/file.ts';
+import { dataSourceFiles, type DataSourceDefinition } from '../domain/definition.ts';
 import type { Workspace } from '../../../application/workspace/workspace.ts';
 import { GenerationService } from '../../../application/generation/plans.ts';
 import { dataSourceError, ensureDataSource } from '../domain/errors.ts';
@@ -18,11 +18,17 @@ export interface DataSourceGenerateOptions {
 export interface DataSourceRenderer {
   generate(definitions: readonly DataSourceDefinition[], options: DataSourceGenerateOptions): readonly WriteRequest[];
 }
+/**
+ * Unique ids whose generated files every filesystem can write. Ids are unique lowercase names, so generated files
+ * never differ only in letter case; an id that is a Windows device name fails with INVALID_DATA_SOURCE.
+ */
 function validateLibrary(definitions: readonly DataSourceDefinition[]) {
   const ids = new Set<string>();
   for (const definition of definitions) {
     ensureDataSource(!ids.has(definition.id), 'DUPLICATE_DATA_SOURCE', `Duplicate data source ${definition.id}.`);
     ids.add(definition.id);
+    const files = dataSourceFiles(definition.id), issue = portablePathIssues([files.adapter, files.testData])[0];
+    if (issue?.reason === 'device-name') throw dataSourceError('INVALID_DATA_SOURCE', `Data source ${definition.id} would generate ${issue.path}, a Windows reserved device name that no file can have on Windows; choose another id.`, { source: definition.id, file: issue.path, reason: issue.reason, segment: issue.segment });
   }
 }
 function starter(directory: string, id: string, kind: DataSourceDefinition['kind']): DataSourceDefinition {

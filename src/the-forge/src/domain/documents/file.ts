@@ -7,7 +7,7 @@ export const temporaryPrefix = '.agent-cli-tmp-';
 /** Code points HFS+ ignores in names: zero-width and directional marks, word joiners and the byte order mark. */
 const ignorable = /[\u200b-\u200f\u202a-\u202e\u2060-\u2063\ufeff]/g;
 /** A name as case-insensitive filesystems, Windows trailing-dot/space aliases and HFS+ ignorable code points resolve it. */
-export const canonicalName = (segment: string) => segment.replace(ignorable, '').toLowerCase().replace(/[. ]+$/, '');
+const canonicalName = (segment: string) => segment.replace(ignorable, '').toLowerCase().replace(/[. ]+$/, '');
 /**
  * Whether `canonical` has the shape of a Windows 8.3 short name of `name`: its first six name characters without
  * dots or spaces, `~` and a number, and any extension (`GIT~1` for `.git`, `AGENT-~1.LOC` for the lock).
@@ -48,6 +48,33 @@ const deviceNames = /^(?:con|prn|aux|nul|conin\$|conout\$|com[1-9¹²³]|lpt[1-9
 export function isDeviceName(segment: string): boolean {
   const base = segment.replace(ignorable, '').split('.')[0]!;
   return deviceNames.test(base.toLowerCase().replace(/ +$/, ''));
+}
+
+/** A path as case-insensitive filesystems and Windows resolve it. */
+export const canonicalPath = (path: string) => path.split('/').map(canonicalName).join('/');
+
+/**
+ * A relative path that one operation writes and some filesystem cannot: a segment is a Windows device name
+ * (`device-name`, with that `segment`), or the path names the same file as the earlier `duplicateOf` where letter
+ * case and trailing dots are ignored, as on Windows and macOS (`case-duplicate`).
+ */
+export type PortablePathIssue =
+  | { path: string; reason: 'device-name'; segment: string }
+  | { path: string; reason: 'case-duplicate'; duplicateOf: string };
+
+/**
+ * Problems of the relative paths one operation writes, in their given order, so definitions that generate files
+ * fail where they are validated instead of in the write. A path with a problem is not compared with later paths.
+ */
+export function portablePathIssues(paths: readonly string[]): PortablePathIssue[] {
+  const issues: PortablePathIssue[] = [], written = new Map<string, string>();
+  for (const path of paths) {
+    const segment = path.split('/').find(isDeviceName), same = written.get(canonicalPath(path));
+    if (segment !== undefined) issues.push({ path, reason: 'device-name', segment });
+    else if (same !== undefined) issues.push({ path, reason: 'case-duplicate', duplicateOf: same });
+    else written.set(canonicalPath(path), path);
+  }
+  return issues;
 }
 
 export function vaultPath(input: string): string {

@@ -22,9 +22,12 @@ export interface UiRenderer {
   componentPaths?(definitions: readonly UiDefinition[], options: UiRenderOptions): readonly string[];
 }
 
-/** All writes, including imports and generated artifacts, use workspace revision policy. */
+/**
+ * All writes, including imports and generated artifacts, use workspace revision policy. Commands that do not generate
+ * validate the files that `framework`, the default UI target, would generate.
+ */
 export class UiLibrary {
-  constructor(private readonly workspace: Workspace, private readonly codec: UiDefinitionCodec, private readonly catalog: readonly UiDefinition[], private readonly renderer?: UiRenderer, private readonly interactionSource?: InteractionSource, private readonly interactionDirectory = 'interactions') {}
+  constructor(private readonly workspace: Workspace, private readonly codec: UiDefinitionCodec, private readonly catalog: readonly UiDefinition[], private readonly renderer?: UiRenderer, private readonly interactionSource?: InteractionSource, private readonly interactionDirectory = 'interactions', private readonly framework: UiFramework = 'html') {}
 
   async list(directory: string, interactionDirectory?: string): Promise<UiDefinition[]> {
     const definitions = await this.discover(directory); await this.validateDefinitions(definitions, interactionDirectory); return definitions;
@@ -70,9 +73,9 @@ export class UiLibrary {
     ensureSeparateDirectories(directory, outputDirectory);
     const sources = await this.sources(directory), definitions = sources.map(source => source.definition);
     const interactions = await this.interactions(interactionDirectory);
-    validateUiLibrary(definitions, interactions);
+    validateUiLibrary(definitions, interactions, this.framework);
     // Export into a library only when the combined destination graph remains valid.
-    validateUiLibrary([...await this.discover(outputDirectory), ...definitions], interactions);
+    validateUiLibrary([...await this.discover(outputDirectory), ...definitions], interactions, this.framework);
     const plan = sources.map(({ definition, bytes }) => ({ path: `${outputDirectory}/${definition.sourcePath.slice(directory.length + 1)}`, bytes }));
     return { components: definitions.map(definition => definition.id), ...await this.commit(plan) };
   }
@@ -95,7 +98,7 @@ export class UiLibrary {
     ensureUi(!(options.storybook || options.storiesOnly) || options.storiesDirectory, 'INVALID_UI', 'Storybook generation requires a stories directory.');
     const interactions = await this.interactions(options.interactionDirectory);
     let definitions = await this.discover(directory);
-    validateUiLibrary(definitions, interactions);
+    validateUiLibrary(definitions, interactions, options.framework);
     ensureUi(definitions.length, 'EMPTY_UI_LIBRARY', `No component definitions in ${directory}. Run components init --library ${directory}, or add a Markdown component definition.`);
     if (options.component) ensureUi(definitions.some(definition => definition.id === options.component), 'UNKNOWN_UI_COMPONENT', `No component ${options.component} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
     if (options.component) definitions = selectUiComponents(definitions, options.component);
@@ -116,7 +119,7 @@ export class UiLibrary {
     return this.interactionSource ? this.interactionSource.list(directory) : [];
   }
   private async validateDefinitions(definitions: readonly UiDefinition[], interactionDirectory?: string): Promise<void> {
-    validateUiLibrary(definitions, await this.interactions(interactionDirectory));
+    validateUiLibrary(definitions, await this.interactions(interactionDirectory), this.framework);
   }
   private async discover(directory: string): Promise<UiDefinition[]> {
     return (await this.sources(directory)).map(source => source.definition);

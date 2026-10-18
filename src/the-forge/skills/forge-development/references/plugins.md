@@ -11,7 +11,7 @@ Read this when you write a Forge plugin or a project's CI workflows.
 - Declare each command's metadata: `scope`, `mutating`, described `options` and `args`, `errors`, and `destructive` or `idempotent` where the derived hints are wrong. `help`, `schema` and the invocation policy read it.
 - Declare `output`, the JSON Schema of `data`, on the command or per action. Put options on the action that takes them. Add `schema` to a string option or argument that holds or names a JSON document.
 - Settings: a JSON Schema read from `plugins.settings.<id>` through `context.settings`.
-- German text in `strings.de`: descriptions of commands, actions, options, arguments and settings, the manifest name and description, error summaries and hints, and messages read with `context.t`.
+- German text in `strings.de`: descriptions of commands, actions, options, arguments and settings, the manifest name and description, error summaries and hints (plus `reasons`, messages by `details.reason` with `{detail}` placeholders), and messages read with `context.t`.
 - A skill is `{id, content}` with optional `files` (`{"references/x.md": "…"}`) that ship next to its SKILL.md. Registration refuses Windows device names (`aux.md`) and paths that differ only in letter case with `INVALID_PLUGIN`.
 - Share capabilities through `provides` and `requires`, never imports.
 

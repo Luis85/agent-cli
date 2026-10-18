@@ -40,6 +40,8 @@ Validation runs in three stages and reports every finding at once:
    - `use_toolsets`, `use_commands`, `use_skills`, MCP `ref`s to `mcps` entries (others must start with `docker:`), RAG `ref`s, budgets and inline fork-skill toolsets resolve (`unknown-toolset`, `unknown-command-group`, `unknown-skill-group`, `unknown-mcp-definition`, `invalid-mcp-definition`, `unknown-rag-definition`, `unknown-budget`).
    - Toolset fields match their type (for example `path` only on `memory` and `tasks`), each type has its required source (`mcp`: exactly one of `command`, `remote.url` or `ref`; `lsp`: `command`; `a2a`, `openapi`, `open_url`: `url`), domain patterns and OAuth settings are valid (`invalid-toolset`). Providers, harness options and inline skills follow docker-agent's rules (`invalid-provider`, `invalid-harness`, `invalid-skills`).
 
+   Forge adds one check of its own: an agent whose generated `.claude/agents/<name>.md` would be a Windows device name (`Con`, `aux`, `COM1`, … after sanitizing) is a `device-name` error whose `file` names that output, so `list`, `validate`, `create`, `import` and `generate` report it before anything is written.
+
 The conformance suite validates every `examples/*.yaml` of the pinned docker-agent commit without errors. Refresh the vendored schema, its license and the conformance fixtures from a docker-agent checkout with `npm run vendor:docker-agent -- <checkout>` in `src/the-forge`; the distribution's `THIRD-PARTY-NOTICES.md` names the vendored commit and ships docker-agent's Apache-2.0 license.
 
 ### Diagnostics
@@ -78,7 +80,7 @@ Every finding is a diagnostic:
 
 ## Generation
 
-`agents generate --target claude [--file team.yaml] [--agent name] [--mcp none|inline|project [--rename-conflicts]] [--hooks] [--settings [--allow-broad-permissions]] [--commands] [--model-style id|alias] [--plan | --plan-out path.json | --check | --revisions-from path.json]` generates from every definition file, or from `--file`; `--agent` generates one agent of them. Any invalid definition stops generation with `INVALID_AGENT_DEFINITION`, as do two agents or command skills whose sanitized names collide (`agent-name-collision`, `command-name-collision`) and broad permission rules without `--allow-broad-permissions` (`broad-permission`). Generation is a pure function of the definitions, their instruction files and the options, so the same input always produces the same bytes.
+`agents generate --target claude [--file team.yaml] [--agent name] [--mcp none|inline|project [--rename-conflicts]] [--hooks] [--settings [--allow-broad-permissions]] [--commands] [--model-style id|alias] [--plan | --plan-out path.json | --check | --revisions-from path.json]` generates from every definition file, or from `--file`; `--agent` generates one agent of them. Any invalid definition stops generation with `INVALID_AGENT_DEFINITION`, as do two agents or command skills whose sanitized names collide (`agent-name-collision`, `command-name-collision`), a command whose `.claude/skills/<name>/SKILL.md` folder would be a Windows device name with `--commands` (`device-name`, with the output in `file`) and broad permission rules without `--allow-broad-permissions` (`broad-permission`). Generation is a pure function of the definitions, their instruction files and the options, so the same input always produces the same bytes.
 
 ### Opt-ins for commands and permissions
 

@@ -125,4 +125,22 @@ describe('portable data-source workflow', () => {
     }
     expect(await readdir(root)).toEqual(['data-sources']);
   });
+
+  it('refuses an id whose generated adapter would be a Windows device name in validation, before generation writes', async () => {
+    await mkdir(join(root, 'data-sources'), { recursive: true });
+    await writeFile(join(root, 'data-sources/auxiliary.md'), source('json').replace('id: requests', 'id: aux'));
+    const english = 'Data source aux would generate aux.ts, a Windows reserved device name that no file can have on Windows; choose another id.';
+    const details = { source: 'aux', file: 'aux.ts', reason: 'device-name', segment: 'aux.ts' };
+    for (const args of [['data-sources', 'validate'], ['data-sources', 'list'], ['data-sources', 'export', '--out', 'outgoing'], ['make', 'data-source', 'aux', '--plan'], ['make', 'data-source', 'aux']]) {
+      const failed = await cli(args);
+      expect(failed.body.error, args.join(' ')).toMatchObject({ code: 'INVALID_DATA_SOURCE', message: english, details });
+      expect(committedEvents(failed.body.events)).toEqual([]);
+    }
+    expect((await cli(['--lang', 'de', 'data-sources', 'validate'])).body.error).toMatchObject({
+      code: 'INVALID_DATA_SOURCE', message: 'Die Datenquelle aux würde aux.ts generieren, einen unter Windows reservierten Gerätenamen, den keine Datei unter Windows tragen kann; wählen Sie eine andere ID.',
+      details: { ...details, localization: { originalMessage: english } },
+    });
+    expect(await readdir(root)).toEqual(['data-sources']);
+  });
 });
+

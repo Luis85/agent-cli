@@ -13,9 +13,12 @@ export const dataSourceErrors: PluginErrorDefinition[] = [
 ];
 
 /** German summaries and next steps of the data-sources plugin's failure codes. */
-export const germanDataSourceErrors: Record<string, { summary: string; hint: string }> = {
+export const germanDataSourceErrors: Record<string, { summary: string; hint: string; reasons?: Record<string, string> }> = {
   DATA_SOURCE_DRIFT: { summary: 'Generierte Datenquellendateien fehlen oder weichen von den Definitionen ab.', hint: germanRegenerateHint },
-  INVALID_DATA_SOURCE: { summary: 'Eine Datenquellendefinition ist ungültig.', hint: 'Korrigieren Sie die genannten Felder; prüfen Sie mit data-sources validate.' },
+  INVALID_DATA_SOURCE: {
+    summary: 'Eine Datenquellendefinition ist ungültig.', hint: 'Korrigieren Sie die genannten Felder; prüfen Sie mit data-sources validate.',
+    reasons: { 'device-name': 'Die Datenquelle {source} würde {file} generieren, einen unter Windows reservierten Gerätenamen, den keine Datei unter Windows tragen kann; wählen Sie eine andere ID.' },
+  },
   DUPLICATE_DATA_SOURCE: { summary: 'Zwei Datenquellendefinitionen haben dieselbe ID.', hint: 'Vergeben Sie für jede Datenquelle eine eindeutige ID.' },
   EMPTY_DATA_SOURCE_LIBRARY: { summary: 'Die Datenquellenbibliothek enthält keine Definitionen.', hint: 'Führen Sie data-sources init aus oder fügen Sie eine Markdown-Definition hinzu.' },
   UNKNOWN_DATA_SOURCE: { summary: 'Die Datenquelle ist nicht definiert.', hint: 'Führen Sie data-sources list aus und verwenden Sie eine vorhandene ID.' },

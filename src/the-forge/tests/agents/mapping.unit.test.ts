@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { generateClaude, type ClaudeGenerationOptions } from '../../src/plugins/agents/domain/claude-generation.ts';
+import { agentFileDiagnostics, generateClaude, type ClaudeGenerationOptions } from '../../src/plugins/agents/domain/claude-generation.ts';
 import { claudeModel } from '../../src/plugins/agents/domain/claude-models.ts';
 import { claudeTools, toolName } from '../../src/plugins/agents/domain/claude-tools.ts';
 import { claudeHooks } from '../../src/plugins/agents/domain/claude-hooks.ts';
@@ -182,5 +182,19 @@ describe('commands, skills, hooks, permissions and delegation', () => {
     expect(output.agents[0]!.metadata).toMatchObject({ maxTurns: 7, skills: ['review'] });
     expect(codes(output.diagnostics)).toEqual(expect.arrayContaining(['max-iterations-approximated:A', 'skills-approximated:A', 'skills-unsupported:U', 'setting-unsupported:U']));
     expect(generate({ agents: { a_b: agent(), 'a-b': agent() } }).diagnostics).toEqual([expect.objectContaining({ severity: 'error', code: 'agent-name-collision' })]);
+  });
+
+  it('reports agents and command skills whose generated Claude file would be a Windows device name', () => {
+    expect(agentFileDiagnostics({ agents: { Con: agent(), 'aux.': agent(), console: agent(), 'com1-helper': agent() } })).toEqual([
+      { severity: 'error', code: 'device-name', pointer: '/agents/Con', file: '.claude/agents/con.md', message: 'Agent Con would generate .claude/agents/con.md, a Windows reserved device name that no file can have on Windows; rename the agent.' },
+      { severity: 'error', code: 'device-name', pointer: '/agents/aux.', file: '.claude/agents/aux.md', message: 'Agent aux. would generate .claude/agents/aux.md, a Windows reserved device name that no file can have on Windows; rename the agent.' },
+    ]);
+    const output = generate({ agents: { root: agent({ commands: { Nul: 'Clear.', review: 'Review.' } }) } }, { commands: true });
+    expect(output.skills.map(skill => skill.path)).toEqual(['.claude/skills/review/SKILL.md']);
+    expect(output.diagnostics.filter(entry => entry.severity === 'error')).toEqual([{
+      severity: 'error', code: 'device-name', pointer: '/agents/root/commands/Nul', file: '.claude/skills/nul/SKILL.md', path: 'agents/team.yaml',
+      message: 'The /Nul command of agent root would generate .claude/skills/nul/SKILL.md, whose folder is a Windows reserved device name that no folder can have on Windows; rename the command.',
+    }]);
+    expect(generate({ agents: { root: agent({ commands: { Nul: 'Clear.' } }) } }).diagnostics.filter(entry => entry.severity === 'error')).toEqual([]);
   });
 });

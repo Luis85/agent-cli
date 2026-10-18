@@ -1,6 +1,6 @@
 import { committedEvents, committedFileEvents, unchangedRepeat } from '../support/events.ts';
 import { describe, expect, it } from 'vitest';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
 
@@ -187,5 +187,33 @@ describe('portable Markdown component library and deterministic UI generation', 
       expect(result.status, result.stdout).not.toBe(0);
       expect(committedEvents(result.body.events)).toEqual([]);
     }
+  });
+
+  it('refuses a component id that is a Windows device name in validation, before any generation writes', async () => {
+    await mkdir(join(fixture.project, 'device-library'), { recursive: true });
+    await writeFile(join(fixture.project, 'device-library/console.md'), definition('con'));
+    // Validation names the file of the configured default target; generation the file of the requested one.
+    const config = join(fixture.project, 'bin/config.json'), previous = await readFile(config, 'utf8').catch(() => undefined);
+    await writeFile(config, JSON.stringify({ plugins: { settings: { ui: { framework: 'svelte' } } } }));
+    const message = (file: string) => `Component con would generate ${file}, a Windows reserved device name that no file can have on Windows; choose another id.`;
+    const details = (file: string) => ({ component: 'con', file, reason: 'device-name', segment: file });
+    try {
+      for (const [args, file] of [
+        [['components', 'validate'], 'con.svelte'], [['components', 'list'], 'con.svelte'], [['components', 'export', '--out', 'device-export'], 'con.svelte'],
+        [['make', 'ui', 'con', '--framework', 'vue', '--out', 'device-out', '--plan'], 'con.vue'],
+        [['make', 'ui', 'con', '--framework', 'html', '--out', 'device-out', '--stories', '--stories-out', 'device-stories'], 'con.js'],
+      ] as const) {
+        const failed = await cli([...args, '--library', 'device-library']);
+        expect(failed.body.error, args.join(' ')).toMatchObject({ code: 'INVALID_UI', message: message(file), details: details(file) });
+        expect(committedEvents(failed.body.events)).toEqual([]);
+      }
+    } finally { await (previous === undefined ? rm(config, { force: true }) : writeFile(config, previous)); }
+    const german = await cli(['--lang', 'de', 'make', 'ui', 'con', '--framework', 'vue', '--library', 'device-library', '--out', 'device-out']);
+    expect(german.body.error).toMatchObject({
+      code: 'INVALID_UI', message: 'Die Komponente con würde con.vue generieren, einen unter Windows reservierten Gerätenamen, den keine Datei unter Windows tragen kann; wählen Sie eine andere ID.',
+      details: { ...details('con.vue'), localization: { originalMessage: message('con.vue') } },
+    });
+    expect((await cli(['--lang', 'de', 'components', 'validate', '--library', 'device-library'])).body.error).toMatchObject({ code: 'INVALID_UI', message: expect.stringContaining('Die Komponente con würde con.') });
+    for (const folder of ['device-out', 'device-stories', 'device-export']) await expect(readdir(join(fixture.project, folder))).rejects.toThrow();
   });
 });

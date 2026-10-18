@@ -55,6 +55,18 @@ describe('listing, inspecting and validating definitions', () => {
     expect(await failure(scope.run(['validate']))).toMatchObject({ details: { files: [{ diagnostics: [expect.objectContaining({ code: 'invalid-instruction-file', message: expect.stringContaining("in the definition file's folder") })] }] } });
   });
 
+  it('fails validation, listing and generation of an agent whose generated Claude file would be a Windows device name', async () => {
+    await scope.put('agents/team.yaml', 'agents:\n  root:\n    model: auto\n  PRN:\n    model: auto\n');
+    const error = await failure(scope.run(['validate']));
+    expect(error).toMatchObject({ code: 'INVALID_AGENT_DEFINITION', details: { files: [{ path: 'agents/team.yaml', diagnostics: [{ severity: 'error', code: 'device-name', pointer: '/agents/PRN', file: '.claude/agents/prn.md', line: 5 }] }] } });
+    expect((await scope.run(['list'])).data).toMatchObject({ files: [{ path: 'agents/team.yaml', valid: false, errors: 1 }] });
+    expect(await failure(scope.run(['generate'], { target: 'claude', plan: true }))).toMatchObject({ code: 'INVALID_AGENT_DEFINITION', details: { files: [{ diagnostics: [expect.objectContaining({ code: 'device-name' })] }] } });
+    await scope.put('agents/team.yaml', 'agents:\n  root:\n    model: auto\n');
+    const current = ((await scope.run(['list'])).data as { files: Array<{ revision: string }> }).files[0]!.revision;
+    expect(await failure(scope.run(['create', 'Lpt1'], { file: 'team.yaml', 'if-match': current }))).toMatchObject({ code: 'INVALID_AGENT_DEFINITION', details: { files: [{ diagnostics: [expect.objectContaining({ code: 'device-name', pointer: '/agents/Lpt1' })] }] } });
+    expect(await scope.read('agents/team.yaml')).toBe('agents:\n  root:\n    model: auto\n');
+  });
+
   it('lists every other file when one expands aliases too far', async () => {
     await scope.put('agents/dev-team.yaml', await example('dev-team.yaml'));
     await scope.put('agents/bomb.yaml', ['a: &a [x, x, x, x, x, x, x, x, x]', ...['b', 'c', 'd', 'e', 'f', 'g'].map((key, index) => `${key}: &${key} [${Array(9).fill(`*${'abcdef'[index]}`).join(', ')}]`), 'agents: {root: {model: auto}}', ''].join('\n'));

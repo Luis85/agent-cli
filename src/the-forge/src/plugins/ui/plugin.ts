@@ -28,7 +28,7 @@ const renderer: UiRenderer = {
 const services: UiServicesFactory = context => {
   const settings = uiSettings(context.settings), workspace = context.environment;
   const interactions = new InteractionLibrary(workspace, new MarkdownInteractionDefinitions(workspace.codec));
-  const components = new UiLibrary(workspace, new MarkdownUiDefinitions(workspace.codec), standardUiCatalog, renderer, interactions, settings.interactions);
+  const components = new UiLibrary(workspace, new MarkdownUiDefinitions(workspace.codec), standardUiCatalog, renderer, interactions, settings.interactions, settings.framework);
   return { settings, components, interactions };
 };
 

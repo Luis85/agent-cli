@@ -1,6 +1,8 @@
 /** Framework-neutral, declarative UI contracts. Bindings use {{propName}}. */
 export const uiFrameworks = ['html', 'htmx', 'vanilla', 'vue', 'svelte', 'react', 'angular'] as const;
 export type UiFramework = typeof uiFrameworks[number];
+/** The extension of each target's importable component file, `<id>.<extension>`. */
+export const uiArtifactExtensions: Readonly<Record<UiFramework, string>> = { html: 'js', htmx: 'js', vanilla: 'js', react: 'tsx', vue: 'vue', svelte: 'svelte', angular: 'ts' };
 export type UiValue = string | number | boolean | null;
 export type UiJson = UiValue | UiJson[] | { [key: string]: UiJson };
 export interface UiProp { type: 'string' | 'number' | 'boolean'; default?: UiValue; required?: boolean; description?: string }

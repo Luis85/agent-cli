@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
-import { componentDependencies, selectUiComponents, validateUiLibrary } from '../../src/plugins/ui/domain/components/library.ts';
+import { componentDependencies, selectUiComponents, uiGeneratedFiles, validateUiLibrary } from '../../src/plugins/ui/domain/components/library.ts';
 import { encodeText } from '../../src/infrastructure/documents/codec.ts';
 import { MarkdownUiDefinitions } from '../../src/plugins/ui/infrastructure/components/definitions.ts';
 import { standardUiCatalog } from '../../src/plugins/ui/infrastructure/components/catalog.ts';
@@ -53,6 +53,20 @@ describe('strict Markdown UI definitions', () => {
   });
   it.each(['svg', 'math'])('rejects namespace-specific %s trees before generation', tag => {
     expect(() => definition('graphic', { root: { tag: 'div', children: [{ tag }] } })).toThrow(/SVG and MathML namespaces are unsupported/);
+  });
+  it('rejects a component whose generated files would be a Windows device name, named for the target', () => {
+    // A definition file cannot itself be named after a device, but any file may define such an id.
+    const named = (id: string) => codec.parse(source(id), `library/${id}-definition.md`);
+    expect(uiGeneratedFiles('card', 'vue')).toEqual(['card.vue', 'card.stories.ts']);
+    expect(uiGeneratedFiles('card', 'htmx')).toEqual(['card.js', 'card.html', 'card.d.ts', 'card.stories.ts']);
+    for (const [id, framework, file] of [['con', 'vue', 'con.vue'], ['aux', 'html', 'aux.js'], ['com1', 'react', 'com1.tsx'], ['lpt9', 'angular', 'lpt9.ts']] as const) {
+      expect(() => validateUiLibrary([definition('card'), named(id)], [], framework)).toThrow(expect.objectContaining({
+        code: 'INVALID_UI', message: `Component ${id} would generate ${file}, a Windows reserved device name that no file can have on Windows; choose another id.`,
+        details: { component: id, file, reason: 'device-name', segment: file },
+      }));
+    }
+    expect(() => validateUiLibrary([named('con'), named('con')])).toThrow(expect.objectContaining({ code: 'DUPLICATE_UI_COMPONENT' }));
+    expect(() => validateUiLibrary(['console', 'con-button', 'nul-state', 'com10', 'lpt0'].map(id => definition(id)), [], 'svelte')).not.toThrow();
   });
   it('rejects duplicate ids, missing references, cycles and binding mismatches', () => {
     expect(() => validateUiLibrary([definition('one'), definition('one')])).toThrow(expect.objectContaining({ code: 'DUPLICATE_UI_COMPONENT' }));
