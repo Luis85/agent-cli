@@ -30,9 +30,9 @@ export default {
     },
   },
   commands: [{
-    id: 'quality.check', description: 'Report the number of Markdown notes', usage: 'quality.check', mutating: false,
-    async run(args, flags, context) {
-      if (args.length) throw new Error('quality.check takes no arguments');
+    // Declared arguments are counted by the host before run: quality.check takes none.
+    id: 'quality.check', description: 'Report the number of Markdown notes', usage: 'quality.check', mutating: false, args: [],
+    async run(_args, _flags, context) {
       const paths = await context.app.vault.getMarkdownFiles();
       await context.events.emit('quality.checked', { count: paths.length });
       return { notes: paths.length };
@@ -41,7 +41,6 @@ export default {
     id: 'quality.mark-reviewed', description: 'Mark a note as reviewed in its frontmatter', usage: 'quality.mark-reviewed <note.md>',
     args: [{ name: 'note', description: 'Markdown note to mark as reviewed.', required: true }],
     async run(args, flags, context) {
-      if (args.length !== 1) throw new Error('quality.mark-reviewed takes one note path');
       // An atomic, revision-guarded frontmatter edit that keeps the body and honours --dry-run.
       return context.app.fileManager.processFrontMatter(args[0], frontmatter => {
         frontmatter.reviewed = true;
@@ -49,9 +48,8 @@ export default {
       });
     },
   }, {
-    id: 'quality.owners', description: 'Find Markdown notes without an owner', usage: 'quality.owners', mutating: false, errors: ['QUALITY_UNOWNED'],
-    async run(args, flags, context) {
-      if (args.length) throw new Error('quality.owners takes no arguments');
+    id: 'quality.owners', description: 'Find Markdown notes without an owner', usage: 'quality.owners', mutating: false, args: [], errors: ['QUALITY_UNOWNED'],
+    async run(_args, _flags, context) {
       const property = context.settings.ownerProperty, unowned = [];
       for (const path of await context.app.vault.getMarkdownFiles()) {
         const cache = await context.app.metadataCache.getFileCache(path);
