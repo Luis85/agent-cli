@@ -1,3 +1,5 @@
+import { canonicalName, isDeviceName } from '../documents/file.ts';
+
 /**
  * Agent Skills (https://agentskills.io/specification): a skill is a folder `<name>/SKILL.md` whose YAML frontmatter
  * names it and says what it does and when to use it. Forge installs every registered skill into the skill roots
@@ -48,6 +50,39 @@ export function skillFileIssues(id: string, files: unknown): string[] {
     ...(skillFileName.test(path) && path.length <= 255 && path.toUpperCase() !== 'SKILL.MD' ? [] : [`Skill ${id} file ${path} must be a relative path inside the skill folder other than SKILL.md.`]),
     ...(typeof content === 'string' ? [] : [`Skill ${id} file ${path} must be text.`]),
   ]);
+}
+
+/**
+ * A skill path that no install can write on some filesystem: a skill id or file path segment that is a Windows
+ * device name, or a file path that names the same file as `duplicateOf` (`case-duplicate`) or its folder
+ * (`folder-conflict`) where letter case and trailing dots are ignored.
+ */
+export interface SkillPathIssue {
+  message: string;
+  details: { skill: string; reason: 'device-name' | 'case-duplicate' | 'folder-conflict'; file?: string; segment?: string; duplicateOf?: string };
+}
+
+/** A path as case-insensitive filesystems and Windows resolve it. */
+const canonicalPath = (path: string) => path.split('/').map(canonicalName).join('/');
+
+/**
+ * Problems of the paths a valid skill installs (see `SkillPathIssue`), so a plugin fails at registration instead of
+ * every later `setup` and `skills install`. `files` holds valid relative paths (see `skillFileIssues`).
+ */
+export function skillPathIssues(id: string, files: Readonly<Record<string, unknown>> = {}): SkillPathIssue[] {
+  if (isDeviceName(id)) return [{ message: `Skill id ${id} is a Windows reserved device name, which no skill folder can have on Windows; choose another id.`, details: { skill: id, reason: 'device-name', segment: id } }];
+  const issues: SkillPathIssue[] = [], installed = new Map([[canonicalPath('SKILL.md'), 'SKILL.md']]);
+  for (const file of Object.keys(files).sort()) {
+    const segment = file.split('/').find(isDeviceName), same = installed.get(canonicalPath(file));
+    if (segment !== undefined) issues.push({ message: `Skill ${id} file ${file} uses the Windows reserved device name ${segment}, which no Windows system can install; rename it.`, details: { skill: id, reason: 'device-name', file, segment } });
+    else if (same !== undefined) issues.push({ message: `Skill ${id} file ${file} names the same file as ${same} where letter case and trailing dots are ignored, as on Windows and macOS; rename one of them.`, details: { skill: id, reason: 'case-duplicate', file, duplicateOf: same } });
+    else installed.set(canonicalPath(file), file);
+  }
+  for (const [folder, file] of installed) {
+    const inside = [...installed].find(([path]) => path.startsWith(`${folder}/`))?.[1];
+    if (inside !== undefined) issues.push({ message: `Skill ${id} file ${file} is also the folder of ${inside}; a path cannot be both a file and a folder.`, details: { skill: id, reason: 'folder-conflict', file, duplicateOf: inside } });
+  }
+  return issues;
 }
 
 /** The roots of `--target both|claude|agents`. */

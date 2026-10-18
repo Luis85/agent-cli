@@ -84,6 +84,8 @@ Each failure's `hint` names the invoked command where the catalog hint says `hel
 
 A stale `--if-match` for the moved or deleted path, or a referring file that changed while links were planned, fails with `CONFLICT`; reread with `read` (files) or `delete --dry-run`/`move --dry-run` and retry. The referring file's case carries `details.reason: "changed-while-planning"` with `details.path` naming that file, and nothing was written, so the same move can simply be rerun.
 
+**`INVALID_PLUGIN`** for a skill path (exit 2): registration refuses a plugin skill that no `setup` or `skills install` could write on every platform. `details` is `{skill, reason, file?, segment?, duplicateOf?}`: `reason` is `device-name` (the skill id or the `segment` of `file` is a Windows device name), `case-duplicate` (`file` names the same file as `duplicateOf` once letter case and trailing dots are ignored) or `folder-conflict` (`file` is also the folder of `duplicateOf`); the message lists every such path. Rename the file or skill in the plugin, or disable the plugin with `--no-plugins`.
+
 ## Codes
 
 | Code | Exit | Category | Retryable | Summary | Hint |
