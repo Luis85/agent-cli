@@ -7,6 +7,7 @@ import {
   type AgentConfigDocument, type AgentDiagnostic,
 } from '../domain/config.ts';
 import { semanticDiagnostics } from '../domain/semantics.ts';
+import { agentFileDiagnostics } from '../domain/claude-generation.ts';
 import { agentError } from '../domain/errors.ts';
 import type { AgentPorts, ParsedDefinition } from './ports.ts';
 import { say } from '../domain/messages.ts';
@@ -58,14 +59,17 @@ export class AgentDefinitions {
     return path;
   }
 
-  /** Parse, schema and semantic diagnostics for definition text; positions come from the YAML source. */
+  /**
+   * Parse, schema and semantic diagnostics for definition text, and agents whose generated Claude file no Windows
+   * system can write; positions come from the YAML source.
+   */
   check(text: string): { config?: AgentConfigDocument; diagnostics: AgentDiagnostic[]; locate: ParsedDefinition['locate'] } {
     const parsed = this.ports.codec.parse(text);
     if (parsed.value === undefined) return { diagnostics: parsed.diagnostics, locate: parsed.locate };
     const value = normalizedDocument(parsed.value);
     const schema = this.ports.schema.validate(value);
     const config = isObject(value) ? value : undefined;
-    const semantic = config ? semanticDiagnostics(config, this.ports.schema.configVersion) : [];
+    const semantic = config ? [...semanticDiagnostics(config, this.ports.schema.configVersion), ...agentFileDiagnostics(config)] : [];
     const diagnostics = [...schema, ...semantic].map(entry => ({ ...entry, ...parsed.locate(entry.pointer) }));
     return { ...(config ? { config } : {}), diagnostics: diagnostics.sort(byPosition), locate: parsed.locate };
   }

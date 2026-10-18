@@ -13,7 +13,7 @@ Agent definitions are [docker-agent](https://github.com/docker/docker-agent) YAM
 ## Inspect
 - `agents list` returns each file's `revision`, agents, `default` agent and error and warning counts.
 - `agents inspect team.yaml` returns the parsed `config` and `diagnostics`; `agents inspect team.yaml#reviewer` returns one agent and its resolved `instruction`.
-- `agents validate [team.yaml]` checks the docker-agent schema and semantic rules. Errors fail with `INVALID_AGENT_DEFINITION`; `details.files[].diagnostics` give `severity`, `code`, JSON `pointer`, `line`, `column` and `message`.
+- `agents validate [team.yaml]` checks the docker-agent schema and semantic rules, and that no agent's generated `.claude/agents/<name>.md` is a Windows device name (`device-name`, with the output in `file`). Errors fail with `INVALID_AGENT_DEFINITION`; `details.files[].diagnostics` give `severity`, `code`, JSON `pointer`, `line`, `column` and `message`.
 - `instruction_file` paths are relative to the definition and must stay in its folder or below.
 
 ## Author

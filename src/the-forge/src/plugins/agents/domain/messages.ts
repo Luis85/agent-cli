@@ -124,6 +124,8 @@ export const agentMessages = {
   commandCollision: 'The {label} would generate .claude/skills/{name}/SKILL.md, which the {owner} already generates; rename one of the commands.',
   commandRenamed: 'Several agents define a different /{command}; this one becomes the skill {name}.',
   agentCollision: 'Agent {name} would generate .claude/agents/{claude}.md, which {owner} already generates.',
+  agentDeviceName: 'Agent {name} would generate {file}, a Windows reserved device name that no file can have on Windows; rename the agent.',
+  commandDeviceName: 'The {label} would generate {file}, whose folder is a Windows reserved device name that no folder can have on Windows; rename the command.',
   mainAgent: 'The default agent {agent} becomes the project\'s main agent ("agent": "{claude}").',
   settingsAgentConflict: '.claude/settings.json already sets agent to {agent}, which Forge did not generate; remove it to let Forge set {claude}.',
   encoding: 'Definition files must be valid UTF-8.',
@@ -137,6 +139,7 @@ export const agentFragments: MessageFragments<AgentMessage> = {
   permissionPartial: { reason: reasons },
   permissionDropped: { reason: reasons },
   commandCollision: { label: ['commandLabel'], owner: ['commandLabel'] },
+  commandDeviceName: { label: ['commandLabel'] },
 };
 
 /** An English diagnostic message from its template. */

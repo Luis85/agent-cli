@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
+import { committedEvents } from '../support/events.ts';
 
 const fixture = portableCli();
 const cli = fixture.cli;
@@ -90,4 +91,29 @@ describe('the agents core plugin through the portable CLI', () => {
       }
     } finally { await (current === undefined ? rm(manifest) : writeFile(manifest, current)); }
   });
+
+  it('reports agents and commands whose generated Claude file would be a Windows device name before generating', async () => {
+    const file = join(fixture.project, 'agents/devices.yaml');
+    await mkdir(join(fixture.project, 'agents'), { recursive: true });
+    await writeFile(file, 'agents:\n  lead:\n    model: auto\n    commands:\n      Aux: Do it.\n  Con:\n    model: auto\n');
+    try {
+      for (const [language, message] of [
+        ['en', 'Agent Con would generate .claude/agents/con.md, a Windows reserved device name that no file can have on Windows; rename the agent.'],
+        ['de', 'Der Agent Con würde .claude/agents/con.md generieren, einen unter Windows reservierten Gerätenamen, den keine Datei unter Windows tragen kann; benennen Sie den Agenten um.'],
+      ] as const) {
+        const failed = await cli(['--lang', language, 'agents', 'validate', 'devices.yaml']);
+        expect(failed.body.error).toMatchObject({ code: 'INVALID_AGENT_DEFINITION', details: { files: [{ path: 'agents/devices.yaml', diagnostics: [{ code: 'device-name', pointer: '/agents/Con', file: '.claude/agents/con.md', message }] }] } });
+      }
+      await writeFile(file, 'agents:\n  lead:\n    model: auto\n    commands:\n      Aux: Do it.\n');
+      expect(await ok(['agents', 'validate', 'devices.yaml'])).toMatchObject({ valid: true });
+      const commands = await cli(['--lang', 'de', 'agents', 'generate', '--target', 'claude', '--file', 'devices.yaml', '--commands']);
+      expect(commands.body.error).toMatchObject({ code: 'INVALID_AGENT_DEFINITION', details: { diagnostics: [{
+        code: 'device-name', pointer: '/agents/lead/commands/Aux', file: '.claude/skills/aux/SKILL.md', path: 'agents/devices.yaml',
+        message: 'Der Befehl /Aux des Agenten lead würde .claude/skills/aux/SKILL.md generieren, dessen Ordner einen unter Windows reservierten Gerätenamen trägt, den kein Ordner unter Windows tragen kann; benennen Sie den Befehl um.',
+      }] } });
+      expect(committedEvents(commands.body.events)).toEqual([]);
+      await expect(readFile(join(fixture.project, '.claude/skills/aux/SKILL.md'))).rejects.toThrow();
+    } finally { await rm(file, { force: true }); }
+  });
 });
+
