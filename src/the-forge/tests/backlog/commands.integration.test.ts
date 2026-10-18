@@ -40,8 +40,8 @@ describe('choosing the backlog', () => {
     const warnings: string[] = [];
     await registry.configure({}, async () => [], message => warnings.push(englishWarning(message)));
     expect(registry.disabled.map(manifest => manifest.id)).toEqual(['bases']);
-    const reason = 'Requires service bases.query; its provider bases is disabled.';
-    expect(registry.unavailable.get('backlog')).toEqual({ reason: kernelMessage('PLUGIN_PROVIDER_DISABLED', { service: 'bases.query', provider: 'bases' }), issues: [] });
+    const reason = kernelMessage('PLUGIN_PROVIDER_DISABLED', { service: 'bases.query', provider: 'bases' });
+    expect(registry.unavailable.get('backlog')).toEqual({ reason, issues: [] });
     // plugins.disabled asked for the cascade, so it is reported by plugins and the command, not as a warning.
     expect(warnings).toEqual([]);
     await expect(registry.resolveCommand('backlog').run(['list'], {}, {} as CommandContext)).rejects.toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'backlog', plugin: 'backlog', reason, issues: [] } });

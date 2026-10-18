@@ -15,7 +15,8 @@ import { Localizer } from '../localization/localization.ts';
  *   `--no-plugins`; it lists only `id`, `core`, `state`, `reason` and `contributions`.
  * - `rejected`: an installed user plugin whose id a bundled core plugin owns, enabled or disabled; it never loads
  *   and is listed separately from the core entry.
- * Every state but `enabled` carries a `reason` sentence. Plugins whose code never ran list `contributions: null`.
+ * Every state but `enabled` carries a `reason` `{code, message, details?}`, shaped like a warning: a stable code to
+ * match and the sentence in the response language. Plugins whose code never ran list `contributions: null`.
  * `localizer` renders reasons and, where plugins translate them, names and descriptions in the response language.
  */
 export function pluginCatalog(registry: Registry, installed: readonly InstalledPlugin[], localizer: Localizer = new Localizer('en', registry.catalog)) {
@@ -24,7 +25,7 @@ export function pluginCatalog(registry: Registry, installed: readonly InstalledP
     const unavailable = registry.unavailable.get(plugin.manifest.id);
     return {
       ...localizer.manifest(plugin.manifest), core: registry.origins.get(plugin.manifest.id) === 'core',
-      ...(unavailable ? { state: 'unavailable' as const, reason: localizer.warning(unavailable.reason).message } : { state: 'enabled' as const, reason: null }),
+      ...(unavailable ? { state: 'unavailable' as const, reason: localizer.warning(unavailable.reason) } : { state: 'enabled' as const, reason: null }),
       contributions: {
         commands: (plugin.commands ?? []).map(command => command.id),
         generators: (plugin.generators ?? []).map(generator => generator.id),
@@ -37,18 +38,18 @@ export function pluginCatalog(registry: Registry, installed: readonly InstalledP
       },
     };
   });
-  const disabledCore = registry.disabled.map(manifest => ({ ...localizer.manifest(manifest), core: true, state: 'disabled' as const, reason: localizer.warning(registry.disabledReason(manifest.id) ?? kernelMessage('PLUGIN_LISTED_DISABLED')).message, contributions: null }));
+  const disabledCore = registry.disabled.map(manifest => ({ ...localizer.manifest(manifest), core: true, state: 'disabled' as const, reason: localizer.warning(registry.disabledReason(manifest.id) ?? kernelMessage('PLUGIN_LISTED_DISABLED')), contributions: null }));
   const coreIds = new Set([...registry.disabled.map(manifest => manifest.id), ...[...registry.origins].filter(([, origin]) => origin === 'core').map(([id]) => id)]);
   const others = installed.filter(entry => coreIds.has(entry.manifest.id) || !registry.origins.has(entry.manifest.id)).map(entry => ({
     ...entry.manifest, core: false,
     ...(coreIds.has(entry.manifest.id)
-      ? { state: 'rejected' as const, reason: localizer.warning(kernelMessage('PLUGIN_ID_RESERVED', { plugin: entry.manifest.id })).message }
+      ? { state: 'rejected' as const, reason: localizer.warning(kernelMessage('PLUGIN_ID_RESERVED', { plugin: entry.manifest.id })) }
       : entry.skipped
-        ? { state: 'skipped' as const, reason: localizer.warning(kernelMessage('PLUGIN_SKIPPED')).message }
-        : { state: 'disabled' as const, reason: localizer.warning(kernelMessage('PLUGIN_NOT_ENABLED')).message }),
+        ? { state: 'skipped' as const, reason: localizer.warning(kernelMessage('PLUGIN_SKIPPED')) }
+        : { state: 'disabled' as const, reason: localizer.warning(kernelMessage('PLUGIN_NOT_ENABLED')) }),
     contributions: null,
   }));
   // An enabled plugin without a manifest has no manifest fields to list; its id and reason say what to fix.
-  const missing = [...registry.missing].map(([id, reason]) => ({ id, core: false, state: 'missing' as const, reason: localizer.warning(reason).message, contributions: null }));
+  const missing = [...registry.missing].map(([id, reason]) => ({ id, core: false, state: 'missing' as const, reason: localizer.warning(reason), contributions: null }));
   return [...loaded.filter(plugin => plugin.core), ...disabledCore, ...loaded.filter(plugin => !plugin.core), ...missing, ...others];
 }

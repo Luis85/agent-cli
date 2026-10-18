@@ -2,6 +2,7 @@ import { AppError, ensure, errorMessage, isRecord } from '../../domain/shared/er
 import { germanActions, germanCommands, germanEvents, germanGuidance } from './catalog.ts';
 import { germanDescriptions } from './descriptions.ts';
 import { germanKernelMessages } from './messages.ts';
+import { isKernelMessage } from '../../domain/shared/kernel-messages.ts';
 import { responseWarning, type Warning } from '../../domain/shared/warnings.ts';
 import type { CommandArgument, CommandMetadata, CommandOption, OutputLocalization } from '../../application/plugins/command-metadata.ts';
 import { germanErrors, germanHintVariant } from './errors.ts';
@@ -143,9 +144,10 @@ export class Localizer {
     const code = error instanceof AppError ? error.code : 'OPERATION_FAILED';
     const diagnostic = errorMessage(error);
     let details = error instanceof AppError ? error.details : undefined;
-    // Plugin diagnostics must not replace the original error when encoding the envelope.
+    // Plugin diagnostics must not replace the original error when encoding the envelope. A detail the host created as a
+    // message, such as the reason of PLUGIN_UNAVAILABLE, reads as `{code, message, details?}` in the response language.
     if (details) {
-      try { details = JSON.parse(JSON.stringify(details)) as Record<string, unknown>; }
+      try { details = JSON.parse(JSON.stringify(Object.fromEntries(Object.entries(details).map(([key, value]) => [key, isKernelMessage(value) ? this.warning(value) : value])))) as Record<string, unknown>; }
       catch { details = { diagnostic: 'Error details were not JSON-serializable.' }; }
     }
     const builtIn = errorDefinition(code), contributed = builtIn ? undefined : this.plugins?.error(code);

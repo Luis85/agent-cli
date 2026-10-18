@@ -22,14 +22,14 @@ it('lists every plugin with one state and a reason for each state but enabled, a
   const listed = pluginCatalog(registry, installed).map(({ id, core: bundled, state, reason }) => ({ id, core: bundled, state, reason }));
   expect(listed).toEqual([
     { id: 'search', core: true, state: 'enabled', reason: null },
-    { id: 'backlog', core: true, state: 'unavailable', reason: 'Requires service bases.query; its provider bases is disabled.' },
-    { id: 'bases', core: true, state: 'disabled', reason: 'Listed in plugins.disabled.' },
+    { id: 'backlog', core: true, state: 'unavailable', reason: { code: 'PLUGIN_PROVIDER_DISABLED', message: 'Requires service bases.query; its provider bases is disabled.', details: { service: 'bases.query', provider: 'bases' } } },
+    { id: 'bases', core: true, state: 'disabled', reason: { code: 'PLUGIN_LISTED_DISABLED', message: 'Listed in plugins.disabled.' } },
     { id: 'quality', core: false, state: 'enabled', reason: null },
-    { id: 'absent', core: false, state: 'missing', reason: 'plugins.enabled names absent, but bin/plugins/absent/manifest.json does not exist; install the plugin there, or remove it from plugins.enabled.' },
-    { id: 'bases', core: false, state: 'rejected', reason: 'Plugin id bases is reserved by the bundled core plugin; rename the user plugin.' },
-    { id: 'search', core: false, state: 'rejected', reason: 'Plugin id search is reserved by the bundled core plugin; rename the user plugin.' },
-    { id: 'drafts', core: false, state: 'disabled', reason: 'Not listed in plugins.enabled.' },
-    { id: 'later', core: false, state: 'skipped', reason: 'Skipped by --no-plugins.' },
+    { id: 'absent', core: false, state: 'missing', reason: { code: 'PLUGIN_MISSING', message: 'plugins.enabled names absent, but bin/plugins/absent/manifest.json does not exist; install the plugin there, or remove it from plugins.enabled.', details: { plugin: 'absent', path: 'bin/plugins/absent/manifest.json' } } },
+    { id: 'bases', core: false, state: 'rejected', reason: { code: 'PLUGIN_ID_RESERVED', message: 'Plugin id bases is reserved by the bundled core plugin; rename the user plugin.', details: { plugin: 'bases' } } },
+    { id: 'search', core: false, state: 'rejected', reason: { code: 'PLUGIN_ID_RESERVED', message: 'Plugin id search is reserved by the bundled core plugin; rename the user plugin.', details: { plugin: 'search' } } },
+    { id: 'drafts', core: false, state: 'disabled', reason: { code: 'PLUGIN_NOT_ENABLED', message: 'Not listed in plugins.enabled.' } },
+    { id: 'later', core: false, state: 'skipped', reason: { code: 'PLUGIN_SKIPPED', message: 'Skipped by --no-plugins.' } },
   ]);
   // An unavailable plugin's code ran, so its contributions stay listed.
   expect(pluginCatalog(registry, []).find(entry => entry.id === 'backlog')!.contributions).toMatchObject({ services: { requires: ['bases.query'] } });
