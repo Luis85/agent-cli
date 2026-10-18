@@ -10,7 +10,7 @@ Read this when you need more than the core loop in [SKILL.md](../SKILL.md): the 
 - `bin/data/docs/reference/errors.md` lists every code with its exit status, hint and `retryable` flag. `schema <command>` publishes its codes in `data.commands[0].errors` and `data.commonErrors`, and `data.errors` describes them.
 
 ## Discovery
-- `help` (also no arguments, `--help` and `-h`) returns `{name, version, apiVersion, commands, mutating, globalOptions, next}`: one line per command and the ids of the mutating commands.
+- `help` (also no arguments, `--help` and `-h`) returns `{name, version, apiVersion, commands, mutating, globalOptions, next}`: one line per command and the ids of the mutating commands. Every command id is always listed; when many plugin commands would outgrow 4 KB, later ids map to an empty description and `omitted` counts them, so run `help <command>` for those.
 - `help <command>` adds usage, 1-3 `examples`, options, arguments, `annotations.actions` and error codes. Options marked `path: true` accept `./x`, `x\y` and absolute paths inside the root.
 - `schema <command>` returns the command's JSON Schema 2020-12 `inputSchema`, the `outputSchema` of `data` (or `annotations.actions.<action>.outputSchema`), `errors` and `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `scope`), plus the response `envelope` schema. `schema` alone is a compact index of ids; `schema --all` is the complete catalog.
 - Actions declare their own options: an option of another action fails with `UNKNOWN_OPTION`. Typos and common words (`ls`, `cat`, `grep`, `mv`, `rm`, `--force`) fail with suggestions such as `list` or `--if-match`.
