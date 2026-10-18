@@ -8,7 +8,7 @@ import type { forgeIdentity } from './identity.ts';
 export const helpIndexBudget = 4096;
 /** The most characters of a command description the help index shows; `help <command>` shows all of it. */
 export const indexDescriptionLength = 76;
-/** The shortest cut the index makes to stay within its budget; an index of more commands than that fits exceeds it. */
+/** The shortest cut the index makes to stay within its budget; past it, the last commands lose their descriptions. */
 export const shortestIndexDescription = 24;
 const languages: readonly Language[] = ['en', 'de'];
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
@@ -28,7 +28,10 @@ export function indexDescription(description: string, length = indexDescriptionL
  * The entry index of `help`: every command id with its description as `indexDescription` shortens it, the mutating
  * commands, the global flags and `next`. The descriptions take the longest length, at most `indexDescriptionLength`
  * and at least `shortestIndexDescription`, at which the compact JSON stays within `helpIndexBudget` bytes, so more
- * commands (user plugins among them) shorten every description instead of outgrowing the budget. The descriptions
+ * commands (user plugins among them) shorten every description instead of outgrowing the budget. When even the
+ * shortest cut does not fit, the commands keep their descriptions in registry order (kernel, core plugins, user
+ * plugins) as far as they fit, the rest map to an empty description and `omitted` counts them. Every command id stays
+ * listed: discovery takes precedence, so only an index whose ids alone outgrow the budget exceeds it. The descriptions
  * are already in the response language; `next` counts in its longest translation, since the response translates it
  * after the index is built.
  */
@@ -36,12 +39,24 @@ export function helpIndex(identity: typeof forgeIdentity, commands: readonly Com
   const translations = languages.map(language => (new Localizer(language).result({ localizedOutput: { next: 'text' } }, { next }) as { next: string }).next);
   const longestNext = translations.reduce((longest, text) => bytes(text) > bytes(longest) ? text : longest, next);
   const mutating = commands.filter(command => commandAnnotations(command).mutating).map(command => command.id);
-  const index = (length: number, nextText = next) => ({
+  const index = (length: number, described: number, nextText = next) => ({
     name: identity.name, version: identity.version, apiVersion: identity.apiVersion,
-    commands: Object.fromEntries(commands.map(command => [command.id, indexDescription(command.description, length)])),
-    mutating, globalOptions, next: nextText,
+    commands: Object.fromEntries(commands.map((command, position) => [command.id, position < described ? indexDescription(command.description, length) : ''])),
+    mutating, globalOptions, ...(described < commands.length ? { omitted: commands.length - described } : {}), next: nextText,
   });
+  const fits = (length: number, described = commands.length) => bytes(index(length, described, longestNext)) <= helpIndexBudget;
   let length = indexDescriptionLength;
-  while (length > shortestIndexDescription && bytes(index(length, longestNext)) > helpIndexBudget) length--;
-  return index(length);
+  while (length > shortestIndexDescription && !fits(length)) length--;
+  // The most leading commands that keep a description at the shortest cut; none when even the ids alone do not fit.
+  let described = commands.length;
+  if (!fits(length)) {
+    let low = 0, high = commands.length - 1;
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      if (fits(length, middle)) low = middle;
+      else high = middle - 1;
+    }
+    described = low;
+  }
+  return index(length, described);
 }

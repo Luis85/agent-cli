@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,19 +8,26 @@ import { encodeText } from '../../src/infrastructure/documents/codec.ts';
 
 /** Files whose read fails as if another program deleted them between listing and reading. */
 const vanishing = new Set<string>();
+/**
+ * Files whose read fails with the given code although they exist, as files this platform's permissions or locks keep
+ * from Forge do; tests run as root, which no file mode keeps out.
+ */
+const unreadable = new Map<string, string>();
 vi.mock('node:fs/promises', async original => {
   const actual = await original<typeof import('node:fs/promises')>();
   return {
     ...actual,
     readFile: (async (path: Parameters<typeof actual.readFile>[0], options?: Parameters<typeof actual.readFile>[1]) => {
       if (typeof path === 'string' && vanishing.has(path)) throw Object.assign(new Error(`ENOENT: no such file, open '${path}'`), { code: 'ENOENT' });
+      const code = typeof path === 'string' ? unreadable.get(path) : undefined;
+      if (code !== undefined) throw Object.assign(new Error(`${code}: cannot read, open '${path}'`), { code });
       return actual.readFile(path, options);
     }) as typeof actual.readFile,
   };
 });
 
 let root: string, files: NodeFiles;
-beforeEach(async () => { root = await mkdtemp(join(tmpdir(), 'forge-folder-walk-')); files = await NodeFiles.at(root); vanishing.clear(); });
+beforeEach(async () => { root = await mkdtemp(join(tmpdir(), 'forge-folder-walk-')); files = await NodeFiles.at(root); vanishing.clear(); unreadable.clear(); });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 
 describe('folder walks that meet entries Forge cannot read back', () => {
@@ -42,6 +50,55 @@ describe('folder walks that meet entries Forge cannot read back', () => {
     vanishing.add(join(await files.resolvePath('dir/sub', true), 'gone.md'));
     await expect(files.stat('dir')).rejects.toMatchObject({ code: 'CONFLICT', details: { path: 'dir' } });
     await expect(files.commit({ renames: [{ from: 'dir', to: 'dir2', expectedRevision: 'any' }] }, false)).rejects.toMatchObject({ code: 'CONFLICT' });
+  });
+
+  // Windows opens con.md as the console device, so no such file exists there.
+  describe.skipIf(process.platform === 'win32')('a Windows device-named file inside the folder', () => {
+    const device = async (name = 'con.md') => join(await files.resolvePath('docs', true), name);
+    const revision = async () => (await files.stat('docs')).revision;
+
+    it.each(['EACCES', 'EPERM', 'EISDIR', 'EBUSY'])('counts a file that fails to read with %s by its size, so a size change still changes the folder revision', async code => {
+      await mkdir(join(root, 'docs'));
+      await writeFile(join(root, 'docs/a.md'), 'A');
+      await writeFile(join(root, 'docs/con.md'), 'locked');
+      const readable = await revision();
+      unreadable.set(await device(), code);
+      const unread = await revision();
+      expect((await files.folder('docs'))!.special).toEqual([{ path: 'con.md', kind: 'other', revision: 'bytes:6' }]);
+      expect(unread).not.toBe(readable);
+      // Unread bytes of the same size cannot change the revision; another size does.
+      await writeFile(join(root, 'docs/con.md'), 'LOCKED');
+      expect(await revision()).toBe(unread);
+      await writeFile(join(root, 'docs/con.md'), 'locked longer');
+      expect((await files.folder('docs'))!.special[0]!.revision).toBe('bytes:13');
+      expect(await revision()).not.toBe(unread);
+      // A guarded move planned from the unread revision still sees the size change.
+      await expect(files.commit({ renames: [{ from: 'docs', to: 'moved', expectedRevision: unread }] }, false)).rejects.toMatchObject({ code: 'CONFLICT' });
+      expect((await readdir(root)).sort()).toEqual(['docs']);
+    });
+
+    it('counts an unreadable file inside a device-named folder by its size too', async () => {
+      await mkdir(join(root, 'docs/aux'), { recursive: true });
+      await writeFile(join(root, 'docs/aux/inner.md'), 'abc');
+      unreadable.set(await device('aux/inner.md'), 'EACCES');
+      const before = await revision();
+      await writeFile(join(root, 'docs/aux/inner.md'), 'abcd');
+      expect(await revision()).not.toBe(before);
+    });
+
+    it('reports a device-named file that disappears before its read as a CONFLICT, not by size', async () => {
+      await mkdir(join(root, 'docs'));
+      await writeFile(join(root, 'docs/con.md'), 'gone');
+      vanishing.add(await device());
+      await expect(files.stat('docs')).rejects.toMatchObject({ code: 'CONFLICT', details: { path: 'docs' } });
+    });
+
+    // A FIFO is never opened: reading one would wait for a writer that never comes.
+    it.runIf(spawnSync('mkfifo', ['--help']).error === undefined)('counts a device-named FIFO by its kind without reading it', async () => {
+      await mkdir(join(root, 'docs'));
+      expect(spawnSync('mkfifo', [join(root, 'docs/con.md')]).status).toBe(0);
+      expect((await files.folder('docs'))!.special).toEqual([{ path: 'con.md', kind: 'other', revision: 'other' }]);
+    });
   });
 
   it('reports a missing folder as missing', async () => {
