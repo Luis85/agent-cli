@@ -1,6 +1,6 @@
 import type { Command, Generator, Registry } from '../../application/plugins/registry.ts';
 import type { CommandAction, CommandOption } from '../../application/plugins/command-metadata.ts';
-import { arity, globalOptions, value } from '../../application/plugins/command-input.ts';
+import { globalOptions, value } from '../../application/plugins/command-input.ts';
 import { option } from '../../application/plugins/command-metadata.ts';
 import { GenerationService } from '../../application/generation/plans.ts';
 import { ensure } from '../../domain/shared/errors.ts';
@@ -11,6 +11,7 @@ import type { JsonSchema } from '../../domain/schema/json-schema.ts';
 export const generatorCatalog = (registry: Registry) => [...registry.generators.values()].map(({ id, description }) => ({ id, description }));
 const makeErrors = ['UNKNOWN_GENERATOR', 'INVALID_NAME', 'CONFLICT', 'GENERATION_DRIFT', 'INVALID_GENERATION_PLAN', 'INVALID_GENERATION_REVISIONS', 'PROJECT_REQUIRED'];
 const out = { out: option.string('Output directory; each generator documents its default.') };
+const nameArgument = { name: 'name', description: 'The name or id the generator creates from.', required: true };
 
 /** The flags a generator accepts besides the global options: host-owned --out and review controls plus its own. */
 function generatorOptions(generator: Generator): Record<string, CommandOption> {
@@ -35,10 +36,8 @@ export function generationCommand(registry: Registry): Command {
     description: 'Run a registered generator, or list the generators.',
     usage: 'make [generator Name] [--out directory]',
     scope: 'workspace', discovery: false, mutating: false,
-    args: [
-      { name: 'generator', description: 'A generator id; without one, make lists the generators.' },
-      { name: 'name', description: 'The name or id the generator creates from.' },
-    ],
+    // Without a generator, make lists the generators; each generator takes the name it creates from.
+    args: [],
     unknownAction: 'UNKNOWN_GENERATOR',
     generatorActions: true,
     localizedOutput: { generators: 'generators' },
@@ -52,7 +51,7 @@ export function generationCommand(registry: Registry): Command {
         scope: generator.scope ?? 'project', discovery: false, mutating: generator.mutating ?? true,
         ...(generator.destructive === undefined ? {} : { destructive: generator.destructive }), idempotent: generator.idempotent ?? false,
         ...(generator.projectOption ? { projectOption: generator.projectOption } : {}),
-        options: generatorOptions(generator),
+        options: generatorOptions(generator), args: [nameArgument],
         ...(generatorOutput(generator) ? { output: generatorOutput(generator) } : {}),
       }]));
     },
@@ -62,7 +61,6 @@ export function generationCommand(registry: Registry): Command {
         ensure(own.length === 0, 'INVALID_ARGUMENT', 'Generation options require a generator and name. Run make <generator> <Name>; help make lists each generator\'s usage and options.');
         return { generators: generatorCatalog(registry) };
       }
-      arity(args, 2);
       const generator = registry.generators.get(args[0]!); ensure(generator, 'UNKNOWN_GENERATOR', args[0]!);
       const accepted = generatorOptions(generator);
       for (const key of own) ensure(Object.hasOwn(accepted, key), 'INVALID_ARGUMENT', `--${key} is not supported by make ${generator.id}; run help make for each generator's options.`);

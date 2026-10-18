@@ -23,46 +23,50 @@ const agentInput = { ...input, metadata: option.string('JSON metadata for agent 
 const targetUsage = '[--scope project|user|plugin] [--directory plugin] [--claude-dir directory]';
 const hookUsage = '[--scope project|local|user|plugin] [--directory plugin] [--claude-dir directory]';
 const inputUsage = '--from file | --content text | --stdin';
+const agentId = [{ name: 'id', description: 'The native agent id, its file name without .md.', required: true }];
+const hookEvent = [{ name: 'event', description: 'The hook event, such as PreToolUse.', required: true }];
+const pluginDirectory = { name: 'directory', description: 'The Claude plugin directory.', required: true };
+const pluginAsset = [pluginDirectory, { name: 'path', description: 'The asset path inside the plugin directory.', required: true }];
 
 const agents: Record<string, CommandAction> = {
-  agents: { description: 'List native agents, as agents list does.', usage: `claude agents ${targetUsage}`, ...read, options: agentTarget },
-  'agents list': { description: 'List native agents.', usage: `claude agents list ${targetUsage}`, ...read, options: agentTarget },
-  'agents inspect': { description: 'Return one native agent with its metadata and prompt.', usage: `claude agents inspect <id> ${targetUsage}`, ...read, options: agentTarget },
-  'agents create': { description: 'Create a native agent file.', usage: `claude agents create <id> (${inputUsage} | --metadata json --prompt text) ${targetUsage}`, ...guarded, options: { ...agentTarget, ...agentInput } },
-  'agents update': { description: 'Replace a native agent file.', usage: `claude agents update <id> (${inputUsage} | --metadata json --prompt text) --if-match sha256 ${targetUsage}`, ...guarded, options: { ...agentTarget, ...agentInput, 'if-match': ifMatch } },
-  'agents remove': { description: 'Remove a native agent file.', usage: `claude agents remove <id> --if-match sha256 ${targetUsage}`, ...guarded, options: { ...agentTarget, 'if-match': ifMatch } },
-  'agents enable': { description: 'Enable a native agent in the settings.', usage: `claude agents enable <id> [--if-match sha256] ${targetUsage}`, ...guarded, options: { ...agentTarget, 'if-match': ifMatch } },
-  'agents disable': { description: 'Disable a native agent in the settings.', usage: `claude agents disable <id> [--if-match sha256] ${targetUsage}`, ...guarded, options: { ...agentTarget, 'if-match': ifMatch } },
+  agents: { description: 'List native agents, as agents list does.', usage: `claude agents ${targetUsage}`, ...read, args: [], options: agentTarget },
+  'agents list': { description: 'List native agents.', usage: `claude agents list ${targetUsage}`, ...read, args: [], options: agentTarget },
+  'agents inspect': { description: 'Return one native agent with its metadata and prompt.', usage: `claude agents inspect <id> ${targetUsage}`, ...read, args: agentId, options: agentTarget },
+  'agents create': { description: 'Create a native agent file.', usage: `claude agents create <id> (${inputUsage} | --metadata json --prompt text) ${targetUsage}`, ...guarded, args: agentId, options: { ...agentTarget, ...agentInput } },
+  'agents update': { description: 'Replace a native agent file.', usage: `claude agents update <id> (${inputUsage} | --metadata json --prompt text) --if-match sha256 ${targetUsage}`, ...guarded, args: agentId, options: { ...agentTarget, ...agentInput, 'if-match': ifMatch } },
+  'agents remove': { description: 'Remove a native agent file.', usage: `claude agents remove <id> --if-match sha256 ${targetUsage}`, ...guarded, args: agentId, options: { ...agentTarget, 'if-match': ifMatch } },
+  'agents enable': { description: 'Enable a native agent in the settings.', usage: `claude agents enable <id> [--if-match sha256] ${targetUsage}`, ...guarded, args: agentId, options: { ...agentTarget, 'if-match': ifMatch } },
+  'agents disable': { description: 'Disable a native agent in the settings.', usage: `claude agents disable <id> [--if-match sha256] ${targetUsage}`, ...guarded, args: agentId, options: { ...agentTarget, 'if-match': ifMatch } },
   'agents export': {
-    description: 'Return a native agent as Markdown and session JSON, or write it to a .md file with --out.', usage: `claude agents export <id> [--out agent.md [--if-match sha256]] ${targetUsage}`, ...guarded,
+    description: 'Return a native agent as Markdown and session JSON, or write it to a .md file with --out.', usage: `claude agents export <id> [--out agent.md [--if-match sha256]] ${targetUsage}`, ...guarded, args: agentId,
     options: { ...agentTarget, out: option.string('Destination path for export.'), 'if-match': ifMatch },
   },
 };
 
 const hooks: Record<string, CommandAction> = {
-  hooks: { description: 'Inspect the native hook configuration, as hooks inspect does.', usage: `claude hooks ${hookUsage}`, ...read, options: hookTarget },
-  'hooks inspect': { description: 'Inspect the native hook configuration.', usage: `claude hooks inspect ${hookUsage}`, ...read, options: hookTarget },
-  'hooks check': { description: 'Validate the native hook configuration.', usage: `claude hooks check ${hookUsage}`, ...read, options: hookTarget },
-  'hooks set': { description: 'Replace the hook configuration with JSON input.', usage: `claude hooks set (${inputUsage}) [--if-match sha256] ${hookUsage}`, ...guarded, options: { ...hookTarget, ...input, 'if-match': ifMatch } },
-  'hooks add': { description: 'Add a hook entry for one event from JSON input.', usage: `claude hooks add <event> (${inputUsage}) [--if-match sha256] ${hookUsage}`, ...guarded, options: { ...hookTarget, ...input, 'if-match': ifMatch } },
+  hooks: { description: 'Inspect the native hook configuration, as hooks inspect does.', usage: `claude hooks ${hookUsage}`, ...read, args: [], options: hookTarget },
+  'hooks inspect': { description: 'Inspect the native hook configuration.', usage: `claude hooks inspect ${hookUsage}`, ...read, args: [], options: hookTarget },
+  'hooks check': { description: 'Validate the native hook configuration.', usage: `claude hooks check ${hookUsage}`, ...read, args: [], options: hookTarget },
+  'hooks set': { description: 'Replace the hook configuration with JSON input.', usage: `claude hooks set (${inputUsage}) [--if-match sha256] ${hookUsage}`, ...guarded, args: [], options: { ...hookTarget, ...input, 'if-match': ifMatch } },
+  'hooks add': { description: 'Add a hook entry for one event from JSON input.', usage: `claude hooks add <event> (${inputUsage}) [--if-match sha256] ${hookUsage}`, ...guarded, args: hookEvent, options: { ...hookTarget, ...input, 'if-match': ifMatch } },
   'hooks remove': {
-    description: 'Remove the hooks of one event, or one entry with --index.', usage: `claude hooks remove <event> --if-match sha256 [--index n] ${hookUsage}`, ...guarded,
+    description: 'Remove the hooks of one event, or one entry with --index.', usage: `claude hooks remove <event> --if-match sha256 [--index n] ${hookUsage}`, ...guarded, args: hookEvent,
     options: { ...hookTarget, 'if-match': ifMatch, index: option.string('Hook entry index for hooks remove.') },
   },
-  'hooks configure': { description: 'Set hook-related settings from JSON input.', usage: `claude hooks configure (${inputUsage}) [--if-match sha256] ${hookUsage}`, ...guarded, options: { ...hookTarget, ...input, 'if-match': ifMatch } },
-  'hooks enable': { description: 'Enable every hook of the settings file.', usage: `claude hooks enable [--if-match sha256] ${hookUsage}`, ...guarded, options: { ...hookTarget, 'if-match': ifMatch } },
-  'hooks disable': { description: 'Disable every hook of the settings file.', usage: `claude hooks disable [--if-match sha256] ${hookUsage}`, ...guarded, options: { ...hookTarget, 'if-match': ifMatch } },
+  'hooks configure': { description: 'Set hook-related settings from JSON input.', usage: `claude hooks configure (${inputUsage}) [--if-match sha256] ${hookUsage}`, ...guarded, args: [], options: { ...hookTarget, ...input, 'if-match': ifMatch } },
+  'hooks enable': { description: 'Enable every hook of the settings file.', usage: `claude hooks enable [--if-match sha256] ${hookUsage}`, ...guarded, args: [], options: { ...hookTarget, 'if-match': ifMatch } },
+  'hooks disable': { description: 'Disable every hook of the settings file.', usage: `claude hooks disable [--if-match sha256] ${hookUsage}`, ...guarded, args: [], options: { ...hookTarget, 'if-match': ifMatch } },
 };
 
 /** Claude plugin authoring: files of a plugin directory, written with workspace guards. */
 const authoring: Record<string, CommandAction> = {
-  'plugins create': { description: 'Create a Claude plugin directory from a JSON manifest.', usage: `claude plugins create <directory> (${inputUsage})`, ...guarded, options: input },
-  'plugins inspect': { description: 'Describe a Claude plugin directory and its assets.', usage: 'claude plugins inspect <directory>', ...read },
-  'plugins manifest': { description: 'Replace the plugin manifest with JSON input.', usage: `claude plugins manifest <directory> (${inputUsage}) --if-match sha256`, ...guarded, options: { ...input, 'if-match': ifMatch } },
-  'plugins check': { description: 'Validate a Claude plugin directory.', usage: 'claude plugins check <directory>', ...read },
-  'plugins asset': { description: 'Read one asset of a Claude plugin.', usage: 'claude plugins asset <directory> <path>', ...read },
-  'plugins write-asset': { description: 'Write one asset of a Claude plugin.', usage: `claude plugins write-asset <directory> <path> (${inputUsage}) [--if-match sha256]`, ...guarded, options: { ...input, 'if-match': ifMatch } },
-  'plugins remove-asset': { description: 'Remove one asset of a Claude plugin.', usage: 'claude plugins remove-asset <directory> <path> --if-match sha256', ...guarded, options: { 'if-match': ifMatch } },
+  'plugins create': { description: 'Create a Claude plugin directory from a JSON manifest.', usage: `claude plugins create <directory> (${inputUsage})`, ...guarded, args: [pluginDirectory], options: input },
+  'plugins inspect': { description: 'Describe a Claude plugin directory and its assets.', usage: 'claude plugins inspect <directory>', ...read, args: [pluginDirectory] },
+  'plugins manifest': { description: 'Replace the plugin manifest with JSON input.', usage: `claude plugins manifest <directory> (${inputUsage}) --if-match sha256`, ...guarded, args: [pluginDirectory], options: { ...input, 'if-match': ifMatch } },
+  'plugins check': { description: 'Validate a Claude plugin directory.', usage: 'claude plugins check <directory>', ...read, args: [pluginDirectory] },
+  'plugins asset': { description: 'Read one asset of a Claude plugin.', usage: 'claude plugins asset <directory> <path>', ...read, args: pluginAsset },
+  'plugins write-asset': { description: 'Write one asset of a Claude plugin.', usage: `claude plugins write-asset <directory> <path> (${inputUsage}) [--if-match sha256]`, ...guarded, args: pluginAsset, options: { ...input, 'if-match': ifMatch } },
+  'plugins remove-asset': { description: 'Remove one asset of a Claude plugin.', usage: 'claude plugins remove-asset <directory> <path> --if-match sha256', ...guarded, args: pluginAsset, options: { 'if-match': ifMatch } },
 };
 
 /** What each installed-CLI action does; the native CLI documents its own options. */
@@ -98,19 +102,19 @@ const native: Record<string, CommandOption> = {
 };
 const pluginScope = (managed: boolean) => scope('Installed-CLI plugin commands: the native scope; managed only with plugins update.', ['project', 'local', 'user', ...(managed ? ['managed'] : [])]);
 const marketplaceScope = scope('Marketplace add and remove: the native scope.', ['project', 'local', 'user']);
-const runtime = Object.fromEntries(claudeRuntimeActions.map(({ section, action, scoped, managed, options }): [string, CommandAction] => {
+const runtime = Object.fromEntries(claudeRuntimeActions.map(({ section, action, args, scoped, managed, options }): [string, CommandAction] => {
   const id = `${section} ${action}`;
   const scopes: Record<string, CommandOption> = scoped ? { scope: section === 'plugins' ? pluginScope(managed) : marketplaceScope } : {};
   const values = id === 'plugins configure' ? input : {};
   const flags = Object.entries({ ...scopes, ...options, ...values }).map(([name, schema]) => `[--${name}${schema.type === 'string' ? ' value' : ''}]`);
   return [id, {
-    description: runtimeDescriptions[id]!, usage: ['claude', id, '[operands]', ...flags, '[--claude-bin path] [--timeout ms]'].join(' '),
-    ...(readRuntime.has(id) ? read : {}), options: { ...scopes, ...options, ...values, ...native },
+    description: runtimeDescriptions[id]!, usage: ['claude', id, ...args.map(arg => arg.required ? `<${arg.name}>` : `[${arg.name}]`), ...flags, '[--claude-bin path] [--timeout ms]'].join(' '),
+    ...(readRuntime.has(id) ? read : {}), args, options: { ...scopes, ...options, ...values, ...native },
   }];
 }));
 
 /** The `claude` sections and their actions, each with exactly the options it accepts. */
 export const claudeActions: Readonly<Record<string, CommandAction>> = {
-  capabilities: { description: 'Describe supported formats, scopes and operations.', usage: 'claude [capabilities]', scope: 'workspace', discovery: true, mutating: false },
+  capabilities: { description: 'Describe supported formats, scopes and operations.', usage: 'claude [capabilities]', scope: 'workspace', discovery: true, mutating: false, args: [] },
   ...agents, ...hooks, ...authoring, ...runtime,
 };

@@ -1,7 +1,7 @@
 import { ClaudePluginService } from '../application/plugins.ts';
 import type { CommandContext } from '../../../application/plugins/registry.ts';
 import type { ClaudeServices } from './services.ts';
-import { arity, parseJson, value } from '../../../application/plugins/command-input.ts';
+import { parseJson, value } from '../../../application/plugins/command-input.ts';
 import { claudeBytes, claudeInput } from './input.ts';
 
 type Flags = Record<string, string | boolean>;
@@ -9,7 +9,6 @@ export const nativePluginActions = ['create', 'inspect', 'manifest', 'check', 'a
 
 export async function nativePlugin(args: string[], flags: Flags, context: CommandContext, services: ClaudeServices) {
   const [action, directory, path] = args;
-  arity(args, ['asset', 'write-asset', 'remove-asset'].includes(action!) ? 3 : 2);
   const plugins = new ClaudePluginService(context.workspace, services.agentCodec);
   if (action === 'create') return plugins.create(directory!, parseJson(await claudeInput(flags, context)));
   if (action === 'manifest') return plugins.update(directory!, parseJson(await claudeInput(flags, context)), value(flags, 'if-match', true)!);

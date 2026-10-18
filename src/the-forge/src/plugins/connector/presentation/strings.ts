@@ -26,8 +26,7 @@ export const connectorStrings: PluginStrings = {
   de: {
     manifest: { name: 'Connector-Verbindungen', description: 'Verbindungsprofile und der gemeinsame Hub für Backlog-Connectors zu externen Work-Trackern.' },
     descriptions: {
-      'list, inspect, test': 'list, inspect oder test',
-      'The connection id (inspect, test).': 'Die Verbindungs-ID (inspect, test).',
+      'The connection id.': 'Die Verbindungs-ID.',
       'Connection profiles by id (lowercase kebab-case).': 'Verbindungsprofile nach ID (kebab-case in Kleinbuchstaben).',
       'The connector platform, for example azure-devops.': 'Die Connector-Plattform, zum Beispiel azure-devops.',
       'The environment variable holding the access token, named PAT, TOKEN or ending in _PAT or _TOKEN so a shared profile cannot pick an unrelated secret; the platform default when omitted. Its value is sent to the organization, so review both in shared configuration.': 'Die Umgebungsvariable mit dem Zugriffstoken, benannt PAT, TOKEN oder mit der Endung _PAT oder _TOKEN, damit ein gemeinsam genutztes Profil kein fremdes Geheimnis wählen kann; ohne Angabe der Standard der Plattform. Ihr Wert wird an die Organisation gesendet; prüfen Sie daher beide in gemeinsam genutzter Konfiguration.',

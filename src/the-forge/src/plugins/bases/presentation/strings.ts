@@ -10,8 +10,7 @@ export const basesStrings: PluginStrings = {
       'View name for query; the first view when omitted.': 'Ansichtsname für query; ohne Angabe die erste Ansicht.',
       'Note used as this file in query expressions.': 'Notiz, die in Abfrageausdrücken als this file dient.',
       'Maximum number of rows for query.': 'Höchstzahl der Zeilen für query.',
-      'list (default), inspect, query or capabilities.': 'list (Standard), inspect, query oder capabilities.',
-      'The .base file for inspect and query.': 'Die .base-Datei für inspect und query.',
+      'The .base file.': 'Die .base-Datei.',
     },
   },
 };

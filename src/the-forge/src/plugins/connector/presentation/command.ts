@@ -1,11 +1,11 @@
 import type { Command } from '../../../application/plugins/registry.ts';
-import { arity } from '../../../application/plugins/command-input.ts';
 import type { BoundConnection } from '../../../application/connectors/contract.ts';
 import { ensure } from '../../../domain/shared/errors.ts';
 import { tokenSet, type Hub } from '../application/hub.ts';
 import type { Language } from '../../../application/plugins/plugin-catalog.ts';
 
 const actions = ['list', 'inspect', 'test'];
+const connectionId = { name: 'id', description: 'The connection id.', required: true };
 
 /** A connection as JSON: the secret-free profile summary; never the credential, only whether its variable is set. */
 function connectionJson({ connection, connector }: BoundConnection, environment: (name: string) => string | undefined, language: Language) {
@@ -22,22 +22,17 @@ export function connectorsCommand(hub: Hub, environment: (name: string) => strin
     id: 'connectors',
     description: 'List, inspect and test the backlog connector connections configured in plugins.settings.connector.connections.',
     usage: 'connectors list | inspect <id> | test <id>',
-    scope: 'workspace', discovery: false, mutating: false, defaultAction: 'list',
+    scope: 'workspace', discovery: false, mutating: false, defaultAction: 'list', unknownAction: 'INVALID_ARGUMENT',
     actions: {
-      list: { description: 'Every connection with its platform, validity, warnings and whether its token variable is set.' },
-      inspect: { description: 'One connection with its resolved type, state and field mappings.' },
-      test: { description: 'An authenticated, read-only probe of one connection.' },
+      list: { description: 'Every connection with its platform, validity, warnings and whether its token variable is set.', args: [] },
+      inspect: { description: 'One connection with its resolved type, state and field mappings.', args: [connectionId] },
+      test: { description: 'An authenticated, read-only probe of one connection.', args: [connectionId] },
     },
-    args: [
-      { name: 'action', description: actions.join(', '), enum: actions },
-      { name: 'id', description: 'The connection id (inspect, test).' },
-    ],
     errors: ['CONNECTOR_NOT_FOUND', 'CONNECTION_INVALID', 'CONNECTOR_AUTH_FAILED', 'CONNECTOR_REQUEST_FAILED'],
     async run(args, _flags, { language }) {
       const [action = 'list', ...rest] = args;
       ensure(actions.includes(action), 'INVALID_ARGUMENT', `Use connectors ${actions.join(', connectors ')}.`);
       if (action === 'list') {
-        arity(rest, 0);
         return {
           platforms: hub.platforms(),
           connections: hub.statuses().map(status => ({
@@ -46,7 +41,6 @@ export function connectorsCommand(hub: Hub, environment: (name: string) => strin
           })),
         };
       }
-      arity(rest, 1);
       const bound = hub.connection(rest[0]!);
       if (action === 'inspect') {
         const description = bound.connector.describe(language);

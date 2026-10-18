@@ -1,6 +1,6 @@
 import type { Command, PluginContext } from '../../../application/plugins/registry.ts';
 import { option, type CommandFlags, type CommandOption } from '../../../application/plugins/command-metadata.ts';
-import { arity, value } from '../../../application/plugins/command-input.ts';
+import { value } from '../../../application/plugins/command-input.ts';
 import { generationControls, reviewOptions } from '../../../application/generation/controls.ts';
 import { ensure } from '../../../domain/shared/errors.ts';
 import { simpleToolsets, type AgentAuthoring, type CreateRequest } from '../application/authoring.ts';
@@ -68,37 +68,34 @@ export function agentsCommand(services: (context: PluginContext) => AgentService
     usage: 'agents [list] | inspect <file[#agent]> | validate [file] | create <name> [--from-template basic|team|mcp] [--file team.yaml] [--model ref] [--description text] [--instruction text] [--toolset filesystem,shell] [--if-match sha256] | import <agent|path.md> --from claude [--file team.yaml] [--if-match sha256] | generate --target claude [--file team.yaml] [--agent name] [--mcp none|inline|project [--rename-conflicts]] [--hooks] [--settings [--allow-broad-permissions]] [--commands] [--model-style id|alias] [--plan | --plan-out path.json | --check | --revisions-from path.json]',
     scope: 'project', discovery: false, mutating: false, defaultAction: 'list', unknownAction: 'INVALID_ARGUMENT',
     actions: {
-      list: { description: 'List definition files with their agents, default agent and diagnostic counts.', usage: 'agents [list]' },
-      inspect: { description: 'Return one definition file, or one agent with file#agent, with diagnostics.', usage: 'agents inspect <file[#agent]>' },
-      validate: { description: 'Validate one or every definition file against the docker-agent schema and semantic rules; errors fail with INVALID_AGENT_DEFINITION.', usage: 'agents validate [file]' },
+      list: { description: 'List definition files with their agents, default agent and diagnostic counts.', usage: 'agents [list]', args: [] },
+      inspect: { description: 'Return one definition file, or one agent with file#agent, with diagnostics.', usage: 'agents inspect <file[#agent]>', args: [{ name: 'target', description: 'A definition file, or file#agent for one agent.', required: true }] },
+      validate: { description: 'Validate one or every definition file against the docker-agent schema and semantic rules; errors fail with INVALID_AGENT_DEFINITION.', usage: 'agents validate [file]', args: [{ name: 'file', description: 'A definition file; every definition file when omitted.' }] },
       // Idempotent although --if-match is optional: it is required once the team file exists, so a repeat fails.
       create: {
         description: 'Add a docker-agent agent, or a bundled template\'s agents, to a new or existing team file, preserving comments.', mutating: true, idempotent: true, options: createOptions,
+        args: [{ name: 'name', description: 'The agent name.', required: true }],
         usage: 'agents create <name> [--from-template basic|team|mcp] [--file team.yaml] [--model ref] [--description text] [--instruction text] [--toolset filesystem,shell] [--if-match sha256]',
       },
       import: {
         description: 'Convert a Claude agent (.claude/agents/<name>.md) into a docker-agent agent, with diagnostics for approximations.', mutating: true, idempotent: true, options: importOptions,
+        args: [{ name: 'source', description: 'A Claude agent name or Markdown path.', required: true }],
         usage: 'agents import <agent|path.md> --from claude [--file team.yaml] [--if-match sha256]',
       },
       generate: {
-        description: 'Generate .claude/agents/<name>.md (and opt-in .mcp.json, settings and skills) from the definitions; --plan and --check never write.', mutating: true, idempotent: true, options: generateOptions,
+        description: 'Generate .claude/agents/<name>.md (and opt-in .mcp.json, settings and skills) from the definitions; --plan and --check never write.', mutating: true, idempotent: true, options: generateOptions, args: [],
         usage: 'agents generate --target claude [--file team.yaml] [--agent name] [--mcp none|inline|project [--rename-conflicts]] [--hooks] [--settings [--allow-broad-permissions]] [--commands] [--model-style id|alias] [--plan | --plan-out path.json | --check | --revisions-from path.json]',
       },
     },
-    args: [
-      { name: 'action', description: 'list (default), inspect, validate, create, import or generate.', enum: actions },
-      { name: 'target', description: 'inspect: file[#agent]; validate: file; create: the agent name; import: a Claude agent name or Markdown path.' },
-    ],
     errors: ['INVALID_AGENT_DEFINITION', 'AGENT_NOT_FOUND', 'AGENT_EXISTS', 'AGENT_DRIFT', 'AGENT_MERGE_CONFLICT', 'NOT_FOUND', 'CONFLICT', 'INVALID_NAME', 'INVALID_PATH', 'INVALID_YAML', 'INVALID_ENCODING', 'INVALID_CLAUDE_AGENT', 'INVALID_CLAUDE_SETTINGS', 'INVALID_GENERATION_PLAN', 'INVALID_GENERATION_REVISIONS'],
     async run(args, flags, context) {
       const action = (args[0] ?? 'list') as Action;
       ensure((actions as readonly string[]).includes(action), 'INVALID_ARGUMENT', `Use agents ${actions.join(', agents ')}.`);
       const agents = services(context);
-      if (action === 'list') { arity(args, 0, 1); return agents.list(); }
-      if (action === 'inspect') { arity(args, 2); return agents.inspect(args[1]!); }
-      if (action === 'validate') { arity(args, 1, 2); return agents.validate(args[1]); }
+      if (action === 'list') return agents.list();
+      if (action === 'inspect') return agents.inspect(args[1]!);
+      if (action === 'validate') return agents.validate(args[1]);
       if (action === 'create') {
-        arity(args, 2);
         const [file, model, description, instruction, ifMatch, types] = [value(flags, 'file'), value(flags, 'model'), value(flags, 'description'), value(flags, 'instruction'), value(flags, 'if-match'), toolsets(flags)];
         const template = flags['from-template'] === undefined ? undefined : choice(flags, 'from-template', agentTemplates, 'basic');
         ensure(template === undefined || types === undefined, 'INVALID_ARGUMENT', '--from-template sets the toolsets; omit --toolset or edit the YAML afterwards.');
@@ -108,12 +105,10 @@ export function agentsCommand(services: (context: PluginContext) => AgentService
         });
       }
       if (action === 'import') {
-        arity(args, 2);
         ensure(value(flags, 'from', true) === 'claude', 'INVALID_ARGUMENT', '--from must be claude.');
         const file = value(flags, 'file'), ifMatch = value(flags, 'if-match');
         return agents.importClaude(args[1]!, { ...(file ? { file } : {}), ...(ifMatch ? { ifMatch } : {}) });
       }
-      arity(args, 1);
       ensure(value(flags, 'target', true) === 'claude', 'INVALID_ARGUMENT', '--target must be claude.');
       ensure(flags['allow-broad-permissions'] === undefined || flags.settings === true, 'INVALID_ARGUMENT', '--allow-broad-permissions applies to the rules --settings writes; pass --settings too.');
       ensure(flags['rename-conflicts'] === undefined || value(flags, 'mcp') === 'project', 'INVALID_ARGUMENT', '--rename-conflicts applies to the servers --mcp project merges into .mcp.json; pass --mcp project too.');

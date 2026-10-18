@@ -6,7 +6,7 @@ import { claudeHookEvents } from '../../../domain/claude/hooks.ts';
 import { claudePluginCapabilities } from '../domain/plugins.ts';
 import type { Command } from '../../../application/plugins/registry.ts';
 import type { ClaudeCommandServices, ClaudeServices } from './services.ts';
-import { arity, parseJson, value } from '../../../application/plugins/command-input.ts';
+import { parseJson, value } from '../../../application/plugins/command-input.ts';
 import { claudeInput } from './input.ts';
 import { buildClaudeRuntimeArgs, claudeRuntimeNeedsInput, claudeRuntimeOutput } from './runtime-commands.ts';
 import { claudeActions } from './actions.ts';
@@ -20,10 +20,6 @@ export function claudeCommand(adapters: ClaudeCommandServices): Command {
     usage: 'claude capabilities | agents list|inspect|create|update|remove|enable|disable|export [id] | hooks inspect|check|set|add|remove|configure|enable|disable [event] | plugins create|inspect|manifest|check|asset|write-asset|remove-asset <directory> [path] | plugins list|details|install|update|uninstall|enable|disable|validate|configure|prune|init|tag|test|eval [id] | marketplaces add|list|remove|update [source] | runtime version|doctor|install|update',
     scope: 'project', discovery: false, mutating: true, defaultAction: 'capabilities',
     actions: claudeActions, unknownAction: 'INVALID_ARGUMENT',
-    args: [
-      { name: 'section', description: 'capabilities (default), agents, hooks, plugins, marketplaces or runtime.', enum: ['capabilities', 'agents', 'hooks', 'plugins', 'marketplaces', 'runtime'] },
-      { name: 'operands', description: 'The section action and its operands; see usage.', variadic: true },
-    ],
     errors: [
       'INVALID_CLAUDE_AGENT', 'INVALID_CLAUDE_HOOKS', 'INVALID_CLAUDE_PLUGIN', 'INVALID_CLAUDE_SETTINGS', 'INVALID_CLAUDE_COMMAND', 'INVALID_CLAUDE_ARGUMENT',
       'INVALID_CLAUDE_OPTION', 'INVALID_CLAUDE_SCOPE', 'INVALID_CLAUDE_INPUT', 'INVALID_CLAUDE_EXECUTABLE', 'CLAUDE_NOT_INSTALLED', 'CLAUDE_WORKING_DIRECTORY_UNAVAILABLE',
@@ -33,7 +29,6 @@ export function claudeCommand(adapters: ClaudeCommandServices): Command {
     async run(args, flags, context) {
       const [section, action] = args;
       if (!section || section === 'capabilities') {
-        arity(args, 0, 1);
         return { provider: 'Claude Code', nativeFormats: true, documentation: 'https://code.claude.com/docs/en/sub-agents',
           agents: { scopes: ['project', 'user', 'plugin'], format: claudeMessages.agentFormat, operations: ['list', 'inspect', 'create', 'update', 'remove', 'enable', 'disable', 'export'], pluginIgnoredFields: ['hooks', 'mcpServers', 'permissionMode', 'initialPrompt'] },
           hooks: { scopes: ['project', 'local', 'user', 'plugin'], events: claudeHookEvents, operations: ['inspect', 'check', 'set', 'add', 'remove', 'configure', 'enable', 'disable'], execution: claudeMessages.hookExecution },

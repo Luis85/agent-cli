@@ -22,11 +22,11 @@ export const germanDescriptions: Record<string, string> = {
   'A command id from the catalog.': 'Eine Befehls-ID aus dem Katalog.',
   'Project scaffold type for project create.': 'Projektvorlage für project create.',
   'Component kind for project component.': 'Komponentenart für project component.',
-  'list (default), create, open, current, close, inspect or component.': 'list (Standard), create, open, current, close, inspect oder component.',
+  'A project id.': 'Eine Projekt-ID.',
+  'A project id; defaults to the selected project.': 'Eine Projekt-ID; standardmäßig das ausgewählte Projekt.',
   'A project id, or the component name.': 'Eine Projekt-ID oder der Komponentenname.',
   'The component name when a project id precedes it.': 'Der Komponentenname, wenn eine Projekt-ID vorangeht.',
   'With sync: fail with WORKFLOW_DRIFT instead of writing when generated workflows differ.': 'Mit sync: mit WORKFLOW_DRIFT fehlschlagen, statt zu schreiben, wenn generierte Workflows abweichen.',
-  'list (default) or sync.': 'list (Standard) oder sync.',
   // File commands.
   'Use this project instead of the selected project.': 'Dieses Projekt statt des ausgewählten Projekts verwenden.',
   'Only files of this kind.': 'Nur Dateien dieser Art.',
@@ -74,7 +74,6 @@ export const germanDescriptions: Record<string, string> = {
   'File or folder to rename.': 'Umzubenennende Datei oder umzubenennender Ordner.',
   'New name without slashes; a file keeps its extension.': 'Neuer Name ohne Schrägstriche; eine Datei behält ihre Erweiterung.',
   // Generation and shared library options.
-  'A generator id; without one, make lists the generators.': 'Eine Generator-ID; ohne sie listet make die Generatoren auf.',
   'The name or id the generator creates from.': 'Der Name oder die ID, aus der der Generator erzeugt.',
   'Output directory; each generator documents its default.': 'Ausgabeverzeichnis; jeder Generator dokumentiert seinen Standard.',
   'JSON file mapping generated paths to approved SHA-256 revisions (from --plan-out).': 'JSON-Datei, die generierte Pfade freigegebenen SHA-256-Revisionen zuordnet (aus --plan-out).',
@@ -86,8 +85,9 @@ export const germanDescriptions: Record<string, string> = {
   'Library directory, relative to the workspace; defaults to the configured path.': 'Bibliotheksverzeichnis relativ zum Workspace; standardmäßig der konfigurierte Pfad.',
   'Import source directory for import.': 'Quellverzeichnis für import.',
   'Export destination directory for export.': 'Zielverzeichnis für export.',
-  'list (default), init, inspect, validate, create, import or export.': 'list (Standard), init, inspect, validate, create, import oder export.',
-  'The definition id for inspect and create.': 'Die Definitions-ID für inspect und create.',
+  'The component definition id.': 'Die ID der Komponentendefinition.',
+  'The interaction definition id.': 'Die ID der Interaktionsdefinition.',
+  'The data-source definition id.': 'Die ID der Datenquellendefinition.',
   // The JSON documents that `edit --edits` and the `apply` plan hold (the schema `help` and `schema` publish with them).
   'Literal replacements applied in order, each to the result of the previous one.': 'Wörtliche Ersetzungen, der Reihe nach jeweils auf das Ergebnis der vorherigen angewendet.',
   'Exact text that must occur once, or at least once with all.': 'Genauer Text, der einmal vorkommen muss, mit all mindestens einmal.',

@@ -1,5 +1,5 @@
 import { listOptionItems, option, type CommandFlags } from '../../application/plugins/command-metadata.ts';
-import { arity, integer, value } from '../../application/plugins/command-input.ts';
+import { integer, value } from '../../application/plugins/command-input.ts';
 import type { Command } from '../../application/plugins/registry.ts';
 import { lineRange } from '../../domain/documents/text-window.ts';
 import { readOutput } from './output.ts';
@@ -34,7 +34,6 @@ export function readCommand(): Command {
     },
     output: readOutput,
     async run(args, flags, { workspace, events }) {
-      arity(args, 1);
       const request = selection(flags);
       return readView(await workspace.read(args[0]!), request, message => events.warn(message));
     },

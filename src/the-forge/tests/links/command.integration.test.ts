@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { registerHostEvents } from '../../src/application/plugins/host-events.ts';
 import { Registry, type CommandContext } from '../../src/application/plugins/registry.ts';
+import { ensureArguments } from '../../src/application/plugins/command-arguments.ts';
 import { registerCorePlugins, registrySkills } from '../../src/application/plugins/core-plugins.ts';
 import { Workspace } from '../../src/application/workspace/workspace.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
@@ -29,7 +30,12 @@ async function links(settings: Record<string, unknown> = {}) {
   await registry.configure(settings, async () => [], message => events.warn(message));
   const workspace = new Workspace(await NodeFiles.at(root), new ObsidianDocuments(), events, false);
   const context = { workspace, events, root, workspaceRoot: root, project: null, input: async () => new Uint8Array(), ...scopeServices(workspace, events) } as unknown as CommandContext;
-  return (args: string[], flags: Record<string, string> = {}) => registry.commands.get('links')!.run(args, flags, context) as Promise<Record<string, unknown>>;
+  // The host counts the positional arguments before a command runs.
+  return async (args: string[], flags: Record<string, string> = {}) => {
+    const command = registry.commands.get('links')!;
+    ensureArguments(command, args);
+    return command.run(args, flags, context) as Promise<Record<string, unknown>>;
+  };
 }
 
 beforeEach(async () => {
@@ -66,9 +72,11 @@ describe('the links command', () => {
 
   it('validates actions, arguments and options', async () => {
     const run = await links();
-    for (const [args, flags] of [[[], {}], [['sideways'], {}], [['out'], {}], [['out', 'a.md', 'b.md'], {}], [['orphans', 'x'], {}], [['unresolved'], { path: '{' }], [['orphans'], { path: '[z-a]' }]] as const) {
+    for (const [args, flags] of [[['sideways'], {}], [['out', 'a.md', 'b.md'], {}], [['orphans', 'x'], {}], [['unresolved'], { path: '{' }], [['orphans'], { path: '[z-a]' }]] as const) {
       await expect(run([...args], { ...flags }), JSON.stringify(args)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
     }
+    await expect(run([])).rejects.toMatchObject({ code: 'MISSING_ARGUMENT', details: { argument: 'action' } });
+    await expect(run(['out'])).rejects.toMatchObject({ code: 'MISSING_ARGUMENT', details: { argument: 'note' } });
     await expect(run(['out', 'notes/missing.md'])).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 });

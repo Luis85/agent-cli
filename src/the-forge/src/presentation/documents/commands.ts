@@ -2,7 +2,7 @@ import { ensure, isRecord } from '../../domain/shared/errors.ts';
 import { fileKind } from '../../domain/documents/file.ts';
 import { base64Bytes } from '../../domain/documents/base64.ts';
 import type { Command, CommandContext } from '../../application/plugins/registry.ts';
-import { arity, parseJson, readInputBytes, value } from '../../application/plugins/command-input.ts';
+import { parseJson, readInputBytes, value } from '../../application/plugins/command-input.ts';
 import { listOptionItems, option } from '../../application/plugins/command-metadata.ts';
 import { encodeText } from '../cli/input.ts';
 import { inputWarnings } from './input-warnings.ts';
@@ -42,14 +42,14 @@ export function documentCommands(): Command[] {
     listCommand(),
     readCommand(),
     { id: 'validate', description: 'Validate Markdown frontmatter, Canvas graph, Base structure or UTF-8 text.', usage: 'validate <path> [--project id]', ...reading, args: [pathArgument()], options: projectOptions, errors: ['NOT_FOUND', 'INVALID_FRONTMATTER', 'INVALID_YAML', 'INVALID_CANVAS', 'INVALID_BASE', 'INVALID_ENCODING'], output: validateOutput, async run(args, _, { workspace }) {
-      arity(args, 1); const file = await workspace.files.read(args[0]!); workspace.codec.validate(file.path, file.bytes);
+      const file = await workspace.files.read(args[0]!); workspace.codec.validate(file.path, file.bytes);
       const kind = fileKind(file.path);
       return { path: file.path, valid: true, kind, validation: ['markdown', 'canvas', 'base'].includes(kind) ? 'structure' : kind === 'text' ? 'utf8' : 'opaque-bytes' };
     } },
     { id: 'create', description: 'Create a note, Canvas, Base, or file. Existing files are refused.', usage: 'create <path> [--content text | --from path | --stdin] [--encoding base64] [--project id]', ...writing, destructive: false, idempotent: true, args: [pathArgument('New vault path.')], options: { ...contentOptions, ...projectOptions }, output: changesOutput(),
       examples: ['create notes/idea.md --content "# Idea"', 'create notes/idea.md --stdin'],
       errors: ['CONFLICT', 'INVALID_INPUT', 'INVALID_ENCODING', 'INVALID_FRONTMATTER', 'INVALID_CANVAS', 'INVALID_BASE'], async run(args, flags, context) {
-      arity(args, 1); const path = args[0]!;
+      const path = args[0]!;
       const hasInput = flags.content !== undefined || flags.from !== undefined || flags.stdin === true;
       const kind = fileKind(path);
       ensure(hasInput || flags.encoding === undefined, 'INVALID_INPUT', '--encoding requires an input source.');
@@ -62,7 +62,7 @@ export function documentCommands(): Command[] {
     { id: 'write', description: 'Create or replace a file; replacement requires its current revision.', usage: 'write <path> (--content text | --from path | --stdin) [--encoding base64] [--if-match sha256] [--project id]', ...writing, idempotent: true, args: [pathArgument()], output: changesOutput(),
       examples: ['write notes/idea.md --from drafts/idea.md --if-match <revision>'],
       options: { ...contentOptions, 'if-match': ifMatch(), ...projectOptions }, errors: ['CONFLICT', 'INVALID_INPUT', 'INVALID_ENCODING', 'INVALID_FRONTMATTER', 'INVALID_CANVAS', 'INVALID_BASE'], async run(args, flags, context) {
-      arity(args, 1); return context.workspace.write([{ path: args[0]!, bytes: await content(args[0]!, flags, context), expectedRevision: value(flags, 'if-match') }], { diff: true });
+      return context.workspace.write([{ path: args[0]!, bytes: await content(args[0]!, flags, context), expectedRevision: value(flags, 'if-match') }], { diff: true });
     } },
     editCommand(),
     { id: 'properties', description: 'Set or remove YAML frontmatter properties while preserving the Markdown body and untouched YAML.', usage: 'properties <note.md> (--set JSON | --unset key[,key] | both) --if-match sha256 [--project id]', ...writing, args: [pathArgument('Markdown note path.')], output: changesOutput(), errors: ['CONFLICT', 'UNSUPPORTED_EDIT', 'INVALID_JSON', 'INVALID_INPUT', 'INVALID_KEY', 'INVALID_FRONTMATTER', 'INVALID_YAML'],
@@ -73,7 +73,7 @@ export function documentCommands(): Command[] {
         'if-match': ifMatch(true),
         ...projectOptions,
       }, async run(args, flags, { workspace }) {
-      arity(args, 1); ensure(fileKind(args[0]!) === 'markdown', 'UNSUPPORTED_EDIT', 'Properties require a Markdown note.');
+      ensure(fileKind(args[0]!) === 'markdown', 'UNSUPPORTED_EDIT', 'Properties require a Markdown note.');
       const set = value(flags, 'set'), unset = value(flags, 'unset');
       ensure(set !== undefined || unset !== undefined, 'INVALID_INPUT', 'Pass --set, --unset or both.');
       const changes = set === undefined ? {} : parseJson(set); ensure(isRecord(changes), 'INVALID_INPUT', '--set must be a JSON object.');
@@ -83,7 +83,7 @@ export function documentCommands(): Command[] {
     } },
     { id: 'patch', description: 'Set a Canvas/Base JSON Pointer; - appends to an existing array.', usage: 'patch <path> --pointer /nodes/- --value JSON --if-match sha256 [--project id]', ...writing, args: [pathArgument('Canvas or Base path.')], output: changesOutput(), errors: ['CONFLICT', 'INVALID_POINTER', 'INVALID_JSON', 'INVALID_CANVAS', 'INVALID_BASE', 'UNSUPPORTED_EDIT'],
       options: { pointer: option.string('JSON Pointer to set; /- appends to an existing array.', { required: true }), value: option.string('JSON value to set.', { required: true }), 'if-match': ifMatch(true), ...projectOptions }, async run(args, flags, { workspace }) {
-      arity(args, 1); const pointer = value(flags, 'pointer', true)!, data = parseJson(value(flags, 'value', true)!);
+      const pointer = value(flags, 'pointer', true)!, data = parseJson(value(flags, 'value', true)!);
       return workspace.edit(args[0]!, value(flags, 'if-match', true)!, bytes => workspace.codec.patch(args[0]!, bytes, pointer, data));
     } },
     applyCommand(),

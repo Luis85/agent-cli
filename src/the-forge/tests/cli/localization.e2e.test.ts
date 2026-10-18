@@ -89,7 +89,8 @@ describe('localized portable CLI', () => {
     expect((await cli(['read', 'a.md', '--nope'])).body.error.message).toBe('Der Befehl read akzeptiert die Option --nope nicht.');
     expect((await cli(['read', '../a.md'])).body.error.message).toBe('Argument <path> "../a.md" ist kein gültiger relativer Pfad im Workspace oder Projekt.');
     expect((await cli(['create', 'con.md', '--content', 'x'])).body.error.message).toContain('Argument <path> "con.md": con.md ist ein unter Windows reservierter Gerätename');
-    expect((await cli(['read'])).body.error.message).toBe('Es fehlt <path>: Falsche Anzahl an Positionsargumenten, erwartet 1, erhalten 0.');
+    expect((await cli(['read'])).body.error.message).toBe('Es fehlt <path>: erwartet 1 Positionsargumente, erhalten 0.');
+    expect((await cli(['stat', 'a.md', 'b.md'])).body.error.message).toBe('Überzählig: "b.md". Falsche Anzahl an Positionsargumenten: erwartet 1, erhalten 2.');
     for (const args of [['--lang', 'fr', 'help'], ['help', '--lang', 'fr'], ['--lang', 'en', 'help', '--lang', 'de']]) {
       const result = await cli(args);
       expect(result.status).toBe(2);

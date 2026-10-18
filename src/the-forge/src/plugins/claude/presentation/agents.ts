@@ -3,7 +3,7 @@ import { ClaudeAgents } from '../application/agents.ts';
 import { ClaudeSettings } from '../application/settings.ts';
 import type { CommandContext } from '../../../application/plugins/registry.ts';
 import type { ClaudeServices } from './services.ts';
-import { arity, parseJson, value } from '../../../application/plugins/command-input.ts';
+import { parseJson, value } from '../../../application/plugins/command-input.ts';
 import { claudeInput, claudeInputOptions } from './input.ts';
 import { claudeMessages } from '../domain/messages.ts';
 
@@ -38,10 +38,8 @@ export async function agentCommands(args: string[], flags: Flags, context: Comma
   const settings = new ClaudeSettings(target.workspace, target.settingsPath, target.scope === 'plugin');
   let result: object;
   if (action === 'list') {
-    arity(args, 0, 1);
     result = await agents.list();
   } else {
-    arity(args, 2);
     const id = args[1]!;
     switch (action) {
       case 'inspect': result = await agents.inspect(id); break;

@@ -29,8 +29,8 @@ export const browserStrings: PluginStrings = { en: { messages: englishMessages }
     'browser tutorial': 'Einen deklarierten Ablauf ausführen und Anleitung, Screenshots und wiederholbaren Plan atomar speichern.',
   },
   descriptions: {
-    'status (default), install, screenshot, validate or tutorial.': 'status (Standard), install, screenshot, validate oder tutorial.',
-    'Absolute HTTP(S) URL for screenshot, or a project-relative flow JSON, Markdown or Canvas source.': 'Absolute HTTP(S)-URL für screenshot oder projektrelative JSON-, Markdown- oder Canvas-Ablaufquelle.',
+    'Absolute HTTP(S) URL of the page.': 'Absolute HTTP(S)-URL der Seite.',
+    'Project-relative flow JSON, Markdown or Canvas source.': 'Projektrelative JSON-, Markdown- oder Canvas-Ablaufquelle.',
     'Use this project instead of the selected project.': 'Dieses Projekt statt des ausgewählten Projekts verwenden.',
     'Use this Chromium executable; otherwise use FORGE_BROWSER_EXECUTABLE or the installed managed browser.': 'Diese Chromium-Datei verwenden; sonst FORGE_BROWSER_EXECUTABLE oder den installierten verwalteten Browser verwenden.',
     'Browser operation timeout in milliseconds, from 1 to 120000.': 'Zeitlimit für Browser-Vorgänge in Millisekunden von 1 bis 120000.',

@@ -40,15 +40,6 @@ export function waitBudget(flags: CommandFlags): number {
   return wait;
 }
 
-/**
- * Positional argument count check shared by every command; `details` `{minimum, maximum, received}` let the host
- * name the missing arguments and the usage from the command's metadata.
- */
-export function arity(args: readonly string[], min: number, max = min): void {
-  const expected = `${min === max ? min : `${min}–${max}`} positional argument${max === 1 ? '' : 's'}`;
-  ensure(args.length >= min && args.length <= max, 'INVALID_ARGUMENT', `Expected ${expected}, got ${args.length}.`, { minimum: min, maximum: max, received: args.length });
-}
-
 /** Selects raw input from exactly one of --from (read in the command's scope), --content or --stdin; callers own decoding. */
 export async function readInputBytes(flags: CommandFlags, context: Pick<CommandContext, 'workspace' | 'input'>, message: string): Promise<Uint8Array> {
   const from = value(flags, 'from'), content = value(flags, 'content');

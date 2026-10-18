@@ -4,7 +4,7 @@ import type { LiteralEdit } from '../../domain/documents/literal-edit.ts';
 import type { TextEditRequest } from '../../domain/documents/text-edit.ts';
 import { rangeEditModes } from '../../domain/documents/sections.ts';
 import type { Command, CommandContext } from '../../application/plugins/registry.ts';
-import { arity, integer, parseJson, value } from '../../application/plugins/command-input.ts';
+import { integer, parseJson, value } from '../../application/plugins/command-input.ts';
 import { option, type CommandFlags } from '../../application/plugins/command-metadata.ts';
 import { decodeText, editBytes, ensureEditable } from '../../application/documents/text-edit.ts';
 import { PlanRunner } from '../../application/documents/apply.ts';
@@ -80,7 +80,7 @@ export function editCommand(): Command {
       project: option.string('Use this project instead of the selected project.'),
     },
     async run(args, flags, context) {
-      arity(args, 1); const path = args[0]!;
+      const path = args[0]!;
       const request = await editRequest(flags, context);
       ensureEditable(path, request);
       inputWarnings(path, flags, undefined, ['content', 'replace'], context.workspace);
@@ -100,7 +100,6 @@ export function applyCommand(): Command {
     args: [{ name: 'plan', description: 'Plan file in the command scope, or - to read the plan from standard input.', required: true, schema: applyPlanSchema, path: true }],
     options: { project: option.string('Use this project instead of the selected project.') },
     async run(args, _flags, context) {
-      arity(args, 1);
       const plan = parsePlan(await jsonInput(args[0] === '-' ? '-' : `@${args[0]!}`, context));
       return new PlanRunner({ workspace: context.workspace, metadata: context.metadata, workspaceScope: context.project === null }).run(plan);
     },

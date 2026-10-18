@@ -4,7 +4,7 @@ import { metadataMatches, noteFilters } from '../../domain/metadata/note-filters
 import { kernelMessage } from '../../domain/shared/kernel-messages.ts';
 import { Pager } from '../../domain/shared/paging.ts';
 import type { Command } from '../../application/plugins/registry.ts';
-import { arity, integer, value } from '../../application/plugins/command-input.ts';
+import { integer, value } from '../../application/plugins/command-input.ts';
 import { option } from '../../application/plugins/command-metadata.ts';
 import { listOutput } from './output.ts';
 
@@ -20,7 +20,7 @@ export function listCommand(): Command {
     id: 'list', description: 'List regular files in stable path order; skip symlinks, Git, node_modules and .trash.',
     examples: ['list --kind markdown --path notes', 'list --tag plan --limit 100'],
     usage: 'list [--kind markdown|canvas|base|image|audio|video|pdf|text|attachment] [--path glob] [--tag tag] [--property key[=value]] [--include-trash] [--limit count] [--cursor token] [--project id]',
-    scope: 'project', projectOption: 'project', discovery: false, mutating: false,
+    scope: 'project', projectOption: 'project', discovery: false, mutating: false, args: [],
     options: {
       kind: option.string('Only files of this kind.', { enum: fileKinds }),
       path: option.string('Only files whose root-relative path matches this glob (*, **, ?, [abc], {a,b}), or that are this file or below this folder.'),
@@ -32,8 +32,7 @@ export function listCommand(): Command {
       project: option.string('Use this project instead of the selected project.'),
     },
     output: listOutput,
-    async run(args, flags, { workspace, metadata, events }) {
-      arity(args, 0);
+    async run(_args, flags, { workspace, metadata, events }) {
       const kind = value(flags, 'kind'), glob = value(flags, 'path'), filters = noteFilters(value(flags, 'tag'), value(flags, 'property'));
       const inPath = recordingFilter(glob === undefined ? () => true : pathFilter(glob));
       const trash = flags['include-trash'] === true || (glob !== undefined && isInTrash(glob.replace(/^\.\//, '').split('/')[0]!));

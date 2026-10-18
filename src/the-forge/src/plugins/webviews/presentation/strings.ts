@@ -8,7 +8,6 @@ export const webviewsStrings: PluginStrings = { de: {
     'webview publish': 'dist mit Revisionsschutz bereitstellen oder mit --check ohne Schreibzugriff auf Abweichungen prüfen.',
   },
   descriptions: {
-    'inspect (default) or publish.': 'inspect (Standard) oder publish.',
     'Inspect or publish this project instead of the selected one.': 'Dieses Projekt statt des ausgewählten Projekts prüfen oder bereitstellen.',
     'The installed folder revision from webview inspect; required to replace a changed view.': 'Die installierte Ordnerrevision aus webview inspect; zum Ersetzen einer geänderten Ansicht erforderlich.',
     'Check publication drift without writing; fail with WEBVIEW_DRIFT when assets differ.': 'Ohne Schreibzugriff auf Abweichungen prüfen; bei Unterschieden mit WEBVIEW_DRIFT fehlschlagen.',

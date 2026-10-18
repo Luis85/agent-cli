@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { serverCommands } from '../../src/presentation/server/commands.ts';
 import { commandInputSchema, commandMode, commandOptions, commandOutputSchema, optionTypes, validateCommandMetadata } from '../../src/application/plugins/command-metadata.ts';
 import { declaredValues, parseArguments } from '../../src/presentation/cli/arguments.ts';
+import { ensureArguments } from '../../src/application/plugins/command-arguments.ts';
 import { invocationPolicy } from '../../src/presentation/cli/invocation-policy.ts';
 import type { CommandContext } from '../../src/application/plugins/registry.ts';
 import type { ServerController, ServerStatus } from '../../src/application/server/contracts.ts';
@@ -35,7 +36,9 @@ beforeEach(async () => {
 });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 
-function invoke(args: string[], flags: Record<string, string | boolean> = {}) {
+/** Runs the command as the host does, after counting its positional arguments. */
+async function invoke(args: string[], flags: Record<string, string | boolean> = {}) {
+  ensureArguments(command, args);
   return command.run(args, flags, context);
 }
 
@@ -106,7 +109,6 @@ describe('server CLI controller boundary', () => {
     expect(localized.description).not.toBe(command.description);
     expect(localized.actions!.start!.description).not.toBe(command.actions!.start!.description);
     expect(localized.actions!.start!.options!.port!.description).not.toBe(command.actions!.start!.options!.port!.description);
-    expect(localized.args![0]!.description).not.toBe(command.args![0]!.description);
   });
 
   it('distinguishes lifecycle results from status and documents preview-only fields', () => {

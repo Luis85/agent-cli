@@ -50,6 +50,7 @@ function described(command: Pick<Command, 'id' | 'options' | 'args' | 'actions'>
   for (const argument of command.args ?? []) add(`${command.id} <${argument.name}>`, argument);
   for (const [action, definition] of Object.entries(command.actions ?? {})) {
     for (const [name, option] of Object.entries(definition.options ?? {})) add(`${command.id} ${action} --${name}`, option);
+    for (const argument of definition.args ?? []) add(`${command.id} ${action} <${argument.name}>`, argument);
   }
   return texts;
 }
